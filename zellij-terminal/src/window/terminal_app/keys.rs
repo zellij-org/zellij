@@ -1,6 +1,7 @@
 use crate::emulation::damage::Damage;
 use crate::input::clipboard::{self, Clipboard};
 use crate::input::composition::{Gate, Reaction};
+use crate::input::dropped;
 use crate::input::keyboard;
 use crate::platform::Platform;
 use crate::render::retained::{self};
@@ -9,6 +10,8 @@ use crate::window::ZOOM_STEP;
 use winit::event::Ime;
 use winit::event::KeyEvent;
 use winit::keyboard::Key;
+
+use std::path::Path;
 
 impl App {
     pub(in crate::window) fn on_key(&mut self, event: &KeyEvent) {
@@ -176,6 +179,13 @@ impl App {
         };
         if let Err(e) = self.tell(clipboard::paste_message(chars)) {
             report!("failed to send a paste: {}", e);
+        }
+    }
+
+    pub(in crate::window) fn dropped_file(&mut self, path: &Path) {
+        self.set_selection(None);
+        if let Err(e) = self.tell(clipboard::paste_message(dropped::dropped_file_text(path))) {
+            report!("failed to send a dropped file's path: {}", e);
         }
     }
 

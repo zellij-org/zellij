@@ -13,7 +13,7 @@ use zellij_utils::{
     data::{OutsideClick, PaneId, PipePopupPlacement},
     errors::prelude::*,
     input::actions::Action,
-    ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ExitReason, IpcReceiveError, ServerToClientMsg},
     prompt::{self, ChoiceItem, PromptElement},
 };
 
@@ -59,7 +59,10 @@ pub fn start_cli_client(
         }
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    os_input.connect_to_server(&*zellij_ipc_pipe);
+    if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
+        eprintln!("{}", crate::connect_error_message(e));
+        process::exit(1);
+    }
     let pane_id = os_input
         .env_variable("ZELLIJ_PANE_ID")
         .and_then(|e| e.trim().parse().ok());
@@ -484,7 +487,10 @@ pub fn start_prompt_client(
         }
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    os_input.connect_to_server(&*zellij_ipc_pipe);
+    if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
+        eprintln!("{}", crate::connect_error_message(e));
+        process::exit(1);
+    }
     let request = PipeRequest {
         pipe_id: Uuid::new_v4().to_string(),
         name: Some(plan.element.name().to_owned()),
@@ -816,19 +822,22 @@ fn individual_messages_client(
     };
     os_input.send_to_server(msg);
     loop {
-        match os_input.recv_from_server() {
-            Some((ServerToClientMsg::UnblockInputThread, _)) if !is_blocking => {
+        match os_input
+            .try_recv_from_server()
+            .map_err(|e| matches!(e, IpcReceiveError::Disconnected))
+        {
+            Ok((ServerToClientMsg::UnblockInputThread, _)) if !is_blocking => {
                 return None;
             },
-            Some((ServerToClientMsg::Log { lines: log_lines }, _)) => {
+            Ok((ServerToClientMsg::Log { lines: log_lines }, _)) => {
                 log_lines.iter().for_each(|line| println!("{line}"));
                 return None;
             },
-            Some((ServerToClientMsg::LogError { lines: log_lines }, _)) => {
+            Ok((ServerToClientMsg::LogError { lines: log_lines }, _)) => {
                 log_lines.iter().for_each(|line| eprintln!("{line}"));
                 return Some(2);
             },
-            Some((ServerToClientMsg::Exit { exit_reason }, _)) => match exit_reason {
+            Ok((ServerToClientMsg::Exit { exit_reason }, _)) => match exit_reason {
                 ExitReason::Error(e) => {
                     eprintln!("{}", e);
                     return Some(2);
@@ -839,6 +848,10 @@ fn individual_messages_client(
                 _ => {
                     return None;
                 },
+            },
+            Err(true) => {
+                eprintln!("The session closed the connection before the action finished.");
+                return Some(2);
             },
             _ => {},
         }
@@ -880,7 +893,10 @@ pub fn start_subscribe_client(
         }
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    os_input.connect_to_server(&*zellij_ipc_pipe);
+    if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
+        eprintln!("{}", crate::connect_error_message(e));
+        process::exit(1);
+    }
 
     // Parse pane IDs
     let pane_ids: Vec<PaneId> = subscribe_cli

@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, bail, Result};
 use zellij_utils::consts::ZELLIJ_SOCK_MAX_LENGTH;
 use zellij_utils::data::{BareKey, KeyWithModifier};
+use zellij_utils::input::options::OnForceClose;
 use zellij_utils::ipc::{
     ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
     PixelDimensions, ServerToClientMsg,
@@ -145,13 +146,14 @@ pub fn new_session_socket_path(session_name: &str) -> Result<PathBuf> {
 }
 
 fn checked_socket_path(path: PathBuf) -> Result<PathBuf> {
-    let length = path.as_os_str().len();
+    let length = zellij_utils::consts::socket_path_length(&path);
     if length >= ZELLIJ_SOCK_MAX_LENGTH {
         bail!(
-            "socket path {:?} is {} bytes, exceeding the {} byte limit",
+            "socket path {:?} is {} {}, over the limit of {}",
             path,
             length,
-            ZELLIJ_SOCK_MAX_LENGTH
+            zellij_utils::consts::SOCKET_PATH_LENGTH_UNIT,
+            ZELLIJ_SOCK_MAX_LENGTH - 1
         );
     }
     Ok(path)
@@ -281,6 +283,7 @@ fn retry_until<T>(
     loop {
         match attempt() {
             Ok(value) => return Ok(value),
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => return Err(e),
             Err(e) => {
                 if Instant::now() >= deadline {
                     return Err(e);
@@ -349,6 +352,25 @@ impl Detacher {
     }
 }
 
+pub fn request_force_close(
+    sender: &SharedSender,
+    role: Role,
+    on_force_close: OnForceClose,
+) -> Result<()> {
+    match (role, on_force_close) {
+        (Role::Participant, OnForceClose::Quit) => send(
+            sender,
+            ClientToServerMsg::Action {
+                action: on_force_close.into(),
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            },
+        ),
+        _ => request_detach(sender, role),
+    }
+}
+
 pub fn request_detach(sender: &SharedSender, role: Role) -> Result<()> {
     let msg = match role {
         Role::Participant => ClientToServerMsg::Action {
@@ -413,6 +435,25 @@ mod tests {
             cell_width: 10,
             cell_height: 20,
         }
+    }
+
+    #[test]
+    fn connect_retry_does_not_wait_after_permission_is_denied() {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut attempts = 0;
+        let result: std::io::Result<()> = retry_until(deadline, || {
+            attempts += 1;
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "denied",
+            ))
+        });
+
+        assert_eq!(
+            result.expect_err("permission denied is terminal").kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        assert_eq!(attempts, 1, "a denied client must not keep retrying");
     }
 
     fn message_for(info: &ClientInfo, geometry: Geometry) -> ClientToServerMsg {

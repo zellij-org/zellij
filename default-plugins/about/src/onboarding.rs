@@ -17,7 +17,7 @@ use crate::pages::{
 
 pub const DESKTOP_TIP_INDEX: usize = 12;
 pub const LAST_ONBOARDING_TIP_INDEX: usize = 16;
-pub const INTEGRATIONS_URL: &str = "https://zellij.dev/PLACEHOLDER-integrations";
+pub const INTEGRATIONS_URL: &str = "https://zellij.dev/documentation/inbox-integrations.html";
 pub const HOME_MANAGER_NOTE: &str =
     "If your config file comes from home-manager, set this through programs.zellij.settings.";
 
@@ -485,11 +485,20 @@ pub fn open_settings(page: Option<&str>) {
 pub fn kdl_for_binds(binds: &[(InputMode, KeyWithModifier, Vec<Action>)]) -> Vec<String> {
     let mut lines = vec!["keybinds {".to_owned()];
     for (mode, key, actions) in binds {
-        let actions: Vec<String> = actions.iter().map(|a| format!("{};", a)).collect();
+        let actions: Vec<String> = actions
+            .iter()
+            .map(|action| {
+                let written = action
+                    .to_kdl()
+                    .map(|node| node.to_string().trim().to_owned())
+                    .unwrap_or_else(|| action.to_string());
+                format!("{};", written)
+            })
+            .collect();
         lines.push(format!(
             "    {} {{ bind \"{}\" {{ {} }} }}",
             format!("{:?}", mode).to_lowercase(),
-            key,
+            key.to_kdl(),
             actions.join(" ")
         ));
     }

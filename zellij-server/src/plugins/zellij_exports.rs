@@ -4489,12 +4489,6 @@ fn notify_session_index_changed(env: &PluginEnv) {
         ));
 }
 
-fn delete_session_index_row(session_name: &str) {
-    if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
-        let _ = index.delete(session_name);
-    }
-}
-
 fn delete_dead_session(session_name: String) -> Result<()> {
     delete_dead_session_cache(&session_name)
 }
@@ -4504,16 +4498,23 @@ fn delete_dead_session(session_name: String) -> Result<()> {
 /// removed only after the cache is gone. A live socket, or an inventory that
 /// cannot be read, is not death: the cache and the row stay.
 fn delete_dead_session_cache(session_name: &str) -> Result<()> {
+    let index = zellij_utils::session_index::SessionIndex::open_default().map_err(|error| {
+        anyhow!(
+            "session index lookup failed; the cache and the index row were left in place: {}",
+            error
+        )
+    })?;
     delete_dead_session_cache_with(
         session_name,
         |session_id| {
-            zellij_utils::sessions::remove_fenced_dead_session_cache(
+            zellij_utils::sessions::remove_fenced_dead_session_cache_and_index(
                 &ZELLIJ_SOCK_DIR,
                 &ZELLIJ_SESSION_INFO_CACHE_DIR,
+                Some(&index),
                 session_id,
             )
         },
-        delete_session_index_row,
+        |_| {},
     )
 }
 

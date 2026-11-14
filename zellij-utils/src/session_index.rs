@@ -145,12 +145,35 @@ fn folder_prefix_upper_bound(prefix: &str) -> String {
     upper
 }
 
+pub fn index_file_name(sock_dir: &Path, sock_dir_overridden: bool) -> String {
+    if !sock_dir_overridden {
+        return SESSION_INDEX_FILE_NAME.to_owned();
+    }
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(sock_dir.as_os_str().as_encoded_bytes());
+    let hash: String = digest
+        .iter()
+        .take(6)
+        .map(|byte| format!("{:02x}", byte))
+        .collect();
+    format!("session_index-{}.sqlite", hash)
+}
+
 pub fn default_index_path() -> PathBuf {
+    let sock_dir_overridden = crate::envs::get_socket_dir().is_ok();
     ZELLIJ_SESSION_INFO_CACHE_DIR
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| ZELLIJ_SESSION_INFO_CACHE_DIR.clone())
-        .join(SESSION_INDEX_FILE_NAME)
+        .join(index_file_name(&ZELLIJ_SOCK_DIR, sock_dir_overridden))
+}
+
+/// Pre-per-socket-directory index. Sessions created before the hashed index
+/// was introduced still have rows here, so reads fall back to it.
+fn legacy_index_path() -> Option<PathBuf> {
+    let default = default_index_path();
+    let legacy = default.parent()?.join(SESSION_INDEX_FILE_NAME);
+    (legacy != default).then_some(legacy)
 }
 
 pub fn hostname() -> Option<String> {
@@ -485,6 +508,12 @@ impl SessionIndex {
         let Ok(entries) = std::fs::read_dir(&self.cache_dir) else {
             return;
         };
+        let mut known_ids = query_identities(&self.conn).unwrap_or_default();
+        if let Some(legacy) =
+            legacy_index_path().and_then(|path| open_existing_index(&path).ok().flatten())
+        {
+            known_ids.extend(query_identities(&legacy).unwrap_or_default());
+        }
         let mut rows = vec![];
         for entry in entries.flatten() {
             let path = entry.path();
@@ -495,6 +524,9 @@ impl SessionIndex {
             let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_string()) else {
                 continue;
             };
+            if known_ids.contains(&name) {
+                continue;
+            }
             let modified = metadata
                 .modified()
                 .ok()
@@ -510,6 +542,7 @@ impl SessionIndex {
             let folder = std::fs::read_to_string(&layout_file)
                 .ok()
                 .and_then(|raw| layout_cwd(&raw));
+            known_ids.insert(name.clone());
             rows.push(SessionRow {
                 name,
                 context: SessionContext {
@@ -756,7 +789,7 @@ impl SessionIndex {
         // The socket and the cache folder are named by the session's id.
         // A lookup error must stay an error: swallowing it and falling back to the
         // display name makes a renamed session look absent, and resolve_candidates prunes it.
-        let id = match self.session_id(name)? {
+        let id = match self.session_id_with_legacy(name)? {
             Some(id) => id,
             None => name.to_owned(),
         };
@@ -767,6 +800,13 @@ impl SessionIndex {
                 .join(SESSION_LAYOUT_FILE_NAME)
                 .try_exists(),
         )
+    }
+
+    fn session_id_with_legacy(&self, name: &str) -> Result<Option<String>> {
+        match self.session_id(name)? {
+            Some(id) => Ok(Some(id)),
+            None => legacy_session_id_for_name_guarded(&self.conn, &self.sock_dir, name),
+        }
     }
 
     fn query_rows(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<Vec<SessionRow>> {
@@ -1074,6 +1114,25 @@ fn query_session_name(conn: &Connection, id: &str) -> Result<Option<String>> {
             |row| row.get(0),
         )
         .optional()?)
+}
+
+fn query_identity(conn: &Connection, id: &str) -> Result<Option<(String, Option<String>)>> {
+    Ok(conn
+        .query_row(
+            "SELECT name, id FROM sessions WHERE COALESCE(id, name) = ?1",
+            params![id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?)
+}
+
+fn query_identities(conn: &Connection) -> Result<HashSet<String>> {
+    let mut statement = conn.prepare_cached("SELECT COALESCE(id, name) FROM sessions")?;
+    let identities = statement
+        .query_map([], |row| row.get(0))?
+        .filter_map(|row| row.ok())
+        .collect();
+    Ok(identities)
 }
 
 fn query_names_by_id(conn: &Connection) -> Result<HashMap<String, String>> {
@@ -1442,21 +1501,95 @@ fn session_name_for_id_in(path: &Path, id: &str) -> Result<Option<String>> {
     }
 }
 
+/// A legacy row is a valid name for its id unless the new index has since
+/// renamed that same id away from it. A backfill row named by the id carries no
+/// `id` value and must not hide the legacy row's display name.
+fn legacy_session_id_for_name_guarded(
+    current: &Connection,
+    sock_dir: &Path,
+    name: &str,
+) -> Result<Option<String>> {
+    let Some(legacy) = legacy_index_path() else {
+        return Ok(None);
+    };
+    legacy_session_id_for_name_guarded_in(Some(current), &legacy, sock_dir, name)
+}
+
+fn legacy_session_id_for_name_guarded_in(
+    current: Option<&Connection>,
+    legacy: &Path,
+    sock_dir: &Path,
+    name: &str,
+) -> Result<Option<String>> {
+    let Some(id) = session_id_for_name_in(legacy, name)? else {
+        return Ok(None);
+    };
+    if !sock_dir.join(&id).try_exists()? {
+        return Ok(None);
+    }
+    match current {
+        Some(current) => match query_identity(current, &id)? {
+            Some((current_name, Some(_))) if current_name != name => Ok(None),
+            _ => Ok(Some(id)),
+        },
+        None => Ok(Some(id)),
+    }
+}
+
 pub fn session_id_for_name(name: &str) -> Result<Option<String>> {
-    session_id_for_name_in(&default_index_path(), name)
+    let path = default_index_path();
+    if let Some(id) = session_id_for_name_in(&path, name)? {
+        return Ok(Some(id));
+    }
+    match open_existing_index(&path)? {
+        Some(current) => legacy_session_id_for_name_guarded(&current, &ZELLIJ_SOCK_DIR, name),
+        None => match legacy_index_path() {
+            Some(legacy) => {
+                legacy_session_id_for_name_guarded_in(None, &legacy, &ZELLIJ_SOCK_DIR, name)
+            },
+            None => Ok(None),
+        },
+    }
 }
 
 pub fn session_name_for_id(id: &str) -> Result<Option<String>> {
-    session_name_for_id_in(&default_index_path(), id)
+    let path = default_index_path();
+    if let Some(current) = open_existing_index(&path)? {
+        if let Some((name, id_column)) = query_identity(&current, id)? {
+            if name != id || id_column.is_some() {
+                return Ok(Some(name));
+            }
+            if let Some(legacy) = legacy_index_path() {
+                if let Some(legacy_name) = session_name_for_id_in(&legacy, id)? {
+                    if legacy_name != id {
+                        return Ok(Some(legacy_name));
+                    }
+                }
+            }
+            return Ok(Some(name));
+        }
+    }
+    match legacy_index_path() {
+        Some(legacy) => session_name_for_id_in(&legacy, id),
+        None => Ok(None),
+    }
 }
 
 /// Names for listings. An error or a missing index is an empty map, which callers
 /// use only as a display fallback (the id is shown). It must not choose a folder to delete.
 pub fn session_names_by_id() -> HashMap<String, String> {
-    let Ok(Some(conn)) = open_existing_default_index() else {
-        return HashMap::new();
-    };
-    query_names_by_id(&conn).unwrap_or_default()
+    let mut names = legacy_index_path()
+        .and_then(|legacy| open_existing_index(&legacy).ok().flatten())
+        .and_then(|conn| query_names_by_id(&conn).ok())
+        .unwrap_or_default();
+    if let Ok(Some(conn)) = open_existing_default_index() {
+        for (id, name) in query_names_by_id(&conn).unwrap_or_default() {
+            if name != id || !names.contains_key(&id) {
+                names.insert(id, name);
+            }
+        }
+    }
+    names
 }
 
 /// Socket filenames are session ids; `names_by_id` maps them to session names (an id without an
@@ -1503,6 +1636,20 @@ pub fn layout_cwd(raw_layout: &str) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use crate::input::session_suggestions::default_rules;
+
+    #[test]
+    fn an_overridden_socket_folder_gets_its_own_index_file() {
+        let default_dir = Path::new("/run/user/1000/zellij/contract_version_1");
+        let bench_dir = Path::new("/tmp/bench/s-1/contract_version_1");
+        let other_bench_dir = Path::new("/tmp/bench/s-2/contract_version_1");
+        assert_eq!(index_file_name(default_dir, false), SESSION_INDEX_FILE_NAME);
+        assert_eq!(index_file_name(bench_dir, false), SESSION_INDEX_FILE_NAME);
+        let bench = index_file_name(bench_dir, true);
+        assert_ne!(bench, SESSION_INDEX_FILE_NAME);
+        assert!(bench.starts_with("session_index-") && bench.ends_with(".sqlite"));
+        assert_eq!(bench, index_file_name(bench_dir, true));
+        assert_ne!(bench, index_file_name(other_bench_dir, true));
+    }
 
     struct TestIndex {
         index: SessionIndex,
@@ -2660,5 +2807,72 @@ mod tests {
         }
         let _restore = RestoreMode(blocked);
         assert_lookup_error_is_not_the_display_name(session_id_for_name_in(&index, "display-name"));
+    }
+
+    #[test]
+    fn a_renamed_session_is_not_resolvable_by_its_legacy_name() {
+        let root = tempfile::tempdir().unwrap();
+        let sock_dir = root.path().join("sock");
+        let cache_dir = root.path().join("cache");
+        std::fs::create_dir_all(&sock_dir).unwrap();
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        let sock_dir_for_rows = sock_dir.clone();
+        let current = SessionIndex::open(
+            &root.path().join("session_index-hash.sqlite"),
+            sock_dir.clone(),
+            cache_dir.clone(),
+        )
+        .unwrap();
+        let legacy_path = root.path().join(SESSION_INDEX_FILE_NAME);
+        let legacy = SessionIndex::open(&legacy_path, sock_dir, cache_dir).unwrap();
+        std::fs::write(sock_dir_for_rows.join("old-name"), b"socket").unwrap();
+        legacy
+            .conn
+            .execute(
+                "INSERT INTO sessions (name, id, facts, created_at, last_used_at)
+                 VALUES ('old-name', NULL, '{}', 1, 1)",
+                [],
+            )
+            .unwrap();
+        current
+            .conn
+            .execute(
+                "INSERT INTO sessions (name, id, facts, created_at, last_used_at)
+                 VALUES ('new-name', 'old-name', '{}', 1, 1)",
+                [],
+            )
+            .unwrap();
+
+        assert_eq!(
+            legacy_session_id_for_name_guarded_in(
+                Some(&current.conn),
+                &legacy_path,
+                &sock_dir_for_rows,
+                "old-name",
+            )
+            .unwrap(),
+            None,
+            "a rename must not leave the old name resolving to the live id"
+        );
+
+        current
+            .conn
+            .execute(
+                "UPDATE sessions SET name = 'old-name', id = NULL WHERE name = 'new-name'",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            legacy_session_id_for_name_guarded_in(
+                Some(&current.conn),
+                &legacy_path,
+                &sock_dir_for_rows,
+                "old-name",
+            )
+            .unwrap()
+            .as_deref(),
+            Some("old-name"),
+            "a backfill row named by the id must not hide its legacy row"
+        );
     }
 }

@@ -1108,7 +1108,7 @@ fn keybinds(help: &ModeInfo, max_width: usize) -> Option<LinePart> {
 }
 
 fn hovered_ribbon_wrap(body: String, palette: Styling, supports_arrow_fonts: bool) -> String {
-    let ribbon_bg = palette.ribbon_unselected.emphasis_1;
+    let ribbon_bg = palette.ribbon_hover_style().background;
     let outer_bg = palette.text_unselected.background;
     let arrow = if supports_arrow_fonts {
         crate::status_bar::ARROW_SEPARATOR
@@ -1237,9 +1237,9 @@ fn hovered_inline_ribbon(
 ) -> String {
     let palette = help.style.colors;
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
-    let ribbon_bg = palette.ribbon_unselected.emphasis_1;
-    let base = style!(palette.ribbon_unselected.base, ribbon_bg).bold();
-    let emph = style!(palette.ribbon_unselected.emphasis_0, ribbon_bg).bold();
+    let hover = palette.ribbon_hover_style();
+    let base = style!(hover.base, hover.background).bold();
+    let emph = style!(hover.emphasis_0, hover.background).bold();
     let mut body = base.paint(" <").to_string();
     for (index, label) in labels.iter().enumerate() {
         if index > 0 {
@@ -1279,13 +1279,11 @@ fn add_shortcut(
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let ribbon = if hover.any() {
         let palette = help.style.colors;
-        let body = style!(
-            palette.ribbon_unselected.base,
-            palette.ribbon_unselected.emphasis_1
-        )
-        .bold()
-        .paint(format!(" {} ", text))
-        .to_string();
+        let hover = palette.ribbon_hover_style();
+        let body = style!(hover.base, hover.background)
+            .bold()
+            .paint(format!(" {} ", text))
+            .to_string();
         hovered_ribbon_wrap(body, palette, supports_arrow_fonts)
     } else if dimmed {
         serialize_ribbon(&Text::from(format!("{}", text)).disabled())
@@ -1376,13 +1374,11 @@ fn add_shortcut_with_key_only(
 
     let ribbon = if hover.any() {
         let palette = help.style.colors;
-        let body = style!(
-            palette.ribbon_unselected.emphasis_0,
-            palette.ribbon_unselected.emphasis_1
-        )
-        .bold()
-        .paint(format!(" {} ", key_string))
-        .to_string();
+        let hover = palette.ribbon_hover_style();
+        let body = style!(hover.emphasis_0, hover.background)
+            .bold()
+            .paint(format!(" {} ", key_string))
+            .to_string();
         hovered_ribbon_wrap(body, palette, supports_arrow_fonts)
     } else if help.session_dimmed.unwrap_or(false) {
         serialize_ribbon(&Text::from(format!("{}", key_string)).disabled())

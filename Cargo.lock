@@ -6528,6 +6528,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite",
+ "x11rb",
  "zellij-client",
  "zellij-server",
  "zellij-terminal",

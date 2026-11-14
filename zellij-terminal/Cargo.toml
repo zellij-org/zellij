@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "The Zellij terminal, a native client for Zellij sessions"
+exclude = ["fixtures/", "assets/fonts/NotoColorEmoji.ttf", "assets/fonts/LICENSE-NotoColorEmoji.md"]
 
 [dependencies]
 zellij-client = { path = "../zellij-client/", version = "0.46.0" }

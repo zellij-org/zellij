@@ -585,7 +585,9 @@ mod tests {
             _resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
         ) {
         }
-        fn connect_to_server(&self, _path: &std::path::Path) {}
+        fn connect_to_server(&self, _path: &std::path::Path) -> std::io::Result<()> {
+            Ok(())
+        }
         fn load_palette(&self) -> zellij_utils::data::Palette {
             zellij_utils::data::Palette::default()
         }

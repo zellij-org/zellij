@@ -920,6 +920,32 @@ fn report_kill_session_error(action: &str, name: &str, error: &io::Error) {
     }
 }
 
+fn wait_for_confirmed_session_death(path: &Path, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match path_try_exists(path) {
+            Ok(false) => return true,
+            Err(_) => return false,
+            Ok(true) => {},
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return false;
+        }
+        if matches!(
+            assert_socket_path(path, remaining),
+            SessionProbeResult::Absent
+        ) {
+            return true;
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return false;
+        }
+        std::thread::sleep(remaining.min(Duration::from_millis(25)));
+    }
+}
+
 fn legacy_socket_path(name: &str) -> Result<PathBuf, String> {
     Ok(match resolve_session_socket_path(name)? {
         Some(path) => path,
@@ -948,7 +974,13 @@ pub fn delete_session(name: &str, force: bool) {
     // The socket and the cache folder are named by the session id; the index row by the name.
     // A failed index read must not delete the folder named by the display name.
     let session_id = match session_folder_id(name) {
-        Ok(session_id) => session_id,
+        Ok(session_id) => {
+            if session_id == name && display_name_for_session_id(name) != name {
+                eprintln!("Session: {:?} not found.", name);
+                process::exit(2);
+            }
+            session_id
+        },
         Err(error) => {
             eprintln!(
                 "Failed to read the session index for {:?}: {}. The session was not deleted.",
@@ -963,27 +995,51 @@ pub fn delete_session(name: &str, force: bool) {
     }
     if force {
         let path = ZELLIJ_SOCK_DIR.join(&session_id);
-        if let Err(e) = send_kill_session(&path, SESSION_PROBE_TIMEOUT) {
-            if !matches!(
-                e.kind(),
-                io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
-            ) {
+        match send_kill_session(&path, SESSION_PROBE_TIMEOUT) {
+            Ok(()) => {
+                if !wait_for_confirmed_session_death(&path, SESSION_PROBE_TIMEOUT) {
+                    eprintln!(
+                        "Timed out waiting for session {:?} to stop after force-delete; \
+                         its cache and index row were left in place.",
+                        name
+                    );
+                    process::exit(1);
+                }
+            },
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+                ) => {},
+            Err(e) => {
                 report_kill_session_error("force-delete", name, &e);
                 eprintln!(
-                    "Continuing because --force explicitly permits deleting session {:?}.",
-                    name
+                    "The session did not confirm shutdown; its cache and index row were left in place."
                 );
-            }
+                process::exit(1);
+            },
         }
     }
     // Fence and remove under one per-session lock. The index row is removed
     // only after that removal succeeds. A fence failure leaves the row, the
     // directory stays, and the process does not exit 0.
-    match remove_fenced_session_cache(&session_id) {
+    let index = match crate::session_index::SessionIndex::open_default() {
+        Ok(index) => index,
+        Err(error) => {
+            eprintln!(
+                "Failed to open the session index for {:?}: {}. The session was not deleted.",
+                name, error
+            );
+            process::exit(1);
+        },
+    };
+    match remove_fenced_dead_session_cache_and_index(
+        &ZELLIJ_SOCK_DIR,
+        &ZELLIJ_SESSION_INFO_CACHE_DIR,
+        Some(&index),
+        &session_id,
+    ) {
         Ok(SessionCacheRemoval::Removed) => {
-            if let Ok(index) = crate::session_index::SessionIndex::open_default() {
-                let _ = index.delete(name);
-            }
             println!("Session: {:?} successfully deleted.", name);
         },
         Ok(SessionCacheRemoval::NotFound) => {
@@ -1370,24 +1426,49 @@ pub fn remove_fenced_dead_session_cache(
     cache_dir: &Path,
     session_id: &str,
 ) -> io::Result<SessionCacheRemoval> {
+    remove_fenced_dead_session_cache_and_index(sock_dir, cache_dir, None, session_id)
+}
+
+/// Remove a dead session's cache and, while still holding its socket claim,
+/// remove the index row by the stable id rather than the mutable display name.
+pub fn remove_fenced_dead_session_cache_and_index(
+    sock_dir: &Path,
+    cache_dir: &Path,
+    index: Option<&SessionIndex>,
+    session_id: &str,
+) -> io::Result<SessionCacheRemoval> {
+    let socket_path = sock_dir.join(session_id);
     let Some(claim) = try_acquire_session_socket_claim(sock_dir, session_id)? else {
         return Err(session_is_not_definitely_dead(session_id));
     };
-    let removal = remove_fenced_dead_session_cache_while_claimed(sock_dir, cache_dir, session_id);
+    if let Err(error) = claim.reclaim_stale_socket(&socket_path) {
+        claim.release();
+        if error.kind() == io::ErrorKind::AddrInUse {
+            return Err(session_is_not_definitely_dead(session_id));
+        }
+        return Err(error);
+    }
+    let removal = (|| {
+        if !crate::session_index::session_id_is_definitely_dead(sock_dir, cache_dir, session_id) {
+            return Err(session_is_not_definitely_dead(session_id));
+        }
+        let selected = selected_session_lifetime(cache_dir, session_id)?;
+        let removal = remove_fenced_session_cache_for_lifetime(cache_dir, session_id, selected)?;
+        if matches!(removal, SessionCacheRemoval::Removed) {
+            if let Some(index) = index {
+                index
+                    .delete_by_ids(std::slice::from_ref(&session_id.to_owned()))
+                    .map_err(|error| {
+                        io::Error::other(format!(
+                            "session cache removed but its index row could not be: {error}"
+                        ))
+                    })?;
+            }
+        }
+        Ok(removal)
+    })();
     claim.release();
     removal
-}
-
-fn remove_fenced_dead_session_cache_while_claimed(
-    sock_dir: &Path,
-    cache_dir: &Path,
-    session_id: &str,
-) -> io::Result<SessionCacheRemoval> {
-    if !crate::session_index::session_id_is_definitely_dead(sock_dir, cache_dir, session_id) {
-        return Err(session_is_not_definitely_dead(session_id));
-    }
-    let selected = selected_session_lifetime(cache_dir, session_id)?;
-    remove_fenced_session_cache_for_lifetime(cache_dir, session_id, selected)
 }
 
 /// Whether a deletion tombstone is present.
@@ -1811,7 +1892,48 @@ pub fn validate_session_name(name: &str) -> Result<(), String> {
     if name.contains('\\') {
         return Err("Session name cannot contain '\\'.".to_string());
     }
+    #[cfg(windows)]
+    if let Some(problem) = windows_file_name_problem(name) {
+        return Err(problem);
+    }
     Ok(())
+}
+
+/// Why Windows can't use `name` as a file name, which a session's socket falls back to when the
+/// session index can't be written.
+#[cfg(windows)]
+fn windows_file_name_problem(name: &str) -> Option<String> {
+    if let Some(c) = name
+        .chars()
+        .find(|c| c.is_control() || matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*'))
+    {
+        return Some(format!("Session name cannot contain {:?}.", c));
+    }
+    if name.ends_with(['.', ' ']) {
+        return Some("Session name cannot end with a dot or a space.".to_string());
+    }
+    // Device names are reserved even with an extension, as in "nul.txt".
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or(name)
+        .trim_end()
+        .to_uppercase();
+    let letters: Vec<char> = stem.chars().collect();
+    let numbered_device = letters.len() == 4
+        && matches!(letters[..3], ['C', 'O', 'M'] | ['L', 'P', 'T'])
+        && matches!(letters[3], '0'..='9' | '¹' | '²' | '³');
+    if matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) || numbered_device
+    {
+        return Some(format!(
+            "Session name cannot be {:?}: Windows reserves that name.",
+            name
+        ));
+    }
+    None
 }
 
 pub fn validate_session_folder_name(name: &str) -> Result<(), String> {
@@ -2179,6 +2301,54 @@ mod session_folder_name_tests {
     #[test]
     fn validate_session_name_rejects_backslash_on_windows() {
         assert!(validate_session_name("a\\b").is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn validate_session_name_rejects_what_windows_cannot_name_a_file() {
+        for name in [
+            "a:b",
+            "a*",
+            "a?",
+            "a\"b",
+            "a<b",
+            "a>b",
+            "a|b",
+            "a\tb",
+            "trailing.",
+            "trailing ",
+            "CON",
+            "nul",
+            "Aux.txt",
+            "com1",
+            "LPT9.log",
+            "COM¹",
+            "prn ",
+            "CONIN$",
+            "conout$.txt",
+        ] {
+            assert!(
+                validate_session_name(name).is_err(),
+                "should reject {:?}",
+                name
+            );
+        }
+        for name in [
+            "my-session",
+            "con-artist",
+            "com10",
+            "lpt",
+            "nullable",
+            ".zj-panel",
+            "v1.2",
+            "café",
+        ] {
+            assert!(
+                validate_session_name(name).is_ok(),
+                "should accept {:?}",
+                name
+            );
+        }
     }
 }
 

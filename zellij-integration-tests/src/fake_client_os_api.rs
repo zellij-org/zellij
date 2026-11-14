@@ -291,7 +291,7 @@ impl ClientOsApi for FakeClientOsApi {
             }
         }
     }
-    fn connect_to_server(&self, path: &Path) {
+    fn connect_to_server(&self, path: &Path) -> std::io::Result<()> {
         let socket;
         loop {
             match zellij_utils::consts::ipc_connect(path) {
@@ -310,6 +310,7 @@ impl ClientOsApi for FakeClientOsApi {
             .expect("test harness IPC receiver clone");
         *self.send_instructions_to_server.lock().unwrap() = Some(ipc_sender);
         *self.receive_instructions_from_server.lock().unwrap() = Some(ipc_receiver);
+        Ok(())
     }
     fn spawn_server(&self, socket_path: &Path, _debug: bool) -> Result<(), std::io::Error> {
         if let Some(server_spawner) = self.server_spawner.lock().unwrap().take() {

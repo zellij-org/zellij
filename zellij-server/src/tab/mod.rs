@@ -6378,10 +6378,25 @@ impl Tab {
             return Err(error);
         }
         let mut recipient_failure = None;
+        let last_recipient = pane_ids.last().copied();
         for pane_id in pane_ids {
-            if let Err(error) =
-                self.paste_to_pane_id_for_client(bytes.clone(), pane_id, Some(client_id), None)
+            self.local_input.insert(pane_id);
+            self.typed_into.insert(pane_id);
+            // Keep the completion with the final recipient so every synchronous
+            // admission failure is observed before the owner can be moved into a
+            // successful write.
+            let pane_completion = if recipient_failure.is_none() && Some(pane_id) == last_recipient
             {
+                completion.take()
+            } else {
+                None
+            };
+            if let Err(error) = self.paste_to_pane_id_for_client(
+                bytes.clone(),
+                pane_id,
+                Some(client_id),
+                pane_completion,
+            ) {
                 if recipient_failure.is_none() {
                     recipient_failure = Some(error);
                 } else {

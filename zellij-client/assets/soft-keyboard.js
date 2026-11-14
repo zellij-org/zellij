@@ -138,15 +138,20 @@ export function installSoftKeyboardCapture(term, sendFunction) {
     // text: pastes and intentional repeated characters (e.g. "ssh", "&&") arrive
     // in one input event and would otherwise lose every other identical char
     // (#5826 vs the duplication fixes for #4987/#4423/#4840).
-    let lastBackspaceAt = 0;
+    let lastBackspaceAt = null;
     const BACKSPACE_DEDUPE_MS = 8;
     const dispatchCh = (ch) => {
         if (ch === "\x7f") {
             const now = performance.now();
-            if (shouldDedupeCommittedChar(ch, now - lastBackspaceAt, BACKSPACE_DEDUPE_MS)) {
+            if (
+                lastBackspaceAt !== null &&
+                shouldDedupeCommittedChar(ch, now - lastBackspaceAt, BACKSPACE_DEDUPE_MS)
+            ) {
                 return;
             }
             lastBackspaceAt = now;
+        } else {
+            lastBackspaceAt = null;
         }
         state.sendFn(ch);
     };
@@ -196,7 +201,73 @@ export function installSoftKeyboardCapture(term, sendFunction) {
         }
     });
 
+    // Paste through xterm.js, which honors bracketed paste mode and keeps the line breaks
+    // an <input> strips from its value.
+    div.addEventListener("paste", (ev) => {
+        const text = ev.clipboardData && ev.clipboardData.getData("text/plain");
+        if (!text) {
+            return;
+        }
+        ev.preventDefault();
+        term.paste(text);
+    });
+
+    // The input event only sees keys that edit the text, so named keys such as F2, Home or
+    // Delete and Ctrl/Alt/Meta chords never reach it. They go to xterm.js's own keydown
+    // handler instead, which encodes them as it would with its textarea focused and cancels
+    // the event so browser shortcuts don't fire. Soft keyboards report text keys as
+    // "Unidentified", and unmodified Backspace/Enter/Tab/Escape/arrows keep the handling below.
+    const NEVER_FORWARDED = new Set([
+        "Unidentified",
+        "Process",
+        "Dead",
+        "Shift",
+        "Control",
+        "Alt",
+        "AltGraph",
+        "Meta",
+    ]);
+    const CAPTURE_KEYS = new Set([
+        "Backspace",
+        "Enter",
+        "Tab",
+        "Escape",
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowRight",
+        "ArrowLeft",
+    ]);
+    const isKeyForXterm = (ev) => {
+        if (ev.isComposing || NEVER_FORWARDED.has(ev.key)) {
+            return false;
+        }
+        // Windows reports AltGr as Ctrl+Alt, but it types text the input event handles.
+        if (ev.getModifierState && ev.getModifierState("AltGraph")) {
+            return false;
+        }
+        if (ev.ctrlKey || ev.altKey || ev.metaKey) {
+            return true;
+        }
+        if ([...ev.key].length === 1) {
+            return false;
+        }
+        return ev.shiftKey || !CAPTURE_KEYS.has(ev.key);
+    };
+    // Only keydown is forwarded: xterm.js's keyup handler focuses its textarea, which would
+    // dismiss the OS keyboard.
+    const forwardToXterm = (ev) => {
+        const core = term && term._core;
+        if (!core || typeof core._keyDown !== "function") {
+            return false;
+        }
+        core._keyDown(ev);
+        return true;
+    };
+
     div.addEventListener("keydown", (ev) => {
+        if (isKeyForXterm(ev) && forwardToXterm(ev)) {
+            return;
+        }
         switch (ev.key) {
             case "Enter":
                 ev.preventDefault();
@@ -232,10 +303,23 @@ export function installSoftKeyboardCapture(term, sendFunction) {
         }
     });
 
+    // Only touch and pen gestures summon the OS keyboard. On a touchscreen laptop a mouse
+    // click must leave focus with xterm.js, which encodes the keys the capture cannot.
+    // `click` is not a PointerEvent in every browser, so it falls back to the type of the
+    // pointerdown that started it.
+    let lastPointerType = "";
+    const isSoftKeyboardGesture = (ev) => {
+        if (ev.type === "touchend") {
+            return true;
+        }
+        const pointerType = ev.pointerType || lastPointerType;
+        return pointerType === "touch" || pointerType === "pen";
+    };
+
     // Mobile browsers honor programmatic focus() only inside a user gesture, so
     // re-focus the capture on every gesture to keep the OS keyboard summoned.
     const ensureCaptureFocused = (ev) => {
-        if (!window.__zjSoftKbdEnabled) {
+        if (!window.__zjSoftKbdEnabled || !isSoftKeyboardGesture(ev)) {
             return;
         }
         const target = ev && ev.target;
@@ -257,10 +341,14 @@ export function installSoftKeyboardCapture(term, sendFunction) {
     };
     window.addEventListener("click", ensureCaptureFocused, { passive: true });
     window.addEventListener("touchend", ensureCaptureFocused, { passive: true });
-    window.addEventListener("pointerdown", ensureCaptureFocused, {
-        capture: true,
-        passive: true,
-    });
+    window.addEventListener(
+        "pointerdown",
+        (ev) => {
+            lastPointerType = ev.pointerType;
+            ensureCaptureFocused(ev);
+        },
+        { capture: true, passive: true }
+    );
 }
 
 // inputmode="none" stops the OS keyboard auto-popping on tap while the textarea

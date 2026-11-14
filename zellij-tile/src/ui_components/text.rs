@@ -1,9 +1,15 @@
+use std::collections::BTreeMap;
 use std::ops::Bound;
 use std::ops::RangeBounds;
 use zellij_utils::data::StyledText;
 
 pub const CUSTOM_COLOR_LEVEL: usize = 9;
 pub const CUSTOM_COLOR_MARK: usize = 1 << 30;
+
+// A link travels as its own index level (from CUSTOM_COLOR_LEVEL up), whose
+// first entry is this mark followed by the URL in hex. Older versions of
+// Zellij skip entries that aren't numbers, so they show the text unlinked.
+const LINK_MARK: char = 'l';
 
 #[derive(Debug, Default, Clone)]
 pub struct Text {
@@ -12,6 +18,7 @@ pub struct Text {
     opaque: bool,
     disabled: bool,
     indices: Vec<Vec<usize>>,
+    links: BTreeMap<usize, String>, // index level -> URL
 }
 
 impl From<StyledText> for Text {
@@ -346,6 +353,50 @@ impl Text {
         }
     }
 
+    /// Make the characters at these positions a link to `url`. The terminal
+    /// showing Zellij opens it, usually with Ctrl+click or Shift+click.
+    /// Linking doesn't change how the text looks; style it as usual.
+    pub fn link_indices<U: Into<String>>(mut self, url: U, indices: Vec<usize>) -> Self {
+        let level = self.link_level(url.into());
+        self.color_indices(level, indices)
+    }
+
+    /// Make a range of characters a link to `url`. See [`Text::link_indices`].
+    pub fn link_range<U: Into<String>, R: RangeBounds<usize>>(
+        mut self,
+        url: U,
+        indices: R,
+    ) -> Self {
+        let level = self.link_level(url.into());
+        self.color_range(level, indices)
+    }
+
+    /// Make every occurrence of `substr` a link to `url`. See [`Text::link_indices`].
+    pub fn link_substring<U: Into<String>, S: AsRef<str>>(mut self, url: U, substr: S) -> Self {
+        let level = self.link_level(url.into());
+        self.color_substring(level, substr)
+    }
+
+    /// Make the whole text a link to `url`. See [`Text::link_indices`].
+    pub fn link_all<U: Into<String>>(self, url: U) -> Self {
+        self.link_range(url, ..)
+    }
+
+    fn link_level(&mut self, url: String) -> usize {
+        if let Some(level) = self
+            .links
+            .iter()
+            .find(|(_, existing)| **existing == url)
+            .map(|(level, _)| *level)
+        {
+            return level;
+        }
+        let level = self.indices.len().max(CUSTOM_COLOR_LEVEL);
+        self.pad_indices(level);
+        self.links.insert(level, url);
+        level
+    }
+
     fn substring_char_ranges(&self, substr: &str) -> Vec<(usize, usize)> {
         let mut ranges = vec![];
         if substr.is_empty() {
@@ -505,6 +556,7 @@ impl Text {
                     opaque: self.opaque,
                     disabled: self.disabled,
                     indices,
+                    links: self.links.clone(),
                 }
             })
             .collect()
@@ -526,15 +578,17 @@ impl Text {
             .collect::<Vec<_>>()
             .join(",");
         let mut indices = String::new();
-        for index_variants in &self.indices {
-            indices.push_str(&format!(
-                "{}$",
-                index_variants
-                    .iter()
-                    .map(|i| i.to_string())
-                    .collect::<Vec<_>>()
-                    .join(",")
-            ));
+        for (level, index_variants) in self.indices.iter().enumerate() {
+            let mut entries = vec![];
+            match self.links.get(&level) {
+                Some(url) if !index_variants.is_empty() => {
+                    let hex: String = url.bytes().map(|byte| format!("{:02x}", byte)).collect();
+                    entries.push(format!("{}{}", LINK_MARK, hex));
+                },
+                _ => {},
+            }
+            entries.extend(index_variants.iter().map(|i| i.to_string()));
+            indices.push_str(&format!("{}$", entries.join(",")));
         }
 
         let mut prefix = "".to_owned();
@@ -734,5 +788,72 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[1].content(), "e\u{301}x");
         assert_eq!(level(&lines[1], 0), vec![0, 1, 2]);
+    }
+
+    fn hex(url: &str) -> String {
+        url.bytes().map(|byte| format!("{:02x}", byte)).collect()
+    }
+
+    #[test]
+    fn a_link_serializes_as_a_marked_level_after_the_fixed_levels() {
+        let text = Text::from("ab").link_range("https://zellij.dev", 1..2);
+        assert_eq!(
+            text.serialize(),
+            format!(
+                "{}l{},1${}",
+                "$".repeat(CUSTOM_COLOR_LEVEL),
+                hex("https://zellij.dev"),
+                text_body("ab")
+            )
+        );
+    }
+
+    #[test]
+    fn a_url_used_twice_shares_one_level() {
+        let text = Text::from("abcd")
+            .link_range("https://a.dev", 0..1)
+            .link_range("https://b.dev", 1..2)
+            .link_substring("https://a.dev", "d");
+        assert_eq!(level(&text, CUSTOM_COLOR_LEVEL), vec![0, 3]);
+        assert_eq!(level(&text, CUSTOM_COLOR_LEVEL + 1), vec![1]);
+    }
+
+    #[test]
+    fn links_and_custom_colours_take_separate_levels() {
+        let text = Text::from("ab")
+            .rgb_color_range([1, 2, 3], 0..1)
+            .link_all("https://a.dev")
+            .rgb_color_range([4, 5, 6], 1..2);
+        assert_eq!(
+            level(&text, CUSTOM_COLOR_LEVEL),
+            vec![CUSTOM_COLOR_MARK + 0x010203, 0]
+        );
+        assert_eq!(level(&text, CUSTOM_COLOR_LEVEL + 1), vec![0, 1]);
+        assert_eq!(
+            level(&text, CUSTOM_COLOR_LEVEL + 2),
+            vec![CUSTOM_COLOR_MARK + 0x040506, 1]
+        );
+    }
+
+    #[test]
+    fn a_link_on_no_characters_writes_no_mark() {
+        let text = Text::from("ab").link_substring("https://a.dev", "zz");
+        assert!(!text.serialize().contains(LINK_MARK));
+    }
+
+    #[test]
+    fn wrap_keeps_links_on_their_characters() {
+        let lines = Text::from("see our docs")
+            .link_substring("https://a.dev", "our docs")
+            .wrap(4);
+        let contents: Vec<&str> = lines.iter().map(|line| line.content()).collect();
+        assert_eq!(contents, vec!["see", "our", "docs"]);
+        assert_eq!(level(&lines[0], CUSTOM_COLOR_LEVEL), Vec::<usize>::new());
+        assert_eq!(level(&lines[1], CUSTOM_COLOR_LEVEL), vec![0, 1, 2]);
+        assert_eq!(level(&lines[2], CUSTOM_COLOR_LEVEL), vec![0, 1, 2, 3]);
+        assert!(!lines[0].serialize().contains(LINK_MARK));
+        assert!(lines[2]
+            .serialize()
+            .contains(&format!("l{},", hex("https://a.dev"))));
     }
 }

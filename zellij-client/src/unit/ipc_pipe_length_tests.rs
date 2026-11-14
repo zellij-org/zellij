@@ -1,6 +1,6 @@
 use crate::{ipc_pipe_length_error, sock_dir_ipc_pipe_length_error};
 use std::path::{Path, PathBuf};
-use zellij_utils::consts::{SESSION_ID_LENGTH, ZELLIJ_SOCK_MAX_LENGTH};
+use zellij_utils::consts::{SESSION_ID_LENGTH, SOCKET_PATH_LENGTH_UNIT, ZELLIJ_SOCK_MAX_LENGTH};
 
 fn path_of_length(length: usize) -> PathBuf {
     let mut path = String::from("/tmp/");
@@ -18,11 +18,28 @@ fn a_socket_path_at_the_limit_is_rejected_with_its_length() {
     let message = ipc_pipe_length_error(&path_of_length(ZELLIJ_SOCK_MAX_LENGTH))
         .expect("a path at the limit must be rejected");
     assert!(
-        message.contains(&format!("({} bytes", ZELLIJ_SOCK_MAX_LENGTH)),
+        message.contains(&format!(
+            "({} {}",
+            ZELLIJ_SOCK_MAX_LENGTH, SOCKET_PATH_LENGTH_UNIT
+        )),
         "the message must report the offending length: {}",
         message
     );
-    assert!(message.contains("ZELLIJ_SOCKET_DIR="));
+    assert!(message.contains("ZELLIJ_SOCKET_DIR"));
+}
+
+#[cfg(windows)]
+#[test]
+fn a_pipe_path_is_measured_in_characters_and_the_hint_is_for_powershell() {
+    // Each 'é' is two bytes but one character of a pipe name.
+    let mut path = String::from("C:\\");
+    path.push_str(&"é".repeat(ZELLIJ_SOCK_MAX_LENGTH - 1 - path.len()));
+    assert!(ipc_pipe_length_error(Path::new(&path)).is_none());
+
+    path.push('é');
+    let message = ipc_pipe_length_error(Path::new(&path)).expect("one character more is too long");
+    assert!(message.contains("characters"), "{}", message);
+    assert!(message.contains("$env:ZELLIJ_SOCKET_DIR"), "{}", message);
 }
 
 #[test]

@@ -4009,7 +4009,7 @@ pub fn object_to_stdout(object: &impl Serialize) {
     println!("{}", serde_json::to_string(object).unwrap());
 }
 
-/// Post a message to a worker of this plugin, for more information please see [Plugin Workers](https://zellij.dev/documentation/plugin-api-workers.md)
+/// Post a message to a worker of this plugin, for more information please see [Plugin Workers](https://zellij.dev/documentation/plugin-api-workers.html)
 pub fn post_message_to(plugin_message: PluginMessage) {
     let plugin_command = PluginCommand::PostMessageTo(plugin_message);
     let protobuf_plugin_command: ProtobufPluginCommand =
@@ -4018,7 +4018,7 @@ pub fn post_message_to(plugin_message: PluginMessage) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Post a message to this plugin, for more information please see [Plugin Workers](https://zellij.dev/documentation/plugin-api-workers.md)
+/// Post a message to this plugin, for more information please see [Plugin Workers](https://zellij.dev/documentation/plugin-api-workers.html)
 pub fn post_message_to_plugin(plugin_message: PluginMessage) {
     let plugin_command = PluginCommand::PostMessageToPlugin(plugin_message);
     let protobuf_plugin_command: ProtobufPluginCommand =

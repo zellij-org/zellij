@@ -149,6 +149,30 @@ impl ThreadSenders {
         }
     }
 
+    /// Send to the screen thread, returning the instruction if it was not queued.
+    pub fn send_to_screen_recoverable(
+        &self,
+        instruction: ScreenInstruction,
+    ) -> std::result::Result<(), (ScreenInstruction, anyhow::Error)> {
+        let Some(sender) = self.to_screen.as_ref() else {
+            return Err((
+                instruction,
+                anyhow::anyhow!("failed to get screen sender")
+                    .context("failed to send message to screen"),
+            ));
+        };
+        match sender.send(instruction) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                let (instruction, _) = error.into_inner();
+                Err((
+                    instruction,
+                    anyhow::anyhow!("failed to send message to screen"),
+                ))
+            },
+        }
+    }
+
     pub fn send_to_pty(&self, instruction: PtyInstruction) -> Result<()> {
         if self.should_silently_fail {
             let _ = self
@@ -164,6 +188,33 @@ impl ThreadSenders {
                 .send(instruction)
                 .to_anyhow()
                 .context("failed to send message to pty")
+        }
+    }
+
+    /// Send to the PTY thread, returning the instruction if it was not queued.
+    ///
+    /// A caller that moved a completion owner into `instruction` needs it back
+    /// to report a failed handoff instead of dropping it as abandoned.
+    pub fn send_to_pty_recoverable(
+        &self,
+        instruction: PtyInstruction,
+    ) -> std::result::Result<(), (PtyInstruction, anyhow::Error)> {
+        let Some(sender) = self.to_pty.as_ref() else {
+            return Err((
+                instruction,
+                anyhow::anyhow!("failed to get pty sender")
+                    .context("failed to send message to pty"),
+            ));
+        };
+        match sender.send(instruction) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                let (instruction, _) = error.into_inner();
+                Err((
+                    instruction,
+                    anyhow::anyhow!("failed to send message to pty"),
+                ))
+            },
         }
     }
 
@@ -822,5 +873,26 @@ mod tests {
             outcome.error_message.is_some(),
             "discard is not a successful write"
         );
+    }
+
+    #[test]
+    fn recoverable_sends_return_the_instruction_when_the_receiver_is_gone() {
+        let (pty_tx, pty_rx) = channels::unbounded();
+        let (screen_tx, screen_rx) = channels::unbounded();
+        drop(pty_rx);
+        drop(screen_rx);
+        let mut senders = ThreadSenders::default();
+        senders.to_pty = Some(SenderWithContext::new(pty_tx));
+        senders.to_screen = Some(SenderWithContext::new(screen_tx));
+
+        let (instruction, _) = senders
+            .send_to_pty_recoverable(PtyInstruction::Exit)
+            .expect_err("the pty receiver is gone");
+        assert!(matches!(instruction, PtyInstruction::Exit));
+
+        let (instruction, _) = senders
+            .send_to_screen_recoverable(ScreenInstruction::Render)
+            .expect_err("the screen receiver is gone");
+        assert!(matches!(instruction, ScreenInstruction::Render));
     }
 }

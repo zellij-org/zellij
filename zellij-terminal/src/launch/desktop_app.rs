@@ -381,7 +381,6 @@ impl window::WindowMaker for Launcher {
     ) -> window::TerminalWindow {
         let detacher = Detacher::new(connection.sender.clone(), connection.role);
         let loop_options = LoopOptions {
-            config_path: self.config_path.clone(),
             settings: prepared.settings.clone(),
             font_families: self.font_families.clone(),
             allow_remote_clipboard_read: prepared.options.allow_remote_clipboard_read,

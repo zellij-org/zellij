@@ -19991,6 +19991,34 @@ fn save_session_holds_the_disk_write_until_the_snapshot_pass_finishes() {
     );
 }
 
+#[test]
+fn save_session_reports_a_failed_pty_handoff() {
+    let mut screen = create_new_screen(Size { cols: 80, rows: 20 }, false, false);
+    let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
+    drop(pty_receiver);
+    screen.bus.senders.to_pty = Some(SenderWithContext::new(to_pty));
+    screen.session_serialization = false;
+    new_tab(&mut screen, 1, 0);
+    let (completion, mut completion_receiver) = completion_and_receiver();
+
+    screen
+        .handle_save_session(1, Some(completion))
+        .expect("a failed handoff is reported through the completion");
+    let result = completion_receiver
+        .try_recv()
+        .expect("the caller receives the handoff failure");
+    assert_eq!(result.kind, crate::route::ActionCompletionKind::Finished);
+    assert_eq!(result.exit_status, Some(1));
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("failed to send message to pty")),
+        "{:?}",
+        result.error_message
+    );
+}
+
 fn rendered_payload_for_client(
     server_receiver: &ServerReceiver,
     client_id: ClientId,

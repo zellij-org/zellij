@@ -16,7 +16,7 @@ pub(super) fn font_file(path: &Path) -> Option<&'static [u8]> {
     if let Some(data) = files.get(path) {
         return Some(*data);
     }
-    let data = read_font_file(path)
+    let data = map_font_file(path)
         .map_err(|e| report!("failed to read the font {:?}: {}", path, e))
         .ok()?;
     files.insert(path.to_path_buf(), data);
@@ -24,8 +24,9 @@ pub(super) fn font_file(path: &Path) -> Option<&'static [u8]> {
 }
 
 /// Copies the font into the process. A mapping would be unsound if the file
-/// changed while that slice was still in use.
-pub(super) fn read_font_file(path: &Path) -> std::io::Result<&'static [u8]> {
+/// changed while that slice was still in use, and would lock user fonts on
+/// Windows while the app runs.
+pub(super) fn map_font_file(path: &Path) -> std::io::Result<&'static [u8]> {
     Ok(Box::leak(std::fs::read(path)?.into_boxed_slice()))
 }
 

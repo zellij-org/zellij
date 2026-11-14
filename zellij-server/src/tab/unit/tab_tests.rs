@@ -282,6 +282,35 @@ mod input_scope_regressions {
     }
 
     #[test]
+    fn synchronized_paste_reports_a_failure_from_a_later_recipient() {
+        let size = Size {
+            cols: 121,
+            rows: 20,
+        };
+        let mut tab = create_new_tab(size, true);
+        new_tiled_pane_in_tab(&mut tab, 2);
+        tab.toggle_sync_panes_is_active();
+        let budget = Arc::new(PtyIngressBudget::new());
+        budget.try_reserve(2, PER_TERMINAL_LIMIT).unwrap();
+        let _rx = install_budgeted_pty_writer(&mut tab, budget);
+        let (completion, mut receiver) = completion_and_receiver();
+
+        let error = tab
+            .paste_to_terminals_on_current_tab(b"p".to_vec(), 1, Some(completion))
+            .expect_err("the later recipient rejects the paste");
+        assert!(format!("{error:#}").contains("rejected"));
+        let result = receiver
+            .try_recv()
+            .expect("the caller receives the later recipient's failure");
+        assert_eq!(result.kind, ActionCompletionKind::Finished);
+        assert_eq!(result.exit_status, Some(1));
+        assert!(result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("rejected")));
+    }
+
+    #[test]
     fn selected_plugin_text_does_not_consume_the_paste_begin_marker() {
         let (mut tab, receiver) = plugin_tab();
         {

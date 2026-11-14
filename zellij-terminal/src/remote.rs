@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Arc};
 
@@ -323,9 +323,16 @@ pub fn open(
     let session_name = session_name_of(url);
     let (outbound_tx, outbound_rx) = unbounded_channel();
     let (inbound_tx, inbound_rx) = mpsc::channel();
+    let config_path = local_config.as_ref().map(|config| config.path.clone());
     let config_changes =
         local_config.map(|config| watch_local_config(runtime.handle(), config.clone()));
-    runtime.spawn(pump(connections, outbound_rx, inbound_tx, config_changes));
+    runtime.spawn(pump(
+        connections,
+        outbound_rx,
+        inbound_tx,
+        config_changes,
+        config_path,
+    ));
 
     Ok(Connection {
         sender: Arc::new(WebSocketSink {
@@ -377,22 +384,53 @@ fn session_name_of(url: &str) -> String {
         .to_owned()
 }
 
+fn local_settings(path: &Path) -> Option<ServerToClientMsg> {
+    match crate::config::settings::load(Some(path)) {
+        Ok(settings) => Some(ServerToClientMsg::TerminalSettingsChanged {
+            settings: Box::new(settings),
+        }),
+        Err(e) => {
+            report!(
+                "keeping the options in force; \
+                 the changed configuration at {:?} is unusable: {:#}",
+                path,
+                e
+            );
+            None
+        },
+    }
+}
+
+fn push_local_settings(
+    inbound_tx: &Sender<ServerToClientMsg>,
+    config_path: Option<&Path>,
+) -> std::result::Result<(), ()> {
+    match config_path.and_then(local_settings) {
+        Some(msg) => inbound_tx.send(msg).map_err(|_| ()),
+        None => Ok(()),
+    }
+}
+
 async fn pump(
     connections: WebSocketConnections,
     mut outbound_rx: tokio::sync::mpsc::UnboundedReceiver<Outbound>,
     inbound_tx: Sender<ServerToClientMsg>,
     mut config_changes: Option<UnboundedReceiver<()>>,
+    config_path: Option<PathBuf>,
 ) {
     let web_client_id = connections.web_client_id.clone();
     let mut terminal_ws = connections.terminal_ws;
     let (mut control_tx, mut control_rx) = connections.control_ws.split();
 
+    if push_local_settings(&inbound_tx, config_path.as_deref()).is_err() {
+        return;
+    }
     loop {
         tokio::select! {
             change = next_config_change(&mut config_changes) => {
                 match change {
                     Some(()) => {
-                        if inbound_tx.send(ServerToClientMsg::ConfigFileUpdated).is_err() {
+                        if push_local_settings(&inbound_tx, config_path.as_deref()).is_err() {
                             break;
                         }
                     },
@@ -777,6 +815,30 @@ mod tests {
             .enable_all()
             .build()
             .unwrap()
+    }
+
+    #[test]
+    fn a_remote_window_is_handed_the_settings_of_its_own_configuration_file() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("config.kdl");
+        std::fs::write(&path, "terminal {\n font \"Local Mono\"\n}\n").unwrap();
+        match local_settings(&path) {
+            Some(ServerToClientMsg::TerminalSettingsChanged { settings }) => {
+                assert_eq!(settings.section.font.as_deref(), Some("Local Mono"));
+            },
+            other => panic!("the local configuration was not handed over: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn a_local_configuration_that_does_not_parse_changes_nothing() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let path = directory.path().join("config.kdl");
+        std::fs::write(&path, "terminal {\n font_size \"enormous\"\n}\n").unwrap();
+        assert!(
+            local_settings(&path).is_none(),
+            "a configuration that does not parse replaced the options in force"
+        );
     }
 
     #[test]

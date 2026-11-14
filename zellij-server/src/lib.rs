@@ -119,6 +119,7 @@ pub(crate) type SharedKeybinds = Arc<zellij_utils::data::KeybindsVec>;
 const ACCEPT_ERROR_BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
 
 const PRE_HANDSHAKE_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const UNREADABLE_FIRST_MESSAGE_ERROR: &str = "This session could not read the request. It may be running a different version of Zellij that does not support it.";
 
 /// The server thread is the sole receiver. Same-thread sends must not block
 /// on this mailbox; see `owner_followups` in `start_server_impl`.
@@ -1128,6 +1129,19 @@ impl SessionMetaData {
             client_id,
             Box::new(settings),
         ))
+    }
+    fn send_saved_terminal_settings(
+        &mut self,
+        client_ids: &[ClientId],
+        owner_followups: &mut VecDeque<ServerInstruction>,
+    ) {
+        let saved_config = self.session_configuration.saved_config.clone();
+        for client_id in client_ids {
+            if let Some(instruction) = self.terminal_settings_instruction(*client_id, &saved_config)
+            {
+                owner_followups.push_back(instruction);
+            }
+        }
     }
     fn forget_window_client(&mut self, client_id: ClientId) {
         self.current_input_modes.remove(&client_id);
@@ -3537,16 +3551,25 @@ fn handle_new_connection(
         },
         Err(connection_admission::CappedFrameError::Disconnected) => return Ok(()),
     };
+    let receiver: IpcReceiverWithContext<ClientToServerMsg> = IpcReceiverWithContext::new(stream);
+    let _ = receiver.set_read_timeout(None);
     let first_instruction = match zellij_utils::ipc::decode_client_to_server_frame(&first_frame) {
         Ok(instruction) => instruction,
-        Err(_) => return Ok(()),
+        Err(_) => {
+            answer_before_registration(
+                &receiver,
+                #[cfg(windows)]
+                reply_stream,
+                ServerToClientMsg::LogError {
+                    lines: vec![UNREADABLE_FIRST_MESSAGE_ERROR.to_owned()],
+                },
+            );
+            return Ok(());
+        },
     };
     // The first client message is decoded. Dropping the permit here frees the
     // pre-handshake slot; later frames on this socket keep the generic cap.
     permit.release_after_first_message();
-
-    let receiver: IpcReceiverWithContext<ClientToServerMsg> = IpcReceiverWithContext::new(stream);
-    let _ = receiver.set_read_timeout(None);
 
     match first_instruction {
         ClientToServerMsg::ConnStatus => {
@@ -3756,6 +3779,14 @@ impl ServerSocket {
             *path = new_path;
             return Ok(());
         }
+        if cfg!(windows) {
+            // A pipe keeps the name it was created with. Moving only its marker file would list
+            // the session under a name nobody can connect to, so it stays at its old path.
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "a named pipe can't be renamed, so the session keeps its socket",
+            ));
+        }
         let new_ownership = SocketOwnership::acquire(&new_path)?;
         if let Err(e) = std::fs::rename(&*path, &new_path) {
             new_ownership.release();
@@ -3851,6 +3882,23 @@ mod server_socket_tests {
         let _second_listener = second.bind().unwrap();
 
         assert!(zellij_utils::consts::ipc_connect(&path).is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_renamed_server_keeps_its_pipe_and_marker_where_they_are() {
+        let dir = tempfile::tempdir().unwrap();
+        let old_path = dir.path().join("old-name");
+        let new_path = dir.path().join("new-name");
+        let server = ServerSocket::new(old_path.clone());
+        let _listener = server.bind().unwrap();
+
+        assert!(server.rename(new_path.clone()).is_err());
+
+        assert_eq!(server.path(), old_path);
+        assert!(old_path.exists());
+        assert!(!new_path.exists());
+        assert!(zellij_utils::consts::ipc_connect(&old_path).is_ok());
     }
 
     #[cfg(unix)]
@@ -4032,6 +4080,11 @@ fn attach_client(
     let client_configuration = session
         .session_configuration
         .get_client_configuration(&client_id);
+    if let Some(instruction) =
+        session.terminal_settings_instruction(client_id, &client_configuration)
+    {
+        owner_followups.push_back(instruction);
+    }
     if client_configuration.has_command_line_keybinds() {
         session.propagate_configuration_changes(
             vec![(client_id, client_configuration)],
@@ -4093,6 +4146,10 @@ pub fn start_server_impl(
         .file_name()
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_default();
+    let session_was_resurrected = !session_id.is_empty()
+        && zellij_utils::consts::session_layout_cache_file_name(&session_id)
+            .try_exists()
+            .unwrap_or(true);
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> =
         channels::bounded(SERVER_INSTRUCTION_CHANNEL_CAPACITY);
@@ -4376,6 +4433,14 @@ pub fn start_server_impl(
                 session
                     .session_configuration
                     .set_client_runtime_configuration(client_id, runtime_configuration);
+                let client_configuration = session
+                    .session_configuration
+                    .get_client_configuration(&client_id);
+                if let Some(instruction) =
+                    session.terminal_settings_instruction(client_id, &client_configuration)
+                {
+                    owner_followups.push_back(instruction);
+                }
                 let default_input_mode = session
                     .session_configuration
                     .get_client_default_input_mode(&client_id);
@@ -4572,7 +4637,7 @@ pub fn start_server_impl(
 
                 // Also notify Screen to add this as a watcher client (for rendering) with the terminal size
                 // SAFETY: lock poison implies prior panic
-                if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                if let Some(session_data) = session_data.write().unwrap().as_mut() {
                     let _ =
                         session_data
                             .senders
@@ -4580,6 +4645,7 @@ pub fn start_server_impl(
                                 client_id,
                                 terminal_size,
                             ));
+                    session_data.send_saved_terminal_settings(&[client_id], &mut owner_followups);
                 }
             },
             ServerInstruction::UnblockInputThread(only_client) => {
@@ -4989,7 +5055,11 @@ pub fn start_server_impl(
                     client_id,
                     completion_tx.take(),
                 ));
-                if switching_away && !command_was_run && !other_clients_attached {
+                if switching_away
+                    && !command_was_run
+                    && !other_clients_attached
+                    && !session_was_resurrected
+                {
                     delete_session_on_exit = true;
                     owner_followups.push_back(ServerInstruction::KillSession);
                 }
@@ -5141,6 +5211,10 @@ pub fn start_server_impl(
             },
             ServerInstruction::ConfigWrittenToDisk(new_config) => {
                 apply_new_saved_config(new_config, &session_data, &mut owner_followups);
+                let watcher_ids = session_state.read().unwrap().watcher_client_ids();
+                if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                    session_data.send_saved_terminal_settings(&watcher_ids, &mut owner_followups);
+                }
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
                     send_to_client!(
@@ -5757,26 +5831,35 @@ pub fn start_server_impl(
 
     server_socket.remove_on_exit();
     if delete_session_on_exit {
-        delete_unused_session_after_exit(&session_id, &own_session_name);
+        delete_unused_session_after_exit(&session_id);
     }
 }
 
 // The session-info cache folder is named by session id; the session index row by name.
-fn delete_unused_session_after_exit(session_id: &str, session_name: &str) {
+fn delete_unused_session_after_exit(session_id: &str) {
     if session_id.is_empty() {
         return;
     }
-    // Fence first. The index row is removed only after this session's cache is
-    // gone; a fence failure leaves both the folder and the row.
-    match zellij_utils::sessions::remove_fenced_session_cache(session_id) {
+    // Hold the socket claim across the death check, lifetime read, and fenced
+    // removal. The index row is removed only after this session's cache is gone.
+    let index = zellij_utils::session_index::SessionIndex::open_default();
+    if let Err(error) = &index {
+        log::error!(
+            "Failed to open the session index while deleting {}: {}",
+            session_id,
+            error
+        );
+    }
+    match zellij_utils::sessions::remove_fenced_dead_session_cache_and_index(
+        &zellij_utils::consts::ZELLIJ_SOCK_DIR,
+        &zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR,
+        index.as_ref().ok(),
+        session_id,
+    ) {
         Ok(
             zellij_utils::sessions::SessionCacheRemoval::Removed
             | zellij_utils::sessions::SessionCacheRemoval::NotFound,
-        ) => {
-            if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
-                let _ = index.delete(session_name);
-            }
-        },
+        ) => {},
         Err(error) => {
             log::error!(
                 "Failed to delete session cache for {} on exit: {}",
@@ -7273,14 +7356,20 @@ mod server_mailbox_tests {
                 false,
                 newcomer,
             );
-            let _ = done_tx.send(followups.is_empty());
+            let only_owner_local_settings = followups.iter().all(|instruction| {
+                matches!(
+                    instruction,
+                    super::ServerInstruction::TerminalSettingsChanged(..)
+                )
+            });
+            let _ = done_tx.send(only_owner_local_settings);
         });
-        let followups_empty = done_rx
+        let only_owner_local_settings = done_rx
             .recv_timeout(Duration::from_secs(2))
             .expect("duplicate FirstClientConnected blocked on a full mailbox");
         assert!(
-            followups_empty,
-            "duplicate attach enqueued work onto the owner instead of attaching directly"
+            only_owner_local_settings,
+            "duplicate attach queued server work instead of owner-local settings"
         );
 
         let session = session_data.read().unwrap();

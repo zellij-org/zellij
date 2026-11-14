@@ -4744,6 +4744,15 @@ impl Screen {
         token: u32,
         reply_bytes: Vec<u8>,
     ) -> Result<()> {
+        self.handle_forwarded_reply_from_host_with(token, reply_bytes, true)
+    }
+
+    fn handle_forwarded_reply_from_host_with(
+        &mut self,
+        token: u32,
+        reply_bytes: Vec<u8>,
+        deliver: bool,
+    ) -> Result<()> {
         if self.clipboard_forward_in_flight_token == Some(token) {
             return self.handle_clipboard_reply(token, reply_bytes);
         }
@@ -4781,16 +4790,18 @@ impl Screen {
             } = entry;
             match pane_id {
                 PaneId::Terminal(_) => {
-                    let payload = if reply_bytes.is_empty() {
-                        self.synthesize_cached_reply(&query)
-                    } else {
-                        reply_bytes
-                    };
-                    // Route via Tab so the reply lands on the pane in
-                    // the correct stream position and any PTY input
-                    // the app emitted while waiting is replayed.
-                    resume_result =
-                        self.resume_pane_after_forward(pane_id, payload, run_generation);
+                    if deliver {
+                        let payload = if reply_bytes.is_empty() {
+                            self.synthesize_cached_reply(&query)
+                        } else {
+                            reply_bytes
+                        };
+                        // Route via Tab so the reply lands on the pane in
+                        // the correct stream position and any PTY input
+                        // the app emitted while waiting is replayed.
+                        resume_result =
+                            self.resume_pane_after_forward(pane_id, payload, run_generation);
+                    }
                 },
                 PaneId::Plugin(_) => {
                     // Plugin panes do not issue whitelisted host queries;
@@ -4818,6 +4829,14 @@ impl Screen {
     /// by the token guard. Returns `false` if no forward for the pane is
     /// registered yet (its `ForwardHostQuery` is still in the queue).
     pub fn stop_waiting_for_forward_reply(&mut self, pane_id: PaneId) -> Result<bool> {
+        self.stop_waiting_for_forward_reply_with(pane_id, true)
+    }
+
+    fn stop_waiting_for_forward_reply_with(
+        &mut self,
+        pane_id: PaneId,
+        deliver: bool,
+    ) -> Result<bool> {
         let in_flight_token = self
             .forward_in_flight_token
             .into_iter()
@@ -4839,22 +4858,26 @@ impl Screen {
                 // token arrives; that reply then finds no entry and is
                 // dropped, and only then does the next query dispatch.
                 if let Some(entry) = self.pending_clipboard_forwards.remove(&token) {
-                    self.resume_pane_after_forward(
-                        pane_id,
-                        entry.query.empty_reply_bytes(),
-                        entry.run_generation,
-                    )?;
+                    if deliver {
+                        self.resume_pane_after_forward(
+                            pane_id,
+                            entry.query.empty_reply_bytes(),
+                            entry.run_generation,
+                        )?;
+                    }
                     return Ok(true);
                 }
             }
-            self.handle_forwarded_reply_from_host(token, Vec::new())?;
+            self.handle_forwarded_reply_from_host_with(token, Vec::new(), deliver)?;
             return Ok(true);
         }
         // The forward may still be queued behind another pane's.
         if let Some(index) = self.forward_queue.iter().position(|f| f.pane_id == pane_id) {
             if let Some(queued) = self.forward_queue.remove(index) {
-                let payload = self.synthesize_cached_reply(&queued.query);
-                self.resume_pane_after_forward(pane_id, payload, queued.run_generation)?;
+                if deliver {
+                    let payload = self.synthesize_cached_reply(&queued.query);
+                    self.resume_pane_after_forward(pane_id, payload, queued.run_generation)?;
+                }
                 return Ok(true);
             }
         }
@@ -4864,11 +4887,13 @@ impl Screen {
             .position(|f| f.pane_id == pane_id)
         {
             if let Some(queued) = self.clipboard_forward_queue.remove(index) {
-                self.resume_pane_after_forward(
-                    pane_id,
-                    queued.query.empty_reply_bytes(),
-                    queued.run_generation,
-                )?;
+                if deliver {
+                    self.resume_pane_after_forward(
+                        pane_id,
+                        queued.query.empty_reply_bytes(),
+                        queued.run_generation,
+                    )?;
+                }
                 return Ok(true);
             }
         }
@@ -4880,13 +4905,30 @@ impl Screen {
     /// slot until an unrelated reply or timeout arrives.
     fn cancel_forward_for_pane(&mut self, pane_id: PaneId) {
         loop {
-            match self.stop_waiting_for_forward_reply(pane_id) {
+            match self.stop_waiting_for_forward_reply_with(pane_id, false) {
                 Ok(true) => continue,
                 Ok(false) => break,
                 Err(error) => {
                     log::error!(
                         "failed to settle a forwarded query for closed or replaced pane {:?}: \
                          {error:#}",
+                        pane_id
+                    );
+                    break;
+                },
+            }
+        }
+    }
+
+    /// Settle a pane's forwarded query while keeping the pane usable.
+    fn settle_forward_for_pane(&mut self, pane_id: PaneId) {
+        loop {
+            match self.stop_waiting_for_forward_reply_with(pane_id, true) {
+                Ok(true) => continue,
+                Ok(false) => break,
+                Err(error) => {
+                    log::error!(
+                        "failed to settle a forwarded query for pane {:?}: {error:#}",
                         pane_id
                     );
                     break;
@@ -8652,13 +8694,15 @@ impl Screen {
                 Some(SessionLayoutMetadata::new(self.default_layout.clone()))
             };
             let Some(session_layout_metadata) = session_layout_metadata else {
-                self.bus
-                    .senders
-                    .send_to_screen(ScreenInstruction::SaveSession(
-                        client_id,
-                        completion_tx.take(),
-                    ))
-                    .with_context(err_context)?;
+                let instruction = ScreenInstruction::SaveSession(client_id, completion_tx.take());
+                if let Err((instruction, error)) =
+                    self.bus.senders.send_to_screen_recoverable(instruction)
+                {
+                    if let ScreenInstruction::SaveSession(_, Some(completion)) = instruction {
+                        *completion_tx = Some(completion);
+                    }
+                    return Err(error).with_context(err_context);
+                }
                 return Ok(());
             };
 
@@ -8707,15 +8751,23 @@ impl Screen {
                 attention_muted: self.attention.session_is_muted(),
             };
 
-            self.bus
-                .senders
-                .send_to_pty(PtyInstruction::SaveSessionToDisk {
-                    session_name: self.session_name.clone(),
-                    session_info,
-                    session_layout_metadata,
-                    completion_tx: completion_tx.take(),
-                })
-                .with_context(err_context)?;
+            let instruction = PtyInstruction::SaveSessionToDisk {
+                session_name: self.session_name.clone(),
+                session_info,
+                session_layout_metadata,
+                completion_tx: completion_tx.take(),
+            };
+            if let Err((instruction, error)) = self.bus.senders.send_to_pty_recoverable(instruction)
+            {
+                if let PtyInstruction::SaveSessionToDisk {
+                    completion_tx: Some(completion),
+                    ..
+                } = instruction
+                {
+                    *completion_tx = Some(completion);
+                }
+                return Err(error).with_context(err_context);
+            }
             Ok(())
         })();
         if let Err(error) = result {
@@ -17067,7 +17119,7 @@ pub(crate) fn screen_thread_main(
                     },
                 };
                 if let Some(target) = forward_target {
-                    screen.cancel_forward_for_pane(target);
+                    screen.settle_forward_for_pane(target);
                 }
                 if let Err(error) = result {
                     mark_action_as_failed(&mut _completion, &format!("{error:#}"));

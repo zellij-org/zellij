@@ -213,8 +213,9 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
         quit_cb: Box<dyn Fn()>,
         resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
     );
-    /// Establish a connection with the server socket.
-    fn connect_to_server(&self, path: &Path);
+    /// Establish a connection with the server socket, waiting for the server to start listening.
+    /// Fails only when the server refuses this client.
+    fn connect_to_server(&self, path: &Path) -> std::io::Result<()>;
     /// Like [`ClientOsApi::connect_to_server`], but return once `deadline`
     /// passes or [`ClientOsApi::cancel_session_ipc`] was called. The default
     /// calls `connect_to_server` when the deadline has not already passed.
@@ -225,8 +226,7 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
                 "ipc connect deadline exhausted",
             ));
         }
-        self.connect_to_server(path);
-        Ok(())
+        self.connect_to_server(path)
     }
     fn spawn_server(&self, socket_path: &Path, debug: bool) -> Result<(), std::io::Error> {
         crate::spawn_server(socket_path, debug)
@@ -521,7 +521,7 @@ impl ClientOsApi for ClientOsInputOutput {
             }
         }
     }
-    fn connect_to_server(&self, path: &Path) {
+    fn connect_to_server(&self, path: &Path) -> io::Result<()> {
         // Desktop attach blocks until both directions are up. On Windows that
         // is one locked pair, not a request pipe followed by a later reply.
         loop {
@@ -529,7 +529,10 @@ impl ClientOsApi for ClientOsInputOutput {
                 Ok((sender, receiver)) => {
                     *self.send_instructions_to_server.lock().unwrap() = Some(sender);
                     *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
-                    return;
+                    return Ok(());
+                },
+                Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+                    return Err(error);
                 },
                 Err(e) => {
                     log::warn!("failed to set up client IPC channels: {}", e);
@@ -579,6 +582,9 @@ impl ClientOsApi for ClientOsInputOutput {
                     return Ok(());
                 },
                 Err(e) => {
+                    if e.kind() == io::ErrorKind::PermissionDenied {
+                        return Err(e);
+                    }
                     // Refused, missing, and timed-out attempts are the retry.
                     // Anything else used to surface from channel setup.
                     if !matches!(

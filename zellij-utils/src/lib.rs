@@ -43,7 +43,9 @@ pub mod logging; // Requires log4rs
 pub mod nested_session;
 #[cfg(not(target_family = "wasm"))]
 pub mod pane_mirror;
-#[cfg(not(target_family = "wasm"))]
+#[cfg(windows)]
+pub mod pipe_access;
+#[cfg(windows)]
 pub mod pipe_pairs;
 #[cfg(all(not(target_family = "wasm"), feature = "web_server_capability"))]
 pub mod remote_session_tokens;
