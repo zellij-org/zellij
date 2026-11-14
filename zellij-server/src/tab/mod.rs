@@ -40,6 +40,7 @@ use crate::pane_groups::PaneGroups;
 use crate::panes::CoveredPanes;
 use crate::pty_writer::{AdmittedWrite, PtyWriteInstruction};
 use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction, TypedInput};
+use crate::thread_bus::is_pty_write_admission_refusal;
 use crate::ui::hint_text::{held_hint_variants, HintExitStatus};
 use crate::ui::{
     boundaries::boundary_type,
@@ -708,6 +709,9 @@ pub trait Pane {
     fn request_permissions_from_user(&mut self, _permissions: Option<PluginPermission>) {}
     fn is_requesting_permissions(&self) -> bool {
         false
+    }
+    fn render_lock_deadline(&self) -> Option<std::time::Instant> {
+        None
     }
     fn render(
         &mut self,
@@ -4353,6 +4357,49 @@ impl Tab {
         match pid {
             PaneId::Terminal(pid) => {
                 let new_pane: Box<dyn Pane> = Box::new(self.new_scrollback_editor_pane(pid));
+                if let Some(root) = self.visible_restoration_root_for_pane(pane_id_to_replace) {
+                    let mut current = root;
+                    while current != pane_id_to_replace {
+                        let Some(next) = self
+                            .suppressed_panes
+                            .get(&current)
+                            .map(|(_, pane)| pane.pid())
+                        else {
+                            let error = anyhow!(
+                                "Could not find the restoration chain for pane {:?}",
+                                pane_id_to_replace
+                            );
+                            Err::<(), _>(error).with_context(err_context).non_fatal();
+                            self.close_unplaced_pane(
+                                new_pane,
+                                None,
+                                PaneNotCreatedReason::PaneToReplaceNotFound,
+                            );
+                            return Ok(());
+                        };
+                        match self.replace_pane_with_suppressed_pane(current) {
+                            Ok(Some(old_visible)) => {
+                                let old_visible_id = old_visible.pid();
+                                drop(old_visible);
+                                self.close_pane(old_visible_id, true, None);
+                                let _ = self
+                                    .senders
+                                    .send_to_pty(PtyInstruction::ClosePane(old_visible_id, None));
+                            },
+                            Ok(None) => {},
+                            Err(error) => {
+                                Err::<(), _>(error).with_context(err_context).non_fatal();
+                                self.close_unplaced_pane(
+                                    new_pane,
+                                    None,
+                                    PaneNotCreatedReason::PaneToReplaceNotFound,
+                                );
+                                return Ok(());
+                            },
+                        }
+                        current = next;
+                    }
+                }
                 let replaced_pane = if self.floating_panes.panes_contain(&pane_id_to_replace) {
                     self.floating_panes
                         .replace_pane(pane_id_to_replace, new_pane)
@@ -4980,6 +5027,42 @@ impl Tab {
             .map(|pane| pane.is_scrolled())
             .unwrap_or(false)
     }
+    /// Explicit identity lookup: the returned pane, if any, has `pid() == pane_id`.
+    /// Suppressed panes are stored under the ID of their replacement, so this
+    /// must search by the pane's own ID rather than by the map key.
+    fn suppressed_key_for_pane_identity(&self, pane_id: PaneId) -> Option<PaneId> {
+        self.suppressed_panes
+            .iter()
+            .find(|(_, (_, pane))| pane.pid() == pane_id)
+            .map(|(key, _)| *key)
+    }
+    /// Return the visible pane whose replacement chain contains `target`.
+    /// Unwinding that chain restores `target` into a visible slot.
+    fn visible_restoration_root_for_pane(&self, target: PaneId) -> Option<PaneId> {
+        let visible_ids = self
+            .tiled_panes
+            .pane_ids()
+            .copied()
+            .chain(self.floating_panes.pane_ids().copied());
+        for visible_id in visible_ids {
+            if visible_id == target {
+                return Some(visible_id);
+            }
+            let mut current = visible_id;
+            let mut seen = HashSet::new();
+            while let Some((_, pane)) = self.suppressed_panes.get(&current) {
+                let next = pane.pid();
+                if next == target {
+                    return Some(visible_id);
+                }
+                if !seen.insert(next) {
+                    break;
+                }
+                current = next;
+            }
+        }
+        None
+    }
     pub fn get_pane_with_id(&self, pane_id: PaneId) -> Option<&dyn Pane> {
         if let Some(pane) = self.floating_panes.get_pane(pane_id) {
             return Some(pane.as_ref());
@@ -4987,23 +5070,20 @@ impl Tab {
         if let Some(pane) = self.tiled_panes.get_pane(pane_id) {
             return Some(pane.as_ref());
         }
-        self.suppressed_pane(pane_id).map(|pane| pane.as_ref())
+        self.suppressed_panes
+            .values()
+            .find(|(_, pane)| pane.pid() == pane_id)
+            .map(|(_, pane)| pane.as_ref())
     }
     pub fn get_pane_with_id_mut(&mut self, pane_id: PaneId) -> Option<&mut Box<dyn Pane>> {
         self.floating_panes
             .get_pane_mut(pane_id)
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
             .or_else(|| {
-                if self.suppressed_panes.contains_key(&pane_id) {
-                    self.suppressed_panes
-                        .get_mut(&pane_id)
-                        .map(|(_, pane)| pane)
-                } else {
-                    self.suppressed_panes
-                        .values_mut()
-                        .find(|(_, pane)| pane.pid() == pane_id)
-                        .map(|(_, pane)| pane)
-                }
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|(_, pane)| pane.pid() == pane_id)
+                    .map(|(_, pane)| pane)
             })
     }
     /// Resolve a pane by its terminal identity rather than by the key it is
@@ -5031,20 +5111,6 @@ impl Tab {
             &mut self.suppressed_panes,
             pane_id,
         )
-    }
-    /// A suppressed pane is stored under the id of the pane that replaced it
-    /// (for example the scrollback editor), while PTY traffic still addresses
-    /// its original terminal id. Resolve both.
-    fn suppressed_pane(&self, pane_id: PaneId) -> Option<&Box<dyn Pane>> {
-        self.suppressed_panes
-            .get(&pane_id)
-            .map(|(_, pane)| pane)
-            .or_else(|| {
-                self.suppressed_panes
-                    .values()
-                    .find(|(_, pane)| pane.pid() == pane_id)
-                    .map(|(_, pane)| pane)
-            })
     }
     pub fn get_active_pane_mut(&mut self, client_id: ClientId) -> Option<&mut Box<dyn Pane>> {
         self.get_active_pane_id(client_id).and_then(|ap| {
@@ -5220,7 +5286,12 @@ impl Tab {
             .floating_panes
             .get_mut(&pane_id)
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
-            .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1));
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|(_, pane)| pane.pid() == pane_id)
+                    .map(|(_, pane)| pane)
+            });
         if let Some(pane) = pane {
             pane.set_pane_default_colors(fg, bg);
         }
@@ -5753,12 +5824,17 @@ impl Tab {
         // any subsequent (sync or async) reply that follows in the
         // buffered byte stream.
         if !reply_bytes.is_empty() {
-            self.write_to_pane_id_without_preprocessing(
+            if let Err(error) = self.write_to_pane_id_without_preprocessing(
                 reply_bytes,
                 PaneId::Terminal(pid),
                 run_generation,
-            )
-            .with_context(err_context)?;
+            ) {
+                if is_pty_write_admission_refusal(&error) {
+                    log::debug!("forwarded reply for pane {pid} was refused by the write budget");
+                } else {
+                    return Err(error).with_context(err_context);
+                }
+            }
         }
         // Clear the pause; any bytes buffered while it waited for the
         // host reply are processed in place, in order.
@@ -5856,17 +5932,39 @@ impl Tab {
                     .push((PaneId::Terminal(pid), pane_signals));
             }
             for message in messages_to_pty {
-                self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid), None)
-                    .with_context(err_context)?;
+                if let Err(error) = self.write_to_pane_id_without_preprocessing(
+                    message,
+                    PaneId::Terminal(pid),
+                    None,
+                ) {
+                    if is_pty_write_admission_refusal(&error) {
+                        log::debug!(
+                            "synchronous reply for pane {pid} was refused by the write budget"
+                        );
+                    } else {
+                        return Err(error).with_context(err_context);
+                    }
+                }
             }
+            let mut forward_dispatch_failed = false;
             for query in crate::host_query::pack_shared_round_trip(forwarded_queries) {
-                let _ = self
+                if self
                     .senders
                     .send_to_screen(ScreenInstruction::ForwardHostQuery {
                         pane_id: PaneId::Terminal(pid),
                         query,
                         run_generation,
-                    });
+                    })
+                    .is_err()
+                {
+                    forward_dispatch_failed = true;
+                }
+            }
+            if forward_dispatch_failed {
+                log::error!("failed to dispatch a forwarded host query for pane {pid}");
+                if let Some(terminal_output) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
+                    terminal_output.clear_forward_pause();
+                }
             }
             for message in nested_session_messages {
                 let _ =
@@ -6205,7 +6303,8 @@ impl Tab {
             .or_else(|| self.floating_panes.get_pane_mut(pane_id))
             .or_else(|| {
                 self.suppressed_panes
-                    .get_mut(&pane_id)
+                    .values_mut()
+                    .find(|(_, pane)| pane.pid() == pane_id)
                     .map(|(_, pane)| pane)
             });
         let Some(pane) = pane else {
@@ -6240,13 +6339,6 @@ impl Tab {
         completion: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to paste to active terminal for client {client_id}");
-        if let Some(PaneId::Plugin(plugin_id)) = self.live_view_focus(client_id) {
-            if self.live_views.borrow().is_captured(plugin_id, client_id) {
-                self.live_views.borrow_mut().send_paste(client_id, bytes);
-                drop(completion);
-                return Ok(());
-            }
-        }
         let active_pane_id = self
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("no active pane for client {client_id}"))
@@ -6254,6 +6346,59 @@ impl Tab {
         self.local_input.insert(active_pane_id);
         self.typed_into.insert(active_pane_id);
         self.paste_to_pane_id_for_client(bytes, active_pane_id, Some(client_id), completion)
+    }
+
+    pub fn paste_to_terminals_on_current_tab(
+        &mut self,
+        bytes: Vec<u8>,
+        client_id: ClientId,
+        mut completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let mut pane_ids = self.get_static_and_floating_pane_ids();
+        pane_ids.extend(
+            self.stack_list_of_member
+                .keys()
+                .filter(|member| self.pane_is_hidden_stack_list_member(member))
+                .copied(),
+        );
+        pane_ids.retain(|pane_id| {
+            !self
+                .get_pane_with_id(*pane_id)
+                .map(|pane| pane.exclude_from_sync())
+                .unwrap_or(false)
+        });
+        if let Some(pane_id) = pane_ids
+            .iter()
+            .find(|pane_id| self.is_pane_requesting_permissions(**pane_id))
+        {
+            let error = anyhow!(
+                "failed to paste into pane with id {pane_id:?}: the pane is requesting permissions"
+            );
+            fail_cli_write(&mut completion, &format!("{error:#}"));
+            return Err(error);
+        }
+        let mut recipient_failure = None;
+        for pane_id in pane_ids {
+            if let Err(error) =
+                self.paste_to_pane_id_for_client(bytes.clone(), pane_id, Some(client_id), None)
+            {
+                if recipient_failure.is_none() {
+                    recipient_failure = Some(error);
+                } else {
+                    log::error!("failed to paste into a synchronized pane: {error:#}");
+                }
+            }
+        }
+        match recipient_failure {
+            Some(error) => {
+                fail_cli_write(&mut completion, &format!("{error:#}"));
+                Err(error)
+            },
+            None => {
+                drop(completion);
+                Ok(())
+            },
+        }
     }
 
     /// Write input to an explicitly addressed pane.
@@ -6282,7 +6427,12 @@ impl Tab {
             .floating_panes
             .get_mut(&pane_id)
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
-            .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|(_, pane)| pane.pid() == pane_id)
+                    .map(|(_, pane)| pane)
+            })
             .ok_or_else(|| anyhow!(format!("failed to find pane with id {pane_id:?}")))
             .with_context(err_context)?;
 
@@ -6978,6 +7128,12 @@ impl Tab {
         // bool => is_scrollback_editor
         self.suppressed_panes.iter()
     }
+    pub(crate) fn next_render_lock_deadline(&self) -> Option<std::time::Instant> {
+        self.get_tiled_panes()
+            .chain(self.get_floating_panes())
+            .filter_map(|(_, pane)| pane.render_lock_deadline())
+            .min()
+    }
     fn get_selectable_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.get_tiled_panes().filter(|(_, p)| p.selectable())
     }
@@ -7607,10 +7763,10 @@ impl Tab {
     /// a hidden plugin cannot know when to show itself again.
     pub fn get_plugin_ids_including_suppressed(&self) -> Vec<PluginId> {
         let mut plugin_ids = self.get_plugin_ids();
-        for pane_id in self.suppressed_panes.keys() {
-            if let PaneId::Plugin(plugin_id) = pane_id {
-                if !plugin_ids.contains(plugin_id) {
-                    plugin_ids.push(*plugin_id);
+        for pane in self.suppressed_panes.values() {
+            if let PaneId::Plugin(plugin_id) = pane.1.pid() {
+                if !plugin_ids.contains(&plugin_id) {
+                    plugin_ids.push(plugin_id);
                 }
             }
         }
@@ -7643,7 +7799,11 @@ impl Tab {
         }
 
         // Check suppressed panes
-        if let Some((_previous_id, pane)) = self.suppressed_panes.get(&pane_id) {
+        if let Some((_previous_id, pane)) = self
+            .suppressed_panes
+            .values()
+            .find(|(_, pane)| pane.pid() == pane_id)
+        {
             let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
             info.is_focused = false;
             info.is_fullscreen = false;
@@ -7829,6 +7989,29 @@ impl Tab {
         // we need to ignore suppressed panes when we toggle a pane to be floating/embedded(tiled)
         // this is because in that case, while we do use this logic, we're not actually closing the
         // pane, we're moving it
+        if !ignore_suppressed_panes {
+            if let Some(restoration_key) = self.suppressed_key_for_pane_identity(id) {
+                if restoration_key != id {
+                    if let Some((_, mut closed_pane)) =
+                        self.suppressed_panes.remove(&restoration_key)
+                    {
+                        if let Some(exit_status) = exit_status {
+                            closed_pane.update_exit_status(exit_status);
+                        }
+                        drop(closed_pane);
+                        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+                            None,
+                            None,
+                            Event::PaneClosed(id.into()),
+                        )]));
+                        let _ = self.senders.send_to_screen(
+                            ScreenInstruction::NotifyPaneClosedToSubscribers { pane_id: id.into() },
+                        );
+                        return;
+                    }
+                }
+            }
+        }
         if !ignore_suppressed_panes && self.suppressed_panes.contains_key(&id) {
             let pane_is_suppressed_by_itself = self
                 .suppressed_panes
@@ -7924,6 +8107,17 @@ impl Tab {
                     pane.reset_logical_position();
                     pane
                 });
+            }
+        }
+        if let Some(restoration_key) = self.suppressed_key_for_pane_identity(id) {
+            if restoration_key != id {
+                return self
+                    .suppressed_panes
+                    .remove(&restoration_key)
+                    .map(|(_, mut pane)| {
+                        pane.reset_logical_position();
+                        pane
+                    });
             }
         }
         if !dont_swap_if_suppressed && self.suppressed_panes.contains_key(&id) {
@@ -8154,13 +8348,13 @@ impl Tab {
         let err_context =
             || format!("failed to dump active terminal screen for client {client_id}");
 
-        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let dump = active_pane.dump_screen(full, Some(client_id));
-            self.os_api
-                .write_to_file(dump, file)
-                .with_context(err_context)?;
-        }
-        Ok(())
+        let active_pane = self
+            .get_active_pane_or_floating_pane_mut(client_id)
+            .ok_or_else(|| anyhow!("No active pane for client {client_id}"))?;
+        let dump = active_pane.dump_screen(full, Some(client_id));
+        self.os_api
+            .write_to_file(dump, file)
+            .with_context(err_context)
     }
     pub fn dump_with_ansi_active_terminal_screen(
         &mut self,
@@ -8171,13 +8365,13 @@ impl Tab {
         let err_context =
             || format!("failed to dump active terminal screen for client {client_id}");
 
-        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let dump = active_pane.dump_screen_with_ansi(full, Some(client_id));
-            self.os_api
-                .write_to_file(dump, file)
-                .with_context(err_context)?;
-        }
-        Ok(())
+        let active_pane = self
+            .get_active_pane_or_floating_pane_mut(client_id)
+            .ok_or_else(|| anyhow!("No active pane for client {client_id}"))?;
+        let dump = active_pane.dump_screen_with_ansi(full, Some(client_id));
+        self.os_api
+            .write_to_file(dump, file)
+            .with_context(err_context)
     }
     pub fn dump_terminal_screen(
         &mut self,
@@ -8185,11 +8379,21 @@ impl Tab {
         pane_id: PaneId,
         full: bool,
     ) -> Result<()> {
-        if let Some(pane) = self.get_pane_with_id(pane_id) {
-            let dump = pane.dump_screen(full, None);
-            self.os_api.write_to_file(dump, file).non_fatal()
-        }
-        Ok(())
+        self.try_dump_terminal_screen(file, pane_id, full)
+    }
+    fn try_dump_terminal_screen(
+        &mut self,
+        file: Option<String>,
+        pane_id: PaneId,
+        full: bool,
+    ) -> Result<()> {
+        let pane = self
+            .get_pane_with_id(pane_id)
+            .ok_or_else(|| anyhow!("Pane with id {:?} not found", pane_id))?;
+        let dump = pane.dump_screen(full, None);
+        self.os_api
+            .write_to_file(dump, file)
+            .with_context(|| "failed to dump terminal screen")
     }
     pub fn dump_with_ansi_terminal_screen(
         &mut self,
@@ -8197,11 +8401,21 @@ impl Tab {
         pane_id: PaneId,
         full: bool,
     ) -> Result<()> {
-        if let Some(pane) = self.get_pane_with_id(pane_id) {
-            let dump = pane.dump_screen_with_ansi(full, None);
-            self.os_api.write_to_file(dump, file).non_fatal()
-        }
-        Ok(())
+        self.try_dump_with_ansi_terminal_screen(file, pane_id, full)
+    }
+    fn try_dump_with_ansi_terminal_screen(
+        &mut self,
+        file: Option<String>,
+        pane_id: PaneId,
+        full: bool,
+    ) -> Result<()> {
+        let pane = self
+            .get_pane_with_id(pane_id)
+            .ok_or_else(|| anyhow!("Pane with id {:?} not found", pane_id))?;
+        let dump = pane.dump_screen_with_ansi(full, None);
+        self.os_api
+            .write_to_file(dump, file)
+            .with_context(|| "failed to dump terminal screen")
     }
     pub fn get_dump_active_terminal_screen(&mut self, client_id: ClientId, full: bool) -> String {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
@@ -8294,13 +8508,24 @@ impl Tab {
     pub fn edit_scrollback_for_pane_with_id(
         &mut self,
         pane_id: PaneId,
-        completion_tx: Option<NotificationEnd>,
+        mut completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         if let PaneId::Terminal(_terminal_pane_id) = pane_id {
+            if self.get_pane_with_id(pane_id).is_none() {
+                let error = anyhow!("Pane with id {:?} not found", pane_id);
+                fail_cli_write(&mut completion_tx, &format!("{error:#}"));
+                return Err(error);
+            }
             self.make_hidden_stack_list_member_visible(pane_id);
             let file = private_scrollback_dump_path();
-            self.dump_terminal_screen(Some(String::from(file.to_string_lossy())), pane_id, true)
-                .non_fatal();
+            if let Err(error) = self.try_dump_terminal_screen(
+                Some(String::from(file.to_string_lossy())),
+                pane_id,
+                true,
+            ) {
+                fail_cli_write(&mut completion_tx, &format!("{error:#}"));
+                return Err(error);
+            }
             let line_number = self
                 .get_pane_with_id(pane_id)
                 .and_then(|a_t| a_t.get_line_number());
@@ -8311,24 +8536,32 @@ impl Tab {
                 completion_tx,
             ))
         } else {
-            log::error!("Editing plugin pane scrollback is currently unsupported.");
-            Ok(())
+            let error = anyhow!("Editing plugin pane scrollback is currently unsupported.");
+            fail_cli_write(&mut completion_tx, &format!("{error:#}"));
+            Err(error)
         }
     }
     pub fn edit_scrollback_raw_for_pane_with_id(
         &mut self,
         pane_id: PaneId,
-        completion_tx: Option<NotificationEnd>,
+        mut completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         if let PaneId::Terminal(_terminal_pane_id) = pane_id {
+            if self.get_pane_with_id(pane_id).is_none() {
+                let error = anyhow!("Pane with id {:?} not found", pane_id);
+                fail_cli_write(&mut completion_tx, &format!("{error:#}"));
+                return Err(error);
+            }
             self.make_hidden_stack_list_member_visible(pane_id);
             let file = private_scrollback_dump_path();
-            self.dump_with_ansi_terminal_screen(
+            if let Err(error) = self.try_dump_with_ansi_terminal_screen(
                 Some(String::from(file.to_string_lossy())),
                 pane_id,
                 true,
-            )
-            .non_fatal();
+            ) {
+                fail_cli_write(&mut completion_tx, &format!("{error:#}"));
+                return Err(error);
+            }
             let line_number = self
                 .get_pane_with_id(pane_id)
                 .and_then(|a_t| a_t.get_line_number());
@@ -8339,8 +8572,9 @@ impl Tab {
                 completion_tx,
             ))
         } else {
-            log::error!("Editing plugin pane scrollback is currently unsupported.");
-            Ok(())
+            let error = anyhow!("Editing plugin pane scrollback is currently unsupported.");
+            fail_cli_write(&mut completion_tx, &format!("{error:#}"));
+            Err(error)
         }
     }
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {
@@ -8776,8 +9010,9 @@ impl Tab {
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
             .or_else(|| {
                 self.suppressed_panes
-                    .get_mut(&pane_id)
-                    .map(|s_p| &mut s_p.1)
+                    .values_mut()
+                    .find(|(_, pane)| pane.pid() == pane_id)
+                    .map(|(_, pane)| pane)
             })
             .with_context(err_context)?;
         pane.rename(buf);
@@ -9825,8 +10060,12 @@ impl Tab {
             .floating_panes
             .get_mut(&pane_id)
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
-            .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1))
-        {
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|(_, pane)| pane.pid() == pane_id)
+                    .map(|(_, pane)| pane)
+            }) {
             Some(pane_to_rerun) => {
                 let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if let Some(command_to_rerun) = pane_to_rerun.rerun() {
@@ -10278,7 +10517,11 @@ impl Tab {
             return Ok(());
         }
 
-        if let Some(pane) = self.suppressed_panes.get_mut(pane_id) {
+        if let Some(pane) = self
+            .suppressed_panes
+            .values_mut()
+            .find(|(_, pane)| pane.pid() == *pane_id)
+        {
             let is_borderless = pane.1.borderless();
             if is_borderless {
                 pane.1.set_content_offset(Offset::frame(1));
@@ -10318,7 +10561,11 @@ impl Tab {
         }
 
         // Try suppressed panes
-        if let Some(pane) = self.suppressed_panes.get_mut(pane_id) {
+        if let Some(pane) = self
+            .suppressed_panes
+            .values_mut()
+            .find(|(_, pane)| pane.pid() == *pane_id)
+        {
             if borderless {
                 pane.1.set_content_offset(Offset::default());
             } else {
@@ -10346,7 +10593,11 @@ impl Tab {
             self.set_force_render();
             return true;
         }
-        if let Some(pane) = self.suppressed_panes.get_mut(&pane_id) {
+        if let Some(pane) = self
+            .suppressed_panes
+            .values_mut()
+            .find(|(_, pane)| pane.pid() == pane_id)
+        {
             pane.1.set_border_style_override(border_style);
             return true;
         }

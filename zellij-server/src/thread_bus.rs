@@ -15,6 +15,23 @@ use crate::{
 use zellij_utils::errors::prelude::*;
 use zellij_utils::{channels, channels::SenderWithContext, errors::ErrorContext};
 
+#[derive(Debug)]
+pub(crate) struct PtyWriteAdmissionRefused;
+
+impl std::fmt::Display for PtyWriteAdmissionRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "pty write admission refused")
+    }
+}
+
+impl std::error::Error for PtyWriteAdmissionRefused {}
+
+pub(crate) fn is_pty_write_admission_refusal(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| cause.downcast_ref::<PtyWriteAdmissionRefused>().is_some())
+}
+
 /// Transport and admission budget for the pty-writer inbox.
 ///
 /// Every `PtyWriteInstruction::Write` goes through [`PtyWriteSender::send`],
@@ -470,7 +487,8 @@ fn reserve_pty_write(
     let (bytes, terminal_id, mut completion, _caller_budget) = admitted.into_parts();
     if let Err(message) = budget.try_reserve(terminal_id, bytes.len()) {
         fail_write_completion(&mut completion, message.clone());
-        return Err(anyhow::anyhow!(message)).context("failed to send message to pty writer");
+        return Err(anyhow::anyhow!(PtyWriteAdmissionRefused).context(message))
+            .context("failed to send message to pty writer");
     }
     Ok(PtyWriteInstruction::Write(
         AdmittedWrite::new(bytes, terminal_id, completion, Some(Arc::clone(budget)))
@@ -484,7 +502,8 @@ fn reject_unadmitted(instruction: PtyWriteInstruction, message: &str) -> Result<
         drop(caller_budget);
         fail_write_completion(&mut completion, message.to_string());
     }
-    Err(anyhow::anyhow!(message.to_string())).context("failed to send message to pty writer")
+    Err(anyhow::anyhow!(PtyWriteAdmissionRefused).context(message.to_string()))
+        .context("failed to send message to pty writer")
 }
 
 /// Admission rejected the bytes. The waiter must see a finished failure, not

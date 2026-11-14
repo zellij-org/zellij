@@ -228,6 +228,60 @@ mod input_scope_regressions {
     }
 
     #[test]
+    fn synchronized_paste_honors_exclusion_and_delivers_pasted_text() {
+        let (mut tab, receiver) = plugin_tab();
+        tab.synchronize_is_active = true;
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .set_exclude_from_sync(true);
+        tab.paste_to_terminals_on_current_tab(b"scope".to_vec(), 1, None)
+            .unwrap();
+        assert!(!updates(&receiver)
+            .iter()
+            .any(|(_, _, event)| matches!(event, Event::PastedText(_))));
+
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .set_exclude_from_sync(false);
+        tab.paste_to_terminals_on_current_tab(b"scope".to_vec(), 1, None)
+            .unwrap();
+        assert!(updates(&receiver).iter().any(|(pid, cid, event)| {
+            *pid == Some(2)
+                && *cid == Some(1)
+                && matches!(event, Event::PastedText(text) if text == "scope")
+        }));
+    }
+
+    #[test]
+    fn synchronized_paste_preflights_every_permission_prompt() {
+        use zellij_utils::data::{PermissionType, PluginPermission};
+        let (mut tab, receiver) = plugin_tab();
+        tab.synchronize_is_active = true;
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .request_permissions_from_user(Some(PluginPermission {
+                name: "input-scope-fixture".to_owned(),
+                permissions: vec![PermissionType::FullHdAccess],
+                prompt_id: 7,
+            }));
+        receiver.try_iter().for_each(drop);
+
+        assert!(tab
+            .paste_to_terminals_on_current_tab(b"y".to_vec(), 1, None)
+            .is_err());
+        assert!(tab
+            .get_pane_with_id(PaneId::Plugin(2))
+            .unwrap()
+            .is_requesting_permissions());
+        assert!(!updates(&receiver)
+            .iter()
+            .any(|(_, _, event)| matches!(event, Event::PastedText(_))));
+        assert!(!receiver.try_iter().any(|(instruction, _)| {
+            matches!(instruction, PluginInstruction::PermissionRequestResult(..))
+        }));
+    }
+
+    #[test]
     fn selected_plugin_text_does_not_consume_the_paste_begin_marker() {
         let (mut tab, receiver) = plugin_tab();
         {
@@ -18487,6 +18541,125 @@ fn synchronized_input_continues_after_a_pane_rejects() {
 }
 
 #[test]
+fn refused_forwarded_reply_still_clears_the_pause() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let (screen_tx, _screen_rx) = unbounded();
+    tab.senders.to_screen = Some(SenderWithContext::new(screen_tx));
+    let budget = Arc::new(PtyIngressBudget::new());
+    budget.try_reserve(1, PER_TERMINAL_LIMIT).unwrap();
+    let _rx = install_budgeted_pty_writer(&mut tab, budget);
+
+    tab.handle_pty_bytes(1, b"\x1b]11;?\x1b\\buffered".to_vec())
+        .unwrap();
+    assert!(tab
+        .get_pane_with_id(PaneId::Terminal(1))
+        .unwrap()
+        .is_forward_paused());
+
+    tab.resume_pane_after_forward(1, b"reply".to_vec(), None)
+        .expect("an admission refusal must contain itself and settle the pause");
+    assert!(!tab
+        .get_pane_with_id(PaneId::Terminal(1))
+        .unwrap()
+        .is_forward_paused());
+}
+
+#[test]
+fn refused_synchronous_reply_does_not_skip_the_forwarded_query() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let (screen_tx, screen_rx) = unbounded();
+    tab.senders.to_screen = Some(SenderWithContext::new(screen_tx));
+    let budget = Arc::new(PtyIngressBudget::new());
+    budget.try_reserve(1, PER_TERMINAL_LIMIT).unwrap();
+    let _rx = install_budgeted_pty_writer(&mut tab, budget);
+
+    tab.handle_pty_bytes(1, b"\x1b[5n\x1b]11;?\x1b\\".to_vec())
+        .expect("a refused local reply must not abort pty processing");
+
+    assert!(screen_rx.try_iter().any(|(instruction, _)| {
+        matches!(
+            instruction,
+            ScreenInstruction::ForwardHostQuery {
+                pane_id: PaneId::Terminal(1),
+                ..
+            }
+        )
+    }));
+    assert!(tab
+        .get_pane_with_id(PaneId::Terminal(1))
+        .unwrap()
+        .is_forward_paused());
+}
+
+#[test]
+fn editing_a_missing_pane_reports_failure() {
+    let mut tab = create_new_tab(Size { cols: 80, rows: 20 }, false);
+    let (completion, mut receiver) = completion_and_receiver();
+
+    let error = tab
+        .edit_scrollback_for_pane_with_id(PaneId::Terminal(99), Some(completion))
+        .expect_err("editing a missing pane cannot succeed");
+    assert!(format!("{error:#}").contains("not found"));
+
+    let result = receiver
+        .try_recv()
+        .expect("the requester receives the failure");
+    assert_eq!(result.kind, ActionCompletionKind::Finished);
+    assert_eq!(result.exit_status, Some(1));
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("not found")),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn editing_plugin_scrollback_reports_failure() {
+    let (mut tab, _plugin_receiver) =
+        create_new_tab_with_plugin_receiver(Size { cols: 80, rows: 20 }, true);
+    tab.new_no_preference_pane(
+        PaneId::Plugin(2),
+        None,
+        None,
+        false,
+        true,
+        Some(1),
+        None,
+        None,
+    )
+    .unwrap();
+    let (completion, mut receiver) = completion_and_receiver();
+
+    let error = tab
+        .edit_scrollback_raw_for_pane_with_id(PaneId::Plugin(2), Some(completion))
+        .expect_err("plugin scrollback editing is unsupported");
+    assert!(format!("{error:#}").contains("unsupported"));
+
+    let result = receiver
+        .try_recv()
+        .expect("the requester receives the failure");
+    assert_eq!(result.kind, ActionCompletionKind::Finished);
+    assert_eq!(result.exit_status, Some(1));
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("unsupported")),
+        "{result:?}"
+    );
+}
+
+#[test]
 pub fn scroll_terminal_up_forwards_sgr_when_pane_tracks_mouse() {
     let size = Size {
         cols: 121,
@@ -19899,6 +20072,46 @@ pub fn editor_pane_that_cannot_replace_its_target_is_closed() {
 }
 
 #[test]
+pub fn editing_a_nested_suppressed_pane_unwinds_its_restoration_chain() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(2))
+        .unwrap();
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(6), PaneId::Terminal(5))
+        .unwrap();
+
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(7), PaneId::Terminal(5))
+        .unwrap();
+
+    assert!(
+        tab.tiled_panes.panes_contain(&PaneId::Terminal(7)),
+        "the new editor must replace the addressed pane after restoring it"
+    );
+    assert_eq!(
+        tab.suppressed_panes
+            .get(&PaneId::Terminal(7))
+            .map(|(_, pane)| pane.pid()),
+        Some(PaneId::Terminal(5)),
+        "the edited pane is restored when this editor closes"
+    );
+    assert_eq!(
+        tab.suppressed_panes
+            .get(&PaneId::Terminal(5))
+            .map(|(_, pane)| pane.pid()),
+        Some(PaneId::Terminal(2)),
+        "the outer restoration entry must remain intact"
+    );
+    assert!(
+        closed_pane_ids(&receivers).contains(&PaneId::Terminal(6)),
+        "the superseded editor must be closed"
+    );
+}
+
+#[test]
 pub fn in_place_pane_that_cannot_replace_its_target_is_closed_and_reported_as_failed() {
     let size = Size {
         cols: 121,
@@ -21181,6 +21394,128 @@ pub fn focusing_a_suppressed_pane_prefers_the_entry_stored_under_its_own_id() {
     assert!(tab.floating_panes.panes_contain(&PaneId::Terminal(6)));
     assert!(tab.has_pane_with_pid(&PaneId::Terminal(2)));
     assert!(!tab.has_non_suppressed_pane_with_pid(&PaneId::Terminal(2)));
+}
+
+#[test]
+pub fn explicit_lookup_resolves_nested_suppressed_pane_identity() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(2))
+        .unwrap();
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(6), PaneId::Terminal(5))
+        .unwrap();
+
+    tab.rename_pane_by_pane_id(PaneId::Terminal(2), b"A".to_vec())
+        .unwrap();
+    tab.rename_pane_by_pane_id(PaneId::Terminal(5), b"B".to_vec())
+        .unwrap();
+
+    assert_eq!(
+        tab.get_pane_with_id(PaneId::Terminal(2))
+            .map(|pane| (pane.pid(), pane.current_title())),
+        Some((PaneId::Terminal(2), "A".to_owned()))
+    );
+    assert_eq!(
+        tab.get_pane_with_id(PaneId::Terminal(5))
+            .map(|pane| (pane.pid(), pane.current_title())),
+        Some((PaneId::Terminal(5), "B".to_owned()))
+    );
+    assert_eq!(
+        tab.get_pane_with_id_mut(PaneId::Terminal(5))
+            .map(|pane| (pane.pid(), pane.current_title())),
+        Some((PaneId::Terminal(5), "B".to_owned()))
+    );
+    assert!(tab.get_pane_with_id(PaneId::Terminal(99)).is_none());
+}
+
+#[test]
+pub fn explicit_operations_use_the_actual_identity_of_a_nested_suppressed_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(2))
+        .unwrap();
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(6), PaneId::Terminal(5))
+        .unwrap();
+
+    tab.rename_pane(b"A".to_vec(), PaneId::Terminal(2)).unwrap();
+    tab.rename_pane(b"B".to_vec(), PaneId::Terminal(5)).unwrap();
+
+    let hidden_b = tab.get_pane_with_id(PaneId::Terminal(5)).unwrap();
+    assert_eq!(hidden_b.current_title(), "B");
+    let hidden_a = tab.get_pane_with_id(PaneId::Terminal(2)).unwrap();
+    assert_eq!(hidden_a.current_title(), "A");
+    let info = tab.get_pane_info(PaneId::Terminal(5)).unwrap();
+    assert_eq!(info.title, "B");
+    assert!(info.is_suppressed);
+
+    tab.set_pane_borderless(&PaneId::Terminal(5), true).unwrap();
+    assert!(tab
+        .get_pane_with_id(PaneId::Terminal(5))
+        .unwrap()
+        .borderless());
+    assert!(!tab
+        .get_pane_with_id(PaneId::Terminal(2))
+        .unwrap()
+        .borderless());
+
+    tab.replace_pane_with_suppressed_pane(PaneId::Terminal(6))
+        .unwrap();
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(5)));
+    assert_eq!(
+        tab.get_pane_with_id(PaneId::Terminal(5))
+            .map(|pane| pane.current_title()),
+        Some("B".to_owned())
+    );
+
+    tab.replace_pane_with_suppressed_pane(PaneId::Terminal(5))
+        .unwrap();
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(2)));
+    assert_eq!(
+        tab.get_pane_with_id(PaneId::Terminal(2))
+            .map(|pane| pane.current_title()),
+        Some("A".to_owned())
+    );
+}
+
+#[test]
+pub fn closing_a_nested_suppressed_pane_targets_its_own_entry() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(2))
+        .unwrap();
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(6), PaneId::Terminal(5))
+        .unwrap();
+    tab.rename_pane(b"A".to_vec(), PaneId::Terminal(2)).unwrap();
+    tab.rename_pane(b"B".to_vec(), PaneId::Terminal(5)).unwrap();
+
+    tab.close_pane(PaneId::Terminal(5), false, Some(0));
+
+    assert!(
+        tab.get_pane_with_id(PaneId::Terminal(5)).is_none(),
+        "the addressed hidden pane must be the one closed"
+    );
+    assert_eq!(
+        tab.get_pane_with_id(PaneId::Terminal(2))
+            .map(|pane| pane.current_title()),
+        Some("A".to_owned()),
+        "the pane stored under the same restoration key must remain intact"
+    );
+    assert!(
+        tab.tiled_panes.panes_contain(&PaneId::Terminal(6)),
+        "the visible replacement pane must not be removed"
+    );
 }
 
 #[test]
