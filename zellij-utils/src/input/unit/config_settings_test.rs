@@ -167,6 +167,8 @@ const EVERY_WINDOW_SETTING_SET: &str = "terminal {
     opacity 0.9
     opacity_mode \"everything\"
     blur true
+    window_decorations false
+    titlebar_theme \"dark\"
     padding 4
     padding_top 2.5
     padding_right 3

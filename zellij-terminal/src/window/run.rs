@@ -336,6 +336,7 @@ impl Rendering {
                 selection: None,
                 selecting: false,
                 pointer_hidden: false,
+                edge: None,
             },
             timing: Timing {
                 blink: BlinkPhase::On,
@@ -357,6 +358,7 @@ impl Rendering {
                 border: None,
                 transparency_available: true,
                 warned_opaque: false,
+                undecorated: false,
             },
         }
     }

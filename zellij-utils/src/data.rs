@@ -5650,6 +5650,8 @@ setting_keys! {
     TerminalOpacity => (Terminal, "opacity", false, Decimal),
     TerminalOpacityMode => (Terminal, "opacity_mode", false, Text),
     TerminalBlur => (Terminal, "blur", false, Flag),
+    TerminalWindowDecorations => (Terminal, "window_decorations", true, Flag),
+    TerminalTitlebarTheme => (Terminal, "titlebar_theme", false, Text),
     TerminalPadding => (Terminal, "padding", false, Decimal),
     TerminalPaddingTop => (Terminal, "padding_top", false, Decimal),
     TerminalPaddingRight => (Terminal, "padding_right", false, Decimal),

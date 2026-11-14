@@ -907,6 +907,16 @@ web_client {
 //     // system's Acrylic material, which shows only while the window is focused.
 //     blur false
 //
+//     // Whether the window has a titlebar and borders. When off, drag an edge
+//     // of the window to resize it.
+//     // (Requires restart)
+//     window_decorations true
+//
+//     // Whether the titlebar is "light", "dark", or follows the "system"
+//     // setting (the default). On GNOME under Wayland, "light" or "dark" also
+//     // skips the start-up query that asks the desktop for its color scheme.
+//     titlebar_theme "system"
+//
 //     // Which Option key acts as Alt on macOS: "left" (the default), "right",
 //     // "both" or "none". The other one keeps typing characters such as å or ˙.
 //     // Ignored on other platforms.
