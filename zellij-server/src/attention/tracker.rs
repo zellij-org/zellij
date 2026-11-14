@@ -743,13 +743,20 @@ impl AttentionTracker {
                     },
                     _ => {},
                 }
-                track.records.apply(message, now);
+                // A child record can change without changing the resolved
+                // attention; plugins still need the pane state that carries it.
+                if track.records.apply(message, now) {
+                    self.changed.insert(pane_id);
+                }
             },
             PaneSignal::Reset => {
                 let track = self.track(pane_id, now);
-                track.records.clear_all();
+                let records_changed = track.records.clear_all();
                 track.forget_reported();
                 track.alternate_screen = false;
+                if records_changed {
+                    self.changed.insert(pane_id);
+                }
             },
             PaneSignal::AlternateScreen(active) => {
                 let track = self.track(pane_id, now);
@@ -761,7 +768,7 @@ impl AttentionTracker {
             PaneSignal::PromptShown { .. } => {
                 let track = self.track(pane_id, now);
                 track.command.reports_markers = true;
-                track.records.drop_transient();
+                let records_changed = track.records.drop_transient();
                 track.forget_reported();
                 track.foreground = None;
                 let unfinished = if track.command.phase == CommandPhase::Running {
@@ -771,6 +778,9 @@ impl AttentionTracker {
                 };
                 track.command.phase = CommandPhase::AtPrompt;
                 track.command.running = None;
+                if records_changed {
+                    self.changed.insert(pane_id);
+                }
                 if let Some(running) = unfinished {
                     self.finish_command(
                         pane_id,

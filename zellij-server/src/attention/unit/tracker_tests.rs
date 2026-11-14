@@ -683,6 +683,53 @@ fn output_from_a_program_reporting_under_an_id_or_as_idle_is_not_new_output() {
 }
 
 #[test]
+fn a_child_record_change_under_a_working_root_reports_the_pane() {
+    let mut tracker = tracker();
+    tracker.on_signals(PANE, vec![report("state=working")], 2_000);
+    tracker.take_changed();
+    let before = tracker.attention(&PANE).unwrap().clone();
+    let changed_after = |tracker: &mut AttentionTracker, signal: PaneSignal, now: u64| {
+        tracker.on_signals(PANE, vec![signal], now);
+        tracker.take_changed().contains(&PANE)
+    };
+    assert!(changed_after(
+        &mut tracker,
+        report("state=working:id=job"),
+        3_000
+    ));
+    assert!(
+        !changed_after(&mut tracker, report("state=working:id=job"), 4_000),
+        "an identical record is not a change"
+    );
+    assert!(changed_after(
+        &mut tracker,
+        report("state=clear:id=job"),
+        5_000
+    ));
+    assert_eq!(tracker.attention(&PANE), Some(&before));
+}
+
+#[test]
+fn records_dropped_at_the_prompt_or_on_reset_report_the_pane() {
+    let mut tracker = tracker();
+    // Idle records leave the resolved attention (and `remembered`) alone.
+    tracker.on_signals(PANE, vec![report("state=idle:id=job")], 2_000);
+    tracker.take_changed();
+    let before = tracker.attention(&PANE).unwrap().clone();
+    tracker.on_signals(PANE, vec![PaneSignal::PromptShown { aid: None }], 3_000);
+    assert!(tracker.take_changed().contains(&PANE));
+    assert!(tracker.program_status_records(&PANE).is_empty());
+    assert_eq!(tracker.attention(&PANE), Some(&before));
+    tracker.on_signals(PANE, vec![report("state=idle:id=job")], 4_000);
+    tracker.take_changed();
+    let before = tracker.attention(&PANE).unwrap().clone();
+    tracker.on_signals(PANE, vec![PaneSignal::Reset], 5_000);
+    assert!(tracker.take_changed().contains(&PANE));
+    assert!(tracker.program_status_records(&PANE).is_empty());
+    assert_eq!(tracker.attention(&PANE), Some(&before));
+}
+
+#[test]
 fn being_visible_keeps_current_truths() {
     let mut tracker = tracker();
     tracker.on_signals(PANE, vec![report("state=blocked:kind=permission")], 2_000);
