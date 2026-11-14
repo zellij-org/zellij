@@ -939,20 +939,11 @@ impl Options {
         }
     }
 
-    /// Merges two [`Options`] structs,
-    /// - `Some` in `other` will supersede a `Some` in `self`
-    /// - `Some(bool)` in `other` will toggle a `Some(bool)` in `self`
-    // TODO: Maybe a good candidate for a macro?
+    /// Merges CLI `other` over configured `self`.
+    /// A value set on the command line replaces the configured value.
+    /// An unset command-line value leaves the configured value, including booleans.
     pub fn merge_from_cli(&self, other: Options) -> Options {
-        let merge_bool = |opt_other: Option<bool>, opt_self: Option<bool>| {
-            if opt_other.is_some() ^ opt_self.is_some() {
-                opt_other.or(opt_self)
-            } else if opt_other.is_some() && opt_self.is_some() {
-                Some(opt_other.unwrap() ^ opt_self.unwrap())
-            } else {
-                None
-            }
-        };
+        let merge_bool = |opt_other: Option<bool>, opt_self: Option<bool>| opt_other.or(opt_self);
 
         let simplified_ui = merge_bool(other.simplified_ui, self.simplified_ui);
         let mouse_mode = merge_bool(other.mouse_mode, self.mouse_mode);
@@ -1318,6 +1309,32 @@ mod tests {
     }
 
     #[test]
+    fn a_cli_boolean_replaces_the_configured_value_instead_of_toggling_it() {
+        let config = Options {
+            mouse_mode: Some(true),
+            simplified_ui: Some(false),
+            ..Default::default()
+        };
+        let cli_false = Options {
+            mouse_mode: Some(false),
+            ..Default::default()
+        };
+        let overridden = config.merge_from_cli(cli_false);
+        assert_eq!(overridden.mouse_mode, Some(false));
+        assert_eq!(overridden.simplified_ui, Some(false));
+
+        let cli_same = Options {
+            mouse_mode: Some(true),
+            ..Default::default()
+        };
+        assert_eq!(
+            config.merge_from_cli(cli_same).mouse_mode,
+            Some(true),
+            "an explicit true does not XOR the configured true into false"
+        );
+    }
+
+    #[test]
     fn a_host_notification_protocol_absent_from_the_command_line_keeps_the_configured_one() {
         let config = Options {
             host_notification_protocol: Some(HostNotificationProtocol::Osc99),
@@ -1328,7 +1345,7 @@ mod tests {
                 .merge_from_cli(Options::default())
                 .host_notification_protocol,
             Some(HostNotificationProtocol::Osc99),
-            "the option is carried over verbatim, not toggled like the boolean options are"
+            "an unset command-line value leaves the configured value"
         );
     }
 }
