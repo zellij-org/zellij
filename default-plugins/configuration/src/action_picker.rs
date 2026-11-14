@@ -467,6 +467,7 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
             ),
             child("floating", "Floating", ArgKind::Bool),
             child("in_place", "In place", ArgKind::Bool),
+            child("stacked", "Stacked", ArgKind::Bool),
             child("close_on_exit", "Close on exit", ArgKind::Bool),
             child("start_suspended", "Start suspended", ArgKind::Bool),
         ],
