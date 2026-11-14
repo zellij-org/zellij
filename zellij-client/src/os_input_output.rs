@@ -319,7 +319,9 @@ impl ClientOsApi for ClientOsInputOutput {
                 if session_name_at_calltime.is_some()
                     && session_name_at_calltime != session_name_after_reading_from_stdin
                 {
-                    *buffered_bytes = Some(read_bytes);
+                    if !read_bytes.is_empty() {
+                        *buffered_bytes = Some(read_bytes);
+                    }
                     Err("Session ended")
                 } else {
                     Ok(read_bytes)

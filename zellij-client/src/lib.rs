@@ -648,6 +648,7 @@ pub(crate) enum InputInstruction {
     },
     NestedSessionFrameFromHost(Vec<u8>),
     HostTerminalFocusChanged(bool),
+    Eof,
     Exit,
 }
 

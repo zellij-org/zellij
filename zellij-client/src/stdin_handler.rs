@@ -109,6 +109,10 @@ pub(crate) fn stdin_loop(
             move || loop {
                 match os_input.read_from_stdin() {
                     Ok(buf) => {
+                        if buf.is_empty() {
+                            let _ = stdin_tx.send(Ok(buf));
+                            break;
+                        }
                         if stdin_tx.send(Ok(buf)).is_err() {
                             break; // receiver dropped
                         }
@@ -133,6 +137,10 @@ pub(crate) fn stdin_loop(
             Ok(result) => {
                 match result {
                     Ok(buf) => {
+                        if buf.is_empty() {
+                            let _ = send_input_instructions.send(InputInstruction::Eof);
+                            break 'stdin;
+                        }
                         // Strip + classify any host-reply sequences
                         // continuously. The residue is the byte stream
                         // the keyboard parser should see.

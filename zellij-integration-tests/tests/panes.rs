@@ -40,6 +40,19 @@ fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
 }
 
 #[test]
+fn synchronized_update_without_end_becomes_visible_after_the_hard_cap() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    terminal.output(b"\x1b[?2026hheld-until-cap");
+    zellij.wait_until(
+        "a synchronized update with no end still recovers",
+        |grid_snapshot| grid_snapshot.contains("held-until-cap"),
+    );
+    zellij.quit();
+}
+
+#[test]
 fn key_after_mode_switch_is_interpreted_in_new_mode_not_leaked_to_pane() {
     let mut zellij = start_zellij();
     let first_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
