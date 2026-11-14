@@ -1,7 +1,6 @@
 use super::super::TerminalPane;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
-use crate::panes::LinkHandler;
 use crate::tab::Pane;
 use insta::assert_snapshot;
 use std::cell::RefCell;
@@ -18,6 +17,17 @@ fn read_fixture() -> Vec<u8> {
     path_to_file.push("grid_copy");
     std::fs::read(path_to_file)
         .unwrap_or_else(|_| panic!("could not read fixture ../src/tests/fixtures/grid_copy"))
+}
+
+/// A search that crosses a narrow wrap pauses after one row quantum.
+/// Pump it to the same place one uninterrupted search used to land.
+fn finish_paused_search(terminal_pane: &mut TerminalPane) {
+    let mut guard = 0;
+    while terminal_pane.grid.pending_search.is_some() {
+        terminal_pane.grid.continue_pending_search();
+        guard += 1;
+        assert!(guard < 10_000, "search did not finish");
+    }
 }
 
 fn create_pane() -> TerminalPane {
@@ -40,7 +50,6 @@ fn create_pane() -> TerminalPane {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -318,6 +327,7 @@ pub fn searching_across_line_wrap() {
     );
 
     terminal_pane.search_up();
+    finish_paused_search(&mut terminal_pane);
     assert_snapshot!(
         "grid_copy_multiline_selected_narrow",
         format!("{:?}", terminal_pane.grid)
@@ -326,6 +336,7 @@ pub fn searching_across_line_wrap() {
     // Wrap on
     terminal_pane.toggle_search_wrap();
     terminal_pane.search_down();
+    finish_paused_search(&mut terminal_pane);
     assert_snapshot!(
         "grid_copy_multiline_selected_wrap_narrow",
         format!("{:?}", terminal_pane.grid)
@@ -335,6 +346,7 @@ pub fn searching_across_line_wrap() {
     terminal_pane.toggle_search_wrap();
     // Don't forget the current selection
     terminal_pane.search_up();
+    finish_paused_search(&mut terminal_pane);
     assert_snapshot!(
         "grid_copy_multiline_selected_wrap_narrow",
         format!("{:?}", terminal_pane.grid)
@@ -343,9 +355,228 @@ pub fn searching_across_line_wrap() {
     // Wrap on
     terminal_pane.toggle_search_wrap();
     terminal_pane.search_up();
+    finish_paused_search(&mut terminal_pane);
     assert_snapshot!(
         "grid_copy_multiline_selected_narrow",
         format!("{:?}", terminal_pane.grid)
+    );
+}
+
+fn wrapped_row(text: &str) -> super::super::Row {
+    use crate::panes::terminal_character::TerminalCharacter;
+    super::super::Row::from_columns(text.chars().map(TerminalCharacter::new).collect::<Vec<_>>())
+}
+
+fn huge_continuation_tail() -> Vec<super::super::Row> {
+    (0..10_000)
+        .map(|_| wrapped_row("klmnopqrst"))
+        .collect::<Vec<_>>()
+}
+
+#[test]
+fn empty_continuation_rows_do_not_materialize_in_search_windows() {
+    use crate::panes::search::{reset_search_work, search_work, SearchResult};
+    use crate::panes::terminal_character::TerminalCharacter;
+
+    let first = super::super::Row::from_columns(vec![TerminalCharacter::new('a')]).canonical();
+    let empties: Vec<super::super::Row> = (0..10_000).map(|_| super::super::Row::new()).collect();
+    let mut rows: Vec<&super::super::Row> = vec![&first];
+    rows.extend(empties.iter());
+    let mut search = SearchResult::default();
+    search.needle = "zzz".to_string();
+
+    reset_search_work();
+    let _ = search.search_rows(0, &rows);
+    let work = search_work();
+    assert!(
+        work.rows <= 2,
+        "search materialized {} rows for a blank continuation tail",
+        work.rows
+    );
+}
+
+#[test]
+pub fn a_long_wrapped_line_is_searched_in_bounded_windows() {
+    use crate::panes::search::{reset_search_work, search_work};
+    let content: String = "0123456789".repeat(10);
+    let mut terminal_pane = create_pane_with_content(&content, 10);
+
+    reset_search_work();
+    terminal_pane.update_search_term("234");
+
+    assert!(!terminal_pane.grid.search_results.selections.is_empty());
+    let work = search_work();
+    let visible_rows = terminal_pane.grid.viewport.len();
+    assert!(
+        work.windows <= visible_rows,
+        "search built {} windows for {visible_rows} visible rows",
+        work.windows
+    );
+    assert!(
+        work.rows <= visible_rows * 2,
+        "search materialized {} rows for {visible_rows} visible rows",
+        work.rows
+    );
+    assert!(
+        work.cells <= visible_rows * 20,
+        "search materialized {} cells for {visible_rows} visible rows",
+        work.cells
+    );
+}
+
+#[test]
+pub fn an_absent_needle_does_not_materialize_the_rest_of_a_wrapped_line() {
+    use crate::panes::search::{reset_search_work, search_work};
+    let mut terminal_pane = create_pane_with_content("", 10);
+    terminal_pane.grid.search_results.needle = "zz".to_owned();
+    let first = wrapped_row("abcdefghij");
+    let tail = huge_continuation_tail();
+    let tail_refs = tail.iter().collect::<Vec<_>>();
+
+    reset_search_work();
+    let hits = terminal_pane
+        .grid
+        .search_results
+        .search_row(0, &first, &tail_refs);
+
+    assert!(hits.is_empty());
+    let work = search_work();
+    assert_eq!(work.windows, 1);
+    assert!(
+        work.rows <= 2,
+        "an absent needle materialized {} rows of a 10,000-row tail",
+        work.rows
+    );
+    assert!(
+        work.cells <= 20,
+        "an absent needle materialized {} cells",
+        work.cells
+    );
+}
+
+#[test]
+pub fn a_cross_row_match_is_found_without_reading_the_whole_tail() {
+    use crate::panes::search::{reset_search_work, search_work};
+    let mut terminal_pane = create_pane_with_content("", 10);
+    terminal_pane.grid.search_results.needle = "defg".to_owned();
+    let first = wrapped_row("abcde");
+    let mut tail = vec![wrapped_row("fghij")];
+    tail.extend(huge_continuation_tail());
+    let tail_refs = tail.iter().collect::<Vec<_>>();
+
+    reset_search_work();
+    let hits = terminal_pane
+        .grid
+        .search_results
+        .search_row(0, &first, &tail_refs);
+
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].start.line(), 0);
+    assert_eq!(hits[0].start.column(), 3);
+    assert_eq!(hits[0].end.line(), 1);
+    assert_eq!(hits[0].end.column(), 2);
+    let work = search_work();
+    assert!(
+        work.rows <= 2,
+        "a cross-row match materialized {} rows of a 10,000-row tail",
+        work.rows
+    );
+}
+
+#[test]
+pub fn bounded_search_preserves_whole_word_and_case_modes() {
+    let mut terminal_pane = create_pane_with_content("", 10);
+    terminal_pane.grid.search_results.needle = "def".to_owned();
+    terminal_pane.grid.search_results.whole_word_only = true;
+    let first = wrapped_row("abc def");
+    let mut tail = vec![wrapped_row(" klmnopqrst")];
+    tail.extend(huge_continuation_tail());
+    let tail_refs = tail.iter().collect::<Vec<_>>();
+    let whole_word_hits = terminal_pane
+        .grid
+        .search_results
+        .search_row(0, &first, &tail_refs);
+    assert_eq!(whole_word_hits.len(), 1);
+
+    terminal_pane.grid.search_results.needle = "abcdef".to_owned();
+    terminal_pane.grid.search_results.whole_word_only = false;
+    terminal_pane.grid.search_results.case_insensitive = true;
+    let first = wrapped_row("ABC");
+    let case_tail = vec![wrapped_row("DEF")];
+    let case_tail_refs = case_tail.iter().collect::<Vec<_>>();
+    let case_insensitive_hits =
+        terminal_pane
+            .grid
+            .search_results
+            .search_row(0, &first, &case_tail_refs);
+    assert_eq!(case_insensitive_hits.len(), 1);
+    assert_eq!(case_insensitive_hits[0].start.line(), 0);
+    assert_eq!(case_insensitive_hits[0].end.line(), 1);
+    assert_eq!(case_insensitive_hits[0].end.column(), 3);
+}
+
+#[test]
+pub fn a_match_on_a_late_visible_row_is_found_with_bounded_work() {
+    use crate::panes::search::{reset_search_work, search_work};
+    let content = format!("{}needle{}", "a".repeat(44), "b".repeat(10));
+    let mut terminal_pane = create_pane_with_content(&content, 5);
+
+    reset_search_work();
+    terminal_pane.update_search_term("needle");
+
+    assert_eq!(found_ranges(&terminal_pane), vec![((6, 4), (7, 5))]);
+    let work = search_work();
+    let visible_rows = terminal_pane.grid.viewport.len();
+    assert!(
+        work.windows <= visible_rows,
+        "search built {} windows for {visible_rows} visible rows",
+        work.windows
+    );
+    assert!(
+        work.rows <= visible_rows * 4,
+        "search materialized {} rows for {visible_rows} visible rows",
+        work.rows
+    );
+}
+
+#[test]
+pub fn a_long_wrapped_line_without_a_match_stays_within_the_viewport_window() {
+    use crate::panes::search::{reset_search_work, search_work};
+    let content = format!("{}needle{}", "a".repeat(44), "b".repeat(10));
+    let mut terminal_pane = create_pane_with_content(&content, 5);
+
+    terminal_pane.grid.search_results.needle = "absent".to_owned();
+    reset_search_work();
+    terminal_pane.grid.search_viewport();
+
+    assert!(terminal_pane.grid.search_results.selections.is_empty());
+    let work = search_work();
+    let visible_rows = terminal_pane.grid.viewport.len();
+    assert!(
+        work.rows <= visible_rows * 4,
+        "search materialized {} rows for {visible_rows} visible rows",
+        work.rows
+    );
+}
+
+#[test]
+pub fn matches_starting_on_the_first_row_of_a_wrapped_line_span_rows() {
+    let mut terminal_pane = create_pane_with_content("abcdefghijabcdefghijabcdefghij", 10);
+    terminal_pane.update_search_term("ijab");
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((0, 8), (1, 2)), ((1, 8), (2, 2))]
+    );
+}
+
+#[test]
+pub fn a_match_starting_on_a_later_wrapped_row_is_still_found() {
+    // "aaaaaa" wraps into three two-column rows; each row restarts matching.
+    let mut terminal_pane = create_pane_with_content("aaaaaa", 2);
+    terminal_pane.update_search_term("aaa");
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((0, 0), (1, 1)), ((1, 0), (2, 1))]
     );
 }
 
@@ -437,7 +668,6 @@ fn create_pane_with_content(content: &str, cols: usize) -> TerminalPane {
         Style::default(),
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         Rc::new(RefCell::new(SixelImageStore::default())),
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -557,5 +787,275 @@ pub fn whole_word_search_respects_non_ascii_neighbours() {
     assert_eq!(
         found_ranges(&terminal_pane),
         vec![((0, 8), (0, 11)), ((0, 17), (0, 20))]
+    );
+}
+
+fn row_plain(row: &super::super::Row) -> String {
+    row.columns.iter().map(|cell| cell.character).collect()
+}
+
+#[test]
+pub fn whole_word_search_does_not_treat_a_soft_wrap_as_a_boundary() {
+    let mut wrapped = create_pane_with_content("foobar", 3);
+    assert!(wrapped.grid.viewport.len() >= 2);
+    assert_eq!(row_plain(&wrapped.grid.viewport[0]), "foo");
+    assert_eq!(row_plain(&wrapped.grid.viewport[1]), "bar");
+    assert!(wrapped.grid.viewport[0].is_canonical);
+    assert!(!wrapped.grid.viewport[1].is_canonical);
+    wrapped.update_search_term("bar");
+    wrapped.toggle_search_whole_words();
+    assert!(
+        found_ranges(&wrapped).is_empty(),
+        "soft-wrapped foobar matched whole-word bar"
+    );
+
+    let mut broken = create_pane_with_content("foo\r\nbar", 3);
+    assert!(broken.grid.viewport.len() >= 2);
+    assert_eq!(row_plain(&broken.grid.viewport[0]), "foo");
+    assert_eq!(row_plain(&broken.grid.viewport[1]), "bar");
+    assert!(broken.grid.viewport[1].is_canonical);
+    broken.update_search_term("bar");
+    broken.toggle_search_whole_words();
+    assert_eq!(found_ranges(&broken), vec![((1, 0), (1, 3))]);
+}
+
+#[test]
+fn move_down_rows_prepends_new_matches_in_search_order() {
+    use std::collections::VecDeque;
+    use zellij_utils::position::Position;
+
+    let mut terminal_pane = create_pane_with_content("", 10);
+    let mut viewport = VecDeque::new();
+    viewport.push_back(wrapped_row("na").canonical());
+    viewport.push_back(wrapped_row("nb").canonical());
+    viewport.push_back(wrapped_row("nc").canonical());
+
+    let mut kept = super::super::Selection::default();
+    kept.start(Position::new(0, 0));
+    kept.end(Position::new(0, 1));
+    terminal_pane.grid.search_results.selections = vec![kept];
+    terminal_pane.grid.search_results.needle = "n".to_owned();
+    terminal_pane
+        .grid
+        .search_results
+        .move_down_rows(2, &viewport, None, 3);
+
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((0, 0), (0, 1)), ((1, 0), (1, 1)), ((2, 0), (2, 1))]
+    );
+}
+
+#[test]
+fn move_down_rows_whole_word_does_not_match_across_a_soft_wrap() {
+    use std::collections::VecDeque;
+
+    let mut terminal_pane = create_pane_with_content("", 10);
+    terminal_pane.grid.search_results.needle = "bar".to_owned();
+    terminal_pane.grid.search_results.whole_word_only = true;
+
+    // `foo` stays above the viewport, so the revealed `bar` is a soft wrap
+    // at index 0. A following hard break is its own word.
+    let above = wrapped_row("foo");
+    let mut viewport = VecDeque::new();
+    viewport.push_back(wrapped_row("bar"));
+    viewport.push_back(wrapped_row("bar").canonical());
+    assert!(!viewport[0].is_canonical);
+    assert!(viewport[1].is_canonical);
+
+    terminal_pane.grid.search_results.move_down_rows(
+        viewport.len(),
+        &viewport,
+        Some(&above),
+        viewport.len(),
+    );
+
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((1, 0), (1, 3))],
+        "soft-wrapped foobar matched whole-word bar, or the hard break did not"
+    );
+}
+
+#[test]
+fn move_down_whole_word_does_not_match_bar_across_a_soft_wrap() {
+    use std::collections::VecDeque;
+
+    let mut terminal_pane = create_pane_with_content("", 10);
+    terminal_pane.grid.search_results.needle = "bar".to_owned();
+    terminal_pane.grid.search_results.whole_word_only = true;
+
+    let above = wrapped_row("foo");
+    let mut viewport = VecDeque::new();
+    viewport.push_back(wrapped_row("bar"));
+    assert!(!viewport[0].is_canonical);
+    let lines_below = VecDeque::new();
+
+    let found =
+        terminal_pane
+            .grid
+            .search_results
+            .move_down(1, &viewport, Some(&above), viewport.len());
+    assert!(
+        !found && found_ranges(&terminal_pane).is_empty(),
+        "single-step move_down matched whole-word bar inside soft-wrapped foobar"
+    );
+
+    // The revealed row is the whole viewport, so its predecessor is scrollback.
+    terminal_pane.grid.search_results.selections.clear();
+    let found = terminal_pane.grid.search_results.move_up(
+        1,
+        &viewport,
+        &lines_below,
+        Some(&above),
+        viewport.len(),
+    );
+    assert!(
+        !found && found_ranges(&terminal_pane).is_empty(),
+        "move_up matched whole-word bar inside soft-wrapped foobar"
+    );
+
+    // A hard break is not a word character, in either direction.
+    viewport[0] = wrapped_row("bar").canonical();
+    assert!(viewport[0].is_canonical);
+    let found =
+        terminal_pane
+            .grid
+            .search_results
+            .move_down(1, &viewport, Some(&above), viewport.len());
+    assert!(found);
+    assert_eq!(found_ranges(&terminal_pane), vec![((0, 0), (0, 3))]);
+    terminal_pane.grid.search_results.selections.clear();
+    let found = terminal_pane.grid.search_results.move_up(
+        1,
+        &viewport,
+        &lines_below,
+        Some(&above),
+        viewport.len(),
+    );
+    assert!(found);
+    assert_eq!(found_ranges(&terminal_pane), vec![((0, 0), (0, 3))]);
+}
+
+#[test]
+fn whole_word_bar_matches_after_compressed_trailing_blank() {
+    use std::collections::VecDeque;
+
+    let mut terminal_pane = create_pane_with_content("", 10);
+    terminal_pane.grid.search_results.needle = "bar".to_owned();
+    terminal_pane.grid.search_results.whole_word_only = true;
+
+    // A typed space is not `EMPTY_TERMINAL_CHARACTER`. Scrollback compression
+    // only folds that pad, which is what a wrapped `foo ` keeps after the
+    // letters once the row leaves the viewport.
+    let mut foo = wrapped_row("foo");
+    foo.columns
+        .push(crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER);
+    foo.compress_trailing_blanks();
+    assert_eq!(row_plain(&foo), "foo");
+    assert!(
+        foo.stored_cell_count() > foo.columns.len(),
+        "the trailing blank was not compressed"
+    );
+    let foo = foo.canonical();
+
+    let mut viewport = VecDeque::new();
+    viewport.push_back(foo.clone());
+    viewport.push_back(wrapped_row("bar"));
+    assert!(!viewport[1].is_canonical);
+    let lines_below = VecDeque::new();
+    let found =
+        terminal_pane
+            .grid
+            .search_results
+            .move_up(1, &viewport, &lines_below, None, viewport.len());
+    assert!(found);
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((1, 0), (1, 3))],
+        "whole-word bar was rejected because a compressed trailing blank was ignored"
+    );
+
+    // Same predecessor supplied from above the viewport on the way down.
+    terminal_pane.grid.search_results.selections.clear();
+    let mut revealed = VecDeque::new();
+    revealed.push_back(wrapped_row("bar"));
+    let found =
+        terminal_pane
+            .grid
+            .search_results
+            .move_down(1, &revealed, Some(&foo), revealed.len());
+    assert!(found);
+    assert_eq!(found_ranges(&terminal_pane), vec![((0, 0), (0, 3))]);
+}
+
+#[test]
+fn move_up_rows_does_not_match_across_a_hard_newline() {
+    use std::collections::VecDeque;
+
+    let mut terminal_pane = create_pane_with_content("", 10);
+    // Both rows are canonical, so the logical text is `foo\nbar` plus a
+    // soft-wrap `baz` that continues only `bar`. A jump of two rows searches
+    // every viewport row, which is where a hard break used to be skipped.
+    let mut viewport = VecDeque::new();
+    viewport.push_back(wrapped_row("foo").canonical());
+    viewport.push_back(wrapped_row("bar").canonical());
+    assert_eq!(viewport.len(), 2);
+    assert!(viewport[0].is_canonical && viewport[1].is_canonical);
+    let mut lines_below = VecDeque::new();
+    lines_below.push_back(wrapped_row("baz"));
+    assert!(!lines_below[0].is_canonical);
+
+    terminal_pane.grid.search_results.needle = "foobaz".to_owned();
+    terminal_pane.grid.search_results.move_up_rows(
+        viewport.len(),
+        &viewport,
+        &lines_below,
+        None,
+        viewport.len(),
+    );
+    assert!(
+        found_ranges(&terminal_pane).is_empty(),
+        "move_up_rows matched foobaz across the hard newline between foo and bar"
+    );
+
+    terminal_pane.grid.search_results.selections.clear();
+    terminal_pane.grid.search_results.needle = "barbaz".to_owned();
+    terminal_pane.grid.search_results.move_up_rows(
+        viewport.len(),
+        &viewport,
+        &lines_below,
+        None,
+        viewport.len(),
+    );
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((1, 0), (2, 3))],
+        "soft-wrapped barbaz below the viewport was not found"
+    );
+}
+
+#[test]
+fn move_down_prepends_multiple_matches_in_search_order() {
+    use std::collections::VecDeque;
+    use zellij_utils::position::Position;
+
+    let mut terminal_pane = create_pane_with_content("", 10);
+    let mut viewport = VecDeque::new();
+    viewport.push_back(wrapped_row("n n").canonical());
+
+    let mut kept = super::super::Selection::default();
+    kept.start(Position::new(1, 0));
+    kept.end(Position::new(1, 1));
+    terminal_pane.grid.search_results.selections = vec![kept];
+    terminal_pane.grid.search_results.needle = "n".to_owned();
+    let found = terminal_pane
+        .grid
+        .search_results
+        .move_down(1, &viewport, None, 4);
+    assert!(found);
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((0, 0), (0, 1)), ((0, 2), (0, 3)), ((2, 0), (2, 1))]
     );
 }

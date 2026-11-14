@@ -711,6 +711,9 @@ pub enum Action {
     ClearScreenByPaneId {
         pane_id: PaneId,
     },
+    ResetPaneInputModes {
+        pane_id: Option<PaneId>,
+    },
     EditScrollbackByPaneId {
         pane_id: PaneId,
         ansi: bool,
@@ -921,6 +924,9 @@ impl Action {
             }],
             Action::MovePaneBackwardsByPaneId { .. } => vec![Action::MovePaneBackwards],
             Action::ClearScreenByPaneId { .. } => vec![Action::ClearScreen],
+            Action::ResetPaneInputModes { .. } => {
+                vec![Action::ResetPaneInputModes { pane_id: None }]
+            },
             Action::EditScrollbackByPaneId { ansi, .. } => {
                 vec![Action::EditScrollback { ansi: *ansi }]
             },
@@ -1162,6 +1168,19 @@ impl Action {
                     Ok(vec![Action::ClearScreenByPaneId { pane_id }])
                 },
                 None => Ok(vec![Action::ClearScreen]),
+            },
+            CliAction::ResetPaneInputModes { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str).map_err(|_| {
+                        format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        )
+                    })?;
+                    Ok(vec![Action::ResetPaneInputModes {
+                        pane_id: Some(pane_id),
+                    }])
+                },
+                None => Ok(vec![Action::ResetPaneInputModes { pane_id: None }]),
             },
             CliAction::DumpScreen {
                 path,
@@ -3365,6 +3384,36 @@ mod tests {
         let actions = result.unwrap();
         assert_eq!(actions.len(), 1);
         assert!(matches!(actions[0], Action::ClearScreen));
+    }
+
+    #[test]
+    fn test_reset_pane_input_modes_with_pane_id() {
+        let cli_action = CliAction::ResetPaneInputModes {
+            pane_id: Some("terminal_14".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ResetPaneInputModes { pane_id } => {
+                assert_eq!(*pane_id, Some(PaneId::Terminal(14)));
+            },
+            _ => panic!("Expected ResetPaneInputModes action"),
+        }
+    }
+
+    #[test]
+    fn test_reset_pane_input_modes_without_pane_id() {
+        let cli_action = CliAction::ResetPaneInputModes { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(
+            actions[0],
+            Action::ResetPaneInputModes { pane_id: None }
+        ));
     }
 
     // 13. EditScrollback

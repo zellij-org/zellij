@@ -154,6 +154,7 @@ pub fn action_without_arguments(
         "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
         "NextSwapLayout" => Ok(Action::NextSwapLayout),
         "Clear" => Ok(Action::ClearScreen),
+        "ResetPaneInputModes" => Ok(Action::ResetPaneInputModes { pane_id: None }),
         _ => Err(ConfigError::new_kdl_error(
             format!("Unsupported action: {:?}", action_name),
             action_node.span().offset(),
@@ -696,6 +697,10 @@ impl Action {
     pub fn to_kdl(&self) -> Option<KdlNode> {
         match self {
             Action::Quit => Some(KdlNode::new("Quit")),
+            Action::ResetPaneInputModes { pane_id: None } => {
+                Some(KdlNode::new("ResetPaneInputModes"))
+            },
+            Action::ResetPaneInputModes { pane_id: Some(_) } => None,
             Action::Write {
                 key_with_modifier: _key,
                 bytes,
@@ -1668,51 +1673,12 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
             let g = channel(channels.next().unwrap())?;
             let b = channel(channels.next().unwrap())?;
             Ok(PaletteColor::Rgb((r, g, b)))
-        } else if is_three_digit_hex() {
-            // eg. #fff (hex, will be converted to rgb)
-            let mut s = String::from(kdl_first_entry_as_string!(color).unwrap());
-            s.remove(0);
-            let r = u8::from_str_radix(&s[0..1], 16).map_err(|_| {
-                ConfigError::new_kdl_error(
-                    "Failed to parse hex color".into(),
-                    color.span().offset(),
-                    color.span().len(),
-                )
-            })? * 0x11;
-            let g = u8::from_str_radix(&s[1..2], 16).map_err(|_| {
-                ConfigError::new_kdl_error(
-                    "Failed to parse hex color".into(),
-                    color.span().offset(),
-                    color.span().len(),
-                )
-            })? * 0x11;
-            let b = u8::from_str_radix(&s[2..3], 16).map_err(|_| {
-                ConfigError::new_kdl_error(
-                    "Failed to parse hex color".into(),
-                    color.span().offset(),
-                    color.span().len(),
-                )
-            })? * 0x11;
-            Ok(PaletteColor::Rgb((r, g, b)))
-        } else if is_six_digit_hex() {
-            // eg. #ffffff (hex, will be converted to rgb)
-            let mut s = String::from(kdl_first_entry_as_string!(color).unwrap());
-            s.remove(0);
-            let r = u8::from_str_radix(&s[0..2], 16).map_err(|_| {
-                ConfigError::new_kdl_error(
-                    "Failed to parse hex color".into(),
-                    color.span().offset(),
-                    color.span().len(),
-                )
-            })?;
-            let g = u8::from_str_radix(&s[2..4], 16).map_err(|_| {
-                ConfigError::new_kdl_error(
-                    "Failed to parse hex color".into(),
-                    color.span().offset(),
-                    color.span().len(),
-                )
-            })?;
-            let b = u8::from_str_radix(&s[4..6], 16).map_err(|_| {
+        } else if is_three_digit_hex() || is_six_digit_hex() {
+            // eg. #fff / #ffffff (hex, converted to rgb). Validate ASCII
+            // before slicing so a multi-byte UTF-8 body of the "right"
+            // byte length cannot panic on a mid-character index.
+            let s = kdl_first_entry_as_string!(color).unwrap();
+            let (r, g, b) = crate::input::theme::parse_hex_rgb(s).ok_or_else(|| {
                 ConfigError::new_kdl_error(
                     "Failed to parse hex color".into(),
                     color.span().offset(),
@@ -2064,6 +2030,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "Copy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Clear" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "ResetPaneInputModes" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
             "Confirm" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Deny" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Write" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
@@ -11437,6 +11406,19 @@ fn run_with_background_parses_and_is_written_back() {
         },
     };
     assert_eq!(action, expected);
+    let written = action.to_kdl().unwrap();
+    let reparsed = Action::try_from((&written, &Options::default())).unwrap();
+    assert_eq!(reparsed, expected);
+}
+
+#[test]
+fn reset_pane_input_modes_parses_and_is_written_back() {
+    let document: KdlDocument = "ResetPaneInputModes".parse().unwrap();
+    let node = document.nodes().first().unwrap();
+    let action = Action::try_from((node, &Options::default())).unwrap();
+    let expected = Action::ResetPaneInputModes { pane_id: None };
+    assert_eq!(action, expected);
+
     let written = action.to_kdl().unwrap();
     let reparsed = Action::try_from((&written, &Options::default())).unwrap();
     assert_eq!(reparsed, expected);

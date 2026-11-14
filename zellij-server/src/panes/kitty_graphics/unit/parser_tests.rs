@@ -1,6 +1,7 @@
 use super::*;
 use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
 use std::io::{Seek, Write};
+use std::path::{Path, PathBuf};
 
 const PNG_2X2_RGBA: [u8; 75] = [
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
@@ -181,19 +182,19 @@ fn icat_direct_probe_with_data_size_parses_ok() {
 fn data_offset_and_size_window_file_read() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("windowed.bin");
-    std::fs::write(&path, (1..=10).collect::<Vec<u8>>()).unwrap();
+    let bytes: Vec<u8> = (1..=10).collect();
+    std::fs::write(&path, &bytes).unwrap();
     let mut parser = KittyCommandParser::new();
-    let command = parse_one(
+    let err = parse_one(
         &mut parser,
         &raw_cmd(
             "a=T,t=f,f=24,s=1,v=1,O=4,S=3",
             path.to_str().unwrap().as_bytes(),
         ),
     )
-    .unwrap();
-    assert_eq!(command.data_offset, Some(4));
-    assert_eq!(command.data_size, Some(3));
-    assert_eq!(command.image.unwrap().bytes, vec![5, 6, 7]);
+    .unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
 }
 
 #[test]
@@ -249,19 +250,30 @@ fn oversized_dimensions_are_einval() {
 }
 
 #[test]
-fn file_medium_reads_file_and_leaves_it_in_place() {
+fn file_medium_outside_temp_proc_sys_and_dev_is_enotsupported() {
     let raster = raster_12_bytes();
-    let dir = tempfile::tempdir().unwrap();
+    let dir = manifest_dir_tempdir();
     let path = dir.path().join("img.bin");
     std::fs::write(&path, &raster).unwrap();
-    let mut parser = KittyCommandParser::new();
-    let command = parse_one(
-        &mut parser,
-        &raw_cmd("a=T,f=24,s=2,v=2,t=f", path.to_str().unwrap().as_bytes()),
-    )
-    .unwrap();
-    assert_eq!(command.image.unwrap().bytes, raster);
-    assert!(path.exists());
+    let canonical = std::fs::canonicalize(&path).unwrap();
+    assert!(!canonical.starts_with("/tmp"));
+    assert!(!canonical.starts_with("/proc"));
+    assert!(!canonical.starts_with("/sys"));
+    assert!(!canonical.starts_with("/dev"));
+    for medium in ["f", "t"] {
+        let mut parser = KittyCommandParser::new();
+        let err = parse_one(
+            &mut parser,
+            &raw_cmd(
+                &format!("a=T,f=24,s=2,v=2,t={medium}"),
+                path.to_str().unwrap().as_bytes(),
+            ),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, KittyErrorCode::Enotsupported, "t={medium}");
+        assert!(path.exists(), "t={medium}");
+        assert_eq!(std::fs::read(&path).unwrap(), raster, "t={medium}");
+    }
 }
 
 #[test]
@@ -274,23 +286,213 @@ fn file_medium_nonexistent_path_is_ebadf() {
         &raw_cmd("a=T,f=24,s=2,v=2,t=f", path.to_str().unwrap().as_bytes()),
     )
     .unwrap_err();
-    assert_eq!(err.code, KittyErrorCode::Ebadf);
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
+    assert!(!path.exists());
+}
+
+// Creates a file directly in the system temp directory, which is where the
+// protocol allows `t=t` files to be deleted from.
+fn temp_dir_file(prefix: &str, contents: &[u8]) -> PathBuf {
+    let mut file = tempfile::Builder::new()
+        .prefix(prefix)
+        .tempfile_in(std::env::temp_dir())
+        .unwrap();
+    file.write_all(contents).unwrap();
+    let (_file, path) = file.keep().unwrap();
+    path
+}
+
+fn manifest_dir_tempdir() -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix("kitty-parser-test")
+        .tempdir_in(env!("CARGO_MANIFEST_DIR"))
+        .unwrap()
+}
+
+fn transmit_temp(path: &Path) -> Result<KittyCommand, KittyError> {
+    let mut parser = KittyCommandParser::new();
+    parse_one(
+        &mut parser,
+        &raw_cmd("a=T,f=24,s=2,v=2,t=t", path.to_str().unwrap().as_bytes()),
+    )
 }
 
 #[test]
 fn temp_file_medium_inside_temp_dir_is_deleted_after_read() {
     let raster = raster_12_bytes();
+    let path = temp_dir_file("tty-graphics-protocol-", &raster);
+    let result = transmit_temp(&path);
+    let existed = path.exists();
+    let bytes = std::fs::read(&path).ok();
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(result.unwrap_err().code, KittyErrorCode::Enotsupported);
+    assert!(existed, "temp file with the protocol marker was deleted");
+    assert_eq!(bytes.unwrap(), raster);
+}
+
+#[test]
+fn temp_file_medium_in_temp_dir_without_marker_is_read_but_kept() {
+    let raster = raster_12_bytes();
+    let path = temp_dir_file("kitty-parser-test-", &raster);
+    let result = transmit_temp(&path);
+    let existed = path.exists();
+    let bytes = std::fs::read(&path).ok();
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(result.unwrap_err().code, KittyErrorCode::Enotsupported);
+    assert!(existed);
+    assert_eq!(bytes.unwrap(), raster);
+}
+
+#[test]
+fn temp_file_medium_in_temp_subdirectory_is_not_deleted() {
+    let raster = raster_12_bytes();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("tty-graphics-protocol-img.bin");
     std::fs::write(&path, &raster).unwrap();
+    let err = transmit_temp(&path).unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
+    assert!(path.exists());
+    assert_eq!(std::fs::read(&path).unwrap(), raster);
+}
+
+#[test]
+fn temp_file_medium_dotdot_traversal_out_of_temp_dir_is_not_deleted() {
+    let raster = raster_12_bytes();
+    let dir = manifest_dir_tempdir();
+    let victim = dir.path().join("tty-graphics-protocol-victim.bin");
+    std::fs::write(&victim, &raster).unwrap();
+    // starts with the real temp dir, climbs out of it (extra `..` at the root
+    // are no-ops) and comes back down to the victim
+    let temp_dir = std::env::temp_dir();
+    let mut traversal = temp_dir.clone();
+    for _ in temp_dir.components() {
+        traversal.push("..");
+    }
+    for component in victim.components() {
+        if let std::path::Component::Normal(name) = component {
+            traversal.push(name);
+        }
+    }
+    assert!(traversal.starts_with(&temp_dir));
+    let result = transmit_temp(&traversal);
+    assert!(victim.exists(), "file outside the temp dir was deleted");
+    assert_eq!(std::fs::read(&victim).unwrap(), raster);
+    assert_eq!(result.unwrap_err().code, KittyErrorCode::Enotsupported);
+}
+
+#[cfg(unix)]
+#[test]
+fn temp_file_medium_symlink_to_outside_file_deletes_nothing() {
+    let raster = raster_12_bytes();
+    let dir = manifest_dir_tempdir();
+    let victim = dir.path().join("victim.bin");
+    std::fs::write(&victim, &raster).unwrap();
+    let link =
+        std::env::temp_dir().join(format!("tty-graphics-protocol-link-{}", std::process::id()));
+    let _ = std::fs::remove_file(&link);
+    std::os::unix::fs::symlink(&victim, &link).unwrap();
+    let result = transmit_temp(&link);
+    let link_exists = std::fs::symlink_metadata(&link).is_ok();
+    let _ = std::fs::remove_file(&link);
+    assert!(victim.exists(), "symlink target was deleted");
+    assert_eq!(std::fs::read(&victim).unwrap(), raster);
+    assert!(
+        link_exists,
+        "symlink was removed although target is not a temp file"
+    );
+    assert_eq!(result.unwrap_err().code, KittyErrorCode::Enotsupported);
+}
+
+#[cfg(unix)]
+#[test]
+fn temp_file_medium_through_symlinked_directory_is_not_deleted() {
+    let raster = raster_12_bytes();
+    let dir = manifest_dir_tempdir();
+    let victim = dir.path().join("tty-graphics-protocol-victim.bin");
+    std::fs::write(&victim, &raster).unwrap();
+    let link_dir =
+        std::env::temp_dir().join(format!("tty-graphics-protocol-dir-{}", std::process::id()));
+    let _ = std::fs::remove_file(&link_dir);
+    std::os::unix::fs::symlink(dir.path(), &link_dir).unwrap();
+    let result = transmit_temp(&link_dir.join("tty-graphics-protocol-victim.bin"));
+    let _ = std::fs::remove_file(&link_dir);
+    assert!(
+        victim.exists(),
+        "file behind a symlinked directory was deleted"
+    );
+    assert_eq!(std::fs::read(&victim).unwrap(), raster);
+    assert_eq!(result.unwrap_err().code, KittyErrorCode::Enotsupported);
+}
+
+#[test]
+fn temp_file_medium_failed_read_does_not_delete() {
+    let path = temp_dir_file("tty-graphics-protocol-", &raster_12_bytes());
     let mut parser = KittyCommandParser::new();
-    let command = parse_one(
+    let err = parse_one(
         &mut parser,
-        &raw_cmd("a=T,f=24,s=2,v=2,t=t", path.to_str().unwrap().as_bytes()),
+        &raw_cmd(
+            "a=T,f=24,s=2,v=2,t=t,O=64",
+            path.to_str().unwrap().as_bytes(),
+        ),
     )
-    .unwrap();
-    assert_eq!(command.image.unwrap().bytes, raster);
-    assert!(!path.exists());
+    .unwrap_err();
+    let existed = path.exists();
+    let bytes = std::fs::read(&path).ok();
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
+    assert!(existed, "file was deleted although the read failed");
+    assert_eq!(bytes.unwrap(), raster_12_bytes());
+}
+
+#[cfg(unix)]
+#[test]
+fn file_mediums_refuse_proc_sys_and_dev() {
+    for medium in ["f", "t"] {
+        for path in [
+            "/proc/self/cmdline",
+            "/proc/self/status",
+            "/sys/kernel/uevent_seqnum",
+            "/dev/null",
+            "/dev/zero",
+        ] {
+            let existed = std::path::Path::new(path).exists();
+            let mut parser = KittyCommandParser::new();
+            let err = parse_one(
+                &mut parser,
+                &raw_cmd(&format!("a=T,f=24,s=1,v=1,t={}", medium), path.as_bytes()),
+            )
+            .unwrap_err();
+            assert_eq!(
+                err.code,
+                KittyErrorCode::Enotsupported,
+                "{} t={}",
+                path,
+                medium
+            );
+            assert_eq!(std::path::Path::new(path).exists(), existed, "{}", path);
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn file_medium_follows_symlink_to_regular_file() {
+    let raster = raster_12_bytes();
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target.bin");
+    let link = dir.path().join("link.bin");
+    std::fs::write(&target, &raster).unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let mut parser = KittyCommandParser::new();
+    let err = parse_one(
+        &mut parser,
+        &raw_cmd("a=T,f=24,s=2,v=2,t=f", link.to_str().unwrap().as_bytes()),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
+    assert!(target.exists());
+    assert_eq!(std::fs::read(&target).unwrap(), raster);
+    assert!(std::fs::symlink_metadata(&link).is_ok());
 }
 
 #[test]
@@ -303,13 +505,14 @@ fn temp_file_medium_outside_temp_dir_is_not_deleted() {
     let path = dir.path().join("img.bin");
     std::fs::write(&path, &raster).unwrap();
     let mut parser = KittyCommandParser::new();
-    let command = parse_one(
+    let err = parse_one(
         &mut parser,
         &raw_cmd("a=T,f=24,s=2,v=2,t=t", path.to_str().unwrap().as_bytes()),
     )
-    .unwrap();
-    assert_eq!(command.image.unwrap().bytes, raster);
+    .unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
     assert!(path.exists());
+    assert_eq!(std::fs::read(&path).unwrap(), raster);
 }
 
 #[test]
@@ -325,7 +528,7 @@ fn file_medium_larger_than_decode_cap_is_einval() {
         &raw_cmd("a=T,f=24,s=2,v=2,t=f", path.to_str().unwrap().as_bytes()),
     )
     .unwrap_err();
-    assert_eq!(err.code, KittyErrorCode::Einval);
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
     assert!(path.exists());
 }
 
@@ -340,15 +543,16 @@ fn file_medium_window_within_oversized_file_reads_only_requested_range() {
         .unwrap();
     drop(file);
     let mut parser = KittyCommandParser::new();
-    let command = parse_one(
+    let err = parse_one(
         &mut parser,
         &raw_cmd(
             "a=T,t=f,f=24,s=2,v=2,O=64,S=12",
             path.to_str().unwrap().as_bytes(),
         ),
     )
-    .unwrap();
-    assert_eq!(command.image.unwrap().bytes, raster_12_bytes());
+    .unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
+    assert!(path.exists());
 }
 
 #[test]
@@ -365,26 +569,21 @@ fn file_medium_offset_beyond_eof_is_ebadf() {
         ),
     )
     .unwrap_err();
-    assert_eq!(err.code, KittyErrorCode::Ebadf);
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
+    assert!(path.exists());
+    assert_eq!(std::fs::read(&path).unwrap(), raster_12_bytes());
 }
 
 #[test]
 fn temp_file_outside_temp_dir_with_magic_name_is_not_deleted() {
     let raster = raster_12_bytes();
-    let dir = tempfile::Builder::new()
-        .prefix("kitty-parser-test")
-        .tempdir_in(env!("CARGO_MANIFEST_DIR"))
-        .unwrap();
+    let dir = manifest_dir_tempdir();
     let path = dir.path().join("tty-graphics-protocol-img.bin");
     std::fs::write(&path, &raster).unwrap();
-    let mut parser = KittyCommandParser::new();
-    let command = parse_one(
-        &mut parser,
-        &raw_cmd("a=T,f=24,s=2,v=2,t=t", path.to_str().unwrap().as_bytes()),
-    )
-    .unwrap();
-    assert_eq!(command.image.unwrap().bytes, raster);
+    let err = transmit_temp(&path).unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
     assert!(path.exists());
+    assert_eq!(std::fs::read(&path).unwrap(), raster);
 }
 
 #[test]
@@ -394,12 +593,12 @@ fn temp_file_inside_temp_dir_without_magic_name_is_not_deleted() {
     let path = dir.path().join("img.bin");
     std::fs::write(&path, &raster).unwrap();
     let mut parser = KittyCommandParser::new();
-    let command = parse_one(
+    let err = parse_one(
         &mut parser,
         &raw_cmd("a=T,f=24,s=2,v=2,t=t", path.to_str().unwrap().as_bytes()),
     )
-    .unwrap();
-    assert_eq!(command.image.unwrap().bytes, raster);
+    .unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
     assert!(path.exists());
 }
 
@@ -421,15 +620,15 @@ fn temp_file_path_escaping_temp_dir_is_not_deleted() {
     }
     escaping.push(victim.strip_prefix("/").unwrap());
     let mut parser = KittyCommandParser::new();
-    let command = parse_one(
+    let err = parse_one(
         &mut parser,
         &raw_cmd(
             "a=T,f=24,s=2,v=2,t=t",
             escaping.to_str().unwrap().as_bytes(),
         ),
     )
-    .unwrap();
-    assert_eq!(command.image.unwrap().bytes, raster);
+    .unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Enotsupported);
     assert!(path.exists());
 }
 
@@ -440,14 +639,70 @@ fn chunked_upload_exceeding_payload_cap_is_rejected() {
     assert!(parser
         .parse(&raw_cmd("a=t,f=32,s=1,v=1,i=7,m=1", b"AAAA"))
         .is_none());
-    let mut result = None;
-    for _ in 0..200 {
-        result = parser.parse(&raw_cmd("m=1", &chunk));
-        if result.is_some() {
-            break;
-        }
+    for _ in 0..5 {
+        assert!(parser.parse(&raw_cmd("m=1", &chunk)).is_none());
     }
+    let result = parser.parse(&raw_cmd("m=0", &chunk));
     let err = result.unwrap().unwrap_err();
     assert_eq!(err.code, KittyErrorCode::Einval);
     assert!(!parser.has_pending());
+}
+
+fn chunk_raw(control: &str, payload_len: usize) -> Vec<u8> {
+    let mut raw = format!("{};", control).into_bytes();
+    raw.resize(raw.len() + payload_len, b'A');
+    raw
+}
+
+#[test]
+fn chunked_upload_beyond_the_decoded_limit_is_dropped_and_fails_on_the_last_chunk() {
+    let mut parser = KittyCommandParser::new();
+    let chunk_len = MAX_PAYLOAD_B64_BYTES / 3 * 2;
+    assert!(parser
+        .parse(&chunk_raw("a=T,f=24,s=1,v=1,i=9,m=1", chunk_len))
+        .is_none());
+    assert_eq!(
+        parser.pending.as_ref().unwrap().payload_b64.len(),
+        chunk_len
+    );
+    // the second chunk crosses the limit: what was assembled is dropped
+    assert!(parser.parse(&chunk_raw("m=1", chunk_len)).is_none());
+    assert!(parser.pending.as_ref().unwrap().payload_b64.is_empty());
+    // further chunks are consumed without being buffered
+    assert!(parser.parse(&chunk_raw("m=1", 1024)).is_none());
+    assert!(parser.pending.as_ref().unwrap().payload_b64.is_empty());
+    let err = parser.parse(&chunk_raw("m=0", 4)).unwrap().unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Einval);
+    assert_eq!(err.image_id, Some(9));
+    assert!(!parser.has_pending());
+    // the parser is usable again afterwards
+    let command = parse_one(&mut parser, b"a=T,i=5,f=24,s=1,v=1;AAAA").unwrap();
+    assert!(command.image.is_some());
+}
+
+#[test]
+fn chunked_upload_at_the_limit_is_still_assembled() {
+    let mut parser = KittyCommandParser::new();
+    let chunk_len = MAX_PAYLOAD_B64_BYTES / 2;
+    assert!(parser
+        .parse(&chunk_raw("a=T,f=24,s=1,v=1,m=1", chunk_len))
+        .is_none());
+    let command = parser
+        .parse(&chunk_raw("m=0", MAX_PAYLOAD_B64_BYTES - chunk_len))
+        .unwrap()
+        .unwrap();
+    assert_eq!(command.image.unwrap().bytes, vec![0, 0, 0]);
+}
+
+#[test]
+fn direct_payload_beyond_the_decoded_limit_is_einval() {
+    let command = KittyCommand {
+        format: KittyFormat::Rgb24,
+        pixel_width: Some(1),
+        pixel_height: Some(1),
+        ..Default::default()
+    };
+    let payload = vec![b'A'; MAX_PAYLOAD_B64_BYTES + 4];
+    let err = run_payload_pipeline(command, &payload).unwrap_err();
+    assert_eq!(err.code, KittyErrorCode::Einval);
 }

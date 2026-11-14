@@ -1,3 +1,4 @@
+mod background_operations;
 mod pinned_executor;
 mod pipes;
 mod plugin_loader;
@@ -9,9 +10,18 @@ mod shared;
 mod wasm_bridge;
 mod watch_filesystem;
 mod zellij_exports;
+#[cfg(test)]
+pub(crate) use background_operations::BackgroundOperationKind;
+pub(crate) use background_operations::{
+    reap_retired_operations, try_acquire_refusal_report, try_acquire_run_command,
+    try_acquire_web_request, BackgroundOperationReservation,
+};
 use log::info;
 
 pub use pinned_executor::PinnedExecutor;
+pub(crate) use plugin_loader::{
+    file_system_update_within_host_pipe, host_stdin_frame_len, WASI_HOST_PIPE_CAP,
+};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,
@@ -60,7 +70,7 @@ pub struct DumpSessionLayoutResponse {
     pub metadata: Option<zellij_utils::data::LayoutMetadata>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum PluginInstruction {
     Load(
         Option<bool>,   // should float
@@ -78,10 +88,13 @@ pub enum PluginInstruction {
         Option<bool>,     // should focus plugin
         Option<FloatingPaneCoordinates>,
         Option<NotificationEnd>, // completion signal
+        Option<u64>,             // activation load token; None when there is no context
     ),
     LoadBackgroundPlugin(RunPluginOrAlias, ClientId),
     Update(Vec<(Option<PluginId>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
     Unload(PluginId),                                         // plugin_id
+    Quarantine(PluginId, u64), // plugin id, generation of the instance that hit a fatal error
+    SharedInstanceLoadFailed(PluginId),
     Reload(
         Option<bool>,   // should float
         Option<String>, // pane title
@@ -89,7 +102,23 @@ pub enum PluginInstruction {
         usize, // tab index
         Size,
         Option<NotificationEnd>,
+        Option<ClientId>, // requester, when the reload carries one
     ),
+    ApplyTimer {
+        plugin_id: PluginId,
+        client_id: ClientId,
+        elapsed_seconds: f64,
+        generation: u64,
+    },
+    // Result of a RunCommand, WebRequest, or RunAction, tagged with the load
+    // generation that scheduled it. Not a guest-visible field.
+    ApplyLoadResult {
+        plugin_id: PluginId,
+        client_id: ClientId,
+        event: Event,
+        generation: u64,
+        reservation: Option<BackgroundOperationReservation>,
+    },
     ReloadPluginWithId(u32),
     Resize(PluginId, usize, usize), // plugin_id, columns, rows
     AddClient(ClientId),
@@ -144,7 +173,12 @@ pub enum PluginInstruction {
         Vec<PermissionType>,
         PermissionStatus,
         Option<PathBuf>,
+        u64, // prompt id recorded when this prompt was shown
     ),
+    // Permissions this module already holds. `generation` and `digest` are the
+    // instance that checked the cache; a later instance with the same id must not
+    // inherit the grant.
+    GrantKnownPermissions(PluginId, Option<ClientId>, Vec<PermissionType>, u64, String),
     DumpLayout(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     ListClientsMetadata(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     DumpLayoutToPlugin {
@@ -214,6 +248,10 @@ pub enum PluginInstruction {
     },
     CachePluginEvents {
         plugin_id: PluginId,
+        // identify the module instance whose permission prompt is about to be shown
+        generation: u64,
+        digest: String,
+        prompt_id: u64,
     },
     MessageFromPlugin {
         source_plugin_id: u32,
@@ -234,7 +272,10 @@ pub enum PluginInstruction {
     ConfigWasWrittenToDisk,
     ConfigChangesDropped(ClientId, Vec<SettingKey>),
     ConfigFileChangedSinceRead(ClientId),
-    WatchFilesystem,
+    WatchFilesystem {
+        plugin_id: PluginId,
+        host_root: PathBuf,
+    },
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     ChangePluginHostDir(PathBuf, PluginId, ClientId),
     WebServerStarted(String), // String -> the base url of the web server
@@ -297,7 +338,11 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::LoadBackgroundPlugin(..) => PluginContext::LoadBackgroundPlugin,
             PluginInstruction::LoadPopup { .. } => PluginContext::LoadPopup,
             PluginInstruction::Update(..) => PluginContext::Update,
+            PluginInstruction::ApplyTimer { .. } => PluginContext::Update,
+            PluginInstruction::ApplyLoadResult { .. } => PluginContext::Update,
             PluginInstruction::Unload(..) => PluginContext::Unload,
+            PluginInstruction::Quarantine(..) => PluginContext::Unload,
+            PluginInstruction::SharedInstanceLoadFailed(..) => PluginContext::Unload,
             PluginInstruction::Reload(..) => PluginContext::Reload,
             PluginInstruction::ReloadPluginWithId(..) => PluginContext::ReloadPluginWithId,
             PluginInstruction::Resize(..) => PluginContext::Resize,
@@ -321,6 +366,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::PluginSubscribedToEvents(..) => {
                 PluginContext::PluginSubscribedToEvents
             },
+            PluginInstruction::GrantKnownPermissions(..) => PluginContext::PermissionRequestResult,
             PluginInstruction::PermissionRequestResult(..) => {
                 PluginContext::PermissionRequestResult
             },
@@ -337,7 +383,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::CachePluginEvents { .. } => PluginContext::CachePluginEvents,
             PluginInstruction::MessageFromPlugin { .. } => PluginContext::MessageFromPlugin,
             PluginInstruction::UnblockCliPipes { .. } => PluginContext::UnblockCliPipes,
-            PluginInstruction::WatchFilesystem => PluginContext::WatchFilesystem,
+            PluginInstruction::WatchFilesystem { .. } => PluginContext::WatchFilesystem,
             PluginInstruction::KeybindPipe { .. } => PluginContext::KeybindPipe,
             PluginInstruction::DumpLayoutToPlugin { .. } => PluginContext::DumpLayoutToPlugin,
             PluginInstruction::Reconfigure { .. } => PluginContext::Reconfigure,
@@ -457,7 +503,9 @@ pub(crate) fn plugin_thread_main(
                 should_focus_plugin,
                 floating_pane_coordinates,
                 completion_tx,
+                activation_token,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
                 let cwd = run_plugin_or_alias.get_initial_cwd().or(cwd).or_else(|| {
                     if let Some(plugin_id) = focused_plugin_id {
@@ -491,7 +539,8 @@ pub(crate) fn plugin_thread_main(
                             floating_pane_coordinates,
                             should_focus_plugin,
                             Some(client_id),
-                            completion_tx,
+                            completion_tx.take(),
+                            activation_token,
                         )));
 
                         drop(bus.senders.send_to_pty(PtyInstruction::ReportPluginCwd(
@@ -501,6 +550,11 @@ pub(crate) fn plugin_thread_main(
                     },
                     Err(e) => {
                         log::error!("Failed to load plugin: {e}");
+                        if let Some(token) = activation_token {
+                            let _ = bus.senders.send_to_screen(
+                                ScreenInstruction::SettlePendingPluginActivation(token),
+                            );
+                        }
                     },
                 }
             },
@@ -603,8 +657,43 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::Update(updates) => {
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
+            PluginInstruction::ApplyTimer {
+                plugin_id,
+                client_id,
+                elapsed_seconds,
+                generation,
+            } => {
+                wasm_bridge.set_scheduled_timer_generation(generation);
+                wasm_bridge.update_plugins(
+                    vec![(
+                        Some(plugin_id),
+                        Some(client_id),
+                        Event::Timer(elapsed_seconds),
+                    )],
+                    shutdown_send.clone(),
+                )?;
+            },
+            PluginInstruction::ApplyLoadResult {
+                plugin_id,
+                client_id,
+                event,
+                generation,
+                reservation: _reservation,
+            } => {
+                wasm_bridge.set_scheduled_timer_generation(generation);
+                wasm_bridge.update_plugins(
+                    vec![(Some(plugin_id), Some(client_id), event)],
+                    shutdown_send.clone(),
+                )?;
+            },
             PluginInstruction::Unload(pid) => {
                 wasm_bridge.unload_plugin(pid)?;
+            },
+            PluginInstruction::SharedInstanceLoadFailed(instance_id) => {
+                wasm_bridge.shared_instance_load_failed(instance_id);
+            },
+            PluginInstruction::Quarantine(pid, generation) => {
+                wasm_bridge.quarantine_plugin(pid, generation);
             },
             PluginInstruction::Reload(
                 should_float,
@@ -613,15 +702,22 @@ pub(crate) fn plugin_thread_main(
                 tab_index,
                 size,
                 completion_tx,
+                client_id,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
                 match run_plugin_or_alias.get_run_plugin() {
                     Some(run_plugin) => {
                         match wasm_bridge.reload_plugin(&run_plugin) {
                             Ok(_) => {
-                                let _ = bus
-                                    .senders
-                                    .send_to_server(ServerInstruction::UnblockInputThread);
+                                // No client on this reload: `completion_tx` is the waiter.
+                                // Do not broadcast UnblockInputThread to every client.
+                                if let Some(client_id) = client_id {
+                                    let _ = bus.senders.send_to_server(
+                                        ServerInstruction::UnblockInputThread(Some(client_id)),
+                                    );
+                                }
+                                drop(completion_tx);
                             },
                             Err(err) => match err.downcast_ref::<ZellijError>() {
                                 Some(ZellijError::PluginDoesNotExist) => {
@@ -658,7 +754,8 @@ pub(crate) fn plugin_thread_main(
                                                     None,
                                                     None,
                                                     None,
-                                                    completion_tx,
+                                                    completion_tx.take(),
+                                                    None,
                                                 ),
                                             ));
                                         },
@@ -709,6 +806,7 @@ pub(crate) fn plugin_thread_main(
                 (client_id, is_web_client),
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 // prefer connected clients so as to avoid opening plugins in the background for
                 // CLI clients unless no-one else is connected
                 let client_id = if wasm_bridge.client_is_connected(&client_id) {
@@ -809,7 +907,7 @@ pub(crate) fn plugin_thread_main(
                     block_on_first_terminal,
                     should_change_focus_to_new_tab,
                     (client_id, is_web_client),
-                    completion_tx,
+                    completion_tx.take(),
                 )));
             },
             PluginInstruction::OverrideLayout(
@@ -821,6 +919,7 @@ pub(crate) fn plugin_thread_main(
                 client_id,
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 // 1. Prefer connected clients over CLI clients
                 let client_id = if wasm_bridge.client_is_connected(&client_id) {
                     client_id
@@ -903,7 +1002,7 @@ pub(crate) fn plugin_thread_main(
                     retain_existing_terminal_panes,
                     retain_existing_plugin_panes,
                     client_id,
-                    completion_tx,
+                    completion_tx.take(),
                 )));
             },
             PluginInstruction::ApplyCachedEvents {
@@ -946,6 +1045,20 @@ pub(crate) fn plugin_thread_main(
                     client_id,
                     events.clone(),
                 );
+                if events.contains(&EventType::ModeUpdate) {
+                    // Background plugins already get this from
+                    // UpdateBackgroundPluginSubscriptions; tab plugins need an
+                    // explicit first snapshot so they are not stuck until a
+                    // later mode change.
+                    let is_background = wasm_bridge.plugin_is_background(plugin_id, client_id);
+                    if !is_background {
+                        let _ =
+                            bus.senders
+                                .send_to_screen(ScreenInstruction::ReportModeInfoToPlugin(
+                                    plugin_id, client_id,
+                                ));
+                    }
+                }
                 if events.contains(&EventType::InitialKeybinds) {
                     wasm_bridge.send_initial_keybinds_to_plugin(plugin_id, client_id);
                 }
@@ -978,27 +1091,33 @@ pub(crate) fn plugin_thread_main(
                 permissions,
                 status,
                 cache_path,
+                prompt_id,
             ) => {
-                if let Err(e) = wasm_bridge.cache_plugin_permissions(
+                // The answer names the prompt that was shown. A later prompt stored under
+                // the same plugin id must not accept this one.
+                wasm_bridge.apply_permission_prompt_result(
                     plugin_id,
                     client_id,
                     permissions,
                     status,
                     cache_path,
-                ) {
-                    log::error!("{}", e);
-                }
-
-                let updates = vec![(
-                    Some(plugin_id),
+                    prompt_id,
+                    shutdown_send.clone(),
+                )?;
+            },
+            PluginInstruction::GrantKnownPermissions(
+                plugin_id,
+                client_id,
+                permissions,
+                generation,
+                digest,
+            ) => {
+                wasm_bridge.grant_known_permissions(
+                    plugin_id,
                     client_id,
-                    Event::PermissionRequestResult(status),
-                )];
-                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
-                let done_receiving_permissions = true;
-                wasm_bridge.apply_cached_events(
-                    vec![plugin_id],
-                    done_receiving_permissions,
+                    permissions,
+                    generation,
+                    &digest,
                     shutdown_send.clone(),
                 )?;
             },
@@ -1007,6 +1126,7 @@ pub(crate) fn plugin_thread_main(
                 client_id,
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 populate_session_layout_metadata(
                     &mut session_layout_metadata,
                     &wasm_bridge,
@@ -1016,7 +1136,7 @@ pub(crate) fn plugin_thread_main(
                 drop(bus.senders.send_to_pty(PtyInstruction::DumpLayout(
                     session_layout_metadata,
                     client_id,
-                    completion_tx,
+                    completion_tx.take(),
                 )));
             },
             PluginInstruction::ListClientsMetadata(
@@ -1024,6 +1144,7 @@ pub(crate) fn plugin_thread_main(
                 client_id,
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 populate_session_layout_metadata(
                     &mut session_layout_metadata,
                     &wasm_bridge,
@@ -1033,7 +1154,7 @@ pub(crate) fn plugin_thread_main(
                 drop(bus.senders.send_to_pty(PtyInstruction::ListClientsMetadata(
                     session_layout_metadata,
                     client_id,
-                    completion_tx,
+                    completion_tx.take(),
                 )));
             },
             PluginInstruction::DumpLayoutToPlugin {
@@ -1402,8 +1523,13 @@ pub(crate) fn plugin_thread_main(
                     notification_end,
                 )?;
             },
-            PluginInstruction::CachePluginEvents { plugin_id } => {
-                wasm_bridge.cache_plugin_events(plugin_id);
+            PluginInstruction::CachePluginEvents {
+                plugin_id,
+                generation,
+                digest,
+                prompt_id,
+            } => {
+                wasm_bridge.cache_plugin_events(plugin_id, generation, digest, prompt_id);
             },
             PluginInstruction::MessageFromPlugin {
                 source_plugin_id,
@@ -1560,8 +1686,11 @@ pub(crate) fn plugin_thread_main(
                     .update_plugins(updates, shutdown_send.clone())
                     .non_fatal();
             },
-            PluginInstruction::WatchFilesystem => {
-                wasm_bridge.start_fs_watcher_if_not_started();
+            PluginInstruction::WatchFilesystem {
+                plugin_id,
+                host_root,
+            } => {
+                wasm_bridge.start_fs_watcher_if_not_started(plugin_id, host_root);
             },
             PluginInstruction::ChangePluginHostDir(new_host_folder, plugin_id, client_id) => {
                 if let Ok(_) = wasm_bridge.change_plugin_host_dir(
@@ -1887,6 +2016,7 @@ fn load_background_plugin(
                 None,
                 None,
                 Some(client_id),
+                None,
                 None,
             )));
         },

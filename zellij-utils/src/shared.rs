@@ -22,6 +22,9 @@ mod unix_only {
 
     pub fn set_permissions(path: &Path, mode: u32) -> io::Result<()> {
         let mut permissions = fs::metadata(path)?.permissions();
+        if permissions.mode() & 0o7777 == mode & 0o7777 {
+            return Ok(());
+        }
         permissions.set_mode(mode);
         fs::set_permissions(path, permissions)
     }

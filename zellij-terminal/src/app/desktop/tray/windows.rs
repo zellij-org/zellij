@@ -104,7 +104,14 @@ fn make_icon(image: &crate::app::desktop::icon::Rgba) -> HICON {
             return std::ptr::null_mut();
         }
         let bgra = image.to_bgra();
-        std::ptr::copy_nonoverlapping(bgra.as_ptr(), bits as *mut u8, bgra.len());
+        let expected = (image.width as usize)
+            .saturating_mul(image.height as usize)
+            .saturating_mul(4);
+        if bgra.len() != expected {
+            DeleteObject(color);
+            return std::ptr::null_mut();
+        }
+        std::ptr::copy_nonoverlapping(bgra.as_ptr(), bits as *mut u8, expected);
         let mask_bytes = vec![0u8; (image.width.div_ceil(16) * 2 * image.height) as usize];
         let mask = CreateBitmap(
             image.width as i32,

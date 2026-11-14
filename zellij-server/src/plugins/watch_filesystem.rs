@@ -1,4 +1,4 @@
-use super::PluginInstruction;
+use super::{file_system_update_within_host_pipe, PluginId, PluginInstruction};
 use std::path::PathBuf;
 
 use crate::thread_bus::ThreadSenders;
@@ -14,12 +14,26 @@ use zellij_utils::{data::Event, errors::prelude::Result};
 
 const DEBOUNCE_DURATION_MS: u64 = 400;
 
+/// Translate watched host paths into the `/host/...` namespace plugins see, dropping anything
+/// outside the plugin's host root. A watcher must never widen a plugin's filesystem view.
+pub(crate) fn plugin_host_paths(paths: &[PathBuf], host_root: &Path) -> Vec<PathBuf> {
+    let path_prefix_in_plugins = PathBuf::from("/host");
+    paths
+        .iter()
+        .filter_map(|path| {
+            path.strip_prefix(host_root)
+                .ok()
+                .map(|relative| path_prefix_in_plugins.join(relative))
+        })
+        .collect()
+}
+
 pub fn watch_filesystem(
     senders: ThreadSenders,
-    zellij_cwd: &Path,
+    plugin_id: PluginId,
+    host_root: &Path,
 ) -> Result<Debouncer<RecommendedWatcher, RecommendedCache>> {
-    let path_prefix_in_plugins = PathBuf::from("/host");
-    let current_dir = PathBuf::from(zellij_cwd);
+    let current_dir = PathBuf::from(host_root);
     let mut debouncer = new_debouncer(
         Duration::from_millis(DEBOUNCE_DURATION_MS),
         None,
@@ -40,55 +54,19 @@ pub fn watch_filesystem(
                 }
                 let create_paths: Vec<PathBuf> = create_events
                     .drain(..)
-                    .map(|e| {
-                        e.paths
-                            .iter()
-                            .map(|p| {
-                                let stripped_prefix_path =
-                                    p.strip_prefix(&current_dir).unwrap_or_else(|_| p);
-                                path_prefix_in_plugins.join(stripped_prefix_path)
-                            })
-                            .collect()
-                    })
+                    .flat_map(|e| plugin_host_paths(&e.paths, &current_dir))
                     .collect();
                 let read_paths: Vec<PathBuf> = read_events
                     .drain(..)
-                    .map(|e| {
-                        e.paths
-                            .iter()
-                            .map(|p| {
-                                let stripped_prefix_path =
-                                    p.strip_prefix(&current_dir).unwrap_or_else(|_| p);
-                                path_prefix_in_plugins.join(stripped_prefix_path)
-                            })
-                            .collect()
-                    })
+                    .flat_map(|e| plugin_host_paths(&e.paths, &current_dir))
                     .collect();
                 let update_paths: Vec<PathBuf> = update_events
                     .drain(..)
-                    .map(|e| {
-                        e.paths
-                            .iter()
-                            .map(|p| {
-                                let stripped_prefix_path =
-                                    p.strip_prefix(&current_dir).unwrap_or_else(|_| p);
-                                path_prefix_in_plugins.join(stripped_prefix_path)
-                            })
-                            .collect()
-                    })
+                    .flat_map(|e| plugin_host_paths(&e.paths, &current_dir))
                     .collect();
                 let delete_paths: Vec<PathBuf> = delete_events
                     .drain(..)
-                    .map(|e| {
-                        e.paths
-                            .iter()
-                            .map(|p| {
-                                let stripped_prefix_path =
-                                    p.strip_prefix(&current_dir).unwrap_or_else(|_| p);
-                                path_prefix_in_plugins.join(stripped_prefix_path)
-                            })
-                            .collect()
-                    })
+                    .flat_map(|e| plugin_host_paths(&e.paths, &current_dir))
                     .collect();
                 // TODO: at some point we might want to add FileMetadata to these, but right now
                 // the API is a bit unstable, so let's not rock the boat too much by adding another
@@ -96,14 +74,14 @@ pub fn watch_filesystem(
                 let mut updates = vec![];
                 if !read_paths.is_empty() {
                     updates.push((
-                        None,
+                        Some(plugin_id),
                         None,
                         Event::FileSystemRead(read_paths.into_iter().map(|p| (p, None)).collect()),
                     ));
                 }
                 if !create_paths.is_empty() {
                     updates.push((
-                        None,
+                        Some(plugin_id),
                         None,
                         Event::FileSystemCreate(
                             create_paths.into_iter().map(|p| (p, None)).collect(),
@@ -111,17 +89,19 @@ pub fn watch_filesystem(
                     ));
                 }
                 if !update_paths.is_empty() {
-                    updates.push((
-                        None,
-                        None,
-                        Event::FileSystemUpdate(
-                            update_paths.into_iter().map(|p| (p, None)).collect(),
-                        ),
-                    ));
+                    let batch = file_system_update_within_host_pipe(
+                        update_paths.into_iter().map(|p| (p, None)).collect(),
+                    );
+                    let event = if batch.truncated {
+                        Event::FileSystemUpdateIncomplete(batch.entries)
+                    } else {
+                        Event::FileSystemUpdate(batch.entries)
+                    };
+                    updates.push((Some(plugin_id), None, event));
                 }
                 if !delete_paths.is_empty() {
                     updates.push((
-                        None,
+                        Some(plugin_id),
                         None,
                         Event::FileSystemDelete(
                             delete_paths.into_iter().map(|p| (p, None)).collect(),
@@ -138,6 +118,30 @@ pub fn watch_filesystem(
         },
     )?;
 
-    debouncer.watch(zellij_cwd, RecursiveMode::Recursive)?;
+    debouncer.watch(host_root, RecursiveMode::Recursive)?;
     Ok(debouncer)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn watched_paths_are_scoped_to_the_plugin_host_root() {
+        let root = PathBuf::from("/tmp/plugin-host");
+        let paths = vec![
+            root.join("inside.txt"),
+            root.join("nested/also-inside.txt"),
+            PathBuf::from("/tmp/outside.txt"),
+            PathBuf::from("/etc/passwd"),
+        ];
+        assert_eq!(
+            plugin_host_paths(&paths, &root),
+            vec![
+                PathBuf::from("/host/inside.txt"),
+                PathBuf::from("/host/nested/also-inside.txt"),
+            ],
+            "paths outside the plugin host root must not reach the plugin"
+        );
+    }
 }

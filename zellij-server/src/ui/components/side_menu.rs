@@ -17,12 +17,9 @@ pub fn side_menu(
     let hovered = state.number("hov");
     let items: Vec<String> = fields.iter().map(|f| decode_text(f)).collect();
     let width = coordinates
-        .width
-        .unwrap_or_else(|| items.iter().map(|i| text_width(i)).max().unwrap_or(0) + 3)
+        .width_or_else(|| items.iter().map(|i| text_width(i)).max().unwrap_or(0) + 3)
         .max(2);
-    let height = coordinates
-        .height
-        .unwrap_or(items.len() + if indicators { 2 } else { 0 });
+    let height = coordinates.height_or_else(|| items.len() + if indicators { 2 } else { 0 });
     let row_width = width - 1;
     let selected_styles = if focused {
         bold(colored(

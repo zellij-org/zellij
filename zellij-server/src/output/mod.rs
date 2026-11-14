@@ -19,6 +19,7 @@ use crate::{
     },
     ClientId,
 };
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt::Write;
 use std::fs;
@@ -137,7 +138,7 @@ fn write_changed_styles(
     character_styles: &mut CharacterStyles,
     current_character_styles: CharacterStyles,
     chunk_changed_colors: Option<[Option<AnsiCode>; 256]>,
-    link_handler: Option<&std::cell::Ref<LinkHandler>>,
+    link_handler: Option<&LinkHandler>,
     osc8_hyperlinks: bool,
     vte_output: &mut String,
 ) -> Result<()> {
@@ -188,6 +189,8 @@ fn serialize_chunks_with_newlines(
         let chunk_changed_colors = character_chunk.changed_colors();
         let pane_default_fg = character_chunk.pane_default_fg;
         let pane_default_bg = character_chunk.pane_default_bg;
+        let chunk_link_handler = character_chunk.link_handler.as_ref().map(|h| h.borrow());
+        let link_handler = chunk_link_handler.as_deref().or(link_handler.as_deref());
         let mut character_styles = DEFAULT_STYLES.enable_styled_underlines(styled_underlines);
         if chunk_starts_a_line
             .get(chunk_index)
@@ -219,7 +222,7 @@ fn serialize_chunks_with_newlines(
                 &mut character_styles,
                 current_character_styles,
                 chunk_changed_colors,
-                link_handler.as_ref(),
+                link_handler,
                 osc8_hyperlinks,
                 &mut vte_output,
             )
@@ -311,6 +314,65 @@ fn residency_record(
     }
 }
 
+/// Cap on the raster bytes materialized (copied into records, written to
+/// shared media or encoded) for one frame. Distinct scaled variants of one
+/// image are each regenerated, so without a cap a single pane could make a
+/// frame retain many times the store quota. A placement over the cap is
+/// skipped and sent when its pane is next rendered.
+const MAX_FRAME_RASTER_BYTES: usize = 128 * 1024 * 1024;
+
+/// Transmitted host images that are no longer usable. A scaled variant that
+/// was evicted from the store stays valid on the host (it regenerates
+/// byte-identical bytes) as long as this frame or a live host placement,
+/// including one of a pane that is not rendered in this frame, still uses it.
+fn stale_transmitted_images(
+    chunks_by_pane: &HashMap<PaneId, Vec<KittyImageChunk>>,
+    rendered_panes: &HashSet<PaneId>,
+    kitty_image_store: &KittyImageStore,
+    host_state: &HostKittyState,
+) -> Vec<((InternalImageId, Option<ScaledImageKey>), u32)> {
+    let in_use: HashSet<(InternalImageId, Option<ScaledImageKey>)> = chunks_by_pane
+        .values()
+        .flat_map(|chunks| {
+            chunks
+                .iter()
+                .map(|chunk| (chunk.internal_image_id, chunk.scaled_image))
+        })
+        .chain(
+            host_state
+                .live_placements
+                .iter()
+                .filter(|(key, _)| !rendered_panes.contains(&key.pane_id))
+                .map(|(_, record)| record.image_key),
+        )
+        .collect();
+    host_state
+        .transmitted
+        .iter()
+        .filter(|(image_key, _)| match image_key.1 {
+            Some(key) => {
+                !kitty_image_store.has_scaled_variant(image_key.0, key)
+                    && (kitty_image_store.get(image_key.0).is_none() || !in_use.contains(image_key))
+            },
+            None => kitty_image_store.get(image_key.0).is_none(),
+        })
+        .map(|(image_key, host_id)| (*image_key, *host_id))
+        .collect()
+}
+
+/// Account the RGBA bytes a transmission is about to materialize; refuses
+/// it when the frame would exceed `MAX_FRAME_RASTER_BYTES`.
+fn reserve_frame_raster_bytes(used: &mut usize, width: usize, height: usize) -> bool {
+    let bytes = width.saturating_mul(height).saturating_mul(4);
+    match used.checked_add(bytes) {
+        Some(total) if total <= MAX_FRAME_RASTER_BYTES => {
+            *used = total;
+            true
+        },
+        _ => false,
+    }
+}
+
 fn flatten_kitty_frame(kitty_input: KittyFrameInput, out: &mut Vec<GraphicsRecord>) {
     let KittyFrameInput {
         mut chunks_by_pane,
@@ -332,15 +394,12 @@ fn flatten_kitty_frame(kitty_input: KittyFrameInput, out: &mut Vec<GraphicsRecor
         out.push(GraphicsRecord::Clear);
     }
 
-    let mut freed: Vec<((InternalImageId, Option<ScaledImageKey>), u32)> = host_state
-        .transmitted
-        .iter()
-        .filter(|(image_key, _)| match image_key.1 {
-            Some(key) => kitty_image_store.scaled_variant(image_key.0, key).is_none(),
-            None => kitty_image_store.get(image_key.0).is_none(),
-        })
-        .map(|(image_key, host_id)| (*image_key, *host_id))
-        .collect();
+    let mut freed = stale_transmitted_images(
+        &chunks_by_pane,
+        &rendered_panes,
+        kitty_image_store,
+        host_state,
+    );
     freed.sort_by_key(|(_, host_id)| *host_id);
     for (image_key, host_id) in freed {
         out.push(GraphicsRecord::DeleteImage { id: host_id as u64 });
@@ -370,6 +429,7 @@ fn flatten_kitty_frame(kitty_input: KittyFrameInput, out: &mut Vec<GraphicsRecor
         }
     }
 
+    let mut frame_raster_bytes = 0usize;
     let mut rendered: Vec<PaneId> = rendered_panes.into_iter().collect();
     rendered.sort_by_key(|pane_id| pane_sort_key(*pane_id));
     for pane_id in rendered {
@@ -415,7 +475,7 @@ fn flatten_kitty_frame(kitty_input: KittyFrameInput, out: &mut Vec<GraphicsRecor
                 None => {
                     let raster_dims = match variant {
                         Some(key) => kitty_image_store
-                            .scaled_variant(chunk.internal_image_id, key)
+                            .get(chunk.internal_image_id)
                             .map(|_| key.size),
                         None => kitty_image_store
                             .get(chunk.internal_image_id)
@@ -424,13 +484,15 @@ fn flatten_kitty_frame(kitty_input: KittyFrameInput, out: &mut Vec<GraphicsRecor
                     let Some((width, height)) = raster_dims else {
                         continue;
                     };
+                    if !reserve_frame_raster_bytes(&mut frame_raster_bytes, width, height) {
+                        continue;
+                    }
                     let rgba = match variant {
-                        Some(cells) => {
-                            kitty_image_store.scaled_variant(chunk.internal_image_id, cells)
-                        },
+                        Some(cells) => kitty_image_store
+                            .scaled_variant_or_regenerate(chunk.internal_image_id, cells),
                         None => kitty_image_store
                             .get(chunk.internal_image_id)
-                            .map(|image| image.rgba.as_slice()),
+                            .map(|image| Cow::Borrowed(image.rgba.as_slice())),
                     };
                     let Some(rgba) = rgba else {
                         continue;
@@ -440,7 +502,7 @@ fn flatten_kitty_frame(kitty_input: KittyFrameInput, out: &mut Vec<GraphicsRecor
                         host_image_id,
                         width,
                         height,
-                        rgba,
+                        rgba.as_ref(),
                         image_key,
                         local_media,
                         host_state,
@@ -587,7 +649,10 @@ fn wire_cell(
             chunk_changed_colors,
         )),
         underline_color: if styled_underlines {
-            wire_color(styles.underline_color)
+            wire_color(substitute_changed_color(
+                styles.underline_color,
+                chunk_changed_colors,
+            ))
         } else {
             WireColor::Default.pack()
         },
@@ -671,6 +736,13 @@ fn flatten_chunks(
         let pane_default_fg = character_chunk.pane_default_fg;
         let pane_default_bg = character_chunk.pane_default_bg;
         let styles_vary_by_column = !character_chunk.selection_and_colors().is_empty();
+        // Link ids are only meaningful in the table that issued them, so a
+        // chunk from a pane resolves its links through that pane's own
+        // handler; chunks without one use the output's handler.
+        let chunk_link_handler = character_chunk.link_handler.as_ref().map(|h| h.borrow());
+        let link_handler: Option<&LinkHandler> = chunk_link_handler
+            .as_deref()
+            .or_else(|| links.as_deref().map(|links| links.handler));
         let mut last_styled: Option<(RcCharacterStyles, WireCell)> = None;
         run.clear();
         let cells = &character_chunk.terminal_characters;
@@ -734,7 +806,9 @@ fn flatten_chunks(
                     },
                 };
                 if let Some(links) = links.as_deref_mut() {
-                    if let Some(uri) = links.handler.uri(t_character.styles.link_anchor) {
+                    if let Some(uri) =
+                        link_handler.and_then(|h| h.uri(t_character.styles.link_anchor))
+                    {
                         cell.link = links.table.id_for(uri, cols, rows);
                     }
                 }
@@ -796,7 +870,7 @@ fn flatten_chunks(
                     cell.attrs |= ATTR_GROUP_CONTINUE;
                 }
                 if let Some(links) = links.as_deref_mut() {
-                    if let Some(uri) = links.handler.uri(member.styles.link_anchor) {
+                    if let Some(uri) = link_handler.and_then(|h| h.uri(member.styles.link_anchor)) {
                         cell.link = links.table.id_for(uri, cols, rows);
                     }
                 }
@@ -852,7 +926,7 @@ fn flatten_chunks(
                         pixel_y: sixel_chunk.sixel_image_pixel_y as u32,
                         pixel_width: sixel_chunk.sixel_image_pixel_width as u32,
                         pixel_height: sixel_chunk.sixel_image_pixel_height as u32,
-                        payload: serialized_sixel_image.into_bytes(),
+                        payload: serialized_sixel_image.as_bytes().to_vec(),
                     });
                 }
             }
@@ -896,7 +970,27 @@ fn push_decimal(out: &mut String, value: usize) {
 //                 so the rest of the row lands where our grid says regardless of how far
 //                 the host's cursor actually moved
 // Plain text, where every width agrees, is written as is so ordinary output costs nothing
-// extra.
+// extra. A cluster wider than the columns the unit was stored in is not sent at all:
+// `prepare_unit` replaces it with one space per allocated column. Repositioning the cursor
+// cannot take back a glyph the host has already painted into the next cell.
+/// A clipped plain wide glyph is stored in one column, but the host draws the
+/// original character at its Unicode width. Emit one space per stored column
+/// instead of that character.
+fn plain_host_cell_is_narrower_than_glyph(cell: &TerminalCharacter) -> bool {
+    cell.width_was_clipped() || cell.width() < cell.natural_width()
+}
+
+fn push_plain_host_cell(out: &mut String, cell: &TerminalCharacter) {
+    if plain_host_cell_is_narrower_than_glyph(cell) {
+        let columns = cell.width().max(1);
+        for _ in 0..columns {
+            out.push(' ');
+        }
+    } else {
+        out.push(cell.character);
+    }
+}
+
 fn write_unit_text(
     vte_output: &mut String,
     unit: &[TerminalCharacter],
@@ -948,6 +1042,8 @@ fn serialize_chunks(
         let chunk_changed_colors = character_chunk.changed_colors();
         let pane_default_fg = character_chunk.pane_default_fg;
         let pane_default_bg = character_chunk.pane_default_bg;
+        let chunk_link_handler = character_chunk.link_handler.as_ref().map(|h| h.borrow());
+        let link_handler = chunk_link_handler.as_deref().or(link_handler.as_deref());
         let mut character_styles = DEFAULT_STYLES.enable_styled_underlines(styled_underlines);
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output)
             .with_context(err_context)?;
@@ -988,7 +1084,7 @@ fn serialize_chunks(
                     &mut character_styles,
                     current_character_styles,
                     chunk_changed_colors,
-                    link_handler.as_ref(),
+                    link_handler,
                     osc8_hyperlinks,
                     &mut vte_output,
                 )
@@ -1002,7 +1098,7 @@ fn serialize_chunks(
                     )
                     .with_context(err_context)?;
                 } else {
-                    vte_output.push(t_character.character);
+                    push_plain_host_cell(&mut vte_output, t_character);
                 }
                 chunk_width += t_character.width();
             }
@@ -1048,13 +1144,13 @@ fn serialize_chunks(
                 &mut character_styles,
                 current_character_styles,
                 chunk_changed_colors,
-                link_handler.as_ref(),
+                link_handler,
                 osc8_hyperlinks,
                 &mut vte_output,
             )
             .with_context(err_context)?;
             if unit_end == index + 1 && !t_character.has_attached() {
-                vte_output.push(t_character.character);
+                push_plain_host_cell(&mut vte_output, t_character);
             } else {
                 write_unit_text(&mut vte_output, unit, unit_columns, chunk_width)
                     .with_context(err_context)?;
@@ -1313,15 +1409,12 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
         }
         host_state.transmitted.clear();
     }
-    let mut freed: Vec<((InternalImageId, Option<ScaledImageKey>), u32)> = host_state
-        .transmitted
-        .iter()
-        .filter(|(image_key, _)| match image_key.1 {
-            Some(key) => kitty_image_store.scaled_variant(image_key.0, key).is_none(),
-            None => kitty_image_store.get(image_key.0).is_none(),
-        })
-        .map(|(image_key, host_id)| (*image_key, *host_id))
-        .collect();
+    let mut freed = stale_transmitted_images(
+        &chunks_by_pane,
+        &rendered_panes,
+        kitty_image_store,
+        host_state,
+    );
     freed.sort_by_key(|(_, host_id)| *host_id);
     for (image_key, host_id) in freed {
         write!(out, "\u{1b}_Ga=d,q=2,d=I,i={}\u{1b}\\", host_id).context(err_context)?;
@@ -1351,6 +1444,7 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
             host_state.live_placements.remove(&key);
         }
     }
+    let mut frame_raster_bytes = 0usize;
     let mut rendered: Vec<PaneId> = rendered_panes.into_iter().collect();
     rendered.sort_by_key(|pane_id| pane_sort_key(*pane_id));
     for pane_id in rendered {
@@ -1396,12 +1490,9 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
                 Some(host_image_id) => *host_image_id,
                 None => {
                     let raster_dims = match variant {
-                        Some(key) => {
-                            match kitty_image_store.scaled_variant(chunk.internal_image_id, key) {
-                                Some(_) => Some(key.size),
-                                None => None,
-                            }
-                        },
+                        Some(key) => kitty_image_store
+                            .get(chunk.internal_image_id)
+                            .map(|_| key.size),
                         None => kitty_image_store
                             .get(chunk.internal_image_id)
                             .map(|image| (image.width as usize, image.height as usize)),
@@ -1410,16 +1501,18 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
                         Some(dims) => dims,
                         None => continue,
                     };
+                    if !reserve_frame_raster_bytes(&mut frame_raster_bytes, width, height) {
+                        continue;
+                    }
                     let host_image_id = host_state.next_host_image_id;
                     let mut emitted = false;
                     if local_media {
                         let rgba = match variant {
-                            Some(cells) => {
-                                kitty_image_store.scaled_variant(chunk.internal_image_id, cells)
-                            },
+                            Some(cells) => kitty_image_store
+                                .scaled_variant_or_regenerate(chunk.internal_image_id, cells),
                             None => kitty_image_store
                                 .get(chunk.internal_image_id)
-                                .map(|image| image.rgba.as_slice()),
+                                .map(|image| Cow::Borrowed(image.rgba.as_slice())),
                         };
                         if let Some(rgba) = rgba {
                             emitted = emit_kitty_local_media(
@@ -1427,7 +1520,7 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
                                 host_image_id,
                                 width,
                                 height,
-                                rgba,
+                                rgba.as_ref(),
                                 image_key,
                                 host_state,
                             )?;
@@ -1447,7 +1540,7 @@ fn serialize_kitty_frame(kitty_input: KittyFrameInput) -> Result<String> {
                             host_image_id,
                             width,
                             height,
-                            &b64,
+                            b64.as_ref(),
                             compressed,
                         )?;
                     }
@@ -2901,6 +2994,9 @@ impl FloatingPanesStack {
         k_chunk: &KittyImageChunk,
         character_cell_size: &SizeInPixels,
     ) -> Vec<KittyImageChunk> {
+        if character_cell_size.width == 0 || character_cell_size.height == 0 {
+            return vec![*k_chunk];
+        }
         let rounded_kitty_image_pixel_height =
             if k_chunk.source_px_height % character_cell_size.height > 0 {
                 let modulus = k_chunk.source_px_height % character_cell_size.height;
@@ -3082,10 +3178,7 @@ impl FloatingPanesStack {
                 // may have straddled that edge, so erase before drawing (see `serialize_chunks`).
                 c_chunk.erase_first = true;
                 return Ok(None);
-            } else if pane_left_edge >= c_chunk_left_side
-                && pane_left_edge >= c_chunk_left_side
-                && pane_right_edge >= c_chunk_right_side
-            {
+            } else if pane_left_edge >= c_chunk_left_side && pane_right_edge >= c_chunk_right_side {
                 // pane covers chunk partially to the right
                 c_chunk.retain_by_width(pane_left_edge - c_chunk_left_side);
                 return Ok(None);
@@ -3105,6 +3198,7 @@ impl FloatingPanesStack {
                 left_chunk.pane_default_bg = c_chunk.pane_default_bg;
                 left_chunk.changed_colors = c_chunk.changed_colors;
                 left_chunk.may_have_groups = c_chunk.may_have_groups;
+                left_chunk.link_handler = c_chunk.link_handler.clone();
                 // The left part starts where the original chunk started, so it needs erasing
                 // only if the original did.
                 left_chunk.erase_first = c_chunk.erase_first;
@@ -3128,6 +3222,9 @@ impl FloatingPanesStack {
         s_chunk: &SixelImageChunk,
         character_cell_size: &SizeInPixels,
     ) -> Vec<SixelImageChunk> {
+        if character_cell_size.width == 0 || character_cell_size.height == 0 {
+            return vec![*s_chunk];
+        }
         // round these up to the nearest cell edge
         let rounded_sixel_image_pixel_height =
             if s_chunk.sixel_image_pixel_height % character_cell_size.height > 0 {
@@ -3354,6 +3451,10 @@ pub struct CharacterChunk {
     pub pane_default_bg: Option<AnsiCode>,
     selection_and_colors: Vec<HighlightSelection>,
     pub row_shift: Option<RowShift>,
+    /// The handler that issued the link ids in `terminal_characters`, when
+    /// the chunk comes from a pane that owns one. Ids resolve through it
+    /// regardless of which tab the pane is displayed in.
+    pub link_handler: Option<Rc<RefCell<LinkHandler>>>,
 }
 
 pub use crate::panes::kitty_graphics::grid_state::KittyImageChunk;

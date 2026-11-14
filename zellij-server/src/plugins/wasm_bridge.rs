@@ -1,3 +1,4 @@
+use super::pinned_executor::{on_plugin_executor, JobClass, PluginWork};
 use super::{PinnedExecutor, PluginId, PluginInstruction};
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::pipes::{
@@ -6,19 +7,20 @@ use crate::plugins::pipes::{
 };
 use crate::plugins::plugin_loader::PluginLoader;
 use crate::plugins::plugin_map::{
-    AtomicEvent, PluginEnv, PluginMap, PluginMetadata, RemovedPluginAssets, RunningPlugin,
-    SharedSlot, Subscriptions,
+    next_plugin_generation, AtomicEvent, PluginEnv, PluginMap, PluginMetadata, RemovedPluginAssets,
+    RunningPlugin, SharedSlot, Subscriptions,
 };
 use crate::plugins::prompt_requests::{PromptAction, PromptCaller, PromptRequests};
 use crate::plugins::settings_entries::{PluginIdentity, SettingsEntries};
 use crate::plugins::shared::{
-    add_slot_job, apply_events_job, apply_pipes_job, client_job, host_settings_job,
-    remove_slot_job, resize_job, start_instance_job, visibility_job, wasm_module_exports_function,
+    add_slot_job, apply_events_job, apply_pipes_job, client_job, host_settings_job, lock_running,
+    remove_slot_job, resize_job, revoke_client_loads, revoke_plugin_loads, start_instance_job,
+    take_client_data_dirs, try_lock_running, visibility_job, wasm_module_exports_function,
     SharedKey, SHARED_MARKER_EXPORT, SHARED_PIPE_CLIENT,
 };
 use zellij_utils::prompt::PromptResult;
 
-use crate::plugins::plugin_worker::MessageToWorker;
+use crate::plugins::plugin_worker::{try_send_to_worker, MessageToWorker};
 use crate::plugins::shared::SharedEventBatchEntry;
 use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
@@ -50,9 +52,12 @@ use prost::Message;
 
 use crate::panes::PaneId;
 use crate::{
-    background_jobs::BackgroundJob, route::NotificationEnd, screen::ScreenInstruction,
-    thread_bus::ThreadSenders, ui::loading_indication::LoadingIndication, ClientId,
-    ServerInstruction,
+    background_jobs::BackgroundJob,
+    route::NotificationEnd,
+    screen::{ClosePaneSource, ScreenInstruction},
+    thread_bus::ThreadSenders,
+    ui::loading_indication::LoadingIndication,
+    ClientId, ServerInstruction,
 };
 use zellij_utils::{
     data::{Event, EventContext, EventType, SlotKind},
@@ -79,12 +84,638 @@ fn make_plugin_url_path_safe(url: String) -> String {
 
 #[derive(Debug, Clone)]
 pub enum EventOrPipeMessage {
-    Event(Event, Option<ClientId>),
+    Event(Event, Option<ClientId>, Option<u64>),
     PipeMessage(PipeMessage, Option<ClientId>),
+}
+
+const MAX_PENDING_CACHE_ENTRIES_PER_PLUGIN: usize = 1024;
+const MAX_PENDING_CACHE_BYTES_PER_PLUGIN: usize = 4 * 1024 * 1024;
+const MAX_PENDING_CACHE_ENTRIES_TOTAL: usize = 4096;
+const MAX_PENDING_CACHE_BYTES_TOTAL: usize = 16 * 1024 * 1024;
+const PENDING_CACHE_ENTRY_OVERHEAD: usize = 64;
+pub(crate) const MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN: usize = 256;
+pub(crate) const MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN: usize = 1024 * 1024;
+
+/// Worker posts a plugin has already reserved but the management thread has
+/// not taken off the mailbox. The cache caps apply only after that dequeue.
+struct AdmittedWorkerPosts {
+    per_plugin: BTreeMap<PluginId, (usize, usize)>,
+}
+
+impl AdmittedWorkerPosts {
+    const fn new() -> Self {
+        Self {
+            per_plugin: BTreeMap::new(),
+        }
+    }
+
+    fn try_admit(&mut self, plugin_id: PluginId, bytes: usize) -> bool {
+        let (count, used) = self.per_plugin.get(&plugin_id).copied().unwrap_or((0, 0));
+        if count >= MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN
+            || used.saturating_add(bytes) > MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN
+        {
+            return false;
+        }
+        self.per_plugin
+            .insert(plugin_id, (count + 1, used.saturating_add(bytes)));
+        true
+    }
+
+    fn release(&mut self, plugin_id: PluginId, count: usize, bytes: usize) {
+        let Some((have_count, have_bytes)) = self.per_plugin.get_mut(&plugin_id) else {
+            return;
+        };
+        *have_count = have_count.saturating_sub(count);
+        *have_bytes = have_bytes.saturating_sub(bytes);
+        if *have_count == 0 && *have_bytes == 0 {
+            self.per_plugin.remove(&plugin_id);
+        }
+    }
+}
+
+static ADMITTED_WORKER_POSTS: Mutex<AdmittedWorkerPosts> = Mutex::new(AdmittedWorkerPosts::new());
+
+fn worker_message_bytes(worker_name: &str, message: &str, payload: &str) -> usize {
+    worker_name
+        .len()
+        .saturating_add(message.len())
+        .saturating_add(payload.len())
+}
+
+pub(crate) fn reject_full_worker_message_cache(plugin_id: PluginId) {
+    log::warn!(
+        "Dropping worker message cached for plugin {}: pending cache is full",
+        plugin_id
+    );
+}
+
+/// Reserve one plugin-originated worker post before it is enqueued. Control
+/// and retirement instructions are not sent through here, so a full budget
+/// does not stop them.
+pub(crate) fn try_admit_plugin_worker_post(
+    plugin_id: PluginId,
+    worker_name: &str,
+    message: &str,
+    payload: &str,
+) -> bool {
+    let bytes = worker_message_bytes(worker_name, message, payload);
+    let admitted = ADMITTED_WORKER_POSTS
+        .lock()
+        .unwrap()
+        .try_admit(plugin_id, bytes);
+    if !admitted {
+        reject_full_worker_message_cache(plugin_id);
+    }
+    admitted
+}
+
+pub(crate) fn release_admitted_worker_posts(
+    plugin_id: PluginId,
+    worker_name: &str,
+    messages: &[(String, String)],
+) {
+    let bytes = messages.iter().fold(0usize, |total, (message, payload)| {
+        total.saturating_add(worker_message_bytes(worker_name, message, payload))
+    });
+    ADMITTED_WORKER_POSTS
+        .lock()
+        .unwrap()
+        .release(plugin_id, messages.len(), bytes);
+}
+
+#[derive(Debug, Default)]
+struct PendingPluginMessages {
+    entries: Vec<EventOrPipeMessage>,
+    bytes: usize,
+    /// A one-shot event could not be stored. The entries are not a complete history.
+    incomplete: bool,
+}
+
+#[derive(Debug, Default)]
+struct PendingPluginCaches {
+    plugins: HashMap<PluginId, PendingPluginMessages>,
+    total_entries: usize,
+    total_bytes: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum PendingCacheRejection {
+    EntryLimit,
+    ByteLimit,
+}
+
+impl PendingPluginCaches {
+    fn insert_empty(&mut self, plugin_id: PluginId) {
+        self.plugins.entry(plugin_id).or_default();
+    }
+
+    fn contains(&self, plugin_id: &PluginId) -> bool {
+        self.plugins.contains_key(plugin_id)
+    }
+
+    fn take(&mut self, plugin_id: &PluginId) -> Option<PendingPluginMessages> {
+        let messages = self.plugins.remove(plugin_id)?;
+        self.total_entries = self.total_entries.saturating_sub(messages.entries.len());
+        self.total_bytes = self.total_bytes.saturating_sub(messages.bytes);
+        Some(messages)
+    }
+
+    fn plugin_ids(&self) -> Vec<PluginId> {
+        self.plugins.keys().copied().collect()
+    }
+
+    fn try_push(
+        &mut self,
+        plugin_id: PluginId,
+        entry: EventOrPipeMessage,
+        front: bool,
+    ) -> Result<(), PendingCacheRejection> {
+        if !self.plugins.contains_key(&plugin_id) {
+            return Ok(());
+        }
+        let bytes =
+            event_or_pipe_message_bytes(&entry).saturating_add(PENDING_CACHE_ENTRY_OVERHEAD);
+        // A newer full-state snapshot replaces the cached view of that same
+        // kind only when it is at the queue boundary the new snapshot belongs
+        // to. Replacing an earlier snapshot across an ordered event would move
+        // newer state before that event, so in that case append the snapshot
+        // after the intervening entries instead.
+        if let Some(replaced) = self.try_replace_snapshot(plugin_id, &entry, front) {
+            return replaced;
+        }
+        let over_entries = {
+            let cache = &self.plugins[&plugin_id];
+            cache.entries.len() >= MAX_PENDING_CACHE_ENTRIES_PER_PLUGIN
+                || self.total_entries >= MAX_PENDING_CACHE_ENTRIES_TOTAL
+        };
+        let over_bytes = {
+            let cache = &self.plugins[&plugin_id];
+            cache.bytes.saturating_add(bytes) > MAX_PENDING_CACHE_BYTES_PER_PLUGIN
+                || self.total_bytes.saturating_add(bytes) > MAX_PENDING_CACHE_BYTES_TOTAL
+        };
+        if over_entries || over_bytes {
+            if snapshot_key(&entry).is_none() {
+                self.plugins.get_mut(&plugin_id).unwrap().incomplete = true;
+            }
+            return Err(if over_entries {
+                PendingCacheRejection::EntryLimit
+            } else {
+                PendingCacheRejection::ByteLimit
+            });
+        }
+        let cache = self.plugins.get_mut(&plugin_id).unwrap();
+        if front {
+            cache.entries.insert(0, entry);
+        } else {
+            cache.entries.push(entry);
+        }
+        cache.bytes = cache.bytes.saturating_add(bytes);
+        self.total_entries = self.total_entries.saturating_add(1);
+        self.total_bytes = self.total_bytes.saturating_add(bytes);
+        Ok(())
+    }
+
+    fn try_replace_snapshot(
+        &mut self,
+        plugin_id: PluginId,
+        entry: &EventOrPipeMessage,
+        front: bool,
+    ) -> Option<Result<(), PendingCacheRejection>> {
+        let cache = self.plugins.get(&plugin_id)?;
+        let index = cache
+            .entries
+            .iter()
+            .rposition(|existing| same_snapshot(existing, entry))?;
+        let at_boundary = if front {
+            index == 0
+        } else {
+            index + 1 == cache.entries.len()
+        };
+        if !at_boundary {
+            return None;
+        }
+        // Keep every pane already pending. Fall back to replacing the whole
+        // snapshot only when the cached event cannot be updated in place.
+        let entry = coalesce_pane_render_delta(&self.plugins[&plugin_id].entries[index], entry)
+            .unwrap_or_else(|| entry.clone());
+        let bytes =
+            event_or_pipe_message_bytes(&entry).saturating_add(PENDING_CACHE_ENTRY_OVERHEAD);
+        let old_bytes = event_or_pipe_message_bytes(&self.plugins[&plugin_id].entries[index])
+            .saturating_add(PENDING_CACHE_ENTRY_OVERHEAD);
+        let next_plugin_bytes = self.plugins[&plugin_id]
+            .bytes
+            .saturating_sub(old_bytes)
+            .saturating_add(bytes);
+        let next_total_bytes = self
+            .total_bytes
+            .saturating_sub(old_bytes)
+            .saturating_add(bytes);
+        if next_plugin_bytes > MAX_PENDING_CACHE_BYTES_PER_PLUGIN
+            || next_total_bytes > MAX_PENDING_CACHE_BYTES_TOTAL
+        {
+            return Some(Err(PendingCacheRejection::ByteLimit));
+        }
+        let cache = self.plugins.get_mut(&plugin_id).unwrap();
+        cache.entries[index] = entry;
+        cache.bytes = next_plugin_bytes;
+        self.total_bytes = next_total_bytes;
+        Some(Ok(()))
+    }
+
+    #[cfg(test)]
+    fn insert_entries_for_test(&mut self, plugin_id: PluginId, entries: Vec<EventOrPipeMessage>) {
+        let bytes = entries
+            .iter()
+            .map(event_or_pipe_message_bytes)
+            .fold(0usize, usize::saturating_add);
+        self.total_entries = self.total_entries.saturating_add(entries.len());
+        self.total_bytes = self.total_bytes.saturating_add(bytes);
+        self.plugins.insert(
+            plugin_id,
+            PendingPluginMessages {
+                entries,
+                bytes,
+                incomplete: false,
+            },
+        );
+    }
+
+    #[cfg(test)]
+    fn entry_count(&self, plugin_id: PluginId) -> usize {
+        self.plugins
+            .get(&plugin_id)
+            .map(|cache| cache.entries.len())
+            .unwrap_or(0)
+    }
+
+    #[cfg(test)]
+    fn cached_bytes(&self, plugin_id: PluginId) -> usize {
+        self.plugins
+            .get(&plugin_id)
+            .map(|cache| cache.bytes)
+            .unwrap_or(0)
+    }
+
+    #[cfg(test)]
+    fn is_incomplete(&self, plugin_id: PluginId) -> bool {
+        self.plugins
+            .get(&plugin_id)
+            .map(|cache| cache.incomplete)
+            .unwrap_or(false)
+    }
+
+    #[cfg(test)]
+    fn cached_events(&self, plugin_id: PluginId) -> Vec<EventOrPipeMessage> {
+        self.plugins
+            .get(&plugin_id)
+            .map(|cache| cache.entries.clone())
+            .unwrap_or_default()
+    }
+}
+
+/// Kinds of event that are a full view of one piece of state. A later event of
+/// the same kind, for the same client, replaces the cached one. Pane render
+/// reports are the exception: the producer sends only changed panes, so a later
+/// report replaces those panes and keeps every other pane already pending.
+/// One-shot facts (permission results, keys, command results, pipes) are not snapshots.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SnapshotKind {
+    Mode,
+    Tab,
+    Pane,
+    Session,
+    Clients,
+    WebServer,
+    HostTerminalTheme,
+    GlobalAttention,
+    SessionHistory,
+    Layouts,
+    KeybindPresets,
+    PluginSettings,
+    InitialKeybinds,
+    SessionCounts,
+    FolderSessions,
+    SessionSuggestions,
+    HintText,
+    PluginConfiguration,
+    PaneRenderReport,
+    SoftKeyboard,
+    Visible,
+}
+
+fn coalescible_snapshot_kind(event: &Event) -> Option<SnapshotKind> {
+    Some(match event {
+        Event::ModeUpdate(_) => SnapshotKind::Mode,
+        Event::TabUpdate(_) => SnapshotKind::Tab,
+        Event::PaneUpdate(_) => SnapshotKind::Pane,
+        Event::SessionUpdate(..) => SnapshotKind::Session,
+        Event::ListClients(_) => SnapshotKind::Clients,
+        Event::WebServerStatus(_) => SnapshotKind::WebServer,
+        Event::HostTerminalThemeChanged(_) => SnapshotKind::HostTerminalTheme,
+        Event::GlobalAttentionUpdate(_) => SnapshotKind::GlobalAttention,
+        Event::SessionHistoryUpdate(_) => SnapshotKind::SessionHistory,
+        Event::AvailableLayoutInfo(..) => SnapshotKind::Layouts,
+        Event::AvailableKeybindPresets(..) => SnapshotKind::KeybindPresets,
+        Event::PluginSettingsEntries(_) => SnapshotKind::PluginSettings,
+        Event::InitialKeybinds(_) => SnapshotKind::InitialKeybinds,
+        Event::SessionCountsUpdate(_) => SnapshotKind::SessionCounts,
+        Event::FolderSessionsUpdate(_) => SnapshotKind::FolderSessions,
+        Event::SessionSuggestions(_) => SnapshotKind::SessionSuggestions,
+        Event::HintText(_) => SnapshotKind::HintText,
+        Event::PluginConfigurationChanged(_) => SnapshotKind::PluginConfiguration,
+        Event::PaneRenderReport(_) => SnapshotKind::PaneRenderReport,
+        Event::SoftKeyboardVisibilityChanged(_) => SnapshotKind::SoftKeyboard,
+        Event::Visible(_) => SnapshotKind::Visible,
+        _ => return None,
+    })
+}
+
+fn snapshot_key(entry: &EventOrPipeMessage) -> Option<(SnapshotKind, Option<ClientId>)> {
+    let EventOrPipeMessage::Event(event, client_id, _) = entry else {
+        return None;
+    };
+    Some((coalescible_snapshot_kind(event)?, *client_id))
+}
+
+fn same_snapshot(left: &EventOrPipeMessage, right: &EventOrPipeMessage) -> bool {
+    match (snapshot_key(left), snapshot_key(right)) {
+        (Some(left_key), Some(right_key)) => left_key == right_key,
+        _ => false,
+    }
+}
+
+/// Fold `incoming` pane deltas into the cached report. The same pane is
+/// replaced; a different pane is kept. Returns None when the cached event is
+/// not a pane report, or its client or marker differs, so the caller must
+/// replace the whole snapshot instead of inventing a full-screen view.
+fn coalesce_pane_render_delta(
+    existing: &EventOrPipeMessage,
+    incoming: &EventOrPipeMessage,
+) -> Option<EventOrPipeMessage> {
+    let EventOrPipeMessage::Event(
+        Event::PaneRenderReport(existing_panes),
+        existing_client,
+        existing_marker,
+    ) = existing
+    else {
+        return None;
+    };
+    let EventOrPipeMessage::Event(
+        Event::PaneRenderReport(incoming_panes),
+        incoming_client,
+        incoming_marker,
+    ) = incoming
+    else {
+        return None;
+    };
+    if existing_client != incoming_client || existing_marker != incoming_marker {
+        return None;
+    }
+    let mut panes = existing_panes.clone();
+    for (pane_id, contents) in incoming_panes {
+        panes.insert(*pane_id, contents.clone());
+    }
+    Some(EventOrPipeMessage::Event(
+        Event::PaneRenderReport(panes),
+        *existing_client,
+        *existing_marker,
+    ))
+}
+
+const REPLACEABLE_RESIZE: u64 = 1;
+const REPLACEABLE_HOST_DIR: u64 = 2;
+const REPLACEABLE_SHARED_SETTINGS: u64 = 3;
+const REPLACEABLE_PLUGIN_SETTINGS: u64 = 4;
+const REPLACEABLE_VISIBILITY: u64 = 5;
+const REPLACEABLE_KIND_SHIFT: u64 = 56;
+const REPLACEABLE_GENERATION_SHIFT: u64 = 32;
+const REPLACEABLE_GENERATION_MASK: u64 = 0x00FF_FFFF;
+const REPLACEABLE_DESTINATION_MASK: u64 = u32::MAX as u64;
+
+/// Replaceable work coalesces only when operation, destination and generation
+/// all match. The destination is a client for per-client instances and a slot
+/// for shared instances.
+fn replaceable_key(kind: u64, destination: u32, generation: u64) -> u64 {
+    ((kind & 0xFF) << REPLACEABLE_KIND_SHIFT)
+        | ((generation & REPLACEABLE_GENERATION_MASK) << REPLACEABLE_GENERATION_SHIFT)
+        | (destination as u64 & REPLACEABLE_DESTINATION_MASK)
+}
+
+fn replaceable_host_dir_key(client_id: ClientId, generation: u64) -> u64 {
+    replaceable_key(REPLACEABLE_HOST_DIR, client_id, generation)
+}
+
+fn replaceable_resize_key(destination: u32, generation: u64) -> u64 {
+    replaceable_key(REPLACEABLE_RESIZE, destination, generation)
+}
+
+fn replaceable_plugin_settings_key(client_id: ClientId, generation: u64) -> u64 {
+    replaceable_key(REPLACEABLE_PLUGIN_SETTINGS, client_id, generation)
+}
+
+fn replaceable_shared_settings_key(generation: u64) -> u64 {
+    replaceable_key(REPLACEABLE_SHARED_SETTINGS, 0, generation)
+}
+
+fn replaceable_visibility_key(generation: u64) -> u64 {
+    replaceable_key(REPLACEABLE_VISIBILITY, 0, generation)
+}
+
+fn string_map_bytes(map: &BTreeMap<String, String>) -> usize {
+    map.iter()
+        .map(|(key, value)| key.len().saturating_add(value.len()).saturating_add(48))
+        .fold(0usize, usize::saturating_add)
+}
+
+fn pane_contents_bytes(contents: &PaneContents) -> usize {
+    contents
+        .lines_above_viewport
+        .iter()
+        .chain(contents.lines_below_viewport.iter())
+        .chain(contents.viewport.iter())
+        .map(|line| line.len().saturating_add(32))
+        .fold(std::mem::size_of::<PaneContents>(), usize::saturating_add)
+}
+
+fn pane_render_report_bytes(panes: &HashMap<zellij_utils::data::PaneId, PaneContents>) -> usize {
+    panes.values().map(pane_contents_bytes).fold(
+        std::mem::size_of::<PaneRenderReport>(),
+        usize::saturating_add,
+    )
+}
+
+fn keybinds_vec_bytes(keybinds: &KeybindsVec) -> usize {
+    keybinds
+        .iter()
+        .map(|(_, bindings)| {
+            bindings
+                .iter()
+                .map(|(_, actions)| {
+                    std::mem::size_of::<((), Vec<()>)>()
+                        .saturating_add(actions.len().saturating_mul(96))
+                })
+                .fold(0usize, usize::saturating_add)
+        })
+        .fold(std::mem::size_of::<KeybindsVec>(), usize::saturating_add)
+}
+
+fn event_payload_bytes(event: &Event) -> usize {
+    let extra = match event {
+        Event::TabUpdate(tabs) => tabs
+            .iter()
+            .map(|tab| tab.name.len().saturating_add(256))
+            .fold(0usize, usize::saturating_add),
+        Event::PaneUpdate(manifest) => manifest
+            .panes
+            .values()
+            .flatten()
+            .map(|pane| pane.title.len().saturating_add(192))
+            .fold(0usize, usize::saturating_add),
+        Event::CustomMessage(message, payload) => message.len().saturating_add(payload.len()),
+        Event::FileSystemCreate(entries)
+        | Event::FileSystemRead(entries)
+        | Event::FileSystemUpdate(entries)
+        | Event::FileSystemUpdateIncomplete(entries)
+        | Event::FileSystemDelete(entries) => entries
+            .iter()
+            .map(|(path, _)| path.as_os_str().len().saturating_add(64))
+            .fold(0usize, usize::saturating_add),
+        Event::SessionUpdate(sessions, resurrectable) => sessions
+            .iter()
+            .map(session_info_payload_bytes)
+            .chain(
+                resurrectable
+                    .iter()
+                    .map(|(name, _)| name.len().saturating_add(64)),
+            )
+            .fold(0usize, usize::saturating_add),
+        Event::RunCommandResult(_, stdout, stderr, context) => stdout
+            .len()
+            .saturating_add(stderr.len())
+            .saturating_add(string_map_bytes(context)),
+        Event::WebRequestResult(_, headers, body, context) => body
+            .len()
+            .saturating_add(string_map_bytes(headers))
+            .saturating_add(string_map_bytes(context)),
+        Event::ListClients(clients) => clients.len().saturating_mul(256),
+        Event::PastedText(text) => text.len(),
+        Event::HostFolderChanged(path) | Event::CwdChanged(_, path, _) => path.as_os_str().len(),
+        Event::FailedToChangeHostFolder(error) | Event::FailedToWriteConfigToDisk(error) => {
+            error.as_ref().map(|error| error.len()).unwrap_or(0)
+        },
+        Event::CommandChanged(_, command, _, _) => command
+            .iter()
+            .map(|part| part.len().saturating_add(16))
+            .fold(0usize, usize::saturating_add),
+        Event::PaneRenderReport(report) => pane_render_report_bytes(report),
+        Event::ActionComplete(_, _, context) => string_map_bytes(context),
+        Event::AvailableLayoutInfo(layouts, errors) => layouts
+            .iter()
+            .map(|layout| layout.name().len().saturating_add(64))
+            .chain(
+                errors
+                    .iter()
+                    .map(|error| error.layout_name.len().saturating_add(256)),
+            )
+            .fold(0usize, usize::saturating_add),
+        Event::PluginConfigurationChanged(configuration) => string_map_bytes(configuration),
+        Event::HighlightClicked {
+            pattern,
+            matched_string,
+            context,
+            ..
+        } => pattern
+            .len()
+            .saturating_add(matched_string.len())
+            .saturating_add(string_map_bytes(context)),
+        Event::InitialKeybinds(keybinds) => keybinds_vec_bytes(keybinds),
+        Event::HintText(hints) => hints
+            .values()
+            .map(|hint| {
+                hint.text
+                    .len()
+                    .saturating_add(hint.indices.iter().map(Vec::len).sum())
+            })
+            .fold(0usize, usize::saturating_add),
+        Event::ContextMenu(_, entries) => entries.len().saturating_mul(256),
+        Event::AvailableKeybindPresets(presets, errors) => presets
+            .iter()
+            .map(|preset| preset.name.len().saturating_add(128))
+            .chain(
+                errors
+                    .iter()
+                    .map(|error| error.error.len().saturating_add(128)),
+            )
+            .fold(0usize, usize::saturating_add),
+        Event::NestedSessionModeUpdate { session_path, .. } => session_path
+            .iter()
+            .map(|part| part.len().saturating_add(16))
+            .fold(0usize, usize::saturating_add),
+        _ => 0,
+    };
+    std::mem::size_of::<Event>().saturating_add(extra)
+}
+
+fn session_info_payload_bytes(session: &zellij_utils::data::SessionInfo) -> usize {
+    let tabs = session
+        .tabs
+        .iter()
+        .map(|tab| tab.name.len().saturating_add(256))
+        .fold(0usize, usize::saturating_add);
+    let panes = session
+        .panes
+        .panes
+        .values()
+        .flatten()
+        .map(|pane| {
+            pane.title
+                .len()
+                .saturating_add(pane.terminal_command.as_deref().map_or(0, str::len))
+                .saturating_add(256)
+        })
+        .fold(0usize, usize::saturating_add);
+    let plugins = session
+        .plugins
+        .values()
+        .map(|plugin| {
+            plugin
+                .location
+                .len()
+                .saturating_add(string_map_bytes(&plugin.configuration))
+                .saturating_add(256)
+        })
+        .fold(0usize, usize::saturating_add);
+    session
+        .name
+        .len()
+        .saturating_add(tabs)
+        .saturating_add(panes)
+        .saturating_add(plugins)
+        .saturating_add(512)
+}
+
+fn pipe_message_payload_bytes(message: &PipeMessage) -> usize {
+    let source_bytes = match &message.source {
+        PipeSource::Cli(pipe_id) => pipe_id.len(),
+        _ => 0,
+    };
+    source_bytes
+        .saturating_add(message.name.len())
+        .saturating_add(message.payload.as_ref().map(String::len).unwrap_or(0))
+        .saturating_add(string_map_bytes(&message.args))
+        .saturating_add(std::mem::size_of::<PipeMessage>())
+}
+
+fn event_or_pipe_message_bytes(entry: &EventOrPipeMessage) -> usize {
+    match entry {
+        EventOrPipeMessage::Event(event, _, _) => event_payload_bytes(event),
+        EventOrPipeMessage::PipeMessage(message, _) => pipe_message_payload_bytes(message),
+    }
 }
 
 pub const PIPE_POPUP_CLOSED_EXIT_CODE: i32 = 1;
 pub const PIPE_POPUP_ERROR_EXIT_CODE: i32 = 2;
+pub const PIPE_PLUGIN_UNAVAILABLE_EXIT_CODE: i32 = 1;
 
 #[derive(Debug, Clone)]
 enum PipePopup {
@@ -152,6 +783,10 @@ pub struct LoadingContext {
     pub keybinds: SharedKeybinds,
     pub plugin_dir: PathBuf,
     pub size: Size,
+    // Bytes resolved once for shared/non-shared classification and reused for the load.
+    pub wasm_bytes: Option<Vec<u8>>,
+    // identifies the instance this context creates, see `Quarantine`
+    pub generation: u64,
 }
 
 impl LoadingContext {
@@ -168,7 +803,10 @@ impl LoadingContext {
             .join(make_plugin_url_path_safe(
                 Url::from(&plugin_config.location).to_string(),
             ))
-            .join(format!("{}-{}", plugin_id, client_id));
+            .join(format!(
+                "{}-{}-{}",
+                wasm_bridge.session_scope, plugin_id, client_id
+            ));
         let plugin_own_cache_dir = ZELLIJ_CACHE_DIR
             .join(make_plugin_url_path_safe(
                 Url::from(&plugin_config.location).to_string(),
@@ -201,14 +839,21 @@ impl LoadingContext {
             tab_index,
             plugin_dir: wasm_bridge.plugin_dir.clone(),
             size,
+            wasm_bytes: None,
+            generation: next_plugin_generation(),
         }
     }
     pub fn update_plugin_path(&mut self, new_path: PathBuf) {
         self.plugin_config.path = new_path;
+        self.wasm_bytes = None;
     }
 }
 
-pub type PluginCache = Arc<Mutex<HashMap<PathBuf, Module>>>;
+/// Compiled modules keyed by path and bound to the content digest
+/// seen at compile time. A cached entry is served only when the file's
+/// current digest matches — editing the wasm on disk invalidates the
+/// cache entry instead of silently running a stale module.
+pub type PluginCache = Arc<Mutex<HashMap<PathBuf, (String, Module)>>>;
 
 const SLOT_ADDED_WAIT_MS: u64 = 200;
 
@@ -241,6 +886,49 @@ fn shared_event_context(
     EventContext { slot_id, client_id }
 }
 
+/// Plugins stopped after a fatal callback error.
+///
+/// Fatal reports are applied asynchronously, so a report can outlive the instance that sent it.
+/// Each load gets a generation number from `next_plugin_generation`, and starting a new
+/// generation for a plugin id (a reload) discards reports from older ones.
+#[derive(Debug, Default)]
+pub(crate) struct Quarantine {
+    quarantined: HashSet<PluginId>,
+    // the oldest generation still allowed to report for each plugin id
+    oldest_current_generation: HashMap<PluginId, u64>,
+}
+
+impl Quarantine {
+    pub fn contains(&self, plugin_id: &PluginId) -> bool {
+        self.quarantined.contains(plugin_id)
+    }
+    pub fn ids(&self) -> &HashSet<PluginId> {
+        &self.quarantined
+    }
+    /// A new instance is replacing the plugin: release it and ignore the old instance's reports.
+    pub fn begin_generation(&mut self, plugin_id: PluginId, generation: u64) {
+        self.quarantined.remove(&plugin_id);
+        self.oldest_current_generation.insert(plugin_id, generation);
+    }
+    /// Returns true if the plugin was newly quarantined; reports from superseded instances and
+    /// repeated reports return false.
+    /// Whether a plugin was reloaded after the instance of `generation` was created.
+    pub fn is_superseded(&self, plugin_id: PluginId, generation: u64) -> bool {
+        self.oldest_current_generation
+            .get(&plugin_id)
+            .map(|oldest| generation < *oldest)
+            .unwrap_or(false)
+    }
+    pub fn report_fatal(&mut self, plugin_id: PluginId, generation: u64) -> bool {
+        !self.is_superseded(plugin_id, generation) && self.quarantined.insert(plugin_id)
+    }
+    /// The plugin id is gone for good.
+    pub fn forget(&mut self, plugin_id: PluginId) {
+        self.quarantined.remove(&plugin_id);
+        self.oldest_current_generation.remove(&plugin_id);
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct HoverGenerations {
     latest: HashMap<(PluginId, ClientId), u64>,
@@ -257,6 +945,15 @@ impl HoverGenerations {
             .get(&(plugin_id, client_id))
             .map(|latest| *latest != generation)
             .unwrap_or(false)
+    }
+    /// Drop all generation state for a retired plugin — the map is
+    /// otherwise retained for the session's lifetime.
+    pub fn evict_plugin(&mut self, plugin_id: PluginId) {
+        self.latest.retain(|(pid, _), _| *pid != plugin_id);
+    }
+    /// Drop all generation state for a disconnected client.
+    pub fn evict_client(&mut self, client_id: ClientId) {
+        self.latest.retain(|(_, cid), _| *cid != client_id);
     }
 }
 
@@ -278,10 +975,18 @@ pub struct WasmBridge {
     senders: ThreadSenders,
     plugin_dir: PathBuf,
     plugin_map: Arc<Mutex<PluginMap>>,
+    /// Same value as `plugin_map`'s session scope. Copied so teardown can
+    /// name this server without taking the map lock.
+    session_scope: u64,
     plugin_executor: Arc<PinnedExecutor>,
     next_plugin_id: PluginId,
     plugin_ids_waiting_for_permission_request: HashSet<PluginId>,
-    cached_events_for_pending_plugins: HashMap<PluginId, Vec<EventOrPipeMessage>>,
+    // plugins whose loader job has not yet published the instances of all connected clients
+    plugins_with_unfinished_load: HashSet<PluginId>,
+    // generation and module digest of each plugin's latest permission prompt
+    // plugin id -> (prompt id, generation, digest) of the prompt currently shown
+    permission_prompts: HashMap<PluginId, (u64, u64, String)>,
+    cached_events_for_pending_plugins: PendingPluginCaches,
     cached_resizes_for_pending_plugins: HashMap<PluginId, (usize, usize)>, // (rows, columns)
     cached_worker_messages: HashMap<PluginId, Vec<(ClientId, String, String, String)>>, // Vec<clientid,
     // worker_name,
@@ -289,9 +994,10 @@ pub struct WasmBridge {
     // payload>
     loading_plugins: HashSet<(PluginId, RunPlugin)>, // tracks loading plugins without handles
     plugins_to_unload_once_loaded: HashSet<PluginId>,
+    quarantine: Quarantine,
     pending_plugin_reloads: HashSet<RunPlugin>,
     path_to_default_shell: PathBuf,
-    watcher: Option<Debouncer<RecommendedWatcher, RecommendedCache>>,
+    watchers: HashMap<PluginId, (PathBuf, Debouncer<RecommendedWatcher, RecommendedCache>)>,
     zellij_cwd: PathBuf,
     session_env_vars: std::collections::BTreeMap<String, String>,
     default_shell: Option<TerminalAction>,
@@ -318,8 +1024,11 @@ pub struct WasmBridge {
     shared_instances: HashMap<PluginId, SharedInstanceInfo>,
     shared_keys: HashMap<SharedKey, PluginId>,
     shared_slot_owner: HashMap<PluginId, PluginId>,
-    shared_module_kinds: HashMap<String, bool>,
+
     settings_entries: SettingsEntries,
+    /// Generation captured by `set_timeout` or a load-scoped result, consumed by
+    /// the next `update_plugins`. One instruction is applied at a time.
+    scheduled_timer_generation: Option<u64>,
 }
 
 impl WasmBridge {
@@ -338,10 +1047,10 @@ impl WasmBridge {
         default_keybinds: SharedKeybinds,
     ) -> Self {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
+        let session_scope = plugin_map.lock().unwrap().session_scope();
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
-        let plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        let watcher = None;
+        let plugin_cache: PluginCache = Arc::new(Mutex::new(HashMap::new()));
+        let watchers = HashMap::new();
         let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
         let max_threads = num_cpus::get().max(4).min(16);
         let plugin_executor = Arc::new(PinnedExecutor::new(
@@ -357,16 +1066,20 @@ impl WasmBridge {
             senders,
             plugin_dir,
             plugin_map,
+            session_scope,
             plugin_executor,
             path_to_default_shell,
-            watcher,
+            watchers,
             next_plugin_id: 0,
-            cached_events_for_pending_plugins: HashMap::new(),
+            cached_events_for_pending_plugins: PendingPluginCaches::default(),
             plugin_ids_waiting_for_permission_request: HashSet::new(),
+            plugins_with_unfinished_load: HashSet::new(),
+            permission_prompts: HashMap::new(),
             cached_resizes_for_pending_plugins: HashMap::new(),
             cached_worker_messages: HashMap::new(),
             loading_plugins: HashSet::new(),
             plugins_to_unload_once_loaded: HashSet::new(),
+            quarantine: Quarantine::default(),
             pending_plugin_reloads: HashSet::new(),
             zellij_cwd,
             session_env_vars,
@@ -394,8 +1107,9 @@ impl WasmBridge {
             shared_instances: HashMap::new(),
             shared_keys: HashMap::new(),
             shared_slot_owner: HashMap::new(),
-            shared_module_kinds: HashMap::new(),
+
             settings_entries: SettingsEntries::default(),
+            scheduled_timer_generation: None,
         }
     }
     pub fn load_plugin(
@@ -437,6 +1151,7 @@ impl WasmBridge {
                 // if no client id was provided, try to use the first connected client
                 self.connected_clients
                     .lock()
+                    // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                     .unwrap()
                     .iter()
                     .next()
@@ -449,10 +1164,15 @@ impl WasmBridge {
                 "Plugins must have a client id, none was provided and none are connected"
             })?;
 
+        let preloaded_wasm_bytes = run.as_ref().and_then(|run| {
+            let canonical = canonical_run_plugin(run);
+            PluginConfig::from_run_plugin(&canonical)
+                .and_then(|plugin_config| self.plugin_wasm_bytes(&plugin_config))
+        });
         if let Some(run) = run {
             let run = canonical_run_plugin(run);
             if let Some(plugin_config) = PluginConfig::from_run_plugin(&run) {
-                if self.module_is_shared(&plugin_config, skip_cache) {
+                if Self::module_bytes_are_shared(preloaded_wasm_bytes.as_deref()) {
                     return self.load_shared_slot(
                         run,
                         plugin_config,
@@ -462,6 +1182,7 @@ impl WasmBridge {
                         skip_cache,
                         client_id,
                         is_background,
+                        preloaded_wasm_bytes,
                     );
                 }
             }
@@ -490,7 +1211,8 @@ impl WasmBridge {
                 let plugin_name = run.location.to_string();
 
                 self.cached_events_for_pending_plugins
-                    .insert(plugin_id, vec![]);
+                    .insert_empty(plugin_id);
+                self.plugins_with_unfinished_load.insert(plugin_id);
                 self.cached_resizes_for_pending_plugins
                     .insert(plugin_id, (size.rows, size.cols));
                 self.loading_plugins.insert((plugin_id, run.clone()));
@@ -512,6 +1234,7 @@ impl WasmBridge {
                     tab_index,
                     size,
                 );
+                loading_context.wasm_bytes = preloaded_wasm_bytes;
 
                 if needs_download {
                     let downloader = self.downloader.clone();
@@ -539,32 +1262,45 @@ impl WasmBridge {
                                         e,
                                         Some(client_id),
                                     );
+                                    let _ = senders.send_to_plugin(
+                                        PluginInstruction::ApplyCachedEvents {
+                                            plugin_ids: vec![plugin_id],
+                                            done_receiving_permissions: false,
+                                        },
+                                    );
                                     return;
                                 },
                             }
                         }
 
-                        plugin_executor.execute_plugin_load(
+                        let load_bytes = loading_context
+                            .wasm_bytes
+                            .as_ref()
+                            .map(Vec::len)
+                            .unwrap_or(0);
+                        let executor = plugin_executor.clone();
+                        let failure_indication = loading_indication.clone();
+                        if let Err(e) = plugin_executor.execute_plugin_load_with_payload(
                             plugin_id,
+                            load_bytes,
                             move |senders: ThreadSenders,
                                   plugin_map: Arc<Mutex<PluginMap>>,
                                   connected_clients: Arc<Mutex<Vec<ClientId>>>,
                                   plugin_cache: PluginCache,
                                   engine| {
-                                let mut plugin_map = plugin_map.lock().unwrap();
                                 match PluginLoader::new(
                                     skip_cache,
                                     loading_context,
                                     senders.clone(),
                                     engine.clone(),
                                     plugin_cache.clone(),
-                                    &mut plugin_map,
+                                    plugin_map.clone(),
                                     connected_clients.clone(),
                                 )
                                 .start_plugin()
                                 {
                                     Ok(_) => {
-                                        let plugin_list = plugin_map.list_plugins();
+                                        let plugin_list = plugin_map.lock().unwrap().list_plugins();
                                         handle_plugin_successful_loading(
                                             &senders,
                                             plugin_id,
@@ -579,6 +1315,9 @@ impl WasmBridge {
                                         Some(client_id),
                                     ),
                                 }
+                                if !plugin_map.lock().unwrap().has_instance_of(plugin_id) {
+                                    executor.unregister_plugin(plugin_id);
+                                }
 
                                 let _ =
                                     senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
@@ -586,34 +1325,54 @@ impl WasmBridge {
                                         done_receiving_permissions: false,
                                     });
                             },
-                        );
+                        ) {
+                            let mut failure_indication = failure_indication;
+                            handle_plugin_loading_failure(
+                                &senders,
+                                plugin_id,
+                                &mut failure_indication,
+                                e,
+                                Some(client_id),
+                            );
+                            let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
+                                plugin_ids: vec![plugin_id],
+                                done_receiving_permissions: false,
+                            });
+                        }
                     });
                 } else {
                     let _ = senders
                         .send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
                     let mut loading_indication = LoadingIndication::new(plugin_name.clone());
 
-                    self.plugin_executor.execute_plugin_load(
+                    let load_bytes = loading_context
+                        .wasm_bytes
+                        .as_ref()
+                        .map(Vec::len)
+                        .unwrap_or(0);
+                    let executor = self.plugin_executor.clone();
+                    let failure_indication = loading_indication.clone();
+                    if let Err(e) = self.plugin_executor.execute_plugin_load_with_payload(
                         plugin_id,
+                        load_bytes,
                         move |senders,
                               plugin_map,
                               connected_clients,
                               plugin_cache: PluginCache,
                               engine: Engine| {
-                            let mut plugin_map = plugin_map.lock().unwrap();
                             match PluginLoader::new(
                                 skip_cache,
                                 loading_context,
                                 senders.clone(),
                                 engine.clone(),
                                 plugin_cache.clone(),
-                                &mut plugin_map,
+                                plugin_map.clone(),
                                 connected_clients.clone(),
                             )
                             .start_plugin()
                             {
                                 Ok(_) => {
-                                    let plugin_list = plugin_map.list_plugins();
+                                    let plugin_list = plugin_map.lock().unwrap().list_plugins();
                                     handle_plugin_successful_loading(
                                         &senders,
                                         plugin_id,
@@ -628,13 +1387,32 @@ impl WasmBridge {
                                     Some(client_id),
                                 ),
                             }
+                            if !plugin_map.lock().unwrap().has_instance_of(plugin_id) {
+                                executor.unregister_plugin(plugin_id);
+                            }
 
                             let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
                                 plugin_ids: vec![plugin_id],
                                 done_receiving_permissions: false,
                             });
                         },
-                    );
+                    ) {
+                        let mut failure_indication = failure_indication;
+                        handle_plugin_loading_failure(
+                            &self.senders,
+                            plugin_id,
+                            &mut failure_indication,
+                            e,
+                            Some(client_id),
+                        );
+                        self.rollback_pending_plugin_load(plugin_id);
+                        self.next_plugin_id += 1;
+                        return Err(anyhow!(
+                            "failed to admit plugin load for {}: {}",
+                            plugin_id,
+                            e
+                        ));
+                    }
                 }
 
                 self.next_plugin_id += 1;
@@ -655,6 +1433,10 @@ impl WasmBridge {
     }
     pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
         info!("Bye from plugin {}", &pid);
+        self.quarantine.forget(pid);
+        self.permission_prompts.remove(&pid);
+        self.clear_pending_plugin_state(pid);
+        self.latest_hovers.lock().unwrap().evict_plugin(pid);
         let _ = self
             .senders
             .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(pid));
@@ -662,11 +1444,11 @@ impl WasmBridge {
             self.unload_shared_slot(pid);
             return Ok(());
         }
-        if self
+        let still_loading = self
             .loading_plugins
             .iter()
-            .any(|(loading_plugin_id, _)| *loading_plugin_id == pid)
-        {
+            .any(|(loading_plugin_id, _)| *loading_plugin_id == pid);
+        if still_loading {
             self.loading_plugins
                 .retain(|(loading_plugin_id, _)| *loading_plugin_id != pid);
             self.plugins_to_unload_once_loaded.insert(pid);
@@ -678,15 +1460,26 @@ impl WasmBridge {
             plugin_map.remove_plugins(pid).into_iter().collect()
         };
 
-        // Schedule cleanup on each plugin's pinned thread
+        // Schedule cleanup of every client instance as a single job on the
+        // plugin's pinned thread: all instances share one executor
+        // assignment, and submitting a separate unload per instance lets the
+        // first job's unregistration drop the remaining submissions before
+        // their cleanup runs.
+        let mut cleanups: Vec<PluginWork> = Vec::with_capacity(plugins_to_cleanup.len());
         for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in plugins_to_cleanup
         {
-            // Clear key intercepts if needed (on main thread is OK)
-            if running_plugin.lock().unwrap().intercepting_key_presses() {
-                let _ = self
-                    .senders
-                    .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(client_id));
-            }
+            // `load_alive` was cloned out at refuel. Clearing it does not take
+            // the execution mutex a guest callback may be holding.
+            let session_scope = self.session_scope;
+            revoke_client_loads(session_scope, plugin_id, client_id);
+            // Release this plugin's key intercept for the client without asking the
+            // RunningPlugin whether it has one. The screen only drops an intercept
+            // this plugin owns.
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
+                    plugin_id, client_id,
+                ));
             // Clear any regex highlights this plugin registered across all panes
             let _ = self
                 .senders
@@ -694,44 +1487,51 @@ impl WasmBridge {
 
             // Send worker exit messages
             for (_worker_name, worker_sender) in workers {
-                drop(worker_sender.send(MessageToWorker::Exit));
+                let _ = try_send_to_worker(&worker_sender, MessageToWorker::Exit);
             }
 
-            self.plugin_executor.execute_plugin_unload(
-                plugin_id,
+            cleanups.push(Box::new(
                 move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                    let subscriptions_guard = subscriptions.lock().unwrap();
-                    let needs_before_close = subscriptions_guard.contains(&EventType::BeforeClose);
-                    drop(subscriptions_guard); // Release lock before calling plugin
-
-                    if needs_before_close {
-                        let mut rp = running_plugin.lock().unwrap();
-                        match apply_before_close_event_to_plugin(
-                            plugin_id,
-                            client_id,
-                            &mut rp,
-                            senders.clone(),
-                        ) {
-                            Ok(()) => {},
-                            Err(e) => {
-                                log::error!("{:?}", e);
-                                let stringified_error = format!("{:?}", e).replace("\n", "\n\r");
-                                handle_plugin_crash(plugin_id, stringified_error, senders.clone());
-                            },
+                    let needs_before_close = subscriptions
+                        .lock()
+                        .unwrap()
+                        .contains(&EventType::BeforeClose);
+                    // BeforeClose is a guest callback. Run it only on the plugin
+                    // executor, and only if the execution mutex is free. Inline
+                    // host cleanup (queue rejection on the management thread)
+                    // must not enter the guest or wait for it.
+                    if on_plugin_executor() {
+                        if let Some(mut rp) = try_lock_running(&running_plugin) {
+                            if needs_before_close && !rp.is_quarantined() {
+                                match apply_before_close_event_to_plugin(
+                                    plugin_id,
+                                    client_id,
+                                    &mut rp,
+                                    senders.clone(),
+                                ) {
+                                    Ok(()) => {},
+                                    Err(e) => {
+                                        log::error!("{:?}", e);
+                                        let stringified_error =
+                                            format!("{:?}", e).replace("\n", "\n\r");
+                                        show_plugin_crash(
+                                            plugin_id,
+                                            stringified_error,
+                                            senders.clone(),
+                                        );
+                                    },
+                                }
+                            }
+                            rp.store.data().retire_load();
                         }
-                        let cache_dir = rp.store.data().plugin_own_data_dir.clone();
-                        drop(rp); // Release lock before filesystem operation
-                        if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
-                            log::error!("Failed to remove cache dir for plugin: {:?}", e);
+                    }
+                    let mut data_dirs = take_client_data_dirs(session_scope, plugin_id, client_id);
+                    if data_dirs.is_empty() {
+                        if let Some(rp) = try_lock_running(&running_plugin) {
+                            data_dirs.push(rp.store.data().plugin_own_data_dir.clone());
                         }
-                    } else {
-                        let cache_dir = running_plugin
-                            .lock()
-                            .unwrap()
-                            .store
-                            .data()
-                            .plugin_own_data_dir
-                            .clone();
+                    }
+                    for cache_dir in data_dirs {
                         if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
                             log::error!("Failed to remove cache dir for plugin: {:?}", e);
                         }
@@ -740,7 +1540,22 @@ impl WasmBridge {
                     drop(running_plugin);
                     drop(subscriptions);
                 },
-            );
+            ));
+        }
+        // A plugin whose initialization failed has no instance left to clean up, but it still
+        // holds its executor assignment; retire that too. One that is still loading is unloaded
+        // again once it has loaded, and retiring it now would drop that second unload.
+        if !cleanups.is_empty() || !still_loading {
+            if let Err(e) = self
+                .plugin_executor
+                .execute_plugin_unload_many(pid, cleanups)
+            {
+                log::warn!(
+                    "Plugin {} was retired without guest cleanup after admission failed: {}",
+                    pid,
+                    e
+                );
+            }
         }
 
         // Main thread cleanup
@@ -763,7 +1578,69 @@ impl WasmBridge {
 
         Ok(())
     }
-    pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
+    fn clear_pending_plugin_state(&mut self, plugin_id: PluginId) {
+        self.plugin_ids_waiting_for_permission_request
+            .remove(&plugin_id);
+        self.cached_events_for_pending_plugins.take(&plugin_id);
+        self.cached_resizes_for_pending_plugins.remove(&plugin_id);
+        self.cached_worker_messages.remove(&plugin_id);
+        if let Some((_, watcher)) = self.watchers.remove(&plugin_id) {
+            watcher.stop_nonblocking();
+        }
+    }
+    pub fn quarantine_plugin(&mut self, pid: PluginId, generation: u64) {
+        // A report can arrive after the plugin was unloaded; recording it would leave an entry
+        // for a dead id that nothing ever clears.
+        if self.plugin_map.lock().unwrap().metadata(pid).is_none()
+            && !self.shared_instances.contains_key(&pid)
+        {
+            return;
+        }
+        // A shared instance keeps executing under its own id, so a fatal error reported for
+        // one of its pane slots stops the whole instance, not just that slot.
+        if let Some(instance_id) = self.shared_slot_owner.get(&pid).copied() {
+            if self.quarantine.report_fatal(instance_id, generation) {
+                self.finish_quarantine(instance_id);
+            }
+        }
+        if !self.quarantine.report_fatal(pid, generation) {
+            return;
+        }
+        log::error!("Quarantining plugin {} after a fatal callback error", pid);
+        self.finish_quarantine(pid);
+    }
+    fn finish_quarantine(&mut self, plugin_id: PluginId) {
+        self.plugin_map.lock().unwrap().mark_quarantined(plugin_id);
+        if let Some(key) = self
+            .shared_instances
+            .get(&plugin_id)
+            .map(|info| info.key.clone())
+        {
+            if self.shared_keys.get(&key) == Some(&plugin_id) {
+                self.shared_keys.remove(&key);
+            }
+        }
+        // Quarantine discards the plugin's updates, so a key intercept it still holds would
+        // swallow the client's typing until the plugin is unloaded.
+        self.release_key_intercepts(plugin_id);
+        self.clear_pending_plugin_state(plugin_id);
+        let pipes_to_release = self.pending_pipes.unload_plugin(&plugin_id);
+        self.send_pipe_releases(pipes_to_release);
+        self.forget_pipe_popups_of_plugin(plugin_id);
+    }
+    /// Drop `plugin_id`'s key intercept for every connected client. The screen only drops an
+    /// intercept the plugin owns, so this is harmless for clients it never intercepted.
+    fn release_key_intercepts(&self, plugin_id: PluginId) {
+        let clients: Vec<ClientId> = self.connected_clients.lock().unwrap().clone();
+        for client_id in clients {
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
+                    plugin_id, client_id,
+                ));
+        }
+    }
+    fn prepare_plugin_reload(&mut self, plugin_id: PluginId) {
         let _ = self
             .senders
             .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(plugin_id));
@@ -771,26 +1648,43 @@ impl WasmBridge {
         self.apply_prompt_actions(prompt_actions);
         // the reloaded plugin registers again if it still wants an entry
         self.unregister_settings_entry(plugin_id);
+    }
+    /// Undo pending-load state when its lifecycle admission is rejected. No
+    /// loader closure ran, so nothing else will settle these entries.
+    fn rollback_pending_plugin_load(&mut self, plugin_id: PluginId) {
+        if let Some(cached) = self.cached_events_for_pending_plugins.take(&plugin_id) {
+            self.release_cached_cli_pipes_with_error(&cached.entries);
+        }
+        self.cached_resizes_for_pending_plugins.remove(&plugin_id);
+        self.cached_worker_messages.remove(&plugin_id);
+        self.plugins_with_unfinished_load.remove(&plugin_id);
+        self.plugin_ids_waiting_for_permission_request
+            .remove(&plugin_id);
+        self.permission_prompts.remove(&plugin_id);
+        self.plugins_to_unload_once_loaded.remove(&plugin_id);
+        self.loading_plugins
+            .retain(|(loading_plugin_id, _)| *loading_plugin_id != plugin_id);
+        let _ = self
+            .senders
+            .send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
+    }
+    pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
+        self.reload_plugin_with_id_and_bytes(plugin_id, None)
+    }
+    fn reload_plugin_with_id_and_bytes(
+        &mut self,
+        plugin_id: u32,
+        wasm_bytes: Option<Vec<u8>>,
+    ) -> Result<()> {
         if let Some(instance_id) = self.shared_instance_of(plugin_id) {
-            self.reload_shared_instance(instance_id);
+            self.prepare_plugin_reload(plugin_id);
+            self.reload_shared_instance_with_bytes(instance_id, wasm_bytes);
             return Ok(());
         }
         let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id).map(|r| r.clone()) else {
             log::error!("Failed to find plugin with id: {}", plugin_id);
             return Ok(());
         };
-
-        let (rows, columns) = self.size_of_plugin_id(plugin_id).unwrap_or((0, 0));
-        self.cached_events_for_pending_plugins
-            .insert(plugin_id, vec![]);
-        self.cached_resizes_for_pending_plugins
-            .insert(plugin_id, (rows, columns));
-
-        let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
-        self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
-        self.loading_plugins.insert((plugin_id, run_plugin.clone()));
-
-        let plugin_executor = self.plugin_executor.clone();
 
         let Some(first_client_id) = self.get_first_client_id() else {
             log::error!("No connected clients, cannot reload plugin.");
@@ -814,8 +1708,7 @@ impl WasmBridge {
         };
 
         let cwd = self.cwd_of_plugin_id(plugin_id);
-
-        let loading_context = LoadingContext::new(
+        let mut loading_context = LoadingContext::new(
             &self,
             cwd,
             plugin_config,
@@ -824,25 +1717,48 @@ impl WasmBridge {
             tab_index,
             size,
         );
+        loading_context.wasm_bytes = wasm_bytes;
+        let load_bytes = loading_context
+            .wasm_bytes
+            .as_ref()
+            .map(Vec::len)
+            .unwrap_or(0);
 
-        plugin_executor.execute_for_plugin(
-            plugin_id,
+        let reservation = self
+            .plugin_executor
+            .reserve_job(plugin_id, JobClass::Lifecycle, load_bytes)
+            .with_context(|| format!("failed to admit reload of plugin {plugin_id}"))?;
+
+        self.prepare_plugin_reload(plugin_id);
+        self.cached_events_for_pending_plugins
+            .insert_empty(plugin_id);
+        self.plugins_with_unfinished_load.insert(plugin_id);
+        self.cached_resizes_for_pending_plugins
+            .insert(plugin_id, (size.rows, size.cols));
+
+        let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
+        self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
+        self.loading_plugins.insert((plugin_id, run_plugin.clone()));
+        // reports from the instance being replaced must not quarantine its successor
+        self.quarantine
+            .begin_generation(plugin_id, loading_context.generation);
+
+        reservation.commit(Box::new(
             move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                 let skip_cache = true; // we want to explicitly reload the plugin
-                let mut plugin_map = plugin_map.lock().unwrap();
                 match PluginLoader::new(
                     skip_cache,
                     loading_context,
                     senders.clone(),
                     engine.clone(),
                     plugin_cache.clone(),
-                    &mut plugin_map,
+                    plugin_map.clone(),
                     connected_clients.clone(),
                 )
                 .start_plugin()
                 {
                     Ok(_) => {
-                        let plugin_list = plugin_map.list_plugins();
+                        let plugin_list = plugin_map.lock().unwrap().list_plugins();
                         handle_plugin_successful_loading(&senders, plugin_id, plugin_list);
                     },
                     Err(e) => handle_plugin_loading_failure(
@@ -858,23 +1774,23 @@ impl WasmBridge {
                     done_receiving_permissions: false,
                 });
             },
-        );
+        ));
         Ok(())
     }
     pub fn reload_plugin(&mut self, run_plugin: &RunPlugin) -> Result<()> {
         let canonical = canonical_run_plugin(run_plugin);
-        if let Some(plugin_config) = PluginConfig::from_run_plugin(&canonical) {
-            if self.module_is_shared(&plugin_config, false) {
-                let instance_ids = self.shared_instances_matching(&canonical);
-                if instance_ids.is_empty() {
-                    return Err(ZellijError::PluginDoesNotExist)
-                        .with_context(|| format!("failed to reload {}", canonical.location));
-                }
-                for instance_id in instance_ids {
-                    self.reload_shared_instance(instance_id);
-                }
-                return Ok(());
+        let wasm_bytes = PluginConfig::from_run_plugin(&canonical)
+            .and_then(|plugin_config| self.plugin_wasm_bytes(&plugin_config));
+        if Self::module_bytes_are_shared(wasm_bytes.as_deref()) {
+            let instance_ids = self.shared_instances_matching(&canonical);
+            if instance_ids.is_empty() {
+                return Err(ZellijError::PluginDoesNotExist)
+                    .with_context(|| format!("failed to reload {}", canonical.location));
             }
+            for instance_id in instance_ids {
+                self.reload_shared_instance_with_bytes(instance_id, wasm_bytes.clone());
+            }
+            return Ok(());
         }
         if self.plugin_is_currently_being_loaded(&run_plugin.location) {
             self.pending_plugin_reloads.insert(run_plugin.clone());
@@ -884,7 +1800,7 @@ impl WasmBridge {
         let plugin_ids = self
             .all_plugin_ids_for_plugin_location(&run_plugin.location, &run_plugin.configuration)?;
         for plugin_id in &plugin_ids {
-            self.reload_plugin_with_id(*plugin_id)?;
+            self.reload_plugin_with_id_and_bytes(*plugin_id, wasm_bytes.clone())?;
         }
         Ok(())
     }
@@ -906,6 +1822,7 @@ impl WasmBridge {
             if self
                 .plugin_map
                 .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                 .unwrap()
                 .contains(plugin_id, client_id)
             {
@@ -916,22 +1833,6 @@ impl WasmBridge {
                 log::error!("Failed to find plugin with id: {}", plugin_id);
                 return Ok(());
             };
-
-            let (rows, columns) = self.size_of_plugin_id(plugin_id).unwrap_or((0, 0));
-            self.cached_events_for_pending_plugins
-                .insert(plugin_id, vec![]);
-            self.cached_resizes_for_pending_plugins
-                .insert(plugin_id, (rows, columns));
-
-            let loading_indication = LoadingIndication::new(run_plugin.location.to_string());
-            self.start_plugin_loading_indication_for_client(
-                plugin_id,
-                client_id,
-                &loading_indication,
-            );
-            self.loading_plugins.insert((plugin_id, run_plugin.clone()));
-
-            let plugin_executor = self.plugin_executor.clone();
 
             let Some(plugin_config) = self.plugin_config_of_plugin_id(plugin_id) else {
                 log::error!("Could not find running plugin with id: {}", plugin_id);
@@ -945,12 +1846,17 @@ impl WasmBridge {
                 );
                 return Ok(());
             };
+            let (rows, columns) = size;
             let size = Size {
-                rows: size.0,
-                cols: size.1,
+                rows,
+                cols: columns,
             };
 
             let cwd = self.cwd_of_plugin_id(plugin_id);
+
+            let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
+            let plugin_executor = self.plugin_executor.clone();
+            let loading_executor = plugin_executor.clone();
 
             let loading_context = LoadingContext::new(
                 &self,
@@ -962,18 +1868,41 @@ impl WasmBridge {
                 size,
             );
 
-            plugin_executor.execute_for_plugin(
+            let reservation = match plugin_executor.reserve_job(plugin_id, JobClass::Lifecycle, 0) {
+                Ok(reservation) => reservation,
+                Err(e) => {
+                    handle_plugin_loading_failure(
+                        &self.senders,
+                        plugin_id,
+                        &mut loading_indication,
+                        e,
+                        Some(client_id),
+                    );
+                    continue;
+                },
+            };
+            self.cached_events_for_pending_plugins
+                .insert_empty(plugin_id);
+            self.plugins_with_unfinished_load.insert(plugin_id);
+            self.cached_resizes_for_pending_plugins
+                .insert(plugin_id, (rows, columns));
+            self.start_plugin_loading_indication_for_client(
                 plugin_id,
+                client_id,
+                &loading_indication,
+            );
+            self.loading_plugins.insert((plugin_id, run_plugin.clone()));
+
+            reservation.commit(Box::new(
                 move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                     let skip_cache = false;
-                    let mut plugin_map = plugin_map.lock().unwrap();
                     match PluginLoader::new(
                         skip_cache,
                         loading_context,
                         senders.clone(),
                         engine.clone(),
                         plugin_cache.clone(),
-                        &mut plugin_map,
+                        plugin_map.clone(),
                         connected_clients.clone(),
                     )
                     .without_connected_clients()
@@ -991,11 +1920,24 @@ impl WasmBridge {
                             });
                         },
                         Err(e) => {
-                            log::error!("Failed to load plugin for new client: {}", e);
+                            handle_plugin_loading_failure(
+                                &senders,
+                                plugin_id,
+                                &mut loading_indication,
+                                e,
+                                Some(client_id),
+                            );
+                            if !plugin_map.lock().unwrap().has_instance_of(plugin_id) {
+                                loading_executor.unregister_plugin(plugin_id);
+                            }
+                            let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
+                                plugin_ids: vec![plugin_id],
+                                done_receiving_permissions: false,
+                            });
                         },
                     }
                 },
-            )
+            ));
         }
         Ok(())
     }
@@ -1010,12 +1952,23 @@ impl WasmBridge {
 
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .set_size(pid, new_rows, new_columns);
+        if self.quarantine.contains(&pid) {
+            return Ok(());
+        }
         if let Some(instance_id) = self.shared_slot_owner.get(&pid).copied() {
             let _s = shutdown_sender.clone();
-            self.plugin_executor.execute_for_plugin(
+            let generation = self
+                .shared_instances
+                .get(&instance_id)
+                .map(|info| info.loading_context.generation)
+                .unwrap_or(0);
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Replaceable(replaceable_resize_key(pid, generation)),
+                0,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let _s = _s;
                     resize_job(senders, plugin_map, instance_id, pid, new_rows, new_columns);
@@ -1027,6 +1980,7 @@ impl WasmBridge {
         let plugins_to_resize: Vec<(PluginId, ClientId, Arc<Mutex<RunningPlugin>>)> = self
             .plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins()
             .iter()
@@ -1039,66 +1993,129 @@ impl WasmBridge {
             .collect();
         for (plugin_id, client_id, running_plugin) in plugins_to_resize {
             if plugin_id == pid {
-                let event_id = running_plugin
-                    .lock()
-                    .unwrap()
-                    .next_event_id(AtomicEvent::Resize);
                 // Execute directly on pinned thread (no async I/O needed for resize/render)
-                self.plugin_executor.execute_for_plugin(plugin_id, {
-                    // let senders = self.senders.clone();
-                    let running_plugin = running_plugin.clone();
-                    let _s = shutdown_sender.clone();
-                    move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                        let mut running_plugin = running_plugin.lock().unwrap();
-                        let _s = _s; // guard to allow the task to complete before cleanup/shutdown
-                        if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
-                            let old_rows = running_plugin.rows;
-                            let old_columns = running_plugin.columns;
-                            running_plugin.rows = new_rows;
-                            running_plugin.columns = new_columns;
+                self.plugin_executor.execute_for_plugin_with(
+                    plugin_id,
+                    JobClass::Replaceable(replaceable_resize_key(client_id, 0)),
+                    0,
+                    {
+                        // let senders = self.senders.clone();
+                        let running_plugin = running_plugin.clone();
+                        let _s = shutdown_sender.clone();
+                        move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
+                            // Allocate the event id in the execution owner. Taking
+                            // the guest lock on the management thread here would let
+                            // a blocked callback stall unrelated plugin management.
+                            let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                            let captured = running_plugin;
+                            // The queued job captured the instance that was current
+                            // when the resize was accepted. A second load of this
+                            // client retires that instance before the job runs, and
+                            // the replacement is still at its 0×0 load size, so the
+                            // pane would otherwise stay blank. A replacement that
+                            // already has a size keeps it.
+                            let target = if lock_running(&captured).is_active() {
+                                captured
+                            } else {
+                                let Some(live) = plugin_map
+                                    .lock()
+                                    .unwrap()
+                                    .get_running_plugin(plugin_id, Some(client_id))
+                                else {
+                                    return;
+                                };
+                                if Arc::ptr_eq(&live, &captured) {
+                                    return;
+                                }
+                                let live_is_unsized = {
+                                    let live_plugin = lock_running(&live);
+                                    live_plugin.is_active()
+                                        && (live_plugin.rows == 0 || live_plugin.columns == 0)
+                                };
+                                if !live_is_unsized {
+                                    return;
+                                }
+                                live
+                            };
+                            let mut running_plugin = lock_running(&target);
+                            if !running_plugin.is_active() {
+                                return;
+                            }
+                            let event_id = running_plugin.next_event_id(AtomicEvent::Resize);
+                            if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
+                                let old_rows = running_plugin.rows;
+                                let old_columns = running_plugin.columns;
+                                running_plugin.rows = new_rows;
+                                running_plugin.columns = new_columns;
 
-                            // in the below conditional, we check if event_id == 0 so that we'll
-                            // make sure to always render on the first resize event
-                            if old_rows != new_rows || old_columns != new_columns || event_id == 0 {
-                                let rendered_bytes = running_plugin
-                                    .instance
-                                    .clone()
-                                    .get_typed_func::<(i32, i32), ()>(
+                                // in the below conditional, we check if event_id == 0 so that we'll
+                                // make sure to always render on the first resize event
+                                if old_rows != new_rows
+                                    || old_columns != new_columns
+                                    || event_id == 0
+                                {
+                                    crate::plugins::shared::refuel_for_callback(
                                         &mut running_plugin.store,
-                                        "render",
-                                    )
-                                    .and_then(|render| {
-                                        render.call(
+                                    );
+                                    let rendered_bytes = running_plugin
+                                        .instance
+                                        .clone()
+                                        .get_typed_func::<(i32, i32), ()>(
                                             &mut running_plugin.store,
-                                            (new_rows as i32, new_columns as i32),
+                                            "render",
                                         )
-                                    })
-                                    .map_err(|e| anyhow!(e))
-                                    .and_then(|_| {
-                                        wasi_read_string(running_plugin.store.data())
-                                            .map_err(|e| anyhow!(e))
-                                    })
-                                    .with_context(err_context);
-                                match rendered_bytes {
-                                    Ok(rendered_bytes) => {
-                                        let plugin_render_asset = PluginRenderAsset::new(
-                                            plugin_id,
-                                            client_id,
-                                            rendered_bytes.as_bytes().to_vec(),
-                                        )
-                                        .rendered_at(new_rows, new_columns);
-                                        senders
-                                            .send_to_screen(ScreenInstruction::PluginBytes(vec![
-                                                plugin_render_asset,
-                                            ]))
-                                            .unwrap();
-                                    },
-                                    Err(e) => log::error!("{}", e),
+                                        .and_then(|render| {
+                                            render.call(
+                                                &mut running_plugin.store,
+                                                (new_rows as i32, new_columns as i32),
+                                            )
+                                        })
+                                        .map_err(|e| anyhow!(e))
+                                        .and_then(|_| {
+                                            wasi_read_string(running_plugin.store.data())
+                                                .map_err(|e| anyhow!(e))
+                                        })
+                                        .with_context(err_context);
+                                    match rendered_bytes {
+                                        Ok(rendered_bytes) => {
+                                            let plugin_render_asset = PluginRenderAsset::new(
+                                                plugin_id,
+                                                client_id,
+                                                rendered_bytes.as_bytes().to_vec(),
+                                            )
+                                            .rendered_at(new_rows, new_columns);
+                                            // Best-effort: screen disconnect during teardown must
+                                            // not panic the plugin worker.
+                                            let _ = senders.send_to_screen(
+                                                ScreenInstruction::PluginBytes(vec![
+                                                    plugin_render_asset,
+                                                ]),
+                                            );
+                                        },
+                                        Err(e) => {
+                                            log::error!("{}", e);
+                                            // Other render failures only skip this frame, as they
+                                            // always have; a plugin that exhausts its fuel while
+                                            // rendering is stopped like one that does so in an
+                                            // event handler.
+                                            // TODO(plugin-hardening): a render that traps for any
+                                            // other reason is still only logged here.
+                                            if crate::plugins::shared::is_out_of_fuel(&e) {
+                                                running_plugin.mark_quarantined();
+                                                handle_plugin_crash(
+                                                    plugin_id,
+                                                    running_plugin.store.data().generation,
+                                                    format!("{:?}", e).replace("\n", "\n\r"),
+                                                    senders.clone(),
+                                                );
+                                            }
+                                        },
+                                    }
                                 }
                             }
                         }
-                    }
-                });
+                    },
+                );
             }
         }
         for (plugin_id, current_size) in self.cached_resizes_for_pending_plugins.iter_mut() {
@@ -1109,11 +2126,15 @@ impl WasmBridge {
         }
         Ok(())
     }
+    pub fn set_scheduled_timer_generation(&mut self, generation: u64) {
+        self.scheduled_timer_generation = Some(generation);
+    }
     pub fn update_plugins(
         &mut self,
         mut updates: Vec<(Option<PluginId>, Option<ClientId>, Event)>,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
+        let scheduled_timer_generation = self.scheduled_timer_generation.take();
         for (plugin_id, client_id, event) in updates.iter() {
             if plugin_id.is_none() && client_id.is_none() {
                 if let Event::HostTerminalThemeChanged(mode) = event {
@@ -1121,7 +2142,11 @@ impl WasmBridge {
                 }
             }
         }
-        updates = self.dispatch_shared_updates(updates, shutdown_sender.clone());
+        updates = self.dispatch_shared_updates(
+            updates,
+            shutdown_sender.clone(),
+            scheduled_timer_generation,
+        );
         let plugins_to_update: Vec<(
             PluginId,
             ClientId,
@@ -1130,14 +2155,14 @@ impl WasmBridge {
         )> = self
             .plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins_and_subscriptions()
             .iter()
             .cloned()
             .filter(|(plugin_id, _client_id, _running_plugin, _subscriptions)| {
-                !&self
-                    .cached_events_for_pending_plugins
-                    .contains_key(&plugin_id)
+                !self.cached_events_for_pending_plugins.contains(plugin_id)
+                    && !self.quarantine.contains(plugin_id)
             })
             .collect();
 
@@ -1145,6 +2170,7 @@ impl WasmBridge {
         let plugin_executor = self.plugin_executor.clone();
         // let senders = self.senders.clone();
         for (pid, cid, event) in updates.clone().into_iter() {
+            let event_bytes = event_payload_bytes(&event);
             for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update {
                 let subs = subscriptions.lock().unwrap().clone();
                 // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
@@ -1157,6 +2183,7 @@ impl WasmBridge {
                             Some(
                                 self.latest_hovers
                                     .lock()
+                                    // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                                     .unwrap()
                                     .queue(*plugin_id, *client_id),
                             )
@@ -1165,60 +2192,75 @@ impl WasmBridge {
                         };
                         let latest_hovers = self.latest_hovers.clone();
                         // Execute directly on pinned thread (no async I/O needed for event processing)
-                        plugin_executor.execute_for_plugin(*plugin_id, {
-                            let plugin_id = *plugin_id;
-                            let client_id = *client_id;
-                            let running_plugin = running_plugin.clone();
-                            let event = event.clone();
-                            let _s = shutdown_sender.clone();
-                            let plugin_subs = subs.clone();
-                            move |senders,
-                                  _plugin_map,
-                                  _connected_clients,
-                                  _plugin_cache,
-                                  _engine| {
-                                let _s = _s; // guard to allow the task to complete before cleanup/shutdown
-                                if let Some(generation) = hover_generation {
-                                    let superseded = latest_hovers
-                                        .lock()
-                                        .unwrap()
-                                        .is_superseded(plugin_id, client_id, generation);
-                                    if superseded {
+                        plugin_executor.execute_for_plugin_with(
+                            *plugin_id,
+                            JobClass::Ordered,
+                            event_bytes,
+                            {
+                                let plugin_id = *plugin_id;
+                                let client_id = *client_id;
+                                let running_plugin = running_plugin.clone();
+                                let event = event.clone();
+                                let _s = shutdown_sender.clone();
+                                let plugin_subs = subs.clone();
+                                let scheduled_timer_generation = scheduled_timer_generation;
+                                move |senders,
+                                      _plugin_map,
+                                      _connected_clients,
+                                      _plugin_cache,
+                                      _engine| {
+                                    let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                                    if let Some(generation) = hover_generation {
+                                        let superseded = latest_hovers
+                                            .lock()
+                                            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+                                            .unwrap()
+                                            .is_superseded(plugin_id, client_id, generation);
+                                        if superseded {
+                                            return;
+                                        }
+                                    }
+                                    let mut running_plugin = lock_running(&running_plugin);
+                                    if !running_plugin.is_active() {
                                         return;
                                     }
-                                }
-                                let mut running_plugin = running_plugin.lock().unwrap();
-                                let mut plugin_render_assets = vec![];
-                                match apply_event_to_plugin(
-                                    plugin_id,
-                                    client_id,
-                                    &mut running_plugin,
-                                    &event,
-                                    &mut plugin_render_assets,
-                                    senders.clone(),
-                                    &plugin_subs,
-                                ) {
-                                    Ok(()) => {
-                                        let _ = senders.send_to_screen(
-                                            ScreenInstruction::PluginBytes(plugin_render_assets),
-                                        );
-                                    },
-                                    Err(e) => {
-                                        log::error!("{:?}", e);
+                                    let mut plugin_render_assets = vec![];
+                                    match apply_event_to_plugin(
+                                        plugin_id,
+                                        client_id,
+                                        &mut running_plugin,
+                                        &event,
+                                        &mut plugin_render_assets,
+                                        senders.clone(),
+                                        &plugin_subs,
+                                        scheduled_timer_generation,
+                                    ) {
+                                        Ok(()) => {
+                                            let _ = senders.send_to_screen(
+                                                ScreenInstruction::PluginBytes(
+                                                    plugin_render_assets,
+                                                ),
+                                            );
+                                        },
+                                        Err(e) => {
+                                            log::error!("{:?}", e);
 
-                                        // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
-                                        let stringified_error =
-                                            format!("{:?}", e).replace("\n", "\n\r");
+                                            // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
+                                            let stringified_error =
+                                                format!("{:?}", e).replace("\n", "\n\r");
 
-                                        handle_plugin_crash(
-                                            plugin_id,
-                                            stringified_error,
-                                            senders.clone(),
-                                        );
-                                    },
+                                            running_plugin.mark_quarantined();
+                                            handle_plugin_crash(
+                                                plugin_id,
+                                                running_plugin.store.data().generation,
+                                                stringified_error,
+                                                senders.clone(),
+                                            );
+                                        },
+                                    }
                                 }
-                            }
-                        });
+                            },
+                        );
                     }
                 }
             }
@@ -1226,10 +2268,33 @@ impl WasmBridge {
 
         // loop once more to update the cached events for the pending plugins (probably currently
         // being loaded, we'll send them these events when they load)
+        let quarantined_plugins = self.quarantine.ids().clone();
         for (pid, cid, event) in updates.drain(..) {
-            for (plugin_id, cached_events) in self.cached_events_for_pending_plugins.iter_mut() {
-                if pid.is_none() || pid.as_ref() == Some(plugin_id) {
-                    cached_events.push(EventOrPipeMessage::Event(event.clone(), cid));
+            let timer_generation = if event_is_scoped_to_load(&event) {
+                scheduled_timer_generation
+            } else {
+                None
+            };
+            let targets: Vec<PluginId> = self
+                .cached_events_for_pending_plugins
+                .plugin_ids()
+                .into_iter()
+                .filter(|plugin_id| {
+                    !quarantined_plugins.contains(plugin_id)
+                        && (pid.is_none() || pid.as_ref() == Some(plugin_id))
+                })
+                .collect();
+            for plugin_id in targets {
+                if let Err(rejection) = self.cached_events_for_pending_plugins.try_push(
+                    plugin_id,
+                    EventOrPipeMessage::Event(event.clone(), cid, timer_generation),
+                    false,
+                ) {
+                    log::warn!(
+                        "Dropping event cached for loading plugin {}: {:?}",
+                        plugin_id,
+                        rejection
+                    );
                 }
             }
         }
@@ -1237,36 +2302,27 @@ impl WasmBridge {
     }
     pub fn get_plugin_cwd(&self, plugin_id: PluginId, client_id: ClientId) -> Option<PathBuf> {
         if let Some(instance_id) = self.shared_instance_of(plugin_id) {
-            return self
+            let running_plugin = self
                 .plugin_map
                 .lock()
                 .unwrap()
                 .shared_running_plugin(instance_id)
-                .map(|(running_plugin, _)| {
-                    running_plugin
-                        .lock()
-                        .unwrap()
-                        .store
-                        .data()
-                        .plugin_cwd
-                        .clone()
-                });
+                .map(|(running_plugin, _)| running_plugin);
+            return running_plugin.and_then(|running_plugin| {
+                try_lock_running(&running_plugin)
+                    .map(|running_plugin| running_plugin.store.data().plugin_cwd.clone())
+            });
         }
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins()
             .iter()
             .find_map(|(p_id, c_id, running_plugin)| {
                 if p_id == &plugin_id && c_id == &client_id {
-                    let plugin_cwd = running_plugin
-                        .lock()
-                        .unwrap()
-                        .store
-                        .data()
-                        .plugin_cwd
-                        .clone();
-                    Some(plugin_cwd)
+                    try_lock_running(running_plugin)
+                        .map(|running_plugin| running_plugin.store.data().plugin_cwd.clone())
                 } else {
                     None
                 }
@@ -1278,28 +2334,40 @@ impl WasmBridge {
         plugin_id_to_update: PluginId,
         client_id_to_update: ClientId,
     ) -> Result<()> {
+        let host_dir_bytes = new_host_dir.as_os_str().len();
         if let Some(instance_id) = self.shared_instance_of(plugin_id_to_update) {
-            self.plugin_executor.execute_for_plugin(
+            let generation = self
+                .shared_instances
+                .get(&instance_id)
+                .map(|info| info.loading_context.generation)
+                .unwrap_or(0);
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Replaceable(replaceable_host_dir_key(client_id_to_update, generation)),
+                host_dir_bytes,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let running_plugin = plugin_map
                         .lock()
+                        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                         .unwrap()
                         .shared_running_plugin(instance_id)
                         .map(|(running_plugin, _)| running_plugin);
                     let Some(running_plugin) = running_plugin else {
                         return;
                     };
-                    let event = match change_host_dir_of_running_plugin(
-                        &mut running_plugin.lock().unwrap(),
-                        &new_host_dir,
-                    ) {
-                        Ok(()) => Event::HostFolderChanged(new_host_dir.clone()),
-                        Err(e) => {
-                            log::error!("Failed to change host folder: {}", e);
-                            Event::FailedToChangeHostFolder(Some(e.to_string()))
-                        },
-                    };
+                    let mut running_plugin = lock_running(&running_plugin);
+                    if !running_plugin.is_active() {
+                        return;
+                    }
+                    let event =
+                        match change_host_dir_of_running_plugin(&mut running_plugin, &new_host_dir)
+                        {
+                            Ok(()) => Event::HostFolderChanged(new_host_dir.clone()),
+                            Err(e) => {
+                                log::error!("Failed to change host folder: {}", e);
+                                Event::FailedToChangeHostFolder(Some(e.to_string()))
+                            },
+                        };
                     let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
                         Some(instance_id),
                         Some(client_id_to_update),
@@ -1317,6 +2385,7 @@ impl WasmBridge {
         )> = self
             .plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins_and_subscriptions()
             .iter()
@@ -1324,8 +2393,11 @@ impl WasmBridge {
             .collect();
 
         // Execute directly on pinned thread (no async I/O needed for directory check/change)
-        self.plugin_executor
-            .execute_for_plugin(plugin_id_to_update, {
+        self.plugin_executor.execute_for_plugin_with(
+            plugin_id_to_update,
+            JobClass::Replaceable(replaceable_host_dir_key(client_id_to_update, 0)),
+            host_dir_bytes,
+            {
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     match new_host_dir.try_exists() {
                         Ok(false) => {
@@ -1361,7 +2433,10 @@ impl WasmBridge {
                     for (plugin_id, client_id, running_plugin, _subscriptions) in &plugins_to_change
                     {
                         if plugin_id == &plugin_id_to_update && client_id == &client_id_to_update {
-                            let mut running_plugin = running_plugin.lock().unwrap();
+                            let mut running_plugin = lock_running(&running_plugin);
+                            if !running_plugin.is_active() {
+                                continue;
+                            }
                             let plugin_env = running_plugin.store.data_mut();
                             let stdin_pipe = plugin_env.stdin_pipe.clone();
                             let stdout_pipe = plugin_env.stdout_pipe.clone();
@@ -1372,6 +2447,7 @@ impl WasmBridge {
                                 &ZELLIJ_TMP_DIR,
                                 &plugin_env.plugin.location.to_string(),
                                 plugin_env.plugin_id,
+                                plugin_env.plugin.is_builtin(),
                                 stdin_pipe.clone(),
                                 stdout_pipe.clone(),
                             );
@@ -1382,6 +2458,7 @@ impl WasmBridge {
                                     drop(running_plugin);
                                     plugin_map
                                         .lock()
+                                        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                                         .unwrap()
                                         .set_cwd(*plugin_id, new_host_dir.clone());
 
@@ -1405,7 +2482,8 @@ impl WasmBridge {
                         }
                     }
                 }
-            });
+            },
+        );
         Ok(())
     }
     pub fn pipe_messages(
@@ -1424,14 +2502,14 @@ impl WasmBridge {
         )> = self
             .plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins_and_subscriptions()
             .iter()
             .cloned()
             .filter(|(plugin_id, _client_id, _running_plugin, _subscriptions)| {
-                !&self
-                    .cached_events_for_pending_plugins
-                    .contains_key(&plugin_id)
+                !self.cached_events_for_pending_plugins.contains(plugin_id)
+                    && !self.quarantine.contains(plugin_id)
             })
             .collect();
 
@@ -1445,77 +2523,115 @@ impl WasmBridge {
                     plugin_id,
                     client_id,
                 ) {
+                    let pipe_bytes = pipe_message_payload_bytes(&pipe_message);
                     if let PipeSource::Cli(pipe_id) = &pipe_message.source {
                         self.pending_pipes
                             .mark_being_processed(pipe_id, plugin_id, client_id);
                     }
                     // Execute directly on pinned thread (no async I/O needed for pipe message processing)
-                    plugin_executor.execute_for_plugin(*plugin_id, {
-                        let running_plugin = running_plugin.clone();
-                        let pipe_message = pipe_message.clone();
-                        let plugin_id = *plugin_id;
-                        let client_id = *client_id;
-                        let _s = shutdown_sender.clone();
-                        let notification_end = notification_end.take();
-                        move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                            let mut running_plugin = running_plugin.lock().unwrap();
-                            let mut plugin_render_assets = vec![];
-                            let _s = _s; // guard to allow the task to complete before cleanup/shutdown
-                            match apply_pipe_message_to_plugin(
-                                plugin_id,
-                                client_id,
-                                &mut running_plugin,
-                                &pipe_message,
-                                &mut plugin_render_assets,
-                                &senders,
-                            ) {
-                                Ok(()) => {
-                                    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(
-                                        plugin_render_assets,
-                                    ));
-                                },
-                                Err(e) => {
-                                    log::error!("{:?}", e);
+                    if let Err(e) = plugin_executor.try_execute_for_plugin(
+                        *plugin_id,
+                        JobClass::Ordered,
+                        pipe_bytes,
+                        {
+                            let running_plugin = running_plugin.clone();
+                            let pipe_message = pipe_message.clone();
+                            let plugin_id = *plugin_id;
+                            let client_id = *client_id;
+                            let _s = shutdown_sender.clone();
+                            let notification_end = notification_end.take();
+                            move |senders,
+                                  _plugin_map,
+                                  _connected_clients,
+                                  _plugin_cache,
+                                  _engine| {
+                                let mut running_plugin = lock_running(&running_plugin);
+                                if !running_plugin.is_active() {
+                                    return;
+                                }
+                                let mut plugin_render_assets = vec![];
+                                let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                                match apply_pipe_message_to_plugin(
+                                    plugin_id,
+                                    client_id,
+                                    &mut running_plugin,
+                                    &pipe_message,
+                                    &mut plugin_render_assets,
+                                    &senders,
+                                ) {
+                                    Ok(()) => {
+                                        let _ = senders.send_to_screen(
+                                            ScreenInstruction::PluginBytes(plugin_render_assets),
+                                        );
+                                    },
+                                    Err(e) => {
+                                        log::error!("{:?}", e);
 
-                                    // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-rust-using-windows
-                                    let stringified_error =
-                                        format!("{:?}", e).replace("\n", "\n\r");
+                                        // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-rust-using-windows
+                                        let stringified_error =
+                                            format!("{:?}", e).replace("\n", "\n\r");
 
-                                    handle_plugin_crash(
-                                        plugin_id,
-                                        stringified_error,
-                                        senders.clone(),
-                                    );
-                                },
+                                        running_plugin.mark_quarantined();
+                                        handle_plugin_crash(
+                                            plugin_id,
+                                            running_plugin.store.data().generation,
+                                            stringified_error,
+                                            senders.clone(),
+                                        );
+                                    },
+                                }
+                                if let Some(notification_end) = notification_end {
+                                    notification_end.complete_recorded();
+                                }
                             }
-                            drop(notification_end);
-                        }
-                    });
+                        },
+                    ) {
+                        log::warn!("Plugin executor rejected a pipe for {}: {}", plugin_id, e);
+                        self.release_cli_pipe_with_error(&pipe_message);
+                    }
                 }
             }
             let all_connected_clients: Vec<ClientId> = self
                 .connected_clients
                 .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                 .unwrap()
                 .iter()
                 .copied()
                 .collect();
-            for (plugin_id, cached_events) in self.cached_events_for_pending_plugins.iter_mut() {
-                if message_pid.is_none() || message_pid.as_ref() == Some(plugin_id) {
-                    cached_events.push(EventOrPipeMessage::PipeMessage(
-                        pipe_message.clone(),
-                        message_cid,
-                    ));
+            let cache_targets = self.cached_events_for_pending_plugins.plugin_ids();
+            for plugin_id in cache_targets {
+                if message_pid.is_none() || message_pid.as_ref() == Some(&plugin_id) {
+                    let accepted = self
+                        .cached_events_for_pending_plugins
+                        .try_push(
+                            plugin_id,
+                            EventOrPipeMessage::PipeMessage(pipe_message.clone(), message_cid),
+                            false,
+                        )
+                        .map_err(|rejection| {
+                            log::warn!(
+                                "Dropping first pipe message cached for loading plugin {}: {:?}",
+                                plugin_id,
+                                rejection
+                            );
+                            rejection
+                        })
+                        .is_ok();
+                    if !accepted {
+                        self.release_cli_pipe_with_error(&pipe_message);
+                        continue;
+                    }
                     if let PipeSource::Cli(pipe_id) = &pipe_message.source {
                         for client_id in &all_connected_clients {
                             if Self::message_is_directed_at_plugin(
                                 message_pid,
                                 message_cid,
-                                plugin_id,
+                                &plugin_id,
                                 client_id,
                             ) {
                                 self.pending_pipes
-                                    .mark_being_processed(pipe_id, plugin_id, client_id);
+                                    .mark_being_processed(pipe_id, &plugin_id, client_id);
                             }
                         }
                     }
@@ -1532,10 +2648,24 @@ impl WasmBridge {
     ) -> Result<()> {
         let mut applied_plugin_paths = HashSet::new();
         for plugin_id in plugin_ids {
+            if !done_receiving_permissions {
+                // the loader reports that it is done with the instances of all clients
+                self.plugins_with_unfinished_load.remove(&plugin_id);
+            } else if self.plugins_with_unfinished_load.contains(&plugin_id) {
+                // An answer that arrives while the loader is still publishing the instances of
+                // the other clients must not drain the cached events: the instances published
+                // later would never see them. The loader applies them when it is done.
+                self.plugin_ids_waiting_for_permission_request
+                    .remove(&plugin_id);
+                continue;
+            }
+            // A plugin that was unloaded while it was loading is only waiting for this call to
+            // be unloaded again; its pending permission request must not hold that back.
             if !done_receiving_permissions
                 && self
                     .plugin_ids_waiting_for_permission_request
                     .contains(&plugin_id)
+                && !self.plugins_to_unload_once_loaded.contains(&plugin_id)
             {
                 continue;
             }
@@ -1560,8 +2690,10 @@ impl WasmBridge {
         Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
+        self.latest_hovers.lock().unwrap().evict_client(client_id);
         self.connected_clients
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .retain(|c| c != &client_id);
         self.keybinds.remove(&client_id);
@@ -1599,11 +2731,16 @@ impl WasmBridge {
             return;
         }
         for ((plugin_id, client_id), (running_plugin, subscriptions, workers)) in instances {
-            if running_plugin.lock().unwrap().intercepting_key_presses() {
-                let _ = self
-                    .senders
-                    .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(client_id));
-            }
+            // Retire before async host work (timers) can deliver into a
+            // replacement instance that reused (plugin_id, client_id).
+            // The handle lives outside the execution mutex.
+            let session_scope = self.session_scope;
+            revoke_client_loads(session_scope, plugin_id, client_id);
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
+                    plugin_id, client_id,
+                ));
             let _ = self.senders.send_to_screen(
                 ScreenInstruction::UpdateBackgroundPluginSubscriptions(
                     plugin_id,
@@ -1613,25 +2750,28 @@ impl WasmBridge {
             );
 
             for (_worker_name, worker_sender) in workers {
-                drop(worker_sender.send(MessageToWorker::Exit));
+                let _ = try_send_to_worker(&worker_sender, MessageToWorker::Exit);
             }
 
-            self.plugin_executor.execute_for_plugin(plugin_id, {
+            // A full lifecycle queue must not drop directory cleanup.
+            self.plugin_executor.submit_lifecycle_or_run(
+                plugin_id,
                 move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                    let cache_dir = running_plugin
-                        .lock()
-                        .unwrap()
-                        .store
-                        .data()
-                        .plugin_own_data_dir
-                        .clone();
-                    if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
-                        log::error!("Failed to remove data dir for plugin instance: {:?}", e);
+                    let mut data_dirs = take_client_data_dirs(session_scope, plugin_id, client_id);
+                    if data_dirs.is_empty() {
+                        if let Some(rp) = try_lock_running(&running_plugin) {
+                            data_dirs.push(rp.store.data().plugin_own_data_dir.clone());
+                        }
+                    }
+                    for cache_dir in data_dirs {
+                        if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
+                            log::error!("Failed to remove data dir for plugin instance: {:?}", e);
+                        }
                     }
                     drop(running_plugin);
                     drop(subscriptions);
-                }
-            });
+                },
+            );
 
             let pipes_to_release = self
                 .pending_pipes
@@ -1708,6 +2848,22 @@ impl WasmBridge {
         Ok(())
     }
 
+    pub fn plugin_is_background(&self, plugin_id: PluginId, client_id: ClientId) -> bool {
+        if self.shared_instances.contains_key(&plugin_id) {
+            return self
+                .shared_instances
+                .get(&plugin_id)
+                .map(|info| !info.background_slots.is_empty())
+                .unwrap_or(false);
+        }
+        let plugin_map = self.plugin_map.lock().unwrap();
+        plugin_map.contains(plugin_id, client_id)
+            && plugin_map
+                .metadata(plugin_id)
+                .map(|metadata| metadata.is_background)
+                .unwrap_or(false)
+    }
+
     pub fn notify_screen_of_background_plugin_subscriptions(
         &self,
         plugin_id: PluginId,
@@ -1718,15 +2874,7 @@ impl WasmBridge {
             self.notify_shared_background_subscriptions(plugin_id);
             return;
         }
-        let is_background = {
-            let plugin_map = self.plugin_map.lock().unwrap();
-            plugin_map.contains(plugin_id, client_id)
-                && plugin_map
-                    .metadata(plugin_id)
-                    .map(|metadata| metadata.is_background)
-                    .unwrap_or(false)
-        };
-        if is_background {
+        if self.plugin_is_background(plugin_id, client_id) {
             let _ = self.senders.send_to_screen(
                 ScreenInstruction::UpdateBackgroundPluginSubscriptions(
                     plugin_id, client_id, events,
@@ -1747,17 +2895,34 @@ impl WasmBridge {
             }
             return;
         }
-        let keybinds = {
-            let mut plugin_map = self.plugin_map.lock().unwrap();
-            plugin_map
-                .running_plugins_and_subscriptions()
-                .iter()
-                .find(|(pid, cid, _, _)| *pid == plugin_id && *cid == client_id)
-                .map(|(_, _, rp, _)| rp.lock().unwrap().store.data().keybinds.as_ref().clone())
-        };
-        if let Some(keybinds) = keybinds {
-            self.send_keybinds_payload_to_plugin(plugin_id, client_id, keybinds);
-        }
+        // Reading the keybinds takes the guest execution lock. Do it on the
+        // plugin's execution owner so a callback blocked in a host call cannot
+        // stall plugin management.
+        self.plugin_executor.execute_for_plugin_with(
+            plugin_id,
+            JobClass::Lifecycle,
+            0,
+            move |senders, plugin_map, _, _, _| {
+                let running_plugin = plugin_map
+                    .lock()
+                    .unwrap()
+                    .get_running_plugin(plugin_id, Some(client_id));
+                let Some(running_plugin) = running_plugin else {
+                    return;
+                };
+                let keybinds = lock_running(&running_plugin)
+                    .store
+                    .data()
+                    .keybinds
+                    .as_ref()
+                    .clone();
+                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                    Some(plugin_id),
+                    Some(client_id),
+                    Event::InitialKeybinds(keybinds),
+                )]));
+            },
+        );
     }
 
     pub fn send_host_terminal_theme_mode_to_plugin(
@@ -1816,8 +2981,18 @@ impl WasmBridge {
         event: Event,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
-        if let Some(cached_events) = self.cached_events_for_pending_plugins.get_mut(&plugin_id) {
-            cached_events.insert(0, EventOrPipeMessage::Event(event, Some(client_id)));
+        if self.cached_events_for_pending_plugins.contains(&plugin_id) {
+            if let Err(rejection) = self.cached_events_for_pending_plugins.try_push(
+                plugin_id,
+                EventOrPipeMessage::Event(event, Some(client_id), None),
+                true,
+            ) {
+                log::warn!(
+                    "Dropping initial state for loading plugin {}: {:?}",
+                    plugin_id,
+                    rejection
+                );
+            }
             return Ok(());
         }
         self.update_plugins(
@@ -1847,7 +3022,7 @@ impl WasmBridge {
         for plugin_id in &plugin_ids {
             drop(self.unload_plugin(*plugin_id));
         }
-        if let Some(watcher) = self.watcher.take() {
+        for (_, (_, watcher)) in self.watchers.drain() {
             watcher.stop_nonblocking();
         }
     }
@@ -1860,6 +3035,7 @@ impl WasmBridge {
     pub fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<RunPlugin> {
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .run_plugin_of_plugin_id(plugin_id)
     }
@@ -1875,6 +3051,7 @@ impl WasmBridge {
         let plugins_to_reconfigure: Vec<(PluginId, Arc<Mutex<RunningPlugin>>)> = self
             .plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins()
             .iter()
@@ -1895,12 +3072,29 @@ impl WasmBridge {
         }
         self.default_shell = default_shell.clone();
         self.layout_dir = layout_dir.clone();
+        let reconfigure_bytes = keybinds
+            .as_ref()
+            .map(|keybinds| keybinds_vec_bytes(keybinds.as_ref()))
+            .unwrap_or(0)
+            .saturating_add(
+                layout_dir
+                    .as_ref()
+                    .map(|path| path.as_os_str().len())
+                    .unwrap_or(0),
+            );
         let shared_instance_ids: Vec<PluginId> = self.shared_instances.keys().copied().collect();
         for instance_id in shared_instance_ids {
+            let generation = self
+                .shared_instances
+                .get(&instance_id)
+                .map(|info| info.loading_context.generation)
+                .unwrap_or(0);
             let default_shell = default_shell.clone();
             let layout_dir = layout_dir.clone();
-            self.plugin_executor.execute_for_plugin(
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Replaceable(replaceable_shared_settings_key(generation)),
+                reconfigure_bytes,
                 move |_senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     host_settings_job(plugin_map, instance_id, default_shell, layout_dir);
                 },
@@ -1932,23 +3126,28 @@ impl WasmBridge {
         };
 
         for (plugin_id, running_plugin) in plugins_to_reconfigure {
-            self.plugin_executor.execute_for_plugin(plugin_id, {
-                let running_plugin = running_plugin.clone();
-                let keybinds = keybinds.clone();
-                let default_shell = default_shell.clone();
-                let layout_dir = layout_dir.clone();
-                move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                    let mut running_plugin = running_plugin.lock().unwrap();
-                    if let Some(keybinds) = keybinds {
-                        running_plugin.update_keybinds(keybinds);
+            self.plugin_executor.execute_for_plugin_with(
+                plugin_id,
+                JobClass::Replaceable(replaceable_plugin_settings_key(client_id, 0)),
+                reconfigure_bytes,
+                {
+                    let running_plugin = running_plugin.clone();
+                    let keybinds = keybinds.clone();
+                    let default_shell = default_shell.clone();
+                    let layout_dir = layout_dir.clone();
+                    move |_senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
+                        let mut running_plugin = lock_running(&running_plugin);
+                        if let Some(keybinds) = keybinds {
+                            running_plugin.update_keybinds(keybinds);
+                        }
+                        if let Some(default_mode) = default_mode {
+                            running_plugin.update_default_mode(default_mode);
+                        }
+                        running_plugin.update_default_shell(default_shell);
+                        running_plugin.update_layout_dir(layout_dir);
                     }
-                    if let Some(default_mode) = default_mode {
-                        running_plugin.update_default_mode(default_mode);
-                    }
-                    running_plugin.update_default_shell(default_shell);
-                    running_plugin.update_layout_dir(layout_dir);
-                }
-            });
+                },
+            );
         }
         // Send InitialKeybinds to subscribed plugins after reconfiguration
         if let Some(keybinds) = keybinds.as_ref() {
@@ -1968,11 +3167,42 @@ impl WasmBridge {
         plugin_id: PluginId,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
+        if self.quarantine.contains(&plugin_id) {
+            return Ok(());
+        }
         let err_context = || format!("Failed to apply cached events to plugin");
-        if let Some(events_or_pipe_messages) =
-            self.cached_events_for_pending_plugins.remove(&plugin_id)
-        {
+        let has_instance = self
+            .plugin_map
+            .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+            .unwrap()
+            .all_plugin_ids()
+            .iter()
+            .any(|(instance_plugin_id, _)| *instance_plugin_id == plugin_id);
+        let events_or_pipe_messages = self.cached_events_for_pending_plugins.take(&plugin_id);
+        let events_or_pipe_messages = match events_or_pipe_messages {
+            Some(events) if events.incomplete => {
+                log::error!(
+                    "Not applying cached events for plugin {plugin_id}: the loading-plugin cache overflowed and is incomplete"
+                );
+                self.release_cached_cli_pipes_with_error(&events.entries);
+                None
+            },
+            other => other,
+        };
+        if let Some(events_or_pipe_messages) = events_or_pipe_messages {
+            let cached_bytes = events_or_pipe_messages
+                .entries
+                .iter()
+                .map(event_or_pipe_message_bytes)
+                .fold(0usize, usize::saturating_add);
             let plugin_instances = self.plugin_map.lock().unwrap().all_plugin_ids();
+            // A failed load leaves no instance to answer the pipes cached for it. Release them
+            // instead of dropping them and leaving their callers blocked.
+            if !has_instance {
+                self.release_cached_cli_pipes_with_error(&events_or_pipe_messages.entries);
+            }
+            let mut replay_was_rejected = false;
             for (instance_plugin_id, client_id) in plugin_instances {
                 if instance_plugin_id != plugin_id {
                     continue;
@@ -1984,111 +3214,165 @@ impl WasmBridge {
                     .get_running_plugin_and_subscriptions(plugin_id, client_id)
                 {
                     let subs = subscriptions.lock().unwrap().clone();
-                    self.plugin_executor.execute_for_plugin(plugin_id, {
-                        let running_plugin = running_plugin.clone();
-                        let _s = shutdown_sender.clone();
-                        let events_or_pipe_messages = events_or_pipe_messages.clone();
-                        move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
-                            let _s = _s; // guard to allow the task to complete before cleanup/shutdown
-                            for event_or_pipe_message in events_or_pipe_messages {
-                                match event_or_pipe_message {
-                                    EventOrPipeMessage::Event(event, target_client_id) => {
-                                        if target_client_id
-                                            .map(|target| target != client_id)
-                                            .unwrap_or(false)
-                                        {
-                                            continue;
-                                        }
-                                        match subscription_event_type(&event)
-                                            .with_context(err_context)
-                                        {
-                                            Ok(event_type) => {
-                                                if !subs.contains(&event_type) {
-                                                    continue;
-                                                }
-                                                let mut running_plugin =
-                                                    running_plugin.lock().unwrap();
-                                                let mut plugin_render_assets = vec![];
-                                                match apply_event_to_plugin(
-                                                    plugin_id,
-                                                    client_id,
-                                                    &mut running_plugin,
-                                                    &event,
-                                                    &mut plugin_render_assets,
-                                                    senders.clone(),
-                                                    &subs,
-                                                ) {
-                                                    Ok(()) => {
-                                                        let _ = senders.send_to_screen(
-                                                            ScreenInstruction::PluginBytes(
-                                                                plugin_render_assets,
-                                                            ),
-                                                        );
-                                                    },
-                                                    Err(e) => {
-                                                        log::error!("{}", e);
-                                                    },
-                                                }
-                                            },
-                                            Err(e) => {
-                                                log::error!("Failed to apply event: {:?}", e);
-                                            },
-                                        }
-                                    },
-                                    EventOrPipeMessage::PipeMessage(
-                                        pipe_message,
-                                        target_client_id,
-                                    ) => {
-                                        if target_client_id
-                                            .map(|target| target != client_id)
-                                            .unwrap_or(false)
-                                        {
-                                            continue;
-                                        }
-                                        let mut running_plugin = running_plugin.lock().unwrap();
-                                        let mut plugin_render_assets = vec![];
+                    if let Err(e) = self.plugin_executor.try_execute_for_plugin(
+                        plugin_id,
+                        JobClass::Lifecycle,
+                        cached_bytes,
+                        {
+                            let running_plugin = running_plugin.clone();
+                            let _s = shutdown_sender.clone();
+                            let events_or_pipe_messages = events_or_pipe_messages.entries.clone();
+                            move |senders,
+                                  _plugin_map,
+                                  _connected_clients,
+                                  _plugin_cache,
+                                  _engine| {
+                                let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                                if !lock_running(&running_plugin).is_active() {
+                                    return;
+                                }
+                                for event_or_pipe_message in events_or_pipe_messages {
+                                    match event_or_pipe_message {
+                                        EventOrPipeMessage::Event(
+                                            event,
+                                            target_client_id,
+                                            scheduled_timer_generation,
+                                        ) => {
+                                            if target_client_id
+                                                .map(|target| target != client_id)
+                                                .unwrap_or(false)
+                                            {
+                                                continue;
+                                            }
+                                            match subscription_event_type(&event)
+                                                .with_context(err_context)
+                                            {
+                                                Ok(event_type) => {
+                                                    if !subs.contains(&event_type) {
+                                                        continue;
+                                                    }
+                                                    let mut running_plugin =
+                                                        lock_running(&running_plugin);
+                                                    if !running_plugin.is_active() {
+                                                        break;
+                                                    }
+                                                    let mut plugin_render_assets = vec![];
+                                                    match apply_event_to_plugin(
+                                                        plugin_id,
+                                                        client_id,
+                                                        &mut running_plugin,
+                                                        &event,
+                                                        &mut plugin_render_assets,
+                                                        senders.clone(),
+                                                        &subs,
+                                                        scheduled_timer_generation,
+                                                    ) {
+                                                        Ok(()) => {
+                                                            let _ = senders.send_to_screen(
+                                                                ScreenInstruction::PluginBytes(
+                                                                    plugin_render_assets,
+                                                                ),
+                                                            );
+                                                        },
+                                                        Err(e) => {
+                                                            log::error!("{:?}", e);
+                                                            running_plugin.mark_quarantined();
+                                                            handle_plugin_crash(
+                                                                plugin_id,
+                                                                running_plugin
+                                                                    .store
+                                                                    .data()
+                                                                    .generation,
+                                                                format!("{:?}", e)
+                                                                    .replace("\n", "\n\r"),
+                                                                senders.clone(),
+                                                            );
+                                                            break;
+                                                        },
+                                                    }
+                                                },
+                                                Err(e) => {
+                                                    log::error!("Failed to apply event: {:?}", e);
+                                                },
+                                            }
+                                        },
+                                        EventOrPipeMessage::PipeMessage(
+                                            pipe_message,
+                                            target_client_id,
+                                        ) => {
+                                            if target_client_id
+                                                .map(|target| target != client_id)
+                                                .unwrap_or(false)
+                                            {
+                                                continue;
+                                            }
+                                            let mut running_plugin = lock_running(&running_plugin);
+                                            if !running_plugin.is_active() {
+                                                break;
+                                            }
+                                            let mut plugin_render_assets = vec![];
 
-                                        match apply_pipe_message_to_plugin(
-                                            plugin_id,
-                                            client_id,
-                                            &mut running_plugin,
-                                            &pipe_message,
-                                            &mut plugin_render_assets,
-                                            &senders,
-                                        ) {
-                                            Ok(()) => {
-                                                let _ = senders.send_to_screen(
-                                                    ScreenInstruction::PluginBytes(
-                                                        plugin_render_assets,
-                                                    ),
-                                                );
-                                            },
-                                            Err(e) => {
-                                                log::error!("{:?}", e);
+                                            match apply_pipe_message_to_plugin(
+                                                plugin_id,
+                                                client_id,
+                                                &mut running_plugin,
+                                                &pipe_message,
+                                                &mut plugin_render_assets,
+                                                &senders,
+                                            ) {
+                                                Ok(()) => {
+                                                    let _ = senders.send_to_screen(
+                                                        ScreenInstruction::PluginBytes(
+                                                            plugin_render_assets,
+                                                        ),
+                                                    );
+                                                },
+                                                Err(e) => {
+                                                    log::error!("{:?}", e);
+                                                    running_plugin.mark_quarantined();
 
-                                                // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
-                                                let stringified_error =
-                                                    format!("{:?}", e).replace("\n", "\n\r");
+                                                    // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
+                                                    let stringified_error =
+                                                        format!("{:?}", e).replace("\n", "\n\r");
 
-                                                handle_plugin_crash(
-                                                    plugin_id,
-                                                    stringified_error,
-                                                    senders.clone(),
-                                                );
-                                            },
-                                        }
-                                    },
+                                                    handle_plugin_crash(
+                                                        plugin_id,
+                                                        running_plugin.store.data().generation,
+                                                        stringified_error,
+                                                        senders.clone(),
+                                                    );
+                                                    break;
+                                                },
+                                            }
+                                        },
+                                    }
                                 }
                             }
-                        }
-                    });
+                        },
+                    ) {
+                        log::error!(
+                            "Plugin executor rejected cached event replay for {}: {}",
+                            plugin_id,
+                            e
+                        );
+                        replay_was_rejected = true;
+                    }
                 }
+            }
+            if replay_was_rejected {
+                self.release_cached_cli_pipes_with_error(&events_or_pipe_messages.entries);
             }
         }
         if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
             self.resize_plugin(plugin_id, columns, rows, shutdown_sender.clone())?;
         }
-        self.apply_cached_worker_messages(plugin_id)?;
+        if has_instance {
+            self.apply_cached_worker_messages(plugin_id)?;
+        } else {
+            // A failed load has no worker to receive these; re-caching them
+            // would leak one bounded cache per failed plugin id.
+            self.cached_worker_messages.remove(&plugin_id);
+        }
         Ok(())
     }
     pub fn apply_cached_worker_messages(&mut self, plugin_id: PluginId) -> Result<()> {
@@ -2102,7 +3386,9 @@ impl WasmBridge {
                     .push((message, payload));
             }
             for ((client_id, worker_name), messages) in worker_messages.drain() {
-                self.post_messages_to_plugin_worker(plugin_id, client_id, worker_name, messages)?;
+                // Already counted when the mailbox instruction was dequeued.
+                // Releasing again would free a slot still held by a newer post.
+                self.deliver_plugin_worker_messages(plugin_id, client_id, worker_name, messages)?;
             }
         }
         Ok(())
@@ -2137,6 +3423,7 @@ impl WasmBridge {
     ) -> Result<Vec<PluginId>> {
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .all_plugin_ids_for_plugin_location(plugin_location, plugin_configuration)
     }
@@ -2167,6 +3454,7 @@ impl WasmBridge {
         // (rows/columns)
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .metadata(plugin_id)
             .map(|metadata| (metadata.rows, metadata.columns))
@@ -2174,6 +3462,7 @@ impl WasmBridge {
     fn cwd_of_plugin_id(&self, plugin_id: PluginId) -> Option<PathBuf> {
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .metadata(plugin_id)
             .map(|metadata| metadata.cwd.clone())
@@ -2181,6 +3470,7 @@ impl WasmBridge {
     fn plugin_config_of_plugin_id(&self, plugin_id: PluginId) -> Option<PluginConfig> {
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .metadata(plugin_id)
             .map(|metadata| metadata.plugin_config.clone())
@@ -2188,6 +3478,7 @@ impl WasmBridge {
     fn tab_index_of_plugin_id(&self, plugin_id: PluginId) -> Option<usize> {
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .metadata(plugin_id)
             .and_then(|metadata| metadata.tab_index)
@@ -2232,44 +3523,319 @@ impl WasmBridge {
         plugin_id: PluginId,
         client_id: ClientId,
         worker_name: String,
+        messages: Vec<(String, String)>,
+    ) -> Result<()> {
+        // The reservation was the mailbox slot. Drop it before this returns,
+        // including the quarantine and inactive-instance paths below.
+        release_admitted_worker_posts(plugin_id, &worker_name, &messages);
+        self.deliver_plugin_worker_messages(plugin_id, client_id, worker_name, messages)
+    }
+
+    fn deliver_plugin_worker_messages(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        worker_name: String,
         mut messages: Vec<(String, String)>,
     ) -> Result<()> {
-        let worker =
-            self.plugin_map
-                .lock()
-                .unwrap()
-                .worker_sender(plugin_id, client_id, &worker_name);
+        if self.quarantine.contains(&plugin_id) {
+            return Ok(());
+        }
+        let worker = self
+            .plugin_map
+            .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+            .unwrap()
+            .worker_sender(plugin_id, client_id, &worker_name);
         match worker {
             Some(worker) => {
                 for (message, payload) in messages.drain(..) {
-                    if let Err(e) = worker.send(MessageToWorker::Message(message, payload)) {
-                        log::error!("Failed to send message to worker: {:?}", e);
-                    }
+                    let _ = try_send_to_worker(&worker, MessageToWorker::Message(message, payload));
                 }
             },
             None => {
+                let running_plugin = {
+                    let plugin_map = self.plugin_map.lock().unwrap();
+                    plugin_map.get_running_plugin(plugin_id, Some(client_id))
+                };
+                if let Some(running_plugin) = running_plugin {
+                    // The guest holds this mutex for the whole host call, and that call
+                    // may be what posted this message. Waiting would stall the plugin thread.
+                    let inactive = match try_lock_running(&running_plugin) {
+                        Some(running) => !running.is_active(),
+                        None => false,
+                    };
+                    if inactive {
+                        // The instance was retired or quarantined after this message was
+                        // queued. Do not cache it for a replacement that reused the same key.
+                        return Ok(());
+                    }
+                }
                 log::warn!("Worker {worker_name} not found, caching messages");
                 for (message, payload) in messages.drain(..) {
-                    self.cached_worker_messages
-                        .entry(plugin_id)
-                        .or_default()
-                        .push((client_id, worker_name.clone(), message, payload));
+                    let cached = self.cached_worker_messages.entry(plugin_id).or_default();
+                    let cached_bytes =
+                        cached
+                            .iter()
+                            .fold(0usize, |total, (_, name, message, payload)| {
+                                total.saturating_add(worker_message_bytes(name, message, payload))
+                            });
+                    let new_bytes = worker_message_bytes(&worker_name, &message, &payload);
+                    if cached.len() >= MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN
+                        || cached_bytes.saturating_add(new_bytes)
+                            > MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN
+                    {
+                        reject_full_worker_message_cache(plugin_id);
+                        continue;
+                    }
+                    cached.push((client_id, worker_name.clone(), message, payload));
                 }
             },
         }
         Ok(())
     }
-    pub fn start_fs_watcher_if_not_started(&mut self) {
-        if self.watcher.is_none() {
-            self.watcher = match watch_filesystem(self.senders.clone(), &self.zellij_cwd) {
-                Ok(watcher) => Some(watcher),
-                Err(e) => {
-                    log::error!("Failed to watch filesystem: {:?}", e);
-                    None
-                },
-            };
+    pub fn start_fs_watcher_if_not_started(&mut self, plugin_id: PluginId, host_root: PathBuf) {
+        if self
+            .watchers
+            .get(&plugin_id)
+            .map(|(root, _)| root == &host_root)
+            .unwrap_or(false)
+        {
+            return;
+        }
+        if let Some((_, old_watcher)) = self.watchers.remove(&plugin_id) {
+            old_watcher.stop_nonblocking();
+        }
+        match watch_filesystem(self.senders.clone(), plugin_id, &host_root) {
+            Ok(watcher) => {
+                self.watchers.insert(plugin_id, (host_root, watcher));
+            },
+            Err(e) => {
+                log::error!("Failed to watch filesystem: {:?}", e);
+            },
         }
     }
+    /// Apply a cache-hit permission grant only when `generation` and `digest` are
+    /// still the running instance. The write rechecks both under the running-plugin
+    /// lock, so a replacement that reuses this id cannot inherit the grant. A
+    /// mismatch is not written and does not emit `PermissionRequestResult`.
+    pub(crate) fn grant_known_permissions(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: Option<ClientId>,
+        permissions: Vec<PermissionType>,
+        generation: u64,
+        digest: &str,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
+        self.apply_verified_permissions(
+            plugin_id,
+            client_id,
+            permissions,
+            PermissionStatus::Granted,
+            None,
+            generation,
+            digest,
+            None,
+            shutdown_sender,
+        )
+    }
+
+    /// Apply an answer to the interactive prompt `prompt_id`. The stored prompt
+    /// must still be that id, and its generation and digest must still be the
+    /// running instance, under the same lock as the permission write.
+    pub(crate) fn apply_permission_prompt_result(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: Option<ClientId>,
+        permissions: Vec<PermissionType>,
+        status: PermissionStatus,
+        cache_path: Option<PathBuf>,
+        prompt_id: u64,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
+        let Some((stored_id, generation, digest)) = self.permission_prompt_identity(plugin_id)
+        else {
+            log::warn!(
+                "Ignoring a permission response for plugin {plugin_id}: its prompt belongs to a module that is no longer running"
+            );
+            return Ok(());
+        };
+        // A superseded prompt is unchanged. A different prompt id still reaches
+        // the write so it can be refused there instead of matching the replacement.
+        if stored_id == prompt_id && !self.permission_prompt_is_current(plugin_id, client_id) {
+            log::warn!(
+                "Ignoring a permission response for plugin {plugin_id}: its prompt belongs to a module that is no longer running"
+            );
+            self.clear_permission_prompt(plugin_id);
+            return Ok(());
+        }
+        let result = self.apply_verified_permissions(
+            plugin_id,
+            client_id,
+            permissions,
+            status,
+            cache_path,
+            generation,
+            &digest,
+            Some(prompt_id),
+            shutdown_sender,
+        );
+        if stored_id == prompt_id {
+            self.clear_permission_prompt(plugin_id);
+        }
+        result
+    }
+
+    /// Write `permissions` and deliver the result only while `generation` and
+    /// `digest` are the instance resolved for this write. The running-plugin lock
+    /// is held from that comparison through the runtime permission update.
+    /// `prompt_id`, when set, must still be the prompt stored for this plugin.
+    pub(crate) fn apply_verified_permissions(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: Option<ClientId>,
+        permissions: Vec<PermissionType>,
+        status: PermissionStatus,
+        cache_path: Option<PathBuf>,
+        generation: u64,
+        digest: &str,
+        prompt_id: Option<u64>,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
+        match self.cache_plugin_permissions(
+            plugin_id,
+            client_id,
+            permissions,
+            status,
+            cache_path,
+            Some((generation, digest)),
+            prompt_id,
+        ) {
+            Ok(false) => {
+                log::warn!(
+                    "Ignoring a permission grant for plugin {plugin_id}: its generation or module digest does not match the running instance"
+                );
+                return Ok(());
+            },
+            Ok(true) => {},
+            Err(e) => {
+                // Runtime permissions were updated before the durable write failed.
+                log::error!("{}", e);
+            },
+        }
+        // Disk persistence drops the running-plugin lock. Do not deliver the
+        // result, or drain events cached for this id, if that instance is gone.
+        if !self.running_instance_matches(plugin_id, client_id, generation, digest) {
+            log::warn!(
+                "Ignoring a permission grant for plugin {plugin_id}: its generation or module digest does not match the running instance"
+            );
+            return Ok(());
+        }
+        self.update_plugins(
+            vec![(
+                Some(plugin_id),
+                client_id,
+                Event::PermissionRequestResult(status),
+            )],
+            shutdown_sender.clone(),
+        )?;
+        self.apply_cached_events(vec![plugin_id], true, shutdown_sender)?;
+        Ok(())
+    }
+
+    pub(crate) fn running_instance_matches(
+        &self,
+        plugin_id: PluginId,
+        client_id: Option<ClientId>,
+        generation: u64,
+        digest: &str,
+    ) -> bool {
+        let running_plugin = match self.shared_instance_of(plugin_id) {
+            Some(instance_id) => self
+                .plugin_map
+                .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+                .unwrap()
+                .shared_running_plugin(instance_id)
+                .map(|(running_plugin, _)| running_plugin),
+            None => self
+                .plugin_map
+                .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+                .unwrap()
+                .get_running_plugin(plugin_id, client_id),
+        };
+        let Some(running_plugin) = running_plugin else {
+            return false;
+        };
+        let running_plugin = lock_running(&running_plugin);
+        let data = running_plugin.store.data();
+        data.generation == generation && data.plugin_digest == digest
+    }
+
+    /// Whether an answer to a permission prompt still concerns the module that is running. The
+    /// answer carries neither a digest nor a generation, so they are matched against what was
+    /// recorded when the prompt was requested: an answer is stale when no prompt was requested,
+    /// when the plugin was reloaded since, or when the running bytes are not the prompted ones.
+    pub fn permission_prompt_is_current(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: Option<ClientId>,
+    ) -> bool {
+        let shared_instance = self.shared_instance_of(plugin_id);
+        let prompt_key = shared_instance.unwrap_or(plugin_id);
+        // TODO(plugin-hardening): when a prompt is stale its pane has already been dismissed by
+        // the answer, so the reloaded plugin has to ask again to get a new one. The prompt of a
+        // plugin that is reloaded while it is open should instead be closed at reload time
+        // (`prepare_plugin_reload`), which needs a screen instruction to drop a pane's pending
+        // request.
+        let Some((_prompt_id, prompt_generation, prompt_digest)) =
+            self.permission_prompts.get(&prompt_key).cloned()
+        else {
+            return false;
+        };
+        if self.quarantine.is_superseded(prompt_key, prompt_generation) {
+            return false;
+        }
+        let running_plugin = match shared_instance {
+            Some(instance_id) => self
+                .plugin_map
+                .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+                .unwrap()
+                .shared_running_plugin(instance_id)
+                .map(|(running_plugin, _)| running_plugin),
+            None => self
+                .plugin_map
+                .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+                .unwrap()
+                .get_running_plugin(plugin_id, client_id),
+        };
+        let Some(running_plugin) = running_plugin else {
+            return false;
+        };
+        let running_plugin = lock_running(&running_plugin);
+        running_plugin.store.data().plugin_digest == prompt_digest
+    }
+    pub fn clear_permission_prompt(&mut self, plugin_id: PluginId) {
+        let prompt_key = self.shared_instance_of(plugin_id).unwrap_or(plugin_id);
+        self.permission_prompts.remove(&prompt_key);
+    }
+    pub(crate) fn permission_prompt_identity(
+        &self,
+        plugin_id: PluginId,
+    ) -> Option<(u64, u64, String)> {
+        let prompt_key = self.shared_instance_of(plugin_id).unwrap_or(plugin_id);
+        self.permission_prompts.get(&prompt_key).cloned()
+    }
+    /// `expected_instance` is the generation and module digest that were validated
+    /// for this grant. When set, both are compared to the resolved instance under
+    /// the running-plugin lock immediately before the permission set is written.
+    /// `expected_prompt_id`, when set, must still be the prompt stored for this
+    /// plugin, and that prompt's generation and digest must be this instance.
+    /// A mismatch writes nothing and returns `Ok(false)`.
     pub fn cache_plugin_permissions(
         &mut self,
         plugin_id: PluginId,
@@ -2277,60 +3843,111 @@ impl WasmBridge {
         permissions: Vec<PermissionType>,
         status: PermissionStatus,
         cache_path: Option<PathBuf>,
-    ) -> Result<()> {
+        expected_instance: Option<(u64, &str)>,
+        expected_prompt_id: Option<u64>,
+    ) -> Result<bool> {
         let err_context = || format!("Failed to write plugin permission {plugin_id}");
+        let prompt_key = self.shared_instance_of(plugin_id).unwrap_or(plugin_id);
+        let stored_prompt = self.permission_prompts.get(&prompt_key).cloned();
 
         let shared_running_plugin = self.shared_instance_of(plugin_id).and_then(|instance_id| {
             self.plugin_map
                 .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                 .unwrap()
                 .shared_running_plugin(instance_id)
                 .map(|(running_plugin, _)| running_plugin)
         });
         let running_plugin = match shared_running_plugin {
             Some(running_plugin) => running_plugin,
-            None => self
+            None => match self
                 .plugin_map
                 .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                 .unwrap()
                 .get_running_plugin(plugin_id, client_id)
-                .ok_or_else(|| anyhow!("Failed to get running plugin"))?,
+            {
+                Some(running_plugin) => running_plugin,
+                None if expected_instance.is_some() => return Ok(false),
+                None => return Err(anyhow!("Failed to get running plugin")),
+            },
         };
 
-        let mut running_plugin = running_plugin.lock().unwrap();
+        let mut running_plugin = lock_running(&running_plugin);
+        {
+            let data = running_plugin.store.data();
+            // Same lock as the write below: the id may already name a different instance.
+            if let Some(prompt_id) = expected_prompt_id {
+                let prompt_matches = stored_prompt.as_ref().is_some_and(
+                    |(stored_id, stored_generation, stored_digest)| {
+                        *stored_id == prompt_id
+                            && data.generation == *stored_generation
+                            && data.plugin_digest == *stored_digest
+                    },
+                );
+                if !prompt_matches {
+                    return Ok(false);
+                }
+            }
+            if let Some((generation, digest)) = expected_instance {
+                if data.generation != generation || data.plugin_digest != digest {
+                    return Ok(false);
+                }
+            }
+        }
 
-        let permissions = if status == PermissionStatus::Granted {
-            permissions
-        } else {
-            vec![]
-        };
-
+        let mut runtime_permissions = running_plugin
+            .store
+            .data()
+            .permissions
+            .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+            .unwrap()
+            .clone()
+            .unwrap_or_default();
+        if status == PermissionStatus::Granted {
+            runtime_permissions.extend(permissions.iter().cloned());
+        }
         running_plugin
             .store
             .data_mut()
-            .set_permissions(HashSet::from_iter(permissions.clone()));
+            .set_permissions(runtime_permissions);
 
         if running_plugin.store.data().plugin.is_builtin() {
-            return Ok(());
+            return Ok(true);
         }
 
-        let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
-        permission_cache.cache(
-            running_plugin.store.data().plugin.location.to_string(),
-            permissions,
+        let permission_cache_key = format!(
+            "{}#{}",
+            running_plugin.store.data().plugin.location,
+            running_plugin.store.data().plugin_digest
         );
-
-        permission_cache.write_to_file().with_context(err_context)
+        if status == PermissionStatus::Granted {
+            // Fresh-read → apply delta → publish under a short lock. Do not hold
+            // that lock across the user prompt that produced this grant.
+            PermissionCache::grant_and_persist(cache_path, permission_cache_key, permissions)
+                .with_context(err_context)?;
+        }
+        Ok(true)
     }
-    pub fn cache_plugin_events(&mut self, plugin_id: PluginId) {
+    pub fn cache_plugin_events(
+        &mut self,
+        plugin_id: PluginId,
+        generation: u64,
+        digest: String,
+        prompt_id: u64,
+    ) {
+        // Remember which module instance the prompt that is about to be shown belongs to. Shared
+        // instances are keyed by instance id, as that is what their requests carry.
+        self.permission_prompts
+            .insert(plugin_id, (prompt_id, generation, digest));
         if self.shared_instance_of(plugin_id).is_some() {
             return;
         }
         self.plugin_ids_waiting_for_permission_request
             .insert(plugin_id);
         self.cached_events_for_pending_plugins
-            .entry(plugin_id)
-            .or_insert_with(Default::default);
+            .insert_empty(plugin_id);
     }
 
     // gets all running plugins details matching this run_plugin, if none are running, loads one and
@@ -2395,6 +4012,7 @@ impl WasmBridge {
                                 floating_pane_coordinates,
                                 Some(should_focus),
                                 Some(client_id),
+                                None,
                                 None,
                             )));
                             if is_shared {
@@ -2469,6 +4087,25 @@ impl WasmBridge {
                     release.exit_code,
                 ))
                 .context("failed to unblock input pipe");
+        }
+    }
+    fn release_cli_pipe_with_error(&mut self, pipe_message: &PipeMessage) {
+        let PipeSource::Cli(pipe_id) = &pipe_message.source else {
+            return;
+        };
+        if self.pending_pipes.is_finished(pipe_id) {
+            return;
+        }
+        let release = self
+            .pending_pipes
+            .release_with_code(pipe_id, PIPE_PLUGIN_UNAVAILABLE_EXIT_CODE);
+        self.send_pipe_releases(vec![release]);
+    }
+    fn release_cached_cli_pipes_with_error(&mut self, entries: &[EventOrPipeMessage]) {
+        for entry in entries {
+            if let EventOrPipeMessage::PipeMessage(pipe_message, _) = entry {
+                self.release_cli_pipe_with_error(pipe_message);
+            }
         }
     }
     pub fn route_pipe_popup_message(
@@ -2622,6 +4259,8 @@ impl WasmBridge {
                         None,
                         None,
                         None,
+                        ClosePaneSource::External,
+                        None,
                     ));
                     let _ = self
                         .senders
@@ -2636,6 +4275,7 @@ impl WasmBridge {
         let running_plugins: Vec<Arc<Mutex<RunningPlugin>>> = self
             .plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .running_plugins()
             .into_iter()
@@ -2643,12 +4283,9 @@ impl WasmBridge {
             .map(|(_, _, running_plugin)| running_plugin)
             .collect();
         for running_plugin in running_plugins {
-            running_plugin
-                .lock()
-                .unwrap()
-                .store
-                .data_mut()
-                .pending_popup_size = None;
+            if let Some(mut running_plugin) = try_lock_running(&running_plugin) {
+                running_plugin.store.data_mut().pending_popup_size = None;
+            }
         }
     }
     fn forget_pipe_popups_of_plugin(&mut self, plugin_id: PluginId) {
@@ -2677,6 +4314,7 @@ impl WasmBridge {
     pub fn get_first_client_id(&self) -> Option<ClientId> {
         self.connected_clients
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .iter()
             .next()
@@ -2791,31 +4429,22 @@ impl WasmBridge {
     fn shared_instance_subscribes_to(&self, instance_id: PluginId, event_type: EventType) -> bool {
         self.plugin_map
             .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
             .unwrap()
             .shared_running_plugin(instance_id)
             .map(|(_, subscriptions)| subscriptions.lock().unwrap().contains(&event_type))
             .unwrap_or(false)
     }
-    fn module_is_shared(&mut self, plugin_config: &PluginConfig, skip_cache: bool) -> bool {
+    fn plugin_wasm_bytes(&self, plugin_config: &PluginConfig) -> Option<Vec<u8>> {
         if matches!(plugin_config.location, RunPluginLocation::Remote(_)) {
-            return false;
+            return None;
         }
-        let cache_key = format!(
-            "{}|{}",
-            plugin_config.location,
-            plugin_config.path.display()
-        );
-        if !skip_cache {
-            if let Some(is_shared) = self.shared_module_kinds.get(&cache_key) {
-                return *is_shared;
-            }
-        }
-        let is_shared = plugin_config
-            .resolve_wasm_bytes(&self.plugin_dir)
-            .map(|bytes| wasm_module_exports_function(&bytes, SHARED_MARKER_EXPORT))
-            .unwrap_or(false);
-        self.shared_module_kinds.insert(cache_key, is_shared);
-        is_shared
+        plugin_config.resolve_wasm_bytes(&self.plugin_dir).ok()
+    }
+    fn module_bytes_are_shared(wasm_bytes: Option<&[u8]>) -> bool {
+        wasm_bytes
+            .map(|bytes| wasm_module_exports_function(bytes, SHARED_MARKER_EXPORT))
+            .unwrap_or(false)
     }
     fn shared_key_of(run_plugin: &RunPlugin) -> SharedKey {
         (
@@ -2837,6 +4466,7 @@ impl WasmBridge {
         skip_cache: bool,
         client_id: ClientId,
         is_background: bool,
+        wasm_bytes: Option<Vec<u8>>,
     ) -> Result<(PluginId, ClientId)> {
         let slot_id = self.next_plugin_id;
         self.next_plugin_id += 1;
@@ -2869,21 +4499,41 @@ impl WasmBridge {
             .send_to_background_jobs(BackgroundJob::AnimatePluginLoading(slot_id));
         let instance_id = match self.shared_keys.get(&key).copied() {
             Some(instance_id) => {
-                self.register_shared_slot(instance_id, slot_id, kind);
                 let instance_is_running = self
                     .plugin_map
                     .lock()
+                    // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                     .unwrap()
                     .shared_running_plugin(instance_id)
                     .is_some();
                 let instance_is_in_blocking_call = self
                     .plugin_map
                     .lock()
+                    // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
                     .unwrap()
                     .shared_instance_in_blocking_call(instance_id);
                 let (slot_added_sender, slot_added_receiver) = std::sync::mpsc::channel();
-                self.plugin_executor.execute_for_plugin(
+                let slot_bytes = string_map_bytes(&slot.configuration);
+                let reservation = match self.plugin_executor.reserve_job(
                     instance_id,
+                    JobClass::Lifecycle,
+                    slot_bytes,
+                ) {
+                    Ok(reservation) => reservation,
+                    Err(e) => {
+                        self.plugin_map.lock().unwrap().remove_metadata(slot_id);
+                        let _ = self.senders.send_to_background_jobs(
+                            BackgroundJob::StopPluginLoadingAnimation(slot_id),
+                        );
+                        return Err(anyhow!(
+                            "failed to admit shared plugin slot {}: {}",
+                            slot_id,
+                            e
+                        ));
+                    },
+                };
+                self.register_shared_slot(instance_id, slot_id, kind);
+                reservation.commit(Box::new(
                     move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                         add_slot_job(
                             senders,
@@ -2894,7 +4544,7 @@ impl WasmBridge {
                             slot_added_sender,
                         );
                     },
-                );
+                ));
                 if instance_is_running && !instance_is_in_blocking_call {
                     let _ = slot_added_receiver
                         .recv_timeout(std::time::Duration::from_millis(SLOT_ADDED_WAIT_MS));
@@ -2913,16 +4563,44 @@ impl WasmBridge {
                     None,
                     size,
                 );
+                loading_context.wasm_bytes = wasm_bytes;
                 loading_context.plugin_own_data_dir = ZELLIJ_SESSION_CACHE_DIR
                     .join(make_plugin_url_path_safe(
                         Url::from(&loading_context.plugin_config.location).to_string(),
                     ))
-                    .join(format!("{}", instance_id));
+                    .join(format!("{}-{}", self.session_scope, instance_id));
+                let persisted_loading_context = {
+                    let mut loading_context = loading_context.clone();
+                    loading_context.wasm_bytes = None;
+                    loading_context
+                };
+                let load_bytes = loading_context
+                    .wasm_bytes
+                    .as_ref()
+                    .map(Vec::len)
+                    .unwrap_or(0);
+                let reservation = match self
+                    .plugin_executor
+                    .reserve_plugin_load(instance_id, load_bytes)
+                {
+                    Ok(reservation) => reservation,
+                    Err(e) => {
+                        self.plugin_map.lock().unwrap().remove_metadata(slot_id);
+                        let _ = self.senders.send_to_background_jobs(
+                            BackgroundJob::StopPluginLoadingAnimation(slot_id),
+                        );
+                        return Err(anyhow!(
+                            "failed to admit shared plugin instance {}: {}",
+                            instance_id,
+                            e
+                        ));
+                    },
+                };
                 self.shared_instances.insert(
                     instance_id,
                     SharedInstanceInfo {
                         key: key.clone(),
-                        loading_context: loading_context.clone(),
+                        loading_context: persisted_loading_context,
                         slots: BTreeSet::new(),
                         background_slots: BTreeSet::new(),
                     },
@@ -2931,10 +4609,11 @@ impl WasmBridge {
                 self.register_shared_slot(instance_id, slot_id, kind);
                 let mut initial_slots = BTreeMap::new();
                 initial_slots.insert(slot_id, slot);
-                self.plugin_executor.execute_plugin_load(
-                    instance_id,
+                let executor = self.plugin_executor.clone();
+                reservation.commit(Box::new(
                     move |senders, plugin_map, connected_clients, plugin_cache, engine| {
-                        start_instance_job(
+                        let failure_senders = senders.clone();
+                        if !start_instance_job(
                             senders,
                             plugin_map,
                             connected_clients,
@@ -2944,9 +4623,18 @@ impl WasmBridge {
                             skip_cache,
                             instance_id,
                             initial_slots,
-                        );
+                        ) {
+                            if failure_senders
+                                .send_to_plugin(PluginInstruction::SharedInstanceLoadFailed(
+                                    instance_id,
+                                ))
+                                .is_err()
+                            {
+                                executor.unregister_plugin(instance_id);
+                            }
+                        }
                     },
-                );
+                ));
                 instance_id
             },
         };
@@ -2964,10 +4652,52 @@ impl WasmBridge {
             }
         }
     }
+    pub fn shared_instance_load_failed(&mut self, instance_id: PluginId) {
+        let slot_ids: Vec<PluginId> = self
+            .shared_instances
+            .get(&instance_id)
+            .map(|info| info.slots.iter().copied().collect())
+            .unwrap_or_default();
+        for slot_id in slot_ids {
+            self.unload_shared_slot(slot_id);
+        }
+        if let Some(info) = self.shared_instances.remove(&instance_id) {
+            if self.shared_keys.get(&info.key) == Some(&instance_id) {
+                self.shared_keys.remove(&info.key);
+            }
+            self.quarantine.forget(instance_id);
+            self.permission_prompts.remove(&instance_id);
+            let pipes_to_release = self.pending_pipes.unload_plugin(&instance_id);
+            self.send_pipe_releases(pipes_to_release);
+            self.forget_pipe_popups_of_plugin(instance_id);
+            let prompt_actions = self.prompt_requests.plugin_unloaded(instance_id);
+            self.apply_prompt_actions(prompt_actions);
+            self.settings_entries_changed(|entries| entries.plugin_unloaded(instance_id));
+            let _ = self
+                .plugin_executor
+                .execute_plugin_unload_many(instance_id, Vec::new());
+        }
+    }
     fn unload_shared_slot(&mut self, slot_id: PluginId) {
+        let Some(instance_id) = self.shared_slot_owner.get(&slot_id).copied() else {
+            return;
+        };
+        // Last slot tears the instance down. Revoke that load before removing
+        // ownership records or waiting on a queue, so a blocked guest cannot
+        // stall retirement and a rejected submit cannot leave it alive.
+        let tearing_down = match self.shared_instances.get(&instance_id) {
+            Some(info) => !info.slots.iter().any(|id| *id != slot_id),
+            None => true,
+        };
+        if tearing_down {
+            revoke_plugin_loads(self.session_scope, instance_id);
+            self.release_key_intercepts(instance_id);
+        }
         let Some(instance_id) = self.shared_slot_owner.remove(&slot_id) else {
             return;
         };
+        self.quarantine.forget(slot_id);
+        self.permission_prompts.remove(&slot_id);
         self.plugin_map.lock().unwrap().remove_metadata(slot_id);
         let connected_clients: Vec<ClientId> = self.connected_clients.lock().unwrap().clone();
         let tear_down = match self.shared_instances.get_mut(&instance_id) {
@@ -2990,12 +4720,26 @@ impl WasmBridge {
         };
         if tear_down {
             if let Some(info) = self.shared_instances.remove(&instance_id) {
-                self.shared_keys.remove(&info.key);
+                if self.shared_keys.get(&info.key) == Some(&instance_id) {
+                    self.shared_keys.remove(&info.key);
+                }
             }
-            self.plugin_executor.execute_plugin_unload(
+            self.quarantine.forget(instance_id);
+            self.permission_prompts.remove(&instance_id);
+            let _ = self.plugin_executor.execute_plugin_unload(
                 instance_id,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
-                    remove_slot_job(senders, plugin_map, instance_id, slot_id, true);
+                    // Guest BeforeClose only on the executor thread. A rejected
+                    // retirement runs this closure inline and must not enter
+                    // the guest or take the execution mutex.
+                    remove_slot_job(
+                        senders,
+                        plugin_map,
+                        instance_id,
+                        slot_id,
+                        true,
+                        on_plugin_executor(),
+                    );
                 },
             );
             let pipes_to_release = self.pending_pipes.unload_plugin(&instance_id);
@@ -3004,10 +4748,19 @@ impl WasmBridge {
             self.apply_prompt_actions(prompt_actions);
             self.settings_entries_changed(|entries| entries.plugin_unloaded(instance_id));
         } else {
-            self.plugin_executor.execute_for_plugin(
+            // Lifecycle admission can fail once the queue is full. The closure
+            // still runs, on the caller, and skips the guest in that case.
+            self.plugin_executor.submit_lifecycle_or_run(
                 instance_id,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
-                    remove_slot_job(senders, plugin_map, instance_id, slot_id, false);
+                    remove_slot_job(
+                        senders,
+                        plugin_map,
+                        instance_id,
+                        slot_id,
+                        false,
+                        on_plugin_executor(),
+                    );
                 },
             );
         }
@@ -3040,31 +4793,63 @@ impl WasmBridge {
             vec![]
         }
     }
-    fn reload_shared_instance(&mut self, instance_id: PluginId) {
+    fn reload_shared_instance_with_bytes(
+        &mut self,
+        instance_id: PluginId,
+        wasm_bytes: Option<Vec<u8>>,
+    ) {
         if !self.shared_instances.contains_key(&instance_id) {
             return;
         }
-        self.unregister_settings_entry(instance_id);
         let Some(info) = self.shared_instances.get(&instance_id) else {
             return;
         };
         let slot_ids: Vec<PluginId> = info.slots.iter().copied().collect();
         let mut loading_context = info.loading_context.clone();
+        loading_context.wasm_bytes = wasm_bytes;
+        loading_context.generation = next_plugin_generation();
+        if let Some(first_client_id) = self.get_first_client_id() {
+            loading_context.client_id = first_client_id;
+        }
+        let reload_bytes = loading_context
+            .wasm_bytes
+            .as_ref()
+            .map(Vec::len)
+            .unwrap_or(0);
+        let reservation =
+            match self
+                .plugin_executor
+                .reserve_job(instance_id, JobClass::Lifecycle, reload_bytes)
+            {
+                Ok(reservation) => reservation,
+                Err(e) => {
+                    log::error!(
+                        "Failed to admit reload of shared plugin instance {}: {}",
+                        instance_id,
+                        e
+                    );
+                    return;
+                },
+            };
+        self.unregister_settings_entry(instance_id);
+        self.quarantine
+            .begin_generation(instance_id, loading_context.generation);
         for slot_id in &slot_ids {
+            self.quarantine
+                .begin_generation(*slot_id, loading_context.generation);
             let _ = self
                 .senders
                 .send_to_screen(ScreenInstruction::ClearLiveViewsOfPlugin(*slot_id));
         }
-        if let Some(first_client_id) = self.get_first_client_id() {
-            loading_context.client_id = first_client_id;
+        if let Some(info) = self.shared_instances.get_mut(&instance_id) {
+            info.loading_context.generation = loading_context.generation;
         }
         let loading_indication =
             LoadingIndication::new(loading_context.plugin_config.location.to_string());
         self.start_plugin_loading_indication(&slot_ids, &loading_indication);
-        self.plugin_executor.execute_for_plugin(
-            instance_id,
+        reservation.commit(Box::new(
             move |senders, plugin_map, connected_clients, plugin_cache, engine| {
-                start_instance_job(
+                let _ = start_instance_job(
                     senders,
                     plugin_map,
                     connected_clients,
@@ -3076,18 +4861,26 @@ impl WasmBridge {
                     BTreeMap::new(),
                 );
             },
-        );
+        ));
     }
     fn existing_shared_targets(
         &mut self,
         run_plugin: &RunPlugin,
         skip_cache: bool,
     ) -> Option<Vec<(PluginId, Option<ClientId>)>> {
-        let plugin_config = PluginConfig::from_run_plugin(run_plugin)?;
-        if !self.module_is_shared(&plugin_config, skip_cache) {
-            return None;
-        }
+        // Whether an instance is already running is answered from state; classifying the module
+        // reads the whole file, which every URL-addressed CLI pipe payload would otherwise pay
+        // on the management thread even for a plugin that has been running for hours. A key
+        // that has an instance is a shared module (only those are keyed), so the classification
+        // is only needed when the caller asks for a fresh look at the file.
         let instance_id = *self.shared_keys.get(&Self::shared_key_of(run_plugin))?;
+        if skip_cache {
+            let plugin_config = PluginConfig::from_run_plugin(run_plugin)?;
+            let wasm_bytes = self.plugin_wasm_bytes(&plugin_config);
+            if !Self::module_bytes_are_shared(wasm_bytes.as_deref()) {
+                return None;
+            }
+        }
         let info = self.shared_instances.get(&instance_id)?;
         let matching_slots: Vec<PluginId> = {
             let plugin_map = self.plugin_map.lock().unwrap();
@@ -3143,12 +4936,35 @@ impl WasmBridge {
     fn add_client_to_shared_instances(&mut self, client_id: ClientId) {
         let instance_ids: Vec<PluginId> = self.shared_instances.keys().copied().collect();
         for instance_id in instance_ids {
-            self.plugin_executor.execute_for_plugin(
-                instance_id,
-                move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
-                    client_job(senders, plugin_map, instance_id, client_id, true);
-                },
-            );
+            let running_plugin = self
+                .plugin_map
+                .lock()
+                .unwrap()
+                .shared_running_plugin(instance_id)
+                .map(|(running_plugin, _subscriptions)| running_plugin);
+            let is_active = running_plugin
+                .as_ref()
+                .map(|running_plugin| {
+                    let running_plugin = lock_running(running_plugin);
+                    running_plugin.is_active() && !running_plugin.is_quarantined()
+                })
+                .unwrap_or(false);
+            if is_active {
+                self.plugin_executor.execute_for_plugin_with(
+                    instance_id,
+                    JobClass::Lifecycle,
+                    0,
+                    move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
+                        client_job(senders, plugin_map, instance_id, client_id, true);
+                    },
+                );
+            } else if !self.quarantine.contains(&instance_id) {
+                // The session was left without attached clients and the
+                // instance retired before this one arrived. Start it again;
+                // start_instance_job publishes client_connected and a render
+                // for every client already in the connected list.
+                self.reload_shared_instance_with_bytes(instance_id, None);
+            }
             if self.shared_instance_subscribes_to(instance_id, EventType::InitialKeybinds) {
                 self.send_keybinds_payload_to_plugin(
                     instance_id,
@@ -3162,8 +4978,10 @@ impl WasmBridge {
     fn remove_client_from_shared_instances(&mut self, client_id: ClientId) {
         let instance_ids: Vec<PluginId> = self.shared_instances.keys().copied().collect();
         for instance_id in instance_ids {
-            self.plugin_executor.execute_for_plugin(
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Lifecycle,
+                0,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     client_job(senders, plugin_map, instance_id, client_id, false);
                 },
@@ -3187,6 +5005,7 @@ impl WasmBridge {
     ) {
         for (instance_id, info) in self.shared_instances.iter() {
             let instance_id = *instance_id;
+            let generation = info.loading_context.generation;
             let visible_slots: HashMap<ClientId, HashSet<PluginId>> = visible_plugins
                 .iter()
                 .map(|(client_id, plugin_ids)| {
@@ -3200,8 +5019,14 @@ impl WasmBridge {
                     )
                 })
                 .collect();
-            self.plugin_executor.execute_for_plugin(
+            let visibility_bytes = visible_slots
+                .values()
+                .map(|slots| slots.len().saturating_mul(8).saturating_add(64))
+                .fold(0usize, usize::saturating_add);
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Replaceable(replaceable_visibility_key(generation)),
+                visibility_bytes,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     visibility_job(senders, plugin_map, instance_id, visible_slots);
                 },
@@ -3265,16 +5090,24 @@ impl WasmBridge {
         &mut self,
         updates: Vec<(Option<PluginId>, Option<ClientId>, Event)>,
         shutdown_sender: Sender<()>,
+        scheduled_generation: Option<u64>,
     ) -> Vec<(Option<PluginId>, Option<ClientId>, Event)> {
         if self.shared_instances.is_empty() {
             return updates;
         }
         let mut batches: BTreeMap<PluginId, Vec<SharedEventBatchEntry>> = BTreeMap::new();
         let mut legacy_updates = vec![];
-        let all_instance_ids: Vec<PluginId> = self.shared_instances.keys().copied().collect();
+        let all_instance_ids: Vec<PluginId> = self
+            .shared_instances
+            .keys()
+            .copied()
+            .filter(|instance_id| !self.quarantine.contains(instance_id))
+            .collect();
         for (plugin_id, client_id, event) in updates {
             match plugin_id {
                 Some(plugin_id) => match self.shared_instance_of(plugin_id) {
+                    // a quarantined instance receives nothing until it is reloaded
+                    Some(instance_id) if self.quarantine.contains(&instance_id) => {},
                     Some(instance_id) => {
                         let slot_id = if plugin_id != instance_id {
                             Some(plugin_id)
@@ -3301,11 +5134,30 @@ impl WasmBridge {
         }
         for (instance_id, events) in batches {
             let _s = shutdown_sender.clone();
-            self.plugin_executor.execute_for_plugin(
+            let events_bytes = events
+                .iter()
+                .map(|(event, _, keybinds)| {
+                    event_payload_bytes(event).saturating_add(
+                        keybinds
+                            .as_ref()
+                            .map(|keybinds| keybinds_vec_bytes(keybinds.as_ref()))
+                            .unwrap_or(0),
+                    )
+                })
+                .fold(0usize, usize::saturating_add);
+            self.plugin_executor.execute_for_plugin_with(
                 instance_id,
+                JobClass::Ordered,
+                events_bytes,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let _s = _s;
-                    apply_events_job(senders, plugin_map, instance_id, events);
+                    apply_events_job(
+                        senders,
+                        plugin_map,
+                        instance_id,
+                        events,
+                        scheduled_generation,
+                    );
                 },
             );
         }
@@ -3322,10 +5174,22 @@ impl WasmBridge {
         }
         let mut batches: BTreeMap<PluginId, Vec<(PipeMessage, EventContext)>> = BTreeMap::new();
         let mut legacy_messages = vec![];
-        let all_instance_ids: Vec<PluginId> = self.shared_instances.keys().copied().collect();
+        let all_instance_ids: Vec<PluginId> = self
+            .shared_instances
+            .keys()
+            .copied()
+            .filter(|instance_id| !self.quarantine.contains(instance_id))
+            .collect();
         for (plugin_id, client_id, pipe_message) in messages {
             let targets: Vec<(PluginId, Option<PluginId>)> = match plugin_id {
                 Some(plugin_id) => match self.shared_instance_of(plugin_id) {
+                    // a quarantined instance receives nothing until it is reloaded
+                    Some(instance_id) if self.quarantine.contains(&instance_id) => {
+                        // The caller cannot know the plugin is gone; release the pipe so the
+                        // `zellij pipe` client does not wait forever.
+                        self.release_cli_pipe_with_error(&pipe_message);
+                        continue;
+                    },
                     Some(instance_id) => {
                         let slot_id = if plugin_id != instance_id {
                             Some(plugin_id)
@@ -3365,14 +5229,34 @@ impl WasmBridge {
         for (instance_id, messages) in batches {
             let _s = shutdown_sender.clone();
             let notification_end = notification_end.take();
-            self.plugin_executor.execute_for_plugin(
+            let messages_bytes = messages
+                .iter()
+                .map(|(message, _)| pipe_message_payload_bytes(message))
+                .fold(0usize, usize::saturating_add);
+            let messages = Arc::new(messages);
+            let worker_messages = messages.clone();
+            let failure_messages = messages.clone();
+            if let Err(e) = self.plugin_executor.try_execute_for_plugin(
                 instance_id,
+                JobClass::Ordered,
+                messages_bytes,
                 move |senders, plugin_map, _connected_clients, _plugin_cache, _engine| {
                     let _s = _s;
-                    apply_pipes_job(senders, plugin_map, instance_id, messages);
-                    drop(notification_end);
+                    apply_pipes_job(senders, plugin_map, instance_id, worker_messages);
+                    if let Some(notification_end) = notification_end {
+                        notification_end.complete_recorded();
+                    }
                 },
-            );
+            ) {
+                log::warn!(
+                    "Plugin executor rejected shared pipes for {}: {}",
+                    instance_id,
+                    e
+                );
+                for (pipe_message, _) in failure_messages.iter() {
+                    self.release_cli_pipe_with_error(pipe_message);
+                }
+            }
         }
         legacy_messages
     }
@@ -3412,7 +5296,7 @@ impl WasmBridge {
         let running_plugins = self.plugin_map.lock().unwrap().running_plugins();
 
         for (plugin_id, client_id, running_plugin) in running_plugins {
-            let running_plugin = running_plugin.lock().unwrap();
+            let running_plugin = lock_running(&running_plugin);
             let plugin_env = &running_plugin.store.data();
             let current_config = &plugin_env.plugin.initial_userspace_configuration;
             let plugin_location = &plugin_env.plugin.location;
@@ -3476,6 +5360,23 @@ pub fn handle_plugin_loading_failure(
     }
 }
 
+/// Drop state a plugin installed before its load failed. It never produced a running instance
+/// that the normal unload path could clean up, so its key intercepts, highlights, and settings
+/// entry would otherwise outlive it.
+pub fn clear_failed_plugin_load_side_effects(
+    senders: &ThreadSenders,
+    plugin_id: PluginId,
+    client_ids: impl IntoIterator<Item = ClientId>,
+) {
+    for client_id in client_ids {
+        let _ = senders.send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
+            plugin_id, client_id,
+        ));
+    }
+    let _ = senders.send_to_screen(ScreenInstruction::ClearAllPluginHighlights(plugin_id));
+    let _ = senders.send_to_plugin(PluginInstruction::UnregisterSettingsEntry(plugin_id));
+}
+
 // TODO: move to permissions?
 pub fn check_event_permission(
     plugin_env: &PluginEnv,
@@ -3525,6 +5426,7 @@ pub fn check_event_permission(
         | Event::SessionHistoryUpdate(..)
         | Event::DesktopIntegration(..)
         | Event::PluginSettingsEntries(..)
+        | Event::PluginActivated(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::SessionPreview(..) => PermissionType::ReadPaneContents,
         Event::ConfigChangesDropped(..) | Event::ConfigFileChangedSinceRead => {
@@ -3533,6 +5435,11 @@ pub fn check_event_permission(
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
         Event::LiveViewStateChanged { .. } => PermissionType::ReadPaneContents,
+        Event::FileSystemCreate(..)
+        | Event::FileSystemRead(..)
+        | Event::FileSystemUpdate(..)
+        | Event::FileSystemUpdateIncomplete(..)
+        | Event::FileSystemDelete(..) => PermissionType::FullHdAccess,
         Event::UserAction(..) => PermissionType::InterceptInput,
         _ => return (PermissionStatus::Granted, None),
     };
@@ -3546,22 +5453,38 @@ pub fn check_event_permission(
     (PermissionStatus::Denied, Some(permission))
 }
 
-fn can_read_command_text(plugin_env: &PluginEnv) -> bool {
+pub(crate) fn can_read_command_text(plugin_env: &PluginEnv) -> bool {
     if plugin_env.plugin.is_builtin() {
         return true;
     }
     plugin_env
         .permissions
         .lock()
+        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
         .unwrap()
         .as_ref()
         .map(|permissions| permissions.contains(&PermissionType::ReadPaneContents))
         .unwrap_or(false)
 }
 
-fn redact_pane_info(pane_info: &mut zellij_utils::data::PaneInfo) {
+pub(crate) fn redact_pane_info(pane_info: &mut zellij_utils::data::PaneInfo) {
     pane_info.attention = std::mem::take(&mut pane_info.attention).without_command_text();
     pane_info.command_state = std::mem::take(&mut pane_info.command_state).without_command_text();
+    pane_info.terminal_command = None;
+}
+
+pub(crate) fn redact_session_info_for_plugin(
+    plugin_env: &PluginEnv,
+    session_info: &mut zellij_utils::data::SessionInfo,
+) {
+    if can_read_command_text(plugin_env) {
+        return;
+    }
+    for pane_infos in session_info.panes.panes.values_mut() {
+        for pane_info in pane_infos.iter_mut() {
+            redact_pane_info(pane_info);
+        }
+    }
 }
 
 pub fn redact_event_for_plugin(plugin_env: &PluginEnv, event: &mut Event) {
@@ -3618,6 +5541,27 @@ pub(crate) fn apply_pending_popup_size(running_plugin: &mut RunningPlugin) -> bo
     changed
 }
 
+/// Timer and the asynchronous plugin results that name a plugin id without a
+/// generation of their own. A later load of that id must not observe them.
+pub(crate) fn event_is_scoped_to_load(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::Timer(_)
+            | Event::RunCommandResult(..)
+            | Event::WebRequestResult(..)
+            | Event::ActionComplete(..)
+    )
+}
+
+pub(crate) fn stale_timer_for_load(
+    event: &Event,
+    scheduled_generation: Option<u64>,
+    running_generation: u64,
+) -> bool {
+    event_is_scoped_to_load(event)
+        && scheduled_generation.is_some_and(|scheduled| scheduled < running_generation)
+}
+
 pub fn apply_event_to_plugin(
     plugin_id: PluginId,
     client_id: ClientId,
@@ -3626,7 +5570,15 @@ pub fn apply_event_to_plugin(
     plugin_render_assets: &mut Vec<PluginRenderAsset>,
     senders: ThreadSenders,
     plugin_subscriptions: &HashSet<EventType>,
+    scheduled_timer_generation: Option<u64>,
 ) -> Result<()> {
+    if stale_timer_for_load(
+        event,
+        scheduled_timer_generation,
+        running_plugin.store.data().generation,
+    ) {
+        return Ok(());
+    }
     let instance = running_plugin.instance.clone();
 
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
@@ -3662,6 +5614,7 @@ pub fn apply_event_to_plugin(
                         .with_context(err_context)?;
                     wasi_write_object(running_plugin.store.data(), &protobuf_event.encode_to_vec())
                         .with_context(err_context)?;
+                    crate::plugins::shared::refuel_for_callback(&mut running_plugin.store);
                     let should_render = update
                         .call(&mut running_plugin.store, ())
                         .with_context(err_context)?;
@@ -3680,6 +5633,9 @@ pub fn apply_event_to_plugin(
                         let rendered_bytes = instance
                             .get_typed_func::<(i32, i32), ()>(&mut running_plugin.store, "render")
                             .and_then(|render| {
+                                crate::plugins::shared::refuel_for_callback(
+                                    &mut running_plugin.store,
+                                );
                                 render
                                     .call(&mut running_plugin.store, (rows as i32, columns as i32))
                             })
@@ -3733,7 +5689,8 @@ pub fn apply_event_to_plugin(
     Ok(())
 }
 
-pub fn handle_plugin_crash(plugin_id: PluginId, message: String, senders: ThreadSenders) {
+/// Show a plugin's fatal error in its pane and drop its settings entry.
+pub fn show_plugin_crash(plugin_id: PluginId, message: String, senders: ThreadSenders) {
     let mut loading_indication = LoadingIndication::new("Panic!".to_owned());
     loading_indication.indicate_loading_error(message);
     let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
@@ -3741,6 +5698,18 @@ pub fn handle_plugin_crash(plugin_id: PluginId, message: String, senders: Thread
         loading_indication,
     ));
     let _ = senders.send_to_plugin(PluginInstruction::UnregisterSettingsEntry(plugin_id));
+}
+
+/// Report a fatal error from the plugin instance of the given generation and quarantine the
+/// plugin unless a newer instance has replaced that one.
+pub fn handle_plugin_crash(
+    plugin_id: PluginId,
+    generation: u64,
+    message: String,
+    senders: ThreadSenders,
+) {
+    show_plugin_crash(plugin_id, message, senders.clone());
+    let _ = senders.send_to_plugin(PluginInstruction::Quarantine(plugin_id, generation));
 }
 
 pub fn apply_before_close_event_to_plugin(
@@ -3762,9 +5731,11 @@ pub fn apply_before_close_event_to_plugin(
         .with_context(err_context)?;
     wasi_write_object(running_plugin.store.data(), &protobuf_event.encode_to_vec())
         .with_context(err_context)?;
-    let _should_render = update
-        .call(&mut running_plugin.store, ())
-        .with_context(err_context)?;
+    crate::plugins::shared::refuel_for_callback(&mut running_plugin.store);
+    let _should_render = crate::plugins::pinned_executor::with_before_close_host_calls(|| {
+        update.call(&mut running_plugin.store, ())
+    })
+    .with_context(err_context)?;
     let pipes_to_block_or_unblock = pipes_to_block_or_unblock(running_plugin, None);
     let plugin_render_asset =
         PluginRenderAsset::new(plugin_id, client_id, vec![]).with_pipes(pipes_to_block_or_unblock);
@@ -3791,6 +5762,7 @@ fn change_host_dir_of_running_plugin(
         &ZELLIJ_TMP_DIR,
         &plugin_env.plugin.location.to_string(),
         plugin_env.plugin_id,
+        plugin_env.plugin.is_builtin(),
         plugin_env.stdin_pipe.clone(),
         plugin_env.stdout_pipe.clone(),
     )?;
@@ -3808,9 +5780,318 @@ pub(crate) fn is_hover(event: &Event) -> bool {
 }
 
 #[cfg(test)]
+mod timer_generation_tests {
+    use super::stale_timer_for_load;
+    use zellij_utils::data::Event;
+
+    #[test]
+    fn a_timer_scheduled_against_generation_g_is_not_applied_to_generation_g2() {
+        let generation_g = 4;
+        let generation_g2 = 9;
+        let timer = Event::Timer(0.25);
+        assert!(
+            stale_timer_for_load(&timer, Some(generation_g), generation_g2),
+            "generation {generation_g2} must not receive a timer from {generation_g}"
+        );
+        assert!(!stale_timer_for_load(
+            &timer,
+            Some(generation_g2),
+            generation_g2
+        ));
+        assert!(!stale_timer_for_load(&timer, None, generation_g2));
+        assert!(!stale_timer_for_load(
+            &Event::InputReceived,
+            Some(generation_g),
+            generation_g2
+        ));
+    }
+}
+
+#[cfg(test)]
+mod load_result_generation_tests {
+    use super::apply_event_to_plugin;
+    use crate::plugins::plugin_loader::PluginLoader;
+    use crate::plugins::plugin_map::{
+        PluginEnv, PluginMap, PluginMetadata, RunningPlugin, Subscriptions,
+    };
+    use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use wasmi::{Engine, Linker, Module, Store};
+    use zellij_utils::data::{Event, InputMode, PermissionType};
+    use zellij_utils::input::actions::Action;
+    use zellij_utils::input::layout::{PluginUserConfiguration, RunPluginLocation};
+    use zellij_utils::input::plugins::PluginConfig;
+
+    fn running_plugin(generation: u64) -> RunningPlugin {
+        let dir = tempfile::tempdir().expect("tempdir").into_path();
+        let stdin_pipe = Arc::new(Mutex::new(VecDeque::new()));
+        let stdout_pipe = Arc::new(Mutex::new(VecDeque::new()));
+        let wasi_ctx = PluginLoader::create_wasi_ctx(
+            &dir,
+            &dir,
+            &dir,
+            &dir,
+            &"file:/tmp/load-result.wasm".to_owned(),
+            1,
+            false,
+            stdin_pipe.clone(),
+            stdout_pipe.clone(),
+        )
+        .expect("wasi");
+        let env = PluginEnv {
+            plugin_id: 1,
+            generation,
+            session_scope: 0,
+            load_alive: Arc::new(AtomicBool::new(true)),
+            client_id: 1,
+            plugin: PluginConfig {
+                path: PathBuf::from("/tmp/load-result.wasm"),
+                _allow_exec_host_cmd: false,
+                location: RunPluginLocation::File(PathBuf::from("/tmp/load-result.wasm")),
+                initial_userspace_configuration: PluginUserConfiguration::new(BTreeMap::new()),
+                initial_cwd: None,
+            },
+            plugin_digest: "load-result".to_owned(),
+            permissions: Arc::new(Mutex::new(Some(
+                [PermissionType::ReadApplicationState].into_iter().collect(),
+            ))),
+            quarantined: Arc::new(AtomicBool::new(false)),
+            senders: crate::thread_bus::ThreadSenders {
+                should_silently_fail: true,
+                ..Default::default()
+            },
+            wasi_ctx,
+            plugin_own_data_dir: dir.clone(),
+            plugin_own_cache_dir: dir.clone(),
+            path_to_default_shell: dir.clone(),
+            default_shell: None,
+            layout_dir: None,
+            plugin_cwd: dir,
+            session_env_vars: BTreeMap::new(),
+            input_pipes_to_unblock: Arc::new(Mutex::new(HashSet::new())),
+            input_pipes_to_block: Arc::new(Mutex::new(HashSet::new())),
+            default_mode: InputMode::Normal,
+            subscriptions: Arc::new(Mutex::new(HashSet::new())),
+            stdin_pipe,
+            stdout_pipe,
+            keybinds: Arc::new(Default::default()),
+            intercepting_key_presses: false,
+            pending_popup_size: None,
+            store_limits: wasmi::StoreLimitsBuilder::new().build(),
+            shared: None,
+        };
+        let wat = r#"(module (func (export "update") (result i32) unreachable))"#;
+        let engine = Engine::default();
+        let module = Module::new(&engine, wat::parse_str(wat).expect("wat")).expect("module");
+        let mut store = Store::new(&engine, env);
+        let instance = Linker::new(&engine)
+            .instantiate_and_start(&mut store, &module)
+            .expect("instance");
+        RunningPlugin::new(store, instance, 0, 0)
+    }
+
+    #[test]
+    fn plugin_discovery_does_not_wait_for_guest_execution() {
+        let running = Arc::new(Mutex::new(running_plugin(1)));
+        let plugin_config = running.lock().unwrap().store.data().plugin.clone();
+        let mut map = PluginMap::default();
+        map.insert_metadata(
+            1,
+            PluginMetadata {
+                plugin_config,
+                tab_index: None,
+                rows: 1,
+                columns: 1,
+                cwd: PathBuf::new(),
+                is_background: false,
+            },
+        );
+        map.insert(
+            1,
+            1,
+            running.clone(),
+            Arc::new(Mutex::new(Subscriptions::new())),
+            Default::default(),
+        );
+        let unrelated = Arc::new(Mutex::new(running_plugin(2)));
+        map.insert_metadata(
+            2,
+            PluginMetadata {
+                plugin_config: PluginConfig {
+                    path: PathBuf::from("/unrelated.wasm"),
+                    _allow_exec_host_cmd: false,
+                    location: RunPluginLocation::File(PathBuf::from("/unrelated.wasm")),
+                    initial_userspace_configuration: Default::default(),
+                    initial_cwd: None,
+                },
+                tab_index: None,
+                rows: 1,
+                columns: 1,
+                cwd: PathBuf::new(),
+                is_background: false,
+            },
+        );
+        map.insert(
+            2,
+            2,
+            unrelated,
+            Arc::new(Mutex::new(Subscriptions::new())),
+            Default::default(),
+        );
+        let map = Arc::new(Mutex::new(map));
+        let execution_guard = running.lock().unwrap();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let map_for_discovery = map.clone();
+        std::thread::spawn(move || {
+            let index = map_for_discovery.lock().unwrap().clone_plugin_assets();
+            let _ = done_tx.send(index);
+        });
+        let index = done_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("plugin discovery waited on the guest execution mutex");
+        assert_eq!(
+            index.get(&RunPluginLocation::File(PathBuf::from("/unrelated.wasm"))),
+            Some(&HashMap::from([(Default::default(), vec![(2, 2)])])),
+            "an unrelated plugin must still be discoverable"
+        );
+        drop(execution_guard);
+    }
+
+    #[test]
+    fn replacing_a_plugin_does_not_wait_for_the_old_guest_execution() {
+        let old_running = Arc::new(Mutex::new(running_plugin(1)));
+        let old_load_alive = old_running.lock().unwrap().load_alive_handle();
+        let plugin_config = old_running.lock().unwrap().store.data().plugin.clone();
+        let mut map = PluginMap::default();
+        map.insert_metadata(
+            1,
+            PluginMetadata {
+                plugin_config,
+                tab_index: None,
+                rows: 1,
+                columns: 1,
+                cwd: PathBuf::new(),
+                is_background: false,
+            },
+        );
+        map.insert(
+            1,
+            1,
+            old_running.clone(),
+            Arc::new(Mutex::new(Subscriptions::new())),
+            Default::default(),
+        );
+        let map = Arc::new(Mutex::new(map));
+        let execution_guard = old_running.lock().unwrap();
+        let replacement = Arc::new(Mutex::new(running_plugin(2)));
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let map_for_replacement = map.clone();
+        std::thread::spawn(move || {
+            map_for_replacement.lock().unwrap().insert(
+                1,
+                1,
+                replacement,
+                Arc::new(Mutex::new(Subscriptions::new())),
+                Default::default(),
+            );
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("plugin replacement waited on the old guest execution mutex");
+        assert!(
+            !old_load_alive.load(Ordering::Acquire),
+            "the replaced reservation must be revoked"
+        );
+        drop(execution_guard);
+    }
+
+    fn stdin_len(running: &RunningPlugin) -> usize {
+        running.store.data().stdin_pipe.lock().unwrap().len()
+    }
+
+    fn apply(
+        running: &mut RunningPlugin,
+        event: &Event,
+        scheduled: Option<u64>,
+    ) -> anyhow::Result<()> {
+        let mut assets = Vec::new();
+        let subs = HashSet::new();
+        apply_event_to_plugin(
+            1,
+            1,
+            running,
+            event,
+            &mut assets,
+            crate::thread_bus::ThreadSenders {
+                should_silently_fail: true,
+                ..Default::default()
+            },
+            &subs,
+            scheduled,
+        )
+    }
+
+    #[test]
+    fn a_result_for_generation_1_is_not_delivered_to_generation_2() {
+        let mut running = running_plugin(2);
+        assert_eq!(running.store.data().generation, 2);
+        let mut context = BTreeMap::new();
+        context.insert("from".to_owned(), "generation-1".to_owned());
+        let action = Action::SwitchToMode {
+            input_mode: InputMode::Locked,
+        };
+        let stale = [
+            Event::RunCommandResult(Some(0), b"out".to_vec(), vec![], context.clone()),
+            Event::WebRequestResult(200, BTreeMap::new(), b"body".to_vec(), context.clone()),
+            Event::ActionComplete(action, None, context),
+        ];
+        for event in &stale {
+            apply(&mut running, event, Some(1))
+                .expect("a stale result is dropped before the guest runs");
+            assert_eq!(
+                stdin_len(&running),
+                0,
+                "generation 2 must not receive {event:?}"
+            );
+            assert!(
+                !running.is_quarantined(),
+                "dropping a stale result must not crash the replacement"
+            );
+        }
+
+        running.store.data_mut().generation = 1;
+        let live = Event::RunCommandResult(Some(0), b"out".to_vec(), vec![], BTreeMap::new());
+        let delivered = apply(&mut running, &live, Some(1));
+        assert!(
+            delivered.is_err(),
+            "generation 1 must run the guest for its own result, got {delivered:?}"
+        );
+        assert!(
+            stdin_len(&running) > 0,
+            "a current result must be written to the guest before update"
+        );
+    }
+}
+
+#[cfg(test)]
 #[path = "unit/hover_merge_tests.rs"]
 mod hover_merge_tests;
 
 #[cfg(test)]
+#[path = "unit/quarantine_tests.rs"]
+mod quarantine_tests;
+
+#[cfg(test)]
+#[path = "unit/hardening_tests.rs"]
+mod hardening_tests;
+
+#[cfg(test)]
 #[path = "unit/startup_tests.rs"]
 mod startup_tests;
+
+#[cfg(test)]
+#[path = "unit/permission_grant_tests.rs"]
+mod permission_grant_tests;

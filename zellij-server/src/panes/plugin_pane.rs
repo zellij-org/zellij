@@ -71,6 +71,7 @@ macro_rules! get_or_create_grid {
                 explicitly_disable_kitty_keyboard_protocol,
             );
             grid.hide_cursor();
+            grid.enable_ui_components();
             grid.grapheme_mode = true;
             grid.ui_components_enabled = true;
             grid
@@ -94,6 +95,8 @@ pub(crate) struct PluginPane {
     kitty_image_store: Rc<RefCell<KittyImageStore>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
+    /// Owned by this pane (shared by its per-client grids) so that the link
+    /// ids in its cells keep resolving after the pane moves to another tab.
     link_handler: Rc<RefCell<LinkHandler>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     vte_parsers: HashMap<ClientId, vt_parser::Parser>,
@@ -129,7 +132,6 @@ impl PluginPane {
         kitty_image_store: Rc<RefCell<KittyImageStore>>,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
-        link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         currently_connected_clients: Vec<ClientId>,
         style: Style,
@@ -158,7 +160,7 @@ impl PluginPane {
             terminal_emulator_colors,
             terminal_emulator_color_codes,
             exclude_from_sync: false,
-            link_handler,
+            link_handler: Rc::new(RefCell::new(LinkHandler::new())),
             character_cell_size,
             sixel_image_store,
             kitty_image_store,
@@ -237,11 +239,27 @@ impl Pane for PluginPane {
         self.resize_grids();
         self.set_should_render(true);
     }
+    fn has_deferred_pane_work(&self) -> bool {
+        self.grids
+            .values()
+            .any(|grid| grid.display_recount_pending())
+    }
+    fn advance_deferred_pane_work(&mut self) {
+        for grid in self.grids.values_mut() {
+            if grid.display_recount_pending() {
+                let _ = grid.continue_display_row_recount();
+            }
+        }
+        self.set_should_render(true);
+    }
     fn handle_plugin_bytes(&mut self, client_id: ClientId, bytes: VteBytes) {
         if let Some(loading_clients) = self.loading_only_for.as_mut() {
             loading_clients.remove(&client_id);
         }
         self.write_bytes(client_id, bytes);
+    }
+    fn has_client_instance(&self, client_id: ClientId) -> bool {
+        self.grids.contains_key(&client_id)
     }
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
         let own_content_columns = self.get_content_columns();
@@ -250,15 +268,14 @@ impl Pane for PluginPane {
         if let Some(coordinates) =
             client_id.and_then(|client_id| self.cursor_visibility.get(&client_id))
         {
-            coordinates
-                .map(|(x, y)| (x + left, y + top))
-                .and_then(|(x, y)| {
-                    if x >= own_content_columns || y >= own_content_rows {
-                        None
-                    } else {
-                        Some((x, y, true)) // plugins always show cursor when position is set
-                    }
-                })
+            coordinates.and_then(|(x, y)| {
+                // Bounds are in content coordinates; translate only after checking.
+                if x >= own_content_columns || y >= own_content_rows {
+                    None
+                } else {
+                    Some((x + left, y + top, true)) // plugins always show cursor when position is set
+                }
+            })
         } else {
             None
         }
@@ -279,18 +296,21 @@ impl Pane for PluginPane {
             None
         } else if let Some(requesting_permissions) = &self.requesting_permissions {
             let permissions = requesting_permissions.permissions.clone();
+            let prompt_id = requesting_permissions.prompt_id;
             if let Some(key_with_modifier) = key_with_modifier {
                 match key_with_modifier.bare_key {
                     BareKey::Char('y') if key_with_modifier.has_no_modifiers() => {
                         Some(AdjustedInput::PermissionRequestResult(
                             permissions,
                             PermissionStatus::Granted,
+                            prompt_id,
                         ))
                     },
                     BareKey::Char('n') if key_with_modifier.has_no_modifiers() => {
                         Some(AdjustedInput::PermissionRequestResult(
                             permissions,
                             PermissionStatus::Denied,
+                            prompt_id,
                         ))
                     },
                     _ => None,
@@ -301,11 +321,13 @@ impl Pane for PluginPane {
                     &[89] | &[121] => Some(AdjustedInput::PermissionRequestResult(
                         permissions,
                         PermissionStatus::Granted,
+                        prompt_id,
                     )),
                     // N or n
                     &[78] | &[110] => Some(AdjustedInput::PermissionRequestResult(
                         permissions,
                         PermissionStatus::Denied,
+                        prompt_id,
                     )),
                     _ => None,
                 }
@@ -319,11 +341,13 @@ impl Pane for PluginPane {
             if let Some(text_being_pasted) = self.text_being_pasted.take() {
                 match String::from_utf8(text_being_pasted) {
                     Ok(pasted_text) => {
+                        let audience =
+                            client_id.filter(|client_id| self.grids.contains_key(client_id));
                         let _ = self
                             .send_plugin_instructions
                             .send(PluginInstruction::Update(vec![(
                                 Some(self.pid),
-                                client_id,
+                                audience,
                                 Event::PastedText(pasted_text),
                             )]));
                     },
@@ -590,40 +614,40 @@ impl Pane for PluginPane {
             .unwrap_or_default()
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId) {
-        self.send_plugin_instructions
+        let _ = self
+            .send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::ScrollUp(count)),
-            )]))
-            .unwrap();
+            )]));
     }
     fn scroll_down(&mut self, count: usize, client_id: ClientId) {
-        self.send_plugin_instructions
+        let _ = self
+            .send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::ScrollDown(count)),
-            )]))
-            .unwrap();
+            )]));
     }
     fn scroll_left(&mut self, count: usize, client_id: ClientId) {
-        self.send_plugin_instructions
+        let _ = self
+            .send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::ScrollLeft(count)),
-            )]))
-            .unwrap();
+            )]));
     }
     fn scroll_right(&mut self, count: usize, client_id: ClientId) {
-        self.send_plugin_instructions
+        let _ = self
+            .send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::ScrollRight(count)),
-            )]))
-            .unwrap();
+            )]));
     }
     fn clear_screen(&mut self) {
         // do nothing
@@ -653,26 +677,26 @@ impl Pane for PluginPane {
             } else {
                 Event::MouseWithModifiers(click, modifiers)
             };
-            self.send_plugin_instructions
+            let _ = self
+                .send_plugin_instructions
                 .send(PluginInstruction::Update(vec![(
                     Some(self.pid),
                     Some(client_id),
                     event,
-                )]))
-                .unwrap();
+                )]));
         }
     }
     fn mouse_double_click(&mut self, position: &Position, client_id: ClientId) {
         if self.supports_mouse_selection {
             return;
         }
-        self.send_plugin_instructions
+        let _ = self
+            .send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::DoubleClick(position.line.0, position.column.0)),
-            )]))
-            .unwrap();
+            )]));
     }
     fn update_selection(&mut self, position: &Position, client_id: ClientId) {
         if self.supports_mouse_selection {
@@ -681,13 +705,13 @@ impl Pane for PluginPane {
                 self.set_should_render(true); // TODO: no??
             }
         } else {
-            self.send_plugin_instructions
+            let _ = self
+                .send_plugin_instructions
                 .send(PluginInstruction::Update(vec![(
                     Some(self.pid),
                     Some(client_id),
                     Event::Mouse(Mouse::Hold(position.line.0, position.column.0)),
-                )]))
-                .unwrap();
+                )]));
         }
     }
     fn end_selection(&mut self, end: &Position, client_id: ClientId) {
@@ -696,13 +720,13 @@ impl Pane for PluginPane {
                 grid.end_selection(end);
             }
         } else {
-            self.send_plugin_instructions
+            let _ = self
+                .send_plugin_instructions
                 .send(PluginInstruction::Update(vec![(
                     Some(self.pid),
                     Some(client_id),
                     Event::Mouse(Mouse::Release(end.line(), end.column())),
-                )]))
-                .unwrap();
+                )]));
         }
     }
     fn reset_selection(&mut self, client_id: Option<ClientId>) {
@@ -782,28 +806,36 @@ impl Pane for PluginPane {
         self.exclude_from_sync
     }
     fn handle_right_click(&mut self, to: &Position, client_id: ClientId) {
-        self.send_plugin_instructions
+        let _ = self
+            .send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::RightClick(to.line.0, to.column.0)),
-            )]))
-            .unwrap();
+            )]));
     }
-    fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
-        self.pane_frame_color_override = Some((self.style.colors.exit_code_error.base, error_text));
+    fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) -> bool {
+        let new_override = Some((self.style.colors.exit_code_error.base, error_text));
+        let changed = self.pane_frame_color_override != new_override;
+        self.pane_frame_color_override = new_override;
+        changed
     }
     fn add_highlight_pane_frame_color_override(
         &mut self,
         text: Option<String>,
         _client_id: Option<ClientId>,
-    ) {
+    ) -> bool {
         // TODO: if we have a client_id, we should only highlight the frame for this client
-        self.pane_frame_color_override = Some((self.style.colors.frame_highlight.base, text));
+        let new_override = Some((self.style.colors.frame_highlight.base, text));
+        let changed = self.pane_frame_color_override != new_override;
+        self.pane_frame_color_override = new_override;
+        changed
     }
-    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) {
+    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) -> bool {
         // TODO: if we have a client_id, we should only clear the highlight for this client
+        let changed = self.pane_frame_color_override.is_some();
         self.pane_frame_color_override = None;
+        changed
     }
     fn frame_color_override(&self) -> Option<PaletteColor> {
         self.pane_frame_color_override
@@ -998,7 +1030,7 @@ impl PluginPane {
         let content_rows = self.get_content_rows();
         let content_columns = self.get_content_columns();
         for grid in self.grids.values_mut() {
-            grid.change_size(content_rows, content_columns);
+            grid.resize_keeping_recount_open(content_rows, content_columns);
         }
         self.set_should_render(true);
     }
@@ -1119,7 +1151,6 @@ mod loading_indication_tests {
             Rc::new(RefCell::new(KittyImageStore::default())),
             Rc::new(RefCell::new(Palette::default())),
             Rc::new(RefCell::new(HashMap::new())),
-            Rc::new(RefCell::new(LinkHandler::new())),
             Rc::new(RefCell::new(None)),
             clients,
             Style::default(),

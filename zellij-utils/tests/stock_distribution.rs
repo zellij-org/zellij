@@ -1,10 +1,14 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
 
+#[cfg(unix)]
 use zellij_utils::consts::{
     system_default_config_dir, ZELLIJ_CACHE_DIR, ZELLIJ_PLUGIN_PERMISSIONS_CACHE, ZELLIJ_TMP_DIR,
     ZELLIJ_TMP_LOG_FILE,
 };
 use zellij_utils::distribution::{self, ZELLIJ_BUILTIN_PLUGIN_NAMES};
+#[cfg(unix)]
 use zellij_utils::home::{home_config_dir, system_data_dir};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::layout::{Layout, RunPlugin};

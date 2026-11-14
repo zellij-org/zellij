@@ -71,6 +71,33 @@ pub enum HostReply {
     ProgramStatusSupport,
 }
 
+/// OSC 4 replies are `4 ; index ; color` repeated. One reply can carry
+/// every register from a batched query, so the host is not asked once per
+/// index. A color is `rgb:r/g/b` or `#rrggbb` and does not contain `;`.
+fn palette_registers(payload: &str) -> Option<Vec<(usize, String)>> {
+    let mut fields = payload.split(';');
+    if fields.next()? != "4" {
+        return None;
+    }
+    let mut registers = Vec::new();
+    loop {
+        let Some(index) = fields.next() else {
+            break;
+        };
+        let color = fields.next()?;
+        if index.is_empty() || color.is_empty() {
+            return None;
+        }
+        let index: usize = index.parse().ok()?;
+        registers.push((index, color.to_string()));
+    }
+    if registers.is_empty() {
+        None
+    } else {
+        Some(registers)
+    }
+}
+
 /// Retained alias for the pre-refactor type name used by other modules in
 /// the client. New code should prefer `HostReply`; the alias keeps the
 /// existing `InputInstruction::AnsiStdinInstructions(Vec<...>)` plumbing
@@ -85,10 +112,9 @@ impl HostReply {
             // OSC 10 (foreground) / OSC 11 (background) answer form:
             //   OSC 10 ; <color> ST        e.g. "10;rgb:ffff/ffff/ffff"
             //   OSC 11 ; <color> ST
+            // SAFETY: hardcoded regex literals; Regex::new only fails on authoring bugs.
             static ref FG_RE: Regex = Regex::new(r"^10;(.*)$").unwrap();
             static ref BG_RE: Regex = Regex::new(r"^11;(.*)$").unwrap();
-            // OSC 4 ; N ; <color> — palette-register answer.
-            static ref COLOR_REGISTER_RE: Regex = Regex::new(r"^4;(\d+);(.*)$").unwrap();
         }
         let s = std::str::from_utf8(payload).ok()?;
         if s == "7501;?" || s.starts_with("7501;?:") {
@@ -100,10 +126,8 @@ impl HostReply {
         if let Some(caps) = FG_RE.captures(s) {
             return Some(HostReply::ForegroundColor(caps[1].to_string()));
         }
-        if let Some(caps) = COLOR_REGISTER_RE.captures(s) {
-            let index: usize = caps[1].parse().ok()?;
-            let color = caps[2].to_string();
-            return Some(HostReply::ColorRegisters(vec![(index, color)]));
+        if let Some(registers) = palette_registers(s) {
+            return Some(HostReply::ColorRegisters(registers));
         }
         None
     }
@@ -117,6 +141,7 @@ impl HostReply {
     pub fn from_csi_report(raw: &[u8]) -> Option<HostReply> {
         let s = std::str::from_utf8(raw).ok()?;
         lazy_static! {
+            // SAFETY: hardcoded regex literals; Regex::new only fails on authoring bugs.
             // <ESC>[4;H;Wt or <ESC>[6;H;Wt
             static ref PIX_RE: Regex = Regex::new(r"^\u{1b}\[(\d+);(\d+);(\d+)t$").unwrap();
             // <ESC>[?2026;Ny — DECRPM reply for sync-output (VT mode 2026)
@@ -179,6 +204,7 @@ impl HostReply {
     /// yield `None` so they do not clobber the host capability state.
     pub fn sixel_support_from_primary_da(raw: &[u8]) -> Option<HostReply> {
         lazy_static! {
+            // SAFETY: hardcoded regex literal; Regex::new only fails on authoring bugs.
             static ref PRIMARY_DA_RE: Regex = Regex::new(r"^\u{1b}\[\?([0-9;]*)c$").unwrap();
         }
         let s = std::str::from_utf8(raw).ok()?;
@@ -188,16 +214,178 @@ impl HostReply {
     }
 }
 
+/// Expected reply shape for an open forwarded-query slot (#5467).
+///
+/// Only matching host replies are re-serialized into `reply_bytes`.
+/// Unrelated replies (startup palette burst, theme notifications, etc.)
+/// still classify for Zellij's own cache but must not be delivered to the
+/// querying pane. Unrecognised query bytes fall back to [`Any`] so
+/// round-trips keep working while new shapes are taught.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ExpectedForwardReply {
+    Any,
+    OscForeground,
+    OscBackground,
+    /// `indices` is the original request. `outstanding` shrinks as each
+    /// accepted OSC 4 arrives. xterm may answer one register per OSC or
+    /// all of them in one OSC; a reply is forwarded only when every
+    /// register in it was requested and at least one is still outstanding.
+    OscPalette {
+        indices: Vec<usize>,
+        outstanding: Vec<usize>,
+    },
+    TextAreaPixels,
+    CharacterCellPixels,
+    Compound(Vec<ExpectedForwardReply>),
+}
+
+impl ExpectedForwardReply {
+    fn from_query_bytes(query: &[u8]) -> Self {
+        let mut parts = Vec::new();
+        let mut rest = query;
+        while !rest.is_empty() {
+            if rest.starts_with(b"\x1b]") {
+                let body = &rest[2..];
+                let bel = body.iter().position(|&b| b == 0x07);
+                let st = body.windows(2).position(|w| w == b"\x1b\\");
+                let (payload, consumed) = match (bel, st) {
+                    (Some(b), Some(s)) if b <= s => (&body[..b], 2 + b + 1),
+                    (Some(_), Some(s)) => (&body[..s], 2 + s + 2),
+                    (Some(b), None) => (&body[..b], 2 + b + 1),
+                    (None, Some(s)) => (&body[..s], 2 + s + 2),
+                    (None, None) => break,
+                };
+                if let Some(part) = Self::from_osc_query_payload(payload) {
+                    parts.push(part);
+                } else {
+                    return Self::Any;
+                }
+                rest = &rest[consumed..];
+            } else if rest.starts_with(b"\x1b[") {
+                let Some(end) = rest
+                    .iter()
+                    .position(|&b| matches!(b, b't' | b'n' | b'c' | b'y' | b'p' | b'R'))
+                else {
+                    break;
+                };
+                let seq = &rest[..=end];
+                if let Some(part) = Self::from_csi_query(seq) {
+                    parts.push(part);
+                } else if seq == PRIMARY_DA_QUERY {
+                    // Barrier appended by the client — ignore.
+                } else {
+                    return Self::Any;
+                }
+                rest = &rest[end + 1..];
+            } else {
+                return Self::Any;
+            }
+        }
+        match parts.len() {
+            0 => Self::Any,
+            1 => parts.pop().unwrap(),
+            _ => Self::Compound(parts),
+        }
+    }
+
+    fn from_osc_query_payload(payload: &[u8]) -> Option<Self> {
+        let s = std::str::from_utf8(payload).ok()?;
+        if s == "10;?" || s.starts_with("10;?") {
+            return Some(Self::OscForeground);
+        }
+        if s == "11;?" || s.starts_with("11;?") {
+            return Some(Self::OscBackground);
+        }
+        if let Some(rest) = s.strip_prefix("4;") {
+            let mut indices = Vec::new();
+            let mut fields = rest.split(';');
+            while let Some(index) = fields.next() {
+                let Some(mark) = fields.next() else {
+                    return None;
+                };
+                if mark != "?" {
+                    return None;
+                }
+                indices.push(index.parse().ok()?);
+            }
+            if indices.is_empty() {
+                return None;
+            }
+            return Some(Self::OscPalette {
+                outstanding: indices.clone(),
+                indices,
+            });
+        }
+        None
+    }
+
+    fn from_csi_query(seq: &[u8]) -> Option<Self> {
+        match seq {
+            b"\x1b[14t" => Some(Self::TextAreaPixels),
+            b"\x1b[16t" => Some(Self::CharacterCellPixels),
+            _ => None,
+        }
+    }
+
+    fn matches_osc_payload(&mut self, payload: &[u8]) -> bool {
+        match self {
+            Self::Any => true,
+            Self::OscForeground => std::str::from_utf8(payload)
+                .map(|s| s.starts_with("10;"))
+                .unwrap_or(false),
+            Self::OscBackground => std::str::from_utf8(payload)
+                .map(|s| s.starts_with("11;"))
+                .unwrap_or(false),
+            Self::OscPalette {
+                indices,
+                outstanding,
+            } => {
+                let Some(registers) = palette_registers(std::str::from_utf8(payload).unwrap_or(""))
+                else {
+                    return false;
+                };
+                let requested = |got: &usize| indices.iter().any(|want| want == got);
+                let still_open = |got: &usize| outstanding.iter().any(|want| want == got);
+                if !registers.iter().all(|(got, _)| requested(got)) {
+                    return false;
+                }
+                if !registers.iter().any(|(got, _)| still_open(got)) {
+                    return false;
+                }
+                outstanding.retain(|want| !registers.iter().any(|(got, _)| got == want));
+                true
+            },
+            Self::Compound(parts) => parts.iter_mut().any(|p| p.matches_osc_payload(payload)),
+            Self::TextAreaPixels | Self::CharacterCellPixels => false,
+        }
+    }
+
+    fn matches_csi_raw(&self, raw: &[u8]) -> bool {
+        match self {
+            Self::Any => true,
+            Self::TextAreaPixels => std::str::from_utf8(raw)
+                .map(|s| s.starts_with("\u{1b}[4;"))
+                .unwrap_or(false),
+            Self::CharacterCellPixels => std::str::from_utf8(raw)
+                .map(|s| s.starts_with("\u{1b}[6;"))
+                .unwrap_or(false),
+            Self::Compound(parts) => parts.iter().any(|p| p.matches_csi_raw(raw)),
+            Self::OscForeground | Self::OscBackground | Self::OscPalette { .. } => false,
+        }
+    }
+}
+
 /// The "slot" tracking state for a single forwarded query currently in
-/// flight to the host terminal. The parser accumulates raw reply bytes
-/// into `reply_bytes` until it sees a Primary-DA (`c`) reply, which acts
-/// as the serializing barrier. The timer that enforces the 500 ms
+/// flight to the host terminal. The parser accumulates matching raw reply
+/// bytes into `reply_bytes` until it sees a Primary-DA (`c`) reply, which
+/// acts as the serializing barrier. The timer that enforces the 500 ms
 /// deadline lives on the forward-timeout runtime and owns its own
 /// wall-clock — the parser itself is deadline-agnostic.
 #[derive(Debug, Clone)]
 pub struct ForwardSlot {
     pub token: u32,
     pub reply_bytes: Vec<u8>,
+    expected: ExpectedForwardReply,
     abandoned: bool,
 }
 
@@ -245,6 +433,11 @@ pub struct ParseOutput {
     /// Residue bytes that were not classified as host replies. These are
     /// the bytes the caller should feed to the keyboard parser.
     pub residue: Vec<u8>,
+    /// Ranges of `residue` that are inside a bracketed paste (including
+    /// the paste start/end markers). Pasted content must reach the
+    /// keyboard parser verbatim: it is literal text, not key or focus
+    /// reports.
+    pub paste_spans: Vec<std::ops::Range<usize>>,
     pub nested_frames: Vec<Vec<u8>>,
     /// `true` when the parser still holds buffered partial OSC/CSI
     /// bytes that need an idle-flush to release. The caller uses this
@@ -345,6 +538,10 @@ pub struct StdinAnsiParser {
     /// Bytes of an OSC sequence whose terminator hasn't arrived yet.
     /// Carried across feed() calls so the next chunk can complete it.
     partial_osc: Vec<u8>,
+    /// How much of `partial_osc` is already known to be an unterminated
+    /// OSC. The next chunk continues from here instead of copying and
+    /// rescanning the prefix.
+    partial_scanned: usize,
     /// Same for CSI device-control reports.
     partial_csi: Vec<u8>,
     partial_paste: Vec<u8>,
@@ -354,6 +551,8 @@ pub struct StdinAnsiParser {
     startup_kitty_zlib_probe: StartupKittyProbe,
     startup_grapheme_cluster_probe: StartupKittyProbe,
     partial_apc: Vec<u8>,
+    /// How much of `partial_apc` is already known to be an unterminated APC.
+    partial_apc_scanned: usize,
     primary_da_answered: bool,
     exit_draining: bool,
 }
@@ -375,6 +574,7 @@ impl StdinAnsiParser {
             batches: VecDeque::new(),
             active_clipboard_forward: None,
             partial_osc: Vec::new(),
+            partial_scanned: 0,
             partial_csi: Vec::new(),
             partial_paste: Vec::new(),
             nested_frame_extractor: nested_session::NestedFrameExtractor::new(),
@@ -383,6 +583,7 @@ impl StdinAnsiParser {
             startup_kitty_zlib_probe: StartupKittyProbe::NotSent,
             startup_grapheme_cluster_probe: StartupKittyProbe::NotSent,
             partial_apc: Vec::new(),
+            partial_apc_scanned: 0,
             primary_da_answered: false,
             exit_draining: false,
         }
@@ -413,7 +614,7 @@ impl StdinAnsiParser {
     /// debug builds panic so bugs surface during testing, release builds
     /// log and clobber the previous slot (whose accumulated bytes would
     /// otherwise silently leak).
-    pub fn open_forward(&mut self, token: u32) {
+    pub fn open_forward(&mut self, token: u32, query_bytes: &[u8]) {
         let existing = self.live_forward().map(|slot| slot.token);
         debug_assert!(
             existing.is_none(),
@@ -429,10 +630,18 @@ impl StdinAnsiParser {
             );
             let _ = self.take_active_forward();
         }
+        let expected = ExpectedForwardReply::from_query_bytes(query_bytes);
+        if matches!(expected, ExpectedForwardReply::Any) && !query_bytes.is_empty() {
+            log::warn!(
+                "open_forward({}) could not derive a reply filter from query bytes;                  falling back to capture-everything",
+                token,
+            );
+        }
         self.batches.push_back(QueryBatch {
             owner: BatchOwner::Pane(ForwardSlot {
                 token,
                 reply_bytes: Vec::new(),
+                expected,
                 abandoned: false,
             }),
             sent_at: Instant::now(),
@@ -537,12 +746,15 @@ impl StdinAnsiParser {
     }
 
     pub fn close_clipboard_forward_on_timeout(&mut self, token: u32) -> Option<(u32, Vec<u8>)> {
-        match &self.active_clipboard_forward {
-            Some(slot) if slot.token == token => {
-                let slot = self.active_clipboard_forward.take().unwrap();
-                Some((slot.token, Vec::new()))
-            },
-            _ => None,
+        if self
+            .active_clipboard_forward
+            .as_ref()
+            .is_some_and(|slot| slot.token == token)
+        {
+            let slot = self.active_clipboard_forward.take()?;
+            Some((slot.token, Vec::new()))
+        } else {
+            None
         }
     }
 
@@ -614,11 +826,13 @@ impl StdinAnsiParser {
                         }
                     }
                     if let Some(slot) = self.collecting_forward_mut() {
-                        // Re-serialize so the pane's pty sees a legal OSC.
-                        // Terminators vary by host; ST (ESC \) is always safe.
-                        slot.reply_bytes.extend_from_slice(b"\x1b]");
-                        slot.reply_bytes.extend_from_slice(&payload);
-                        slot.reply_bytes.extend_from_slice(b"\x1b\\");
+                        if slot.expected.matches_osc_payload(&payload) {
+                            // Re-serialize so the pane's pty sees a legal OSC.
+                            // Terminators vary by host; ST (ESC \) is always safe.
+                            slot.reply_bytes.extend_from_slice(b"\x1b]");
+                            slot.reply_bytes.extend_from_slice(&payload);
+                            slot.reply_bytes.extend_from_slice(b"\x1b\\");
+                        }
                     }
                 },
                 InputEvent::DeviceControlReply {
@@ -675,7 +889,9 @@ impl StdinAnsiParser {
                                 matches!(reply, Some(HostReply::HostTerminalThemeChanged(_)));
                             if let Some(HostReply::GraphemeClusterMode(value)) = reply {
                                 if let Some(slot) = self.collecting_forward_mut() {
-                                    slot.reply_bytes.extend_from_slice(&raw);
+                                    if slot.expected.matches_csi_raw(&raw) {
+                                        slot.reply_bytes.extend_from_slice(&raw);
+                                    }
                                 } else if self.startup_grapheme_cluster_probe
                                     == StartupKittyProbe::AwaitingReply
                                 {
@@ -690,7 +906,9 @@ impl StdinAnsiParser {
                             }
                             if !is_theme_notification {
                                 if let Some(slot) = self.collecting_forward_mut() {
-                                    slot.reply_bytes.extend_from_slice(&raw);
+                                    if slot.expected.matches_csi_raw(&raw) {
+                                        slot.reply_bytes.extend_from_slice(&raw);
+                                    }
                                 }
                             }
                             // Suppress unused-variable warning for params.
@@ -723,8 +941,10 @@ impl StdinAnsiParser {
         // other bytes pass through unchanged. The walk is stateful so
         // an OSC/CSI sequence split across `feed()` calls is buffered
         // rather than leaking into residue.
-        residue.extend(self.strip_replies(&sanitized));
+        let (residue_from_replies, paste_spans) = self.strip_replies(&sanitized);
+        residue.extend(residue_from_replies);
         out.residue = residue;
+        out.paste_spans = paste_spans;
         out.has_partial_state = !self.partial_osc.is_empty()
             || !self.partial_csi.is_empty()
             || !self.partial_paste.is_empty()
@@ -779,6 +999,7 @@ impl StdinAnsiParser {
                 if !self.nested_frame_extractor.partial_bytes().is_empty() {
                     self.nested_frame_extractor.take_partial()
                 } else if !self.partial_osc.is_empty() {
+                    self.partial_scanned = 0;
                     std::mem::take(&mut self.partial_osc)
                 } else {
                     std::mem::take(&mut self.partial_csi)
@@ -798,6 +1019,8 @@ impl StdinAnsiParser {
                 + partial_nested_frame.len()
                 + self.partial_apc.len(),
         );
+        self.partial_scanned = 0;
+        self.partial_apc_scanned = 0;
         out.append(&mut self.partial_osc);
         out.append(&mut self.partial_csi);
         out.append(&mut self.partial_paste);
@@ -810,70 +1033,82 @@ impl StdinAnsiParser {
     }
 
     fn extract_kitty_probe_reply(&mut self, bytes: &[u8], replies: &mut Vec<HostReply>) -> Vec<u8> {
+        let scanned = self.partial_apc_scanned;
+        self.partial_apc_scanned = 0;
         let mut working = std::mem::take(&mut self.partial_apc);
         if working.is_empty() && self.partial_osc == [0x1b] && bytes.first() == Some(&b'_') {
+            self.partial_scanned = 0;
             working.append(&mut self.partial_osc);
         }
         working.extend_from_slice(bytes);
         let mut out = Vec::with_capacity(working.len());
         let mut i = 0;
         while i < working.len() {
-            let rest = &working[i..];
-            if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b'_' {
-                match rest.get(2) {
-                    Some(&b'G') => {},
-                    Some(_) => {
-                        out.push(working[i]);
-                        i += 1;
-                        continue;
-                    },
-                    None => {
-                        self.partial_apc = rest.to_vec();
-                        return out;
-                    },
+            let (is_apc, status) = {
+                let rest = &working[i..];
+                if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b'_' {
+                    match rest.get(2) {
+                        Some(&b'G') => {
+                            let from = if i == 0 { scanned.max(2) } else { 2 };
+                            (true, apc_status_from(rest, from))
+                        },
+                        Some(_) => (false, SeqStatus::Malformed),
+                        None => (true, SeqStatus::NeedMore),
+                    }
+                } else {
+                    (false, SeqStatus::Malformed)
                 }
-                match apc_status(rest) {
-                    SeqStatus::Complete(len) => {
-                        let payload = &rest[2..len - 2];
-                        if self.startup_kitty_probe == StartupKittyProbe::AwaitingReply
-                            && payload.first() == Some(&b'G')
-                            && contains_subslice(payload, b"i=31")
-                        {
-                            replies.push(HostReply::KittyGraphicsSupport(contains_subslice(
-                                payload, b"i=31;OK",
-                            )));
-                            self.startup_kitty_probe = StartupKittyProbe::Resolved;
-                        }
-                        if self.startup_kitty_zlib_probe == StartupKittyProbe::AwaitingReply
-                            && payload.first() == Some(&b'G')
-                            && contains_subslice(payload, b"i=32")
-                        {
-                            replies.push(HostReply::KittyZlibSupport(contains_subslice(
-                                payload, b"i=32;OK",
-                            )));
-                            self.startup_kitty_zlib_probe = StartupKittyProbe::Resolved;
-                        }
-                        i += len;
-                        continue;
-                    },
-                    SeqStatus::NeedMore => {
-                        let tail = rest.to_vec();
-                        if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
-                            out.extend_from_slice(&tail);
-                        } else {
-                            self.partial_apc = tail;
-                        }
-                        return out;
-                    },
-                    SeqStatus::Malformed => {
-                        out.push(working[i]);
-                        i += 1;
-                        continue;
-                    },
-                }
+            };
+            if !is_apc {
+                out.push(working[i]);
+                i += 1;
+                continue;
             }
-            out.push(working[i]);
-            i += 1;
+            match status {
+                SeqStatus::Complete(len) => {
+                    let rest = &working[i..];
+                    let payload = &rest[2..len - 2];
+                    if self.startup_kitty_probe == StartupKittyProbe::AwaitingReply
+                        && payload.first() == Some(&b'G')
+                        && contains_subslice(payload, b"i=31")
+                    {
+                        replies.push(HostReply::KittyGraphicsSupport(contains_subslice(
+                            payload, b"i=31;OK",
+                        )));
+                        self.startup_kitty_probe = StartupKittyProbe::Resolved;
+                    }
+                    if self.startup_kitty_zlib_probe == StartupKittyProbe::AwaitingReply
+                        && payload.first() == Some(&b'G')
+                        && contains_subslice(payload, b"i=32")
+                    {
+                        replies.push(HostReply::KittyZlibSupport(contains_subslice(
+                            payload, b"i=32;OK",
+                        )));
+                        self.startup_kitty_zlib_probe = StartupKittyProbe::Resolved;
+                    }
+                    i += len;
+                    continue;
+                },
+                SeqStatus::NeedMore => {
+                    let tail = if i == 0 {
+                        std::mem::take(&mut working)
+                    } else {
+                        working.split_off(i)
+                    };
+                    if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
+                        out.extend_from_slice(&tail);
+                    } else {
+                        self.partial_apc_scanned = tail.len();
+                        self.partial_apc = tail;
+                    }
+                    return out;
+                },
+                SeqStatus::Malformed => {
+                    out.push(working[i]);
+                    i += 1;
+                    continue;
+                },
+            }
         }
         out
     }
@@ -888,24 +1123,44 @@ impl StdinAnsiParser {
     /// next call's input — so the corresponding bytes never reach
     /// residue (and never appear as spurious keypresses) while waiting
     /// for the rest of the sequence.
-    fn strip_replies(&mut self, bytes: &[u8]) -> Vec<u8> {
-        // Prepend any pending partial. At most one of (partial_osc,
-        // partial_csi) is non-empty at any time — the previous walk
-        // either completed all sequences or stopped at exactly one
-        // unterminated tail.
-        let mut working: Vec<u8> = Vec::with_capacity(
-            self.partial_osc.len()
-                + self.partial_csi.len()
-                + self.partial_paste.len()
-                + bytes.len(),
-        );
-        working.append(&mut self.partial_osc);
-        working.append(&mut self.partial_csi);
-        working.append(&mut self.partial_paste);
+    fn strip_replies(&mut self, bytes: &[u8]) -> (Vec<u8>, Vec<std::ops::Range<usize>>) {
+        // At most one partial is non-empty. Move it and append only the
+        // new bytes. A long unterminated OSC is resumed from
+        // `partial_scanned` so each fragment is scanned once.
+        let scanned = self.partial_scanned;
+        self.partial_scanned = 0;
+        let mut working = std::mem::take(&mut self.partial_osc);
+        if working.is_empty() {
+            working = std::mem::take(&mut self.partial_csi);
+        }
+        if working.is_empty() {
+            working = std::mem::take(&mut self.partial_paste);
+        }
         working.extend_from_slice(bytes);
 
         let mut out = Vec::with_capacity(working.len());
+        let mut paste_spans: Vec<std::ops::Range<usize>> = Vec::new();
+        let mut paste_span_start = if self.in_bracketed_paste {
+            Some(0usize)
+        } else {
+            None
+        };
         let mut i = 0;
+        if scanned >= 2 && working.len() >= 2 && working[0] == 0x1b && working[1] == b']' {
+            match osc_status_from(&working, scanned) {
+                SeqStatus::NeedMore => {
+                    if working.len() > PARTIAL_BUFFER_CAP_BYTES {
+                        out.extend_from_slice(&working);
+                    } else {
+                        self.partial_scanned = working.len();
+                        self.partial_osc = working;
+                    }
+                    return (out, paste_spans);
+                },
+                SeqStatus::Complete(len) => i = len,
+                SeqStatus::Malformed => {},
+            }
+        }
         while i < working.len() {
             let rest = &working[i..];
             if self.in_bracketed_paste {
@@ -914,17 +1169,27 @@ impl StdinAnsiParser {
                         MarkerMatch::Complete => {
                             out.extend_from_slice(PASTE_END_MARKER);
                             self.in_bracketed_paste = false;
+                            if let Some(start) = paste_span_start.take() {
+                                if out.len() > start {
+                                    paste_spans.push(start..out.len());
+                                }
+                            }
                             i += PASTE_END_MARKER.len();
                             continue;
                         },
                         MarkerMatch::Prefix => {
-                            let tail = rest.to_vec();
+                            let tail = working.split_off(i);
                             if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
                                 out.extend_from_slice(&tail);
                             } else {
                                 self.partial_paste = tail;
                             }
-                            return out;
+                            if let Some(start) = paste_span_start.take() {
+                                if out.len() > start {
+                                    paste_spans.push(start..out.len());
+                                }
+                            }
+                            return (out, paste_spans);
                         },
                         MarkerMatch::No => {},
                     }
@@ -935,21 +1200,24 @@ impl StdinAnsiParser {
             }
             if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b'[' {
                 if let MarkerMatch::Complete = marker_match(rest, PASTE_START_MARKER) {
+                    let start = out.len();
                     out.extend_from_slice(PASTE_START_MARKER);
                     self.in_bracketed_paste = true;
+                    paste_span_start = Some(start);
                     i += PASTE_START_MARKER.len();
                     continue;
                 }
             }
             // OSC: ESC ] ... (BEL | ESC \)
             if rest.len() >= 2 && rest[0] == 0x1b && rest[1] == b']' {
-                match osc_status(rest) {
+                let status = osc_status(rest);
+                match status {
                     SeqStatus::Complete(len) => {
                         i += len;
                         continue;
                     },
                     SeqStatus::NeedMore => {
-                        let tail = rest.to_vec();
+                        let tail = take_tail(&mut working, i);
                         if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
                             // Cap exceeded: flush buffered bytes to
                             // residue and reset, preserving the
@@ -957,9 +1225,10 @@ impl StdinAnsiParser {
                             // silently swallowed.
                             out.extend_from_slice(&tail);
                         } else {
+                            self.partial_scanned = tail.len();
                             self.partial_osc = tail;
                         }
-                        return out;
+                        return (out, paste_spans);
                     },
                     SeqStatus::Malformed => {
                         out.push(working[i]);
@@ -976,13 +1245,13 @@ impl StdinAnsiParser {
                         continue;
                     },
                     SeqStatus::NeedMore => {
-                        let tail = rest.to_vec();
+                        let tail = take_tail(&mut working, i);
                         if tail.len() > PARTIAL_BUFFER_CAP_BYTES {
                             out.extend_from_slice(&tail);
                         } else {
                             self.partial_csi = tail;
                         }
-                        return out;
+                        return (out, paste_spans);
                     },
                     SeqStatus::Malformed => {
                         out.push(working[i]);
@@ -997,22 +1266,44 @@ impl StdinAnsiParser {
             // walker re-routes based on the actual second byte.
             if rest.len() == 1 && rest[0] == 0x1b {
                 self.partial_osc = vec![0x1b];
-                return out;
+                return (out, paste_spans);
             }
             out.push(working[i]);
             i += 1;
         }
-        out
+        if let Some(start) = paste_span_start.take() {
+            if out.len() > start {
+                paste_spans.push(start..out.len());
+            }
+        }
+        (out, paste_spans)
+    }
+}
+
+fn take_tail(buf: &mut Vec<u8>, at: usize) -> Vec<u8> {
+    if at == 0 {
+        std::mem::take(buf)
+    } else {
+        buf.split_off(at)
     }
 }
 
 /// Walk an OSC sequence starting at the head of `buf`. Returns whether
 /// the sequence is complete, needs more bytes, or is malformed.
 fn osc_status(buf: &[u8]) -> SeqStatus {
+    osc_status_from(buf, 2)
+}
+
+/// Continue an OSC walk. `start` is an index already known not to contain
+/// a terminator; a trailing ESC is rechecked so a split ST still closes.
+fn osc_status_from(buf: &[u8], start: usize) -> SeqStatus {
     if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b']') {
         return SeqStatus::Malformed;
     }
-    let mut i = 2;
+    let mut i = start.max(2);
+    if i > 2 && buf.get(i - 1) == Some(&0x1b) {
+        i -= 1;
+    }
     while i < buf.len() {
         match buf[i] {
             0x07 => return SeqStatus::Complete(i + 1),
@@ -1031,11 +1322,14 @@ fn osc_status(buf: &[u8]) -> SeqStatus {
     SeqStatus::NeedMore
 }
 
-fn apc_status(buf: &[u8]) -> SeqStatus {
+fn apc_status_from(buf: &[u8], start: usize) -> SeqStatus {
     if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b'_') {
         return SeqStatus::Malformed;
     }
-    let mut i = 2;
+    let mut i = start.max(2);
+    if i > 2 && buf.get(i - 1) == Some(&0x1b) {
+        i -= 1;
+    }
     while i < buf.len() {
         match buf[i] {
             0x1b => match buf.get(i + 1) {
@@ -1156,7 +1450,7 @@ pub fn schedule_clipboard_forward_timeout<F>(
         tokio::time::sleep(deadline).await;
         let payload = parser
             .lock()
-            .unwrap()
+            .unwrap_or_else(|p| p.into_inner())
             .close_clipboard_forward_on_timeout(token);
         if let Some((t, bytes)) = payload {
             on_timeout(t, bytes);

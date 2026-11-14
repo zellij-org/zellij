@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -2561,8 +2562,59 @@ pub fn set_keybinding_preset_in(path: &Path, preset: &str) -> Result<(), String>
         back_up(path, current)
             .map_err(|backup| format!("{} could not be written", backup.display()))?;
     }
-    std::fs::write(path, new_contents.as_bytes())
+    replace_file_in_place(path, new_contents.as_bytes())
         .map_err(|e| format!("{} could not be written: {}", path.display(), e))
+}
+
+/// The file `read` and a direct write would change. `rename` does not follow a
+/// final symlink, so a linked config is published at its target.
+fn publication_path(path: &Path) -> std::io::Result<PathBuf> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => std::fs::canonicalize(path),
+        Ok(_) => Ok(path.to_path_buf()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(path.to_path_buf()),
+        Err(error) => Err(error),
+    }
+}
+
+// Publish by renaming a sibling temporary over the destination. The previous
+// file stays intact until that rename, including when the temporary write fails.
+fn replace_file_in_place(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    let destination = publication_path(path)?;
+    let parent = match destination.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    let mut temporary = tempfile::Builder::new()
+        .prefix(".zellij-config-")
+        .tempfile_in(parent)?;
+    temporary.write_all(contents)?;
+    keep_existing_mode(temporary.path(), &destination)?;
+    temporary.as_file().sync_all()?;
+    temporary
+        .persist(&destination)
+        .map_err(|error| error.error)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn keep_existing_mode(temporary: &Path, destination: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = match std::fs::metadata(destination) {
+        Ok(metadata) if metadata.is_file() => metadata,
+        Ok(_) => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    std::fs::set_permissions(
+        temporary,
+        std::fs::Permissions::from_mode(metadata.permissions().mode()),
+    )
+}
+
+#[cfg(not(unix))]
+fn keep_existing_mode(_temporary: &Path, _destination: &Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 pub fn read_config_file(path: &Path) -> Result<Option<String>, std::io::Error> {
@@ -2575,7 +2627,7 @@ pub fn read_config_file(path: &Path) -> Result<Option<String>, std::io::Error> {
 
 fn restore_previous_file(path: &Path, previous: Option<&str>) {
     let restored = match previous {
-        Some(contents) => std::fs::write(path, contents),
+        Some(contents) => replace_file_in_place(path, contents.as_bytes()),
         None => std::fs::remove_file(path),
     };
     if let Err(e) = restored {
@@ -2808,9 +2860,10 @@ pub fn save_config_in_place(
             return SaveOutcome::Failed(Some(backup_path));
         }
     }
-    if let Err(e) = std::fs::write(path, new_contents.as_bytes()) {
+    if let Err(e) = replace_file_in_place(path, new_contents.as_bytes()) {
         log::error!("Failed to write {}: {}", path.display(), e);
-        restore_previous_file(path, current.as_deref());
+        // The rename did not happen, so the active file still has its previous
+        // bytes. Rewriting it here would truncate that copy.
         restore_legacy_backup(path, legacy_backup.as_deref());
         return SaveOutcome::Failed(Some(path.to_path_buf()));
     }
@@ -2865,5 +2918,59 @@ mod keybinding_preset_file_tests {
             rewritten
         );
         assert!(!rewritten.contains("unlock-first"), "{}", rewritten);
+    }
+
+    #[test]
+    fn a_successful_preset_save_replaces_the_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.kdl");
+        let original = "// known bytes\ntheme \"dracula\"\n";
+        std::fs::write(&path, original).unwrap();
+        set_keybinding_preset_in(&path, "unlock-first").unwrap();
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("// known bytes"), "{}", written);
+        assert!(written.contains("theme \"dracula\""), "{}", written);
+        assert!(
+            written.contains("keybinds preset=\"unlock-first\""),
+            "{}",
+            written
+        );
+        assert_ne!(written.as_str(), original);
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".zellij-config-")
+            })
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_preset_temp_write_leaves_the_original_bytes() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.kdl");
+        let original = "// known bytes\ntheme \"dracula\"\n";
+        std::fs::write(&path, original).unwrap();
+        std::fs::write(Config::backup_file_path(&path), "previous backup\n").unwrap();
+        let directory_mode = std::fs::metadata(dir.path()).unwrap().permissions().mode();
+        let mut locked = std::fs::metadata(dir.path()).unwrap().permissions();
+        locked.set_mode(0o555);
+        std::fs::set_permissions(dir.path(), locked).unwrap();
+        struct RestoreMode<'a>(&'a std::path::Path, u32);
+        impl Drop for RestoreMode<'_> {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(self.0, std::fs::Permissions::from_mode(self.1));
+            }
+        }
+        let _restore = RestoreMode(dir.path(), directory_mode);
+        let error = set_keybinding_preset_in(&path, "unlock-first").unwrap_err();
+        assert!(error.contains("could not be written"), "{}", error);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
     }
 }

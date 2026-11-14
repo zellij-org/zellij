@@ -19,6 +19,7 @@ clap = { workspace = true }
 crossbeam = { version = "0.8", default-features = false, features = ["crossbeam-channel", "std"] }
 interprocess = { workspace = true }
 insta = "1.48"
+libc = { workspace = true }
 log = { workspace = true }
 regex = { workspace = true }
 tokio = { workspace = true }

@@ -744,13 +744,23 @@ impl TestSession {
 
     /// The session id: the socket/pipe filename and the session-info cache folder name.
     pub fn session_id(&self) -> String {
-        zellij_utils::sessions::resolve_session_id(&self.session_name)
-            .unwrap_or_else(|| self.session_name.clone())
+        match zellij_utils::sessions::session_folder_id(&self.session_name) {
+            Ok(id) => id,
+            Err(error) => panic!(
+                "session index lookup failed for {:?}: {}",
+                self.session_name, error
+            ),
+        }
     }
 
     /// The session's socket/pipe path, which is named by the session id.
     pub fn socket_path(&self) -> PathBuf {
-        zellij_utils::consts::session_socket_path(&self.session_name)
+        zellij_utils::consts::session_socket_path(&self.session_name).unwrap_or_else(|error| {
+            panic!(
+                "session index lookup failed for {:?}: {}",
+                self.session_name, error
+            )
+        })
     }
 
     pub fn expect_pty_spawn(&self) -> FakePtyHandle {
@@ -1148,8 +1158,10 @@ impl TestSession {
             .name
             .clone()
             .unwrap_or_else(test_env::unique_session_name);
+        let switched_socket = zellij_utils::consts::session_socket_path(&session_name)
+            .unwrap_or_else(|error| panic!("session index lookup failed: {error}"));
         assert!(
-            !zellij_utils::consts::session_socket_path(&session_name).exists(),
+            !switched_socket.exists(),
             "following a switch into the running session {} is not supported",
             session_name
         );
@@ -1234,6 +1246,16 @@ impl TestSession {
                 false,
                 block_until_exit,
             )),
+        }
+    }
+
+    pub fn run_plain_blocking_floating_command(&self, command: &[&str]) -> CliClientHandle {
+        let mut action = new_pane_cli_action(command, true, true, false, false);
+        if let CliAction::NewPane { blocking, .. } = &mut action {
+            *blocking = true;
+        }
+        CliClientHandle {
+            thread: self.spawn_cli_client(action),
         }
     }
 

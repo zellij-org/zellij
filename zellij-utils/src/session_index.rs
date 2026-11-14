@@ -168,17 +168,19 @@ pub fn default_index_path() -> PathBuf {
         .join(index_file_name(&ZELLIJ_SOCK_DIR, sock_dir_overridden))
 }
 
+/// Pre-per-socket-directory index. Sessions created before the hashed index
+/// was introduced still have rows here, so reads fall back to it.
+fn legacy_index_path() -> Option<PathBuf> {
+    let default = default_index_path();
+    let legacy = default.parent()?.join(SESSION_INDEX_FILE_NAME);
+    (legacy != default).then_some(legacy)
+}
+
 pub fn hostname() -> Option<String> {
     #[cfg(unix)]
     {
-        let mut buffer = [0u8; 256];
-        let result =
-            unsafe { libc::gethostname(buffer.as_mut_ptr() as *mut libc::c_char, buffer.len()) };
-        if result != 0 {
-            return None;
-        }
-        let end = buffer.iter().position(|b| *b == 0).unwrap_or(buffer.len());
-        let name = String::from_utf8_lossy(&buffer[..end]).trim().to_owned();
+        let name = nix::unistd::gethostname().ok()?;
+        let name = name.to_string_lossy().trim().to_owned();
         if name.is_empty() {
             None
         } else {
@@ -355,6 +357,12 @@ pub struct SessionIndex {
     indexed_facts: HashSet<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenameOutcome {
+    Renamed,
+    Conflict,
+}
+
 fn sanitize_identifier(name: &str) -> String {
     name.chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
@@ -362,7 +370,56 @@ fn sanitize_identifier(name: &str) -> String {
 }
 
 fn json_path_for_fact(name: &str) -> String {
-    format!("$.\"{}\"", name.replace('"', ""))
+    // Quoted JSON-path member with backslash doubling. Keys containing `"`
+    // are not given an expression-index path: bundled SQLite 3.44 does not
+    // accept a faithful encoding for them, and inventing one would point at
+    // the wrong key. Lookups use json_each with bound parameters instead.
+    format!("$.\"{}\"", name.replace('\\', "\\\\"))
+}
+
+fn sql_string_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn fact_can_use_extract_index(name: &str) -> bool {
+    !name.contains('"')
+}
+
+/// `Ok(false)` is absence. `Err` is not: [`Path::exists`] would hide a metadata
+/// failure and let an unreadable socket or cache path look free or dead.
+fn presence_from_try_exists(try_exists: std::io::Result<bool>) -> Result<bool> {
+    Ok(try_exists?)
+}
+
+/// Whether a socket or cache directory occupies this id. A probe error is
+/// returned; it does not make the id free.
+fn occupies_session_id(
+    socket: std::io::Result<bool>,
+    cache: std::io::Result<bool>,
+) -> Result<bool> {
+    let socket = presence_from_try_exists(socket);
+    let cache = presence_from_try_exists(cache);
+    if matches!(socket, Ok(true)) || matches!(cache, Ok(true)) {
+        Ok(true)
+    } else {
+        socket?;
+        cache
+    }
+}
+
+/// Socket means running, layout means resumable, both absent means no session.
+/// A probe error is not [`None`].
+fn session_state_from_probes(
+    socket: std::io::Result<bool>,
+    layout: std::io::Result<bool>,
+) -> Result<Option<SessionState>> {
+    if presence_from_try_exists(socket)? {
+        Ok(Some(SessionState::Running))
+    } else if presence_from_try_exists(layout)? {
+        Ok(Some(SessionState::Resumable))
+    } else {
+        Ok(None)
+    }
 }
 
 impl SessionIndex {
@@ -432,10 +489,15 @@ impl SessionIndex {
         if self.indexed_facts.contains(fact) {
             return Ok(());
         }
+        if !fact_can_use_extract_index(fact) {
+            // Still remember the fact so we do not retry a doomed DDL path.
+            self.indexed_facts.insert(fact.to_owned());
+            return Ok(());
+        }
         let statement = format!(
-            "CREATE INDEX IF NOT EXISTS sessions_fact_{} ON sessions(json_extract(facts, '{}'))",
+            "CREATE INDEX IF NOT EXISTS sessions_fact_{} ON sessions(json_extract(facts, {}))",
             sanitize_identifier(fact),
-            json_path_for_fact(fact)
+            sql_string_literal(&json_path_for_fact(fact))
         );
         self.conn.execute_batch(&statement)?;
         self.indexed_facts.insert(fact.to_owned());
@@ -446,6 +508,12 @@ impl SessionIndex {
         let Ok(entries) = std::fs::read_dir(&self.cache_dir) else {
             return;
         };
+        let mut known_ids = query_identities(&self.conn).unwrap_or_default();
+        if let Some(legacy) =
+            legacy_index_path().and_then(|path| open_existing_index(&path).ok().flatten())
+        {
+            known_ids.extend(query_identities(&legacy).unwrap_or_default());
+        }
         let mut rows = vec![];
         for entry in entries.flatten() {
             let path = entry.path();
@@ -456,6 +524,9 @@ impl SessionIndex {
             let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_string()) else {
                 continue;
             };
+            if known_ids.contains(&name) {
+                continue;
+            }
             let modified = metadata
                 .modified()
                 .ok()
@@ -471,6 +542,7 @@ impl SessionIndex {
             let folder = std::fs::read_to_string(&layout_file)
                 .ok()
                 .and_then(|raw| layout_cwd(&raw));
+            known_ids.insert(name.clone());
             rows.push(SessionRow {
                 name,
                 context: SessionContext {
@@ -584,10 +656,7 @@ impl SessionIndex {
 
     pub fn rename(&self, old_name: &str, new_name: &str) -> Result<bool> {
         match self.session_id(old_name)? {
-            Some(id) => {
-                self.rename_by_id(&id, new_name, now_secs())?;
-                Ok(true)
-            },
+            Some(id) => Ok(self.rename_by_id(&id, new_name, now_secs())? == RenameOutcome::Renamed),
             None => Ok(false),
         }
     }
@@ -609,7 +678,7 @@ impl SessionIndex {
         let id = match registered_id {
             Some(Some(id)) => id,
             _ => {
-                let id = if self.files_named(name) && !id_taken_by_another(&transaction, name)? {
+                let id = if self.files_named(name)? && !id_taken_by_another(&transaction, name)? {
                     name.to_owned()
                 } else {
                     self.unused_id(&transaction)?
@@ -629,13 +698,19 @@ impl SessionIndex {
 
     /// Give the session with this id a new name. Nothing on disk is renamed: the socket and the
     /// cache folder stay named by the id.
-    pub fn rename_by_id(&self, id: &str, new_name: &str, now: u64) -> Result<()> {
+    pub fn rename_by_id(&self, id: &str, new_name: &str, now: u64) -> Result<RenameOutcome> {
         let transaction = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
-        // A row left under the new name by a session that no longer exists gives way.
-        transaction.execute(
-            "DELETE FROM sessions WHERE name = ?1 AND COALESCE(id, name) <> ?2",
+        let target_is_owned = transaction.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM sessions
+                WHERE name = ?1 AND COALESCE(id, name) <> ?2
+            )",
             params![new_name, id],
+            |row| row.get::<_, bool>(0),
         )?;
+        if target_is_owned {
+            return Ok(RenameOutcome::Conflict);
+        }
         // Pinning the id keeps a session from before ids existed (no id, named on disk by its old
         // name) reachable under its new name.
         let renamed = transaction.execute(
@@ -652,7 +727,7 @@ impl SessionIndex {
             )?;
         }
         transaction.commit()?;
-        Ok(())
+        Ok(RenameOutcome::Renamed)
     }
 
     /// The id of the session with this name, if the index knows the session.
@@ -670,15 +745,18 @@ impl SessionIndex {
         query_names_by_id(&self.conn)
     }
 
-    fn files_named(&self, name: &str) -> bool {
-        self.sock_dir.join(name).exists() || self.cache_dir.join(name).exists()
+    fn files_named(&self, name: &str) -> Result<bool> {
+        occupies_session_id(
+            self.sock_dir.join(name).try_exists(),
+            self.cache_dir.join(name).try_exists(),
+        )
     }
 
     fn unused_id(&self, transaction: &Transaction) -> Result<String> {
         loop {
             let candidate = crate::sessions::generate_session_id();
             if query_session_name(transaction, &candidate)?.is_none()
-                && !self.files_named(&candidate)
+                && !self.files_named(&candidate)?
             {
                 return Ok(candidate);
             }
@@ -707,24 +785,27 @@ impl SessionIndex {
         Ok(changed > 0)
     }
 
-    pub fn session_state(&self, name: &str) -> Option<SessionState> {
+    pub fn session_state(&self, name: &str) -> Result<Option<SessionState>> {
         // The socket and the cache folder are named by the session's id.
-        let id = self
-            .session_id(name)
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| name.to_owned());
-        if self.sock_dir.join(&id).exists() {
-            Some(SessionState::Running)
-        } else if self
-            .cache_dir
-            .join(&id)
-            .join(SESSION_LAYOUT_FILE_NAME)
-            .exists()
-        {
-            Some(SessionState::Resumable)
-        } else {
-            None
+        // A lookup error must stay an error: swallowing it and falling back to the
+        // display name makes a renamed session look absent, and resolve_candidates prunes it.
+        let id = match self.session_id_with_legacy(name)? {
+            Some(id) => id,
+            None => name.to_owned(),
+        };
+        session_state_from_probes(
+            self.sock_dir.join(&id).try_exists(),
+            self.cache_dir
+                .join(&id)
+                .join(SESSION_LAYOUT_FILE_NAME)
+                .try_exists(),
+        )
+    }
+
+    fn session_id_with_legacy(&self, name: &str) -> Result<Option<String>> {
+        match self.session_id(name)? {
+            Some(id) => Ok(Some(id)),
+            None => legacy_session_id_for_name_guarded(&self.conn, &self.sock_dir, name),
         }
     }
 
@@ -785,12 +866,15 @@ impl SessionIndex {
 
     pub fn rows_with_fact(&mut self, fact: &str, value: &str) -> Result<Vec<SessionRow>> {
         self.ensure_fact_index(fact)?;
-        let sql = format!(
-            "SELECT {} FROM sessions WHERE json_extract(facts, '{}') = ?1",
-            Self::COLUMNS,
-            json_path_for_fact(fact)
-        );
-        self.query_rows(&sql, &[&value])
+        // Bind the fact name and value as parameters. json_each matches the
+        // real JSON object key, including apostrophes, quotes and Unicode,
+        // without interpolating a path into SQL.
+        let sql = "SELECT DISTINCT sessions.name, sessions.folder, sessions.repo, \
+                   sessions.worktree, sessions.branch, sessions.facts, \
+                   sessions.created_at, sessions.last_used_at \
+                   FROM sessions, json_each(sessions.facts) AS fact \
+                   WHERE fact.key = ?1 AND fact.atom = ?2";
+        self.query_rows(sql, &[&fact, &value])
     }
 
     pub fn recent_rows(&self, limit: usize, offset: usize) -> Result<Vec<SessionRow>> {
@@ -886,12 +970,14 @@ impl SessionIndex {
                 continue;
             }
             match self.session_state(&row.name) {
-                Some(state) => candidates.push(Candidate { row, state }),
-                None => {
+                Ok(Some(state)) => candidates.push(Candidate { row, state }),
+                Ok(None) => {
                     if now.saturating_sub(row.created_at) > RECENTLY_CREATED_GRACE_SECS {
                         let _ = self.delete(&row.name);
                     }
                 },
+                // A metadata error is not absence. Deleting the row would drop a live session.
+                Err(_) => {},
             }
         }
         candidates
@@ -1030,6 +1116,25 @@ fn query_session_name(conn: &Connection, id: &str) -> Result<Option<String>> {
         .optional()?)
 }
 
+fn query_identity(conn: &Connection, id: &str) -> Result<Option<(String, Option<String>)>> {
+    Ok(conn
+        .query_row(
+            "SELECT name, id FROM sessions WHERE COALESCE(id, name) = ?1",
+            params![id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?)
+}
+
+fn query_identities(conn: &Connection) -> Result<HashSet<String>> {
+    let mut statement = conn.prepare_cached("SELECT COALESCE(id, name) FROM sessions")?;
+    let identities = statement
+        .query_map([], |row| row.get(0))?
+        .filter_map(|row| row.ok())
+        .collect();
+    Ok(identities)
+}
+
 fn query_names_by_id(conn: &Connection) -> Result<HashMap<String, String>> {
     let mut statement = conn.prepare_cached("SELECT COALESCE(id, name), name FROM sessions")?;
     let names = statement
@@ -1039,54 +1144,321 @@ fn query_names_by_id(conn: &Connection) -> Result<HashMap<String, String>> {
     Ok(names)
 }
 
-// Lookups for callers that only map between session names and ids (listings, attaching). They
-// skip `open`'s setup and integrity check and never create the index: a missing, unreadable or
-// pre-id index knows no session, which callers take to mean "the id is the name".
-fn open_existing_default_index() -> Option<Connection> {
-    let conn = Connection::open_with_flags(
-        default_index_path(),
+// `Ok(true)` only when the index file is not there. `try_exists` failing is not absence.
+fn index_file_is_missing(path: &Path) -> Result<bool> {
+    match path.try_exists() {
+        Ok(exists) => Ok(!exists),
+        Err(error) => Err(error.into()),
+    }
+}
+
+// `SQLITE_CANTOPEN` after a missing file (a race with `try_exists`) is absence.
+// The same code is a real error when the path is still there: permissions, a
+// directory, or a lock. Other open failures are errors even if the file is gone.
+fn open_error_is_missing_index(path: &Path, error: &rusqlite::Error) -> Result<bool> {
+    let cannot_open = matches!(
+        error,
+        rusqlite::Error::SqliteFailure(ffi_error, _)
+            if ffi_error.code == rusqlite::ErrorCode::CannotOpen
+    );
+    if !cannot_open {
+        return Ok(false);
+    }
+    index_file_is_missing(path)
+}
+
+// Lookups skip `open`'s setup and integrity check and never create the index.
+// A missing file is `Ok(None)`. A locked, corrupt, or unreadable index is `Err`.
+fn open_existing_index(path: &Path) -> Result<Option<Connection>> {
+    if index_file_is_missing(path)? {
+        return Ok(None);
+    }
+    match Connection::open_with_flags(
+        path,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .ok()?;
-    conn.busy_timeout(BUSY_TIMEOUT).ok()?;
-    Some(conn)
+    ) {
+        Ok(conn) => {
+            conn.busy_timeout(BUSY_TIMEOUT)?;
+            Ok(Some(conn))
+        },
+        Err(error) => {
+            if open_error_is_missing_index(path, &error)? {
+                Ok(None)
+            } else {
+                Err(error.into())
+            }
+        },
+    }
+}
+
+fn open_existing_default_index() -> Result<Option<Connection>> {
+    open_existing_index(&default_index_path())
+}
+
+/// Folder id for a display name. `Ok(None)` is a pre-id session, whose folder is `name`.
+/// `Err` is not that folder.
+pub fn folder_id_from_lookup(name: &str, lookup: Result<Option<String>>) -> Result<String> {
+    match lookup {
+        Ok(Some(id)) => Ok(id),
+        Ok(None) => Ok(name.to_owned()),
+        Err(error) => Err(error),
+    }
+}
+
+/// `Ok(is_live)` keeps the caller's classification. An inspection error is not death
+/// and must not drop the entry (`Err` counts as live).
+pub fn socket_type_error_is_not_death(file_type_is_live: std::io::Result<bool>) -> bool {
+    match file_type_is_live {
+        Ok(is_live) => is_live,
+        Err(_) => true,
+    }
+}
+
+fn live_socket_name_if_present(name: String, is_live: std::io::Result<bool>) -> Option<String> {
+    if crate::consts::is_app_socket_name(&name) {
+        return None;
+    }
+    if socket_type_error_is_not_death(is_live) {
+        Some(name)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+fn live_socket_name(name: String, file_type: std::io::Result<std::fs::FileType>) -> Option<String> {
+    live_socket_name_if_present(name, file_type.map(|ft| crate::consts::is_ipc_socket(&ft)))
+}
+
+fn partition_dead_session_ids(
+    cache_ids: Vec<String>,
+    live_sessions: &HashSet<String>,
+) -> Vec<String> {
+    let mut dead: Vec<String> = cache_ids
+        .into_iter()
+        .filter(|id| {
+            !live_sessions.contains(id)
+                && !crate::consts::is_app_socket_name(id)
+                && crate::sessions::validate_session_folder_name(id).is_ok()
+        })
+        .collect();
+    dead.sort();
+    dead
+}
+
+/// `NotFound` is an empty live set. Any other directory or entry error means the
+/// inventory is incomplete: nothing from it is eligible for deletion.
+fn dead_session_ids_from_socket_entries<I>(
+    entries: std::io::Result<I>,
+    cache_ids: Vec<String>,
+) -> Vec<String>
+where
+    I: IntoIterator<Item = std::io::Result<(String, std::io::Result<bool>)>>,
+{
+    let entries = match entries {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return partition_dead_session_ids(cache_ids, &HashSet::new());
+        },
+        Err(error) => {
+            log::error!("Failed to read session socket dir: {:?}", error);
+            return Vec::new();
+        },
+    };
+    let mut live_sessions = HashSet::new();
+    for entry in entries {
+        let (name, is_live) = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                log::error!("Failed to read a session socket entry: {:?}", error);
+                return Vec::new();
+            },
+        };
+        if let Some(name) = live_socket_name_if_present(name, is_live) {
+            live_sessions.insert(name);
+        }
+    }
+    partition_dead_session_ids(cache_ids, &live_sessions)
 }
 
 pub fn dead_session_ids_in(sock_dir: &Path, cache_dir: &Path) -> Vec<String> {
-    use crate::consts::{is_app_socket_name, is_ipc_socket};
-    let live_sessions: HashSet<String> = std::fs::read_dir(sock_dir)
-        .map(|entries| {
-            entries
-                .filter_map(|entry| entry.ok())
-                .filter(|entry| {
-                    entry
-                        .file_type()
-                        .map(|file_type| is_ipc_socket(&file_type))
-                        .unwrap_or(false)
-                })
-                .filter_map(|entry| entry.file_name().into_string().ok())
-                .filter(|name| !is_app_socket_name(name))
-                .collect()
-        })
-        .unwrap_or_default();
-    let mut dead: Vec<String> = match std::fs::read_dir(cache_dir) {
+    let cache_ids = match std::fs::read_dir(cache_dir) {
         Ok(entries) => entries
             .filter_map(|entry| entry.ok())
             .filter(|entry| entry.path().is_dir())
             .filter_map(|entry| entry.file_name().into_string().ok())
-            .filter(|id| {
-                !live_sessions.contains(id)
-                    && !is_app_socket_name(id)
-                    && crate::sessions::validate_session_folder_name(id).is_ok()
-            })
             .collect(),
         Err(e) => {
             log::error!("Failed to read session info cache dir: {:?}", e);
             vec![]
         },
     };
-    dead.sort();
-    dead
+    let socket_entries = match std::fs::read_dir(sock_dir) {
+        Ok(entries) => Ok(entries.filter_map(|entry| match entry {
+            Err(error) => Some(Err(error)),
+            Ok(entry) => {
+                let name = entry.file_name().into_string().ok()?;
+                let is_live = entry
+                    .file_type()
+                    .map(|ft| crate::consts::is_ipc_socket(&ft));
+                Some(Ok((name, is_live)))
+            },
+        })),
+        Err(error) => Err(error),
+    };
+    dead_session_ids_from_socket_entries(socket_entries, cache_ids)
+}
+
+/// `true` only when `session_id` is in the dead set from a complete socket
+/// inventory. An unreadable inventory yields no ids, so this is `false`.
+pub fn session_id_is_definitely_dead(sock_dir: &Path, cache_dir: &Path, session_id: &str) -> bool {
+    dead_session_ids_in(sock_dir, cache_dir)
+        .iter()
+        .any(|id| id == session_id)
+}
+
+/// A dead session plus the incarnation observed at selection.
+///
+/// Deletion must pass this lifetime under the publication lock. Re-reading the
+/// socket directory later does not preserve the death decision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SelectedDeadSession {
+    pub id: String,
+    pub lifetime: crate::sessions::SelectedSessionLifetime,
+}
+
+pub(crate) struct DeadSessionSelection {
+    pub sessions: Vec<SelectedDeadSession>,
+    pub error: Option<String>,
+    /// Claims held from each session's death check through deletion.
+    /// Dropping this selection releases them. A caller that deletes `sessions`
+    /// must keep the selection alive until that delete returns.
+    claims: Vec<crate::session_socket_claim::SessionSocketClaim>,
+}
+
+impl Drop for DeadSessionSelection {
+    fn drop(&mut self) {
+        for claim in self.claims.drain(..) {
+            claim.release();
+        }
+    }
+}
+
+/// Classify dead sessions and capture each incarnation in the same pass.
+///
+/// Each selected session's socket claim is held across its death check and
+/// incarnation read, and stays held until this selection is dropped. An
+/// `AddrInUse` claim is a live owner, not a dead session. An incarnation file
+/// that cannot be read is not selected. That session stays, and `error`
+/// records why, so a missing lifetime cannot be treated as "delete whatever
+/// is current".
+pub(crate) fn select_dead_sessions_in(sock_dir: &Path, cache_dir: &Path) -> DeadSessionSelection {
+    let dead_sessions = dead_session_ids_in(sock_dir, cache_dir);
+    let mut sessions = Vec::with_capacity(dead_sessions.len());
+    let mut claims = Vec::with_capacity(dead_sessions.len());
+    let mut error = None;
+    for session_id in dead_sessions {
+        let claim = match crate::sessions::try_acquire_session_socket_claim(sock_dir, &session_id) {
+            Ok(Some(claim)) => claim,
+            Ok(None) => continue,
+            Err(acquire_error) => {
+                error.get_or_insert_with(|| {
+                    format!(
+                        "Failed to claim the socket of dead session {:?}: {}",
+                        session_id, acquire_error
+                    )
+                });
+                continue;
+            },
+        };
+        // The candidate list was taken before the claim. Decide death once,
+        // while this claim is held, so a resurrection cannot admit between
+        // the inventory and the incarnation read.
+        if !session_id_is_definitely_dead(sock_dir, cache_dir, &session_id) {
+            claim.release();
+            continue;
+        }
+        match crate::sessions::selected_session_lifetime(cache_dir, &session_id) {
+            Ok(lifetime) => {
+                sessions.push(SelectedDeadSession {
+                    id: session_id,
+                    lifetime,
+                });
+                claims.push(claim);
+            },
+            Err(read_error) => {
+                claim.release();
+                error.get_or_insert_with(|| {
+                    format!(
+                        "Failed to read the incarnation of dead session {:?}: {}",
+                        session_id, read_error
+                    )
+                });
+            },
+        }
+    }
+    DeadSessionSelection {
+        sessions,
+        error,
+        claims,
+    }
+}
+
+pub(crate) fn delete_selected_dead_sessions_in(
+    cache_dir: &Path,
+    index: Option<&SessionIndex>,
+    selected: &[SelectedDeadSession],
+) -> std::result::Result<usize, String> {
+    let mut first_error = None;
+    let deleted = delete_selected_dead_sessions(cache_dir, index, selected, &mut first_error);
+    match first_error {
+        Some(error) => Err(error),
+        None => Ok(deleted),
+    }
+}
+
+fn delete_selected_dead_sessions(
+    cache_dir: &Path,
+    index: Option<&SessionIndex>,
+    selected: &[SelectedDeadSession],
+    first_error: &mut Option<String>,
+) -> usize {
+    let mut deleted = 0;
+    for session in selected {
+        match crate::sessions::remove_fenced_session_cache_for_lifetime(
+            cache_dir,
+            &session.id,
+            session.lifetime,
+        ) {
+            Ok(crate::sessions::SessionCacheRemoval::Removed) => {
+                deleted += 1;
+                // The row goes only after this session's cache is gone. A later
+                // session whose fence fails keeps its own row.
+                if let Some(index) = index {
+                    if let Err(e) = index.delete_by_ids(std::slice::from_ref(&session.id)) {
+                        log::error!(
+                            "Failed to remove dead session {:?} from the session index: {}",
+                            session.id,
+                            e
+                        );
+                    }
+                }
+            },
+            Ok(crate::sessions::SessionCacheRemoval::NotFound) => {},
+            Err(error) if crate::sessions::is_selected_lifetime_mismatch(&error) => {
+                log::warn!(
+                    "dead session {:?} was admitted again; its cache was left in place",
+                    session.id
+                );
+            },
+            Err(error) => {
+                first_error.get_or_insert_with(|| {
+                    format!("Failed to delete dead session {:?}: {}", session.id, error)
+                });
+            },
+        }
+    }
+    deleted
 }
 
 pub fn delete_dead_sessions_in(
@@ -1094,53 +1466,130 @@ pub fn delete_dead_sessions_in(
     cache_dir: &Path,
     index: Option<&SessionIndex>,
 ) -> std::result::Result<usize, String> {
-    let dead_sessions = dead_session_ids_in(sock_dir, cache_dir);
-    if dead_sessions.is_empty() {
-        return Ok(0);
-    }
-    if let Some(index) = index {
-        if let Err(e) = index.delete_by_ids(&dead_sessions) {
-            log::error!(
-                "Failed to remove dead sessions from the session index: {}",
-                e
-            );
+    // `selection` holds each socket claim until this function returns, which is
+    // after the fenced delete. Dropping it earlier would reopen the gap.
+    let selection = select_dead_sessions_in(sock_dir, cache_dir);
+    let outcome = if selection.sessions.is_empty() {
+        match selection.error.clone() {
+            Some(error) => Err(error),
+            None => Ok(0),
         }
-    }
-    let mut first_error = None;
-    let mut deleted = 0;
-    for session_id in &dead_sessions {
-        match std::fs::remove_dir_all(cache_dir.join(session_id)) {
-            Ok(()) => deleted += 1,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
-            Err(e) => {
-                first_error.get_or_insert_with(|| {
-                    format!("Failed to delete dead session {:?}: {}", session_id, e)
-                });
+    } else {
+        match delete_selected_dead_sessions_in(cache_dir, index, &selection.sessions) {
+            Ok(deleted) => match selection.error.clone() {
+                Some(error) => Err(error),
+                None => Ok(deleted),
             },
+            Err(delete_error) => Err(selection.error.clone().unwrap_or(delete_error)),
+        }
+    };
+    drop(selection);
+    outcome
+}
+
+fn session_id_for_name_in(path: &Path, name: &str) -> Result<Option<String>> {
+    match open_existing_index(path)? {
+        Some(conn) => query_session_id(&conn, name),
+        None => Ok(None),
+    }
+}
+
+fn session_name_for_id_in(path: &Path, id: &str) -> Result<Option<String>> {
+    match open_existing_index(path)? {
+        Some(conn) => query_session_name(&conn, id),
+        None => Ok(None),
+    }
+}
+
+/// A legacy row is a valid name for its id unless the new index has since
+/// renamed that same id away from it. A backfill row named by the id carries no
+/// `id` value and must not hide the legacy row's display name.
+fn legacy_session_id_for_name_guarded(
+    current: &Connection,
+    sock_dir: &Path,
+    name: &str,
+) -> Result<Option<String>> {
+    let Some(legacy) = legacy_index_path() else {
+        return Ok(None);
+    };
+    legacy_session_id_for_name_guarded_in(Some(current), &legacy, sock_dir, name)
+}
+
+fn legacy_session_id_for_name_guarded_in(
+    current: Option<&Connection>,
+    legacy: &Path,
+    sock_dir: &Path,
+    name: &str,
+) -> Result<Option<String>> {
+    let Some(id) = session_id_for_name_in(legacy, name)? else {
+        return Ok(None);
+    };
+    if !sock_dir.join(&id).try_exists()? {
+        return Ok(None);
+    }
+    match current {
+        Some(current) => match query_identity(current, &id)? {
+            Some((current_name, Some(_))) if current_name != name => Ok(None),
+            _ => Ok(Some(id)),
+        },
+        None => Ok(Some(id)),
+    }
+}
+
+pub fn session_id_for_name(name: &str) -> Result<Option<String>> {
+    let path = default_index_path();
+    if let Some(id) = session_id_for_name_in(&path, name)? {
+        return Ok(Some(id));
+    }
+    match open_existing_index(&path)? {
+        Some(current) => legacy_session_id_for_name_guarded(&current, &ZELLIJ_SOCK_DIR, name),
+        None => match legacy_index_path() {
+            Some(legacy) => {
+                legacy_session_id_for_name_guarded_in(None, &legacy, &ZELLIJ_SOCK_DIR, name)
+            },
+            None => Ok(None),
+        },
+    }
+}
+
+pub fn session_name_for_id(id: &str) -> Result<Option<String>> {
+    let path = default_index_path();
+    if let Some(current) = open_existing_index(&path)? {
+        if let Some((name, id_column)) = query_identity(&current, id)? {
+            if name != id || id_column.is_some() {
+                return Ok(Some(name));
+            }
+            if let Some(legacy) = legacy_index_path() {
+                if let Some(legacy_name) = session_name_for_id_in(&legacy, id)? {
+                    if legacy_name != id {
+                        return Ok(Some(legacy_name));
+                    }
+                }
+            }
+            return Ok(Some(name));
         }
     }
-    match first_error {
-        Some(e) => Err(e),
-        None => Ok(deleted),
+    match legacy_index_path() {
+        Some(legacy) => session_name_for_id_in(&legacy, id),
+        None => Ok(None),
     }
 }
 
-pub fn session_id_for_name(name: &str) -> Option<String> {
-    query_session_id(&open_existing_default_index()?, name)
-        .ok()
-        .flatten()
-}
-
-pub fn session_name_for_id(id: &str) -> Option<String> {
-    query_session_name(&open_existing_default_index()?, id)
-        .ok()
-        .flatten()
-}
-
+/// Names for listings. An error or a missing index is an empty map, which callers
+/// use only as a display fallback (the id is shown). It must not choose a folder to delete.
 pub fn session_names_by_id() -> HashMap<String, String> {
-    open_existing_default_index()
+    let mut names = legacy_index_path()
+        .and_then(|legacy| open_existing_index(&legacy).ok().flatten())
         .and_then(|conn| query_names_by_id(&conn).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if let Ok(Some(conn)) = open_existing_default_index() {
+        for (id, name) in query_names_by_id(&conn).unwrap_or_default() {
+            if name != id || !names.contains_key(&id) {
+                names.insert(id, name);
+            }
+        }
+    }
+    names
 }
 
 /// Socket filenames are session ids; `names_by_id` maps them to session names (an id without an
@@ -1155,10 +1604,11 @@ pub fn running_session_names_in(
     entries
         .flatten()
         .filter(|entry| {
-            entry
-                .file_type()
-                .map(|ft| crate::consts::is_ipc_socket(&ft) || ft.is_file())
-                .unwrap_or(false)
+            socket_type_error_is_not_death(
+                entry
+                    .file_type()
+                    .map(|ft| crate::consts::is_ipc_socket(&ft) || ft.is_file()),
+            )
         })
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter(|name| {
@@ -1563,6 +2013,35 @@ mod tests {
     }
 
     #[test]
+    fn fact_names_with_apostrophes_and_quotes_round_trip_through_the_index() {
+        let mut test = TestIndex::new();
+        for (fact, value, session) in [
+            ("user's-tag", "yes", "apos"),
+            ("say\"hi", "yes", "quote"),
+            ("path\\key", "yes", "slash"),
+            ("界", "yes", "cjk"),
+            ("DROP TABLE sessions; --", "yes", "inject"),
+        ] {
+            let mut facts = BTreeMap::new();
+            facts.insert(fact.to_owned(), value.to_owned());
+            test.add(
+                session,
+                SessionContext {
+                    facts,
+                    ..Default::default()
+                },
+                1,
+            );
+            let rows = test.index.rows_with_fact(fact, value).unwrap();
+            assert_eq!(
+                rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+                vec![session],
+                "fact {fact:?} should select only its own session"
+            );
+        }
+    }
+
+    #[test]
     fn backfill_reads_existing_saved_sessions_once() {
         let root = tempfile::tempdir().unwrap();
         let cache_dir = root.path().join("cache");
@@ -1775,6 +2254,28 @@ mod tests {
     }
 
     #[test]
+    fn renaming_onto_a_name_owned_by_another_session_is_a_conflict() {
+        let test = TestIndex::new();
+        let first = test.index.register("first", 10).unwrap();
+        let second = test.index.register("second", 11).unwrap();
+
+        assert_eq!(
+            test.index.rename_by_id(&first, "second", 20).unwrap(),
+            RenameOutcome::Conflict
+        );
+        assert_eq!(
+            test.index.session_id("first").unwrap(),
+            Some(first),
+            "the source session must keep its name"
+        );
+        assert_eq!(
+            test.index.session_id("second").unwrap(),
+            Some(second),
+            "the session that already owns the target name must be untouched"
+        );
+    }
+
+    #[test]
     fn renaming_a_session_from_before_ids_keeps_it_reachable_under_its_new_name() {
         let test = TestIndex::new();
         test.index.ensure_row("legacy-row", 1).unwrap();
@@ -1807,16 +2308,47 @@ mod tests {
     fn session_state_finds_the_socket_and_layout_by_id() {
         let test = TestIndex::new();
         let id = test.index.register("work", 10).unwrap();
-        assert_eq!(test.index.session_state("work"), None);
+        assert_eq!(test.index.session_state("work").unwrap(), None);
         test.mark_resumable(&id);
         assert_eq!(
-            test.index.session_state("work"),
+            test.index.session_state("work").unwrap(),
             Some(SessionState::Resumable)
         );
         test.mark_running(&id);
         assert_eq!(
-            test.index.session_state("work"),
+            test.index.session_state("work").unwrap(),
             Some(SessionState::Running)
+        );
+    }
+
+    #[test]
+    fn try_exists_error_is_not_a_free_id_or_session_state_absence() {
+        let denied = || std::io::Error::new(std::io::ErrorKind::PermissionDenied, "unreadable");
+        assert!(presence_from_try_exists(Err(denied())).is_err());
+        assert!(occupies_session_id(Err(denied()), Ok(false)).is_err());
+        assert!(occupies_session_id(Ok(false), Err(denied())).is_err());
+        assert!(occupies_session_id(Err(denied()), Err(denied())).is_err());
+        assert_eq!(occupies_session_id(Ok(false), Ok(false)).unwrap(), false);
+        assert_eq!(occupies_session_id(Ok(true), Err(denied())).unwrap(), true);
+        assert_eq!(occupies_session_id(Err(denied()), Ok(true)).unwrap(), true);
+
+        let socket_unknown = session_state_from_probes(Err(denied()), Ok(false));
+        assert!(socket_unknown.is_err());
+        assert!(!matches!(socket_unknown, Ok(None)));
+        let layout_unknown = session_state_from_probes(Ok(false), Err(denied()));
+        assert!(layout_unknown.is_err());
+        assert!(!matches!(layout_unknown, Ok(None)));
+        assert_eq!(
+            session_state_from_probes(Ok(false), Ok(false)).unwrap(),
+            None
+        );
+        assert_eq!(
+            session_state_from_probes(Ok(true), Err(denied())).unwrap(),
+            Some(SessionState::Running)
+        );
+        assert_eq!(
+            session_state_from_probes(Ok(false), Ok(true)).unwrap(),
+            Some(SessionState::Resumable)
         );
     }
 
@@ -1875,6 +2407,472 @@ mod tests {
         assert_eq!(
             test.index.session_id("bar").unwrap(),
             Some("foo".to_owned())
+        );
+    }
+
+    #[test]
+    fn dead_session_unreadable_socket_is_not_in_the_dead_set() {
+        let error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "unreadable socket");
+        assert!(socket_type_error_is_not_death(Err(error)));
+        assert!(!socket_type_error_is_not_death(Ok(false)));
+        let live = live_socket_name(
+            "sess".to_owned(),
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "unreadable socket",
+            )),
+        );
+        assert_eq!(live.as_deref(), Some("sess"));
+        let live_sessions: std::collections::HashSet<String> = live.into_iter().collect();
+        let dead =
+            partition_dead_session_ids(vec!["sess".to_owned(), "gone".to_owned()], &live_sessions);
+        assert!(
+            !dead.iter().any(|id| id == "sess"),
+            "an unreadable socket is not proof of death: {dead:?}"
+        );
+        assert!(dead.iter().any(|id| id == "gone"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_socket_dir_does_not_delete_caches() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let test = TestIndex::new();
+        let sock_dir = test.root.path().join("sock");
+        let cache_dir = test.root.path().join("cache");
+        test.add("kept", context("/a", None, None), 1);
+        test.mark_resumable("kept");
+        let layout = cache_dir.join("kept").join(SESSION_LAYOUT_FILE_NAME);
+        let layout_bytes = std::fs::read(&layout).unwrap();
+
+        let mut blocked = std::fs::metadata(&sock_dir).unwrap().permissions();
+        blocked.set_mode(0o000);
+        std::fs::set_permissions(&sock_dir, blocked).unwrap();
+        struct RestoreMode(std::path::PathBuf);
+        impl Drop for RestoreMode {
+            fn drop(&mut self) {
+                let mut perms = std::fs::metadata(&self.0).unwrap().permissions();
+                perms.set_mode(0o700);
+                std::fs::set_permissions(&self.0, perms).unwrap();
+            }
+        }
+        let _restore = RestoreMode(sock_dir.clone());
+        if std::fs::read_dir(&sock_dir).is_ok() {
+            return;
+        }
+
+        let deleted = delete_dead_sessions_in(&sock_dir, &cache_dir, Some(&test.index)).unwrap();
+        assert_eq!(deleted, 0);
+        assert!(test.index.get("kept").unwrap().is_some());
+        assert_eq!(std::fs::read(&layout).unwrap(), layout_bytes);
+    }
+
+    #[test]
+    fn a_partial_socket_listing_error_does_not_classify_sessions_as_dead() {
+        let denied = || std::io::Error::new(std::io::ErrorKind::PermissionDenied, "unreadable");
+        let caches = vec!["visible-dead".to_owned(), "hidden-by-the-error".to_owned()];
+        let dead = dead_session_ids_from_socket_entries(
+            Ok(vec![
+                Ok(("not-a-socket".to_owned(), Ok(false))),
+                Err(denied()),
+            ]),
+            caches.clone(),
+        );
+        assert!(
+            dead.is_empty(),
+            "an entry that could not be classified blocks deletion: {dead:?}"
+        );
+
+        let classified = dead_session_ids_from_socket_entries(
+            Ok(vec![
+                Ok(("live".to_owned(), Ok(true))),
+                Ok(("unreadable-socket".to_owned(), Err(denied()))),
+                Ok(("regular-file".to_owned(), Ok(false))),
+            ]),
+            vec![
+                "live".to_owned(),
+                "unreadable-socket".to_owned(),
+                "actually-dead".to_owned(),
+            ],
+        );
+        assert_eq!(classified, vec!["actually-dead".to_owned()]);
+    }
+
+    #[test]
+    fn a_database_lookup_error_does_not_prune_the_session() {
+        let test = TestIndex::new();
+        let id = test.index.register("display-name", 1).unwrap();
+        assert_ne!(id, "display-name");
+        test.mark_resumable(&id);
+        let layout = test
+            .root
+            .path()
+            .join("cache")
+            .join(&id)
+            .join(SESSION_LAYOUT_FILE_NAME);
+        let layout_bytes = std::fs::read(&layout).unwrap();
+        let row = test.index.get("display-name").unwrap().unwrap();
+        assert!(100_000 - row.created_at > RECENTLY_CREATED_GRACE_SECS);
+
+        let blocker = Connection::open(test.root.path().join("index.sqlite")).unwrap();
+        blocker
+            .execute_batch("ALTER TABLE sessions RENAME COLUMN id TO id_hidden")
+            .unwrap();
+        let candidates = test.index.resolve_candidates(vec![row], "other", 100_000);
+        assert!(candidates.is_empty());
+        blocker
+            .execute_batch("ALTER TABLE sessions RENAME COLUMN id_hidden TO id")
+            .unwrap();
+        drop(blocker);
+
+        assert!(test.index.get("display-name").unwrap().is_some());
+        assert_eq!(std::fs::read(&layout).unwrap(), layout_bytes);
+    }
+
+    #[test]
+    fn a_failed_later_fence_keeps_that_sessions_row_and_cache() {
+        let test = TestIndex::new();
+        let cache_dir = test.root.path().join("cache");
+        let sock_dir = test.root.path().join("sock");
+        for name in ["a-ok", "b-blocked"] {
+            test.add(name, context("/a", None, None), 1);
+            test.mark_resumable(name);
+        }
+        let kept_layout = cache_dir.join("b-blocked").join(SESSION_LAYOUT_FILE_NAME);
+        let kept_bytes = std::fs::read(&kept_layout).unwrap();
+        // Opening the publication lock fails for this session only. A held flock
+        // would block instead of returning the fence error.
+        std::fs::create_dir(cache_dir.join("b-blocked.lock")).unwrap();
+
+        let error = delete_dead_sessions_in(&sock_dir, &cache_dir, Some(&test.index)).unwrap_err();
+        assert!(
+            error.contains("b-blocked"),
+            "the failed fence must be reported: {error}"
+        );
+        assert!(test.index.get("a-ok").unwrap().is_none());
+        assert!(!cache_dir.join("a-ok").exists());
+        assert!(test.index.get("b-blocked").unwrap().is_some());
+        assert_eq!(std::fs::read(&kept_layout).unwrap(), kept_bytes);
+    }
+
+    #[test]
+    fn stale_dead_selection_does_not_remove_a_newer_incarnation() {
+        let test = TestIndex::new();
+        let sock_dir = test.root.path().join("sock");
+        let cache_dir = test.root.path().join("cache");
+        let resurrected = "resurrected";
+        let stable = "stable-dead";
+        for name in [resurrected, stable] {
+            test.add(name, context("/a", None, None), 1);
+            test.mark_resumable(name);
+        }
+        let old = crate::sessions::admit_session_incarnation_in(&cache_dir, resurrected).unwrap();
+        let stable_incarnation =
+            crate::sessions::admit_session_incarnation_in(&cache_dir, stable).unwrap();
+
+        let selection = select_dead_sessions_in(&sock_dir, &cache_dir);
+        assert!(
+            selection.error.is_none(),
+            "selection must name the dead lifetime: {:?}",
+            selection.error
+        );
+        let selected_lifetime = selection
+            .sessions
+            .iter()
+            .find(|session| session.id == resurrected)
+            .map(|session| session.lifetime);
+        assert_eq!(
+            selected_lifetime,
+            Some(crate::sessions::SelectedSessionLifetime::Present(old))
+        );
+
+        let new = crate::sessions::admit_session_incarnation_in(&cache_dir, resurrected).unwrap();
+        assert_ne!(new, old);
+        assert_ne!(new, stable_incarnation);
+        let layout = cache_dir.join(resurrected).join(SESSION_LAYOUT_FILE_NAME);
+        let new_layout = b"layout {\n    resurrected\n}\n";
+        std::fs::write(&layout, new_layout).unwrap();
+        test.index.touch(resurrected, 50).unwrap();
+
+        let deleted =
+            delete_selected_dead_sessions_in(&cache_dir, Some(&test.index), &selection.sessions)
+                .unwrap();
+        assert_eq!(deleted, 1, "only the still-dead incarnation is removed");
+        assert_eq!(std::fs::read(&layout).unwrap(), new_layout);
+        assert!(cache_dir.join(resurrected).exists());
+        let row = test
+            .index
+            .get(resurrected)
+            .unwrap()
+            .expect("index row stays");
+        assert_eq!(row.last_used_at, 50);
+        let tombstone = cache_dir.join(format!("{resurrected}.deleted"));
+        assert!(
+            !tombstone.exists(),
+            "a newer incarnation must not be tombstoned"
+        );
+        let incarnation_file =
+            std::fs::read_to_string(cache_dir.join(format!("{resurrected}.incarnation"))).unwrap();
+        assert!(
+            incarnation_file.contains(&new.to_string()),
+            "the admitted incarnation must still be current, got {incarnation_file}"
+        );
+        assert!(test.index.get(stable).unwrap().is_none());
+        assert!(!cache_dir.join(stable).exists());
+    }
+
+    #[test]
+    fn a_resurrection_holding_the_socket_claim_is_not_tombstoned() {
+        let test = TestIndex::new();
+        let sock_dir = test.root.path().join("sock");
+        let cache_dir = test.root.path().join("cache");
+        let resurrected = "resurrected";
+        let stable = "stable-dead";
+        for name in [resurrected, stable] {
+            test.add(name, context("/a", None, None), 1);
+            test.mark_resumable(name);
+        }
+        // The resurrection owns the socket claim and has already admitted B.
+        // No listener exists yet, so a death inventory that ignores the claim
+        // still classifies the id as dead and then reads B as the lifetime to
+        // delete.
+        let _old = crate::sessions::admit_session_incarnation_in(&cache_dir, resurrected).unwrap();
+        let claim = crate::session_socket_claim::SessionSocketClaim::try_acquire(
+            &sock_dir.join(resurrected),
+        )
+        .unwrap();
+        let new = crate::sessions::admit_session_incarnation_in(&cache_dir, resurrected).unwrap();
+        assert_ne!(new, _old);
+        let layout = cache_dir.join(resurrected).join(SESSION_LAYOUT_FILE_NAME);
+        let new_layout = b"layout {\n    resurrected\n}\n";
+        std::fs::write(&layout, new_layout).unwrap();
+        test.index.touch(resurrected, 50).unwrap();
+
+        let error =
+            crate::sessions::remove_fenced_dead_session_cache(&sock_dir, &cache_dir, resurrected)
+                .unwrap_err();
+        assert!(
+            error.to_string().contains("not definitely dead"),
+            "a held socket claim is not death, got {error}"
+        );
+        assert_eq!(std::fs::read(&layout).unwrap(), new_layout);
+        assert!(cache_dir.join(resurrected).exists());
+        let row = test
+            .index
+            .get(resurrected)
+            .unwrap()
+            .expect("index row stays");
+        assert_eq!(row.last_used_at, 50);
+        let tombstone = cache_dir.join(format!("{resurrected}.deleted"));
+        assert!(
+            !tombstone.exists(),
+            "incarnation B must not be tombstoned while its claim is held"
+        );
+        let incarnation_file =
+            std::fs::read_to_string(cache_dir.join(format!("{resurrected}.incarnation"))).unwrap();
+        assert!(
+            incarnation_file.contains(&new.to_string()),
+            "the admitted incarnation must still be current, got {incarnation_file}"
+        );
+
+        let deleted = delete_dead_sessions_in(&sock_dir, &cache_dir, Some(&test.index)).unwrap();
+        assert_eq!(deleted, 1, "only the unclaimed dead session is removed");
+        assert_eq!(std::fs::read(&layout).unwrap(), new_layout);
+        assert!(cache_dir.join(resurrected).exists());
+        assert!(!tombstone.exists());
+        let incarnation_file =
+            std::fs::read_to_string(cache_dir.join(format!("{resurrected}.incarnation"))).unwrap();
+        assert!(
+            incarnation_file.contains(&new.to_string()),
+            "bulk deletion must leave incarnation B, got {incarnation_file}"
+        );
+        assert_eq!(
+            test.index.get(resurrected).unwrap().unwrap().last_used_at,
+            50
+        );
+        assert!(test.index.get(stable).unwrap().is_none());
+        assert!(!cache_dir.join(stable).exists());
+        claim.release();
+    }
+
+    #[test]
+    fn running_session_names_keep_an_unreadable_socket() {
+        let kept = socket_type_error_is_not_death(Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "unreadable socket",
+        )));
+        assert!(
+            kept,
+            "inspection error must not drop a live socket from the running set"
+        );
+    }
+
+    fn assert_lookup_error_is_not_the_display_name(lookup: Result<Option<String>>) {
+        match folder_id_from_lookup("display-name", lookup) {
+            Ok(id) => panic!("a read error must not become folder id {id}"),
+            Err(_) => {},
+        }
+    }
+
+    #[test]
+    fn an_index_read_error_is_not_the_display_name_folder() {
+        let name = "display-name";
+        assert_eq!(folder_id_from_lookup(name, Ok(None)).unwrap(), name);
+
+        let root = tempfile::tempdir().unwrap();
+        let missing = root.path().join("missing.sqlite");
+        assert_eq!(session_id_for_name_in(&missing, name).unwrap(), None);
+        assert_eq!(session_name_for_id_in(&missing, name).unwrap(), None);
+        assert_eq!(
+            folder_id_from_lookup(name, session_id_for_name_in(&missing, name)).unwrap(),
+            name
+        );
+
+        let cant_open = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CANTOPEN),
+            Some("unable to open database file".to_owned()),
+        );
+        assert!(open_error_is_missing_index(&missing, &cant_open).unwrap());
+        let not_a_database = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_NOTADB),
+            Some("file is not a database".to_owned()),
+        );
+        assert!(!open_error_is_missing_index(&missing, &not_a_database).unwrap());
+
+        let present = root.path().join("present.sqlite");
+        std::fs::write(&present, b"x").unwrap();
+        assert!(!open_error_is_missing_index(&present, &cant_open).unwrap());
+        assert_lookup_error_is_not_the_display_name(session_id_for_name_in(&present, name));
+        assert_lookup_error_is_not_the_display_name(session_name_for_id_in(&present, name));
+
+        let directory = root.path().join("index-dir");
+        std::fs::create_dir(&directory).unwrap();
+        assert_lookup_error_is_not_the_display_name(session_id_for_name_in(&directory, name));
+
+        let empty = root.path().join("empty.sqlite");
+        Connection::open(&empty).unwrap();
+        assert_lookup_error_is_not_the_display_name(session_id_for_name_in(&empty, name));
+        assert_lookup_error_is_not_the_display_name(session_name_for_id_in(&empty, name));
+
+        let indexed = root.path().join("index.sqlite");
+        let sock_dir = root.path().join("sock");
+        let cache_dir = root.path().join("cache");
+        std::fs::create_dir_all(&sock_dir).unwrap();
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        let id = {
+            let index = SessionIndex::open(&indexed, sock_dir, cache_dir).unwrap();
+            let id = index.register(name, 1).unwrap();
+            assert_ne!(id, name);
+            assert_eq!(
+                session_id_for_name_in(&indexed, "no-such-session").unwrap(),
+                None
+            );
+            id
+        };
+        assert_eq!(
+            folder_id_from_lookup(name, session_id_for_name_in(&indexed, name)).unwrap(),
+            id
+        );
+        assert_eq!(
+            folder_id_from_lookup(
+                "no-such-session",
+                session_id_for_name_in(&indexed, "no-such-session")
+            )
+            .unwrap(),
+            "no-such-session"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_index_path_is_not_a_missing_index() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let blocked = root.path().join("blocked");
+        std::fs::create_dir(&blocked).unwrap();
+        let index = blocked.join("index.sqlite");
+        std::fs::write(&index, b"not a database").unwrap();
+        let mut perms = std::fs::metadata(&blocked).unwrap().permissions();
+        perms.set_mode(0o000);
+        std::fs::set_permissions(&blocked, perms).unwrap();
+        struct RestoreMode(std::path::PathBuf);
+        impl Drop for RestoreMode {
+            fn drop(&mut self) {
+                let mut perms = std::fs::metadata(&self.0).unwrap().permissions();
+                perms.set_mode(0o700);
+                std::fs::set_permissions(&self.0, perms).unwrap();
+            }
+        }
+        let _restore = RestoreMode(blocked);
+        assert_lookup_error_is_not_the_display_name(session_id_for_name_in(&index, "display-name"));
+    }
+
+    #[test]
+    fn a_renamed_session_is_not_resolvable_by_its_legacy_name() {
+        let root = tempfile::tempdir().unwrap();
+        let sock_dir = root.path().join("sock");
+        let cache_dir = root.path().join("cache");
+        std::fs::create_dir_all(&sock_dir).unwrap();
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        let sock_dir_for_rows = sock_dir.clone();
+        let current = SessionIndex::open(
+            &root.path().join("session_index-hash.sqlite"),
+            sock_dir.clone(),
+            cache_dir.clone(),
+        )
+        .unwrap();
+        let legacy_path = root.path().join(SESSION_INDEX_FILE_NAME);
+        let legacy = SessionIndex::open(&legacy_path, sock_dir, cache_dir).unwrap();
+        std::fs::write(sock_dir_for_rows.join("old-name"), b"socket").unwrap();
+        legacy
+            .conn
+            .execute(
+                "INSERT INTO sessions (name, id, facts, created_at, last_used_at)
+                 VALUES ('old-name', NULL, '{}', 1, 1)",
+                [],
+            )
+            .unwrap();
+        current
+            .conn
+            .execute(
+                "INSERT INTO sessions (name, id, facts, created_at, last_used_at)
+                 VALUES ('new-name', 'old-name', '{}', 1, 1)",
+                [],
+            )
+            .unwrap();
+
+        assert_eq!(
+            legacy_session_id_for_name_guarded_in(
+                Some(&current.conn),
+                &legacy_path,
+                &sock_dir_for_rows,
+                "old-name",
+            )
+            .unwrap(),
+            None,
+            "a rename must not leave the old name resolving to the live id"
+        );
+
+        current
+            .conn
+            .execute(
+                "UPDATE sessions SET name = 'old-name', id = NULL WHERE name = 'new-name'",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            legacy_session_id_for_name_guarded_in(
+                Some(&current.conn),
+                &legacy_path,
+                &sock_dir_for_rows,
+                "old-name",
+            )
+            .unwrap()
+            .as_deref(),
+            Some("old-name"),
+            "a backfill row named by the id must not hide its legacy row"
         );
     }
 }

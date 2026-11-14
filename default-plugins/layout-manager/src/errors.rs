@@ -19,7 +19,11 @@ pub fn format_kdl_error(error: LayoutParsingError) -> String {
 
             let handler = GraphicalReportHandler::new();
             let mut output = String::new();
-            handler.render_report(&mut output, report.as_ref()).unwrap();
+            // Writing into a String rarely fails; fall back to Display rather than panic
+            // while already trying to show a layout error.
+            if handler.render_report(&mut output, report.as_ref()).is_err() {
+                return format!("{report}");
+            }
             output
         },
         LayoutParsingError::SyntaxError => {

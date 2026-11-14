@@ -6,6 +6,7 @@ use crate::stdin_ansi_parser::{HostReply, PendingPartial, StdinAnsiParser};
 #[cfg(windows)]
 use crate::stdin_handler_windows::enable_vt_input;
 use crate::InputInstruction;
+use std::ops::Range;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -108,6 +109,10 @@ pub(crate) fn stdin_loop(
             move || loop {
                 match os_input.read_from_stdin() {
                     Ok(buf) => {
+                        if buf.is_empty() {
+                            let _ = stdin_tx.send(Ok(buf));
+                            break;
+                        }
                         if stdin_tx.send(Ok(buf)).is_err() {
                             break; // receiver dropped
                         }
@@ -132,6 +137,10 @@ pub(crate) fn stdin_loop(
             Ok(result) => {
                 match result {
                     Ok(buf) => {
+                        if buf.is_empty() {
+                            let _ = send_input_instructions.send(InputInstruction::Eof);
+                            break 'stdin;
+                        }
                         // Strip + classify any host-reply sequences
                         // continuously. The residue is the byte stream
                         // the keyboard parser should see.
@@ -176,7 +185,9 @@ pub(crate) fn stdin_loop(
                             let _ = send_input_instructions
                                 .send(InputInstruction::NestedSessionFrameFromHost(payload_bytes));
                         }
-                        let (residue, focus_changes) = extract_focus_reports(parse_output.residue);
+                        let paste_spans = parse_output.paste_spans;
+                        let (residue, focus_changes, paste_spans) =
+                            extract_focus_reports(parse_output.residue, &paste_spans);
                         for focused in focus_changes {
                             let _ = send_input_instructions
                                 .send(InputInstruction::HostTerminalFocusChanged(focused));
@@ -190,75 +201,24 @@ pub(crate) fn stdin_loop(
                             );
                             continue;
                         }
-                        current_buffer.append(&mut residue.clone());
+                        current_buffer.extend_from_slice(&residue);
 
-                        if !explicitly_disable_kitty_keyboard_protocol {
-                            // first we try to parse with the KittyKeyboardParser
-                            // if we fail, we try to parse normally.
-                            // Incomplete and NoMatch both fall through to the
-                            // termwiz parser below; on Incomplete the Kitty
-                            // parser keeps its state so the next chunk's
-                            // continuation completes the sequence.
-                            match kitty_parser.feed(&residue) {
-                                KittyParseOutcome::Complete(key_with_modifier) => {
-                                    if send_input_instructions
-                                        .send(InputInstruction::KeyWithModifierEvent(
-                                            key_with_modifier,
-                                            current_buffer.drain(..).collect(),
-                                            true,
-                                        ))
-                                        .is_err()
-                                    {
-                                        break 'stdin;
-                                    }
-                                    schedule_finalization(
-                                        &stdin_ansi_parser,
-                                        false,
-                                        &mut needs_finalization,
-                                        &mut reply_in_progress_since,
-                                    );
-                                    continue;
-                                },
-                                KittyParseOutcome::Incomplete | KittyParseOutcome::NoMatch => {},
-                            }
-                        }
-
-                        // Parse with maybe_more = true - complete events sent immediately
-                        //
-                        // Ambiguous events (if any) will be finalized later only if 50ms
-                        // passes with no new input
-                        let maybe_more = true;
-                        let mut events: Vec<(InputEvent, usize)> = vec![];
-                        input_parser.parse_with_consumed(
+                        let fed_termwiz = match parse_residue(
                             &residue,
-                            |input_event: InputEvent, consumed: usize| {
-                                events.push((input_event, consumed));
-                            },
-                            maybe_more,
-                        );
-
-                        // Residue contains no OSC or whitelisted CSI
-                        // reports — `StdinAnsiParser::feed` strips both
-                        // before the keyboard parser sees the bytes.
-                        // Every termwiz event is a key/mouse/paste/etc.
-                        // Each event is forwarded with exactly the bytes
-                        // that produced it, never bytes belonging to other
-                        // events decoded from the same read.
-                        for (input_event, consumed) in events.into_iter() {
-                            let take = consumed.min(current_buffer.len());
-                            let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
-                            if send_input_instructions
-                                .send(InputInstruction::KeyEvent(input_event, raw_bytes))
-                                .is_err()
-                            {
-                                break 'stdin;
-                            }
-                        }
-                        realign_current_buffer(&mut current_buffer, &input_parser);
+                            &paste_spans,
+                            &mut current_buffer,
+                            &mut input_parser,
+                            &mut kitty_parser,
+                            !explicitly_disable_kitty_keyboard_protocol,
+                            |instruction| send_input_instructions.send(instruction).is_ok(),
+                        ) {
+                            Some(fed_termwiz) => fed_termwiz,
+                            None => break 'stdin,
+                        };
 
                         schedule_finalization(
                             &stdin_ansi_parser,
-                            true,
+                            fed_termwiz,
                             &mut needs_finalization,
                             &mut reply_in_progress_since,
                         );
@@ -359,18 +319,207 @@ fn drain_partial_to_keyboard(
     for (input_event, consumed) in events {
         let take = consumed.min(current_buffer.len());
         let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
-        send_input_instructions
-            .send(InputInstruction::KeyEvent(input_event, raw_bytes))
-            .unwrap();
+        let _ = send_input_instructions.send(InputInstruction::KeyEvent(input_event, raw_bytes));
     }
     realign_current_buffer(current_buffer, input_parser);
 }
 
-fn extract_focus_reports(residue: Vec<u8>) -> (Vec<u8>, Vec<bool>) {
+/// Decode one residue chunk in input order. Paste spans go to termwiz
+/// verbatim; non-paste spans are first offered to the Kitty parser and then
+/// to termwiz. Returns whether termwiz saw bytes, or None when the output
+/// channel closed.
+fn parse_residue<F>(
+    residue: &[u8],
+    paste_spans: &[Range<usize>],
+    current_buffer: &mut Vec<u8>,
+    input_parser: &mut InputParser,
+    kitty_parser: &mut KittyKeyboardParser,
+    kitty_enabled: bool,
+    mut send: F,
+) -> Option<bool>
+where
+    F: FnMut(InputInstruction) -> bool,
+{
+    let mut fed_termwiz = false;
+    let mut cursor = 0;
+    for span in paste_spans {
+        let start = span.start.min(residue.len()).max(cursor);
+        let end = span.end.min(residue.len()).max(start);
+        if cursor < start {
+            fed_termwiz |= parse_normal_span(
+                residue,
+                cursor,
+                start,
+                current_buffer,
+                input_parser,
+                kitty_parser,
+                kitty_enabled,
+                &mut send,
+            )?;
+        }
+        if start < end {
+            // A key sequence cannot validly continue across literal paste
+            // bytes, even when the two spans arrive in the same read.
+            *kitty_parser = KittyKeyboardParser::new();
+            feed_termwiz(
+                &residue[start..end],
+                current_buffer,
+                input_parser,
+                &mut send,
+            )?;
+            fed_termwiz = true;
+        }
+        cursor = end;
+    }
+    if cursor < residue.len() {
+        fed_termwiz |= parse_normal_span(
+            residue,
+            cursor,
+            residue.len(),
+            current_buffer,
+            input_parser,
+            kitty_parser,
+            kitty_enabled,
+            &mut send,
+        )?;
+    }
+    if fed_termwiz {
+        realign_current_buffer(current_buffer, input_parser);
+    }
+    Some(fed_termwiz)
+}
+
+fn parse_normal_span<F>(
+    residue: &[u8],
+    start: usize,
+    end: usize,
+    current_buffer: &mut Vec<u8>,
+    input_parser: &mut InputParser,
+    kitty_parser: &mut KittyKeyboardParser,
+    kitty_enabled: bool,
+    send: &mut F,
+) -> Option<bool>
+where
+    F: FnMut(InputInstruction) -> bool,
+{
+    let mut kitty_processed = 0;
+    if kitty_enabled {
+        loop {
+            let remaining = &residue[start + kitty_processed..end];
+            if remaining.is_empty() {
+                break;
+            }
+            match kitty_parser.feed_with_consumed(remaining) {
+                (KittyParseOutcome::Complete(key_with_modifier), consumed) => {
+                    let consumed = consumed.min(remaining.len());
+                    if consumed == 0 {
+                        break;
+                    }
+                    let offset = start + kitty_processed;
+                    let raw_bytes =
+                        drain_kitty_bytes(current_buffer, residue.len(), offset, consumed);
+                    kitty_processed += consumed;
+                    if !send(InputInstruction::KeyWithModifierEvent(
+                        key_with_modifier,
+                        raw_bytes,
+                        true,
+                    )) {
+                        return None;
+                    }
+                },
+                (KittyParseOutcome::Incomplete | KittyParseOutcome::NoMatch, _) => break,
+            }
+        }
+    }
+
+    let termwiz_bytes = &residue[start + kitty_processed..end];
+    if termwiz_bytes.is_empty() {
+        return Some(false);
+    }
+    feed_termwiz(termwiz_bytes, current_buffer, input_parser, send)?;
+    Some(true)
+}
+
+fn drain_kitty_bytes(
+    current_buffer: &mut Vec<u8>,
+    residue_len: usize,
+    offset: usize,
+    consumed: usize,
+) -> Vec<u8> {
+    // `current_buffer` also contains any bytes pending from previous
+    // reads. Drain those, the residue preceding this sequence, and the
+    // sequence itself.
+    let remaining_len = residue_len.saturating_sub(offset);
+    let pending_before_residue = current_buffer.len().saturating_sub(remaining_len);
+    let take = pending_before_residue
+        .saturating_add(consumed)
+        .min(current_buffer.len());
+    current_buffer.drain(..take).collect()
+}
+
+fn feed_termwiz<F>(
+    bytes: &[u8],
+    current_buffer: &mut Vec<u8>,
+    input_parser: &mut InputParser,
+    send: &mut F,
+) -> Option<()>
+where
+    F: FnMut(InputInstruction) -> bool,
+{
+    let mut events: Vec<(InputEvent, usize)> = vec![];
+    input_parser.parse_with_consumed(
+        bytes,
+        |input_event: InputEvent, consumed: usize| {
+            events.push((input_event, consumed));
+        },
+        true,
+    );
+    for (input_event, consumed) in events {
+        let take = consumed.min(current_buffer.len());
+        let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
+        if !send(InputInstruction::KeyEvent(input_event, raw_bytes)) {
+            return None;
+        }
+    }
+    Some(())
+}
+
+fn extract_focus_reports(
+    residue: Vec<u8>,
+    paste_spans: &[Range<usize>],
+) -> (Vec<u8>, Vec<bool>, Vec<Range<usize>>) {
+    let mut remaining = Vec::with_capacity(residue.len());
+    let mut focus_changes = vec![];
+    let mut remaining_paste_spans = vec![];
+    let mut cursor = 0;
+    for span in paste_spans {
+        let start = span.start.min(residue.len()).max(cursor);
+        let end = span.end.min(residue.len()).max(start);
+        if cursor < start {
+            let (cleaned, focus) = extract_focus_reports_from(&residue[cursor..start]);
+            remaining.extend_from_slice(&cleaned);
+            focus_changes.extend(focus);
+        }
+        let out_start = remaining.len();
+        remaining.extend_from_slice(&residue[start..end]);
+        if remaining.len() > out_start {
+            remaining_paste_spans.push(out_start..remaining.len());
+        }
+        cursor = end;
+    }
+    if cursor < residue.len() {
+        let (cleaned, focus) = extract_focus_reports_from(&residue[cursor..]);
+        remaining.extend_from_slice(&cleaned);
+        focus_changes.extend(focus);
+    }
+    (remaining, focus_changes, remaining_paste_spans)
+}
+
+fn extract_focus_reports_from(residue: &[u8]) -> (Vec<u8>, Vec<bool>) {
     const FOCUS_GAINED: &[u8] = b"\x1b[I";
     const FOCUS_LOST: &[u8] = b"\x1b[O";
     if residue.len() < FOCUS_GAINED.len() {
-        return (residue, vec![]);
+        return (residue.to_vec(), vec![]);
     }
     let mut remaining = Vec::with_capacity(residue.len());
     let mut focus_changes = vec![];
@@ -441,9 +590,87 @@ pub(crate) const PROGRAM_STATUS_QUERY: &str = "\u{1b}]7501;?\u{1b}\u{5c}";
 #[cfg(test)]
 mod tests {
     use super::{
-        build_startup_query_string, extract_focus_reports, realign_current_buffer, InputParser,
-        PIXEL_SIZE_QUERY,
+        build_startup_query_string, extract_focus_reports, parse_residue, realign_current_buffer,
+        InputEvent, InputInstruction, InputParser, PIXEL_SIZE_QUERY,
     };
+    use crate::keyboard_parser::KittyKeyboardParser;
+    use crate::stdin_ansi_parser::StdinAnsiParser;
+    use zellij_utils::data::{BareKey, KeyWithModifier};
+
+    fn decode_chunks(chunks: &[&[u8]]) -> (Vec<InputInstruction>, Vec<bool>) {
+        let mut ansi_parser = StdinAnsiParser::new();
+        let mut input_parser = InputParser::new();
+        let mut kitty_parser = KittyKeyboardParser::new();
+        let mut current_buffer = vec![];
+        let mut instructions = vec![];
+        let mut focus_changes = vec![];
+        for chunk in chunks {
+            let output = ansi_parser.feed(chunk);
+            let (residue, focus, paste_spans) =
+                extract_focus_reports(output.residue, &output.paste_spans);
+            focus_changes.extend(focus);
+            current_buffer.extend_from_slice(&residue);
+            let result = parse_residue(
+                &residue,
+                &paste_spans,
+                &mut current_buffer,
+                &mut input_parser,
+                &mut kitty_parser,
+                true,
+                |instruction| {
+                    instructions.push(instruction);
+                    true
+                },
+            );
+            assert!(result.is_some(), "test channel unexpectedly closed");
+        }
+        assert!(
+            current_buffer.is_empty(),
+            "all complete input should be drained: {:?}",
+            current_buffer
+        );
+        (instructions, focus_changes)
+    }
+
+    fn assert_kitty_key(
+        instruction: &InputInstruction,
+        expected: KeyWithModifier,
+        expected_raw: &[u8],
+    ) {
+        match instruction {
+            InputInstruction::KeyWithModifierEvent(key, raw, true) => {
+                assert_eq!(key, &expected);
+                assert_eq!(raw, expected_raw);
+            },
+            other => panic!("expected Kitty key event, got {:?}", other),
+        }
+    }
+
+    fn assert_paste(instruction: &InputInstruction, expected: &str, expected_raw: &[u8]) {
+        match instruction {
+            InputInstruction::KeyEvent(InputEvent::Paste(pasted), raw) => {
+                assert_eq!(pasted, expected);
+                assert_eq!(raw, expected_raw);
+            },
+            other => panic!("expected paste event, got {:?}", other),
+        }
+    }
+
+    fn assert_plain_key(instruction: &InputInstruction, expected: char) {
+        match instruction {
+            InputInstruction::KeyEvent(
+                InputEvent::Key(zellij_utils::vendored::termwiz::input::KeyEvent {
+                    key: zellij_utils::vendored::termwiz::input::KeyCode::Char(key),
+                    ..
+                }),
+                raw,
+            ) => {
+                assert_eq!(*key, expected);
+                assert_eq!(raw, &[expected as u8]);
+            },
+            other => panic!("expected plain key event, got {:?}", other),
+        }
+    }
 
     #[test]
     fn realign_after_lone_paste_start_empties_the_buffer() {
@@ -509,16 +736,106 @@ mod tests {
 
     #[test]
     fn focus_reports_are_extracted_from_the_byte_stream() {
-        let (residue, focus_changes) = extract_focus_reports(b"a\x1b[Ib\x1b[Oc".to_vec());
+        let (residue, focus_changes, _) = extract_focus_reports(b"a\x1b[Ib\x1b[Oc".to_vec(), &[]);
         assert_eq!(residue, b"abc".to_vec());
         assert_eq!(focus_changes, vec![true, false]);
     }
 
     #[test]
     fn a_stream_without_focus_reports_is_left_untouched() {
-        let (residue, focus_changes) = extract_focus_reports(b"\x1b[A\x1b[B".to_vec());
+        let (residue, focus_changes, _) = extract_focus_reports(b"\x1b[A\x1b[B".to_vec(), &[]);
         assert_eq!(residue, b"\x1b[A\x1b[B".to_vec());
         assert!(focus_changes.is_empty());
+    }
+
+    #[test]
+    fn focus_like_bytes_inside_a_paste_are_preserved_verbatim() {
+        let pasted = b"\x1b[200~a\x1b[Ib\x1b[Oc\x1b[201~";
+        let (residue, focus_changes, paste_spans) =
+            extract_focus_reports(pasted.to_vec(), &[0..pasted.len()]);
+        assert_eq!(residue, pasted.to_vec());
+        assert!(focus_changes.is_empty());
+        assert_eq!(paste_spans, vec![0..pasted.len()]);
+    }
+
+    #[test]
+    fn paste_followed_by_a_kitty_key_in_one_read_keeps_both() {
+        let (events, focus) = decode_chunks(&[b"\x1b[200~pasted\x1b[201~\x1b[97u"]);
+        assert!(focus.is_empty());
+        assert_eq!(events.len(), 2);
+        assert_paste(&events[0], "pasted", b"\x1b[200~pasted\x1b[201~");
+        assert_kitty_key(
+            &events[1],
+            KeyWithModifier::new(BareKey::Char('a')),
+            b"\x1b[97u",
+        );
+    }
+
+    #[test]
+    fn kitty_key_followed_by_paste_in_one_read_keeps_both() {
+        let (events, focus) = decode_chunks(&[b"\x1b[97u\x1b[200~pasted\x1b[201~"]);
+        assert!(focus.is_empty());
+        assert_eq!(events.len(), 2);
+        assert_kitty_key(
+            &events[0],
+            KeyWithModifier::new(BareKey::Char('a')),
+            b"\x1b[97u",
+        );
+        assert_paste(&events[1], "pasted", b"\x1b[200~pasted\x1b[201~");
+    }
+
+    #[test]
+    fn paste_content_that_looks_like_keys_and_focus_is_not_decoded() {
+        let (events, focus) =
+            decode_chunks(&[b"\x1b[200~before\x1b[97u\x1b[I\x1b[Oafter\x1b[201~"]);
+        assert!(focus.is_empty());
+        assert_eq!(events.len(), 1);
+        assert_paste(
+            &events[0],
+            "before\x1b[97u\x1b[I\x1b[Oafter",
+            b"\x1b[200~before\x1b[97u\x1b[I\x1b[Oafter\x1b[201~",
+        );
+    }
+
+    #[test]
+    fn focus_reports_outside_a_paste_still_work_alongside_a_kitty_key() {
+        let (events, focus) = decode_chunks(&[b"\x1b[I\x1b[200~P\x1b[201~\x1b[O\x1b[97u"]);
+        assert_eq!(focus, vec![true, false]);
+        assert_eq!(events.len(), 2);
+        assert_paste(&events[0], "P", b"\x1b[200~P\x1b[201~");
+        assert_kitty_key(
+            &events[1],
+            KeyWithModifier::new(BareKey::Char('a')),
+            b"\x1b[97u",
+        );
+    }
+
+    #[test]
+    fn a_paste_fragmented_across_reads_keeps_its_escape_content_literal() {
+        let (events, focus) = decode_chunks(&[
+            b"\x1b[200~hel",
+            b"lo \x1b[97u\x1b[I\x1b[O",
+            b" world\x1b[201~",
+        ]);
+        assert!(focus.is_empty());
+        assert_eq!(events.len(), 1);
+        // The paste-start marker was already consumed by termwiz during the
+        // first read, so only the pending body and end marker remain here.
+        assert_paste(
+            &events[0],
+            "hello \x1b[97u\x1b[I\x1b[O world",
+            b"hello \x1b[97u\x1b[I\x1b[O world\x1b[201~",
+        );
+    }
+
+    #[test]
+    fn ordinary_keys_around_a_paste_keep_their_order() {
+        let (events, focus) = decode_chunks(&[b"a\x1b[200~P\x1b[201~b"]);
+        assert!(focus.is_empty());
+        assert_eq!(events.len(), 3);
+        assert_plain_key(&events[0], 'a');
+        assert_paste(&events[1], "P", b"\x1b[200~P\x1b[201~");
+        assert_plain_key(&events[2], 'b');
     }
 
     #[test]

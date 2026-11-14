@@ -1,9 +1,15 @@
 use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime;
-use crate::plugins::plugin_map::PluginEnv;
-use crate::plugins::wasm_bridge::handle_plugin_crash;
-use crate::plugins::{PluginId, PromptCaller};
+use crate::plugins::plugin_map::{next_permission_prompt_id, PluginEnv};
+use crate::plugins::wasm_bridge::{
+    handle_plugin_crash, redact_session_info_for_plugin, release_admitted_worker_posts,
+    try_admit_plugin_worker_post,
+};
+use crate::plugins::{
+    try_acquire_refusal_report, try_acquire_run_command, try_acquire_web_request,
+    BackgroundOperationReservation, PluginId, PromptCaller,
+};
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
 use crate::session_suggestions::SessionSuggestionsJob;
@@ -13,10 +19,11 @@ use log::warn;
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashSet},
-    io::{Read, Write},
-    path::PathBuf,
+    io::Read,
+    path::{Path, PathBuf},
     process,
     str::FromStr,
+    sync::Mutex,
     thread,
     time::{Duration, Instant},
 };
@@ -56,7 +63,10 @@ use zellij_utils::web_authentication_tokens::{
 #[cfg(feature = "web_server_capability")]
 use zellij_utils::web_server_commands::shutdown_all_webserver_instances;
 
-use crate::{panes::PaneId, screen::ScreenInstruction};
+use crate::{
+    panes::PaneId,
+    screen::{ClosePaneSource, ScreenInstruction},
+};
 use kdl::KdlDocument;
 
 use prost::Message;
@@ -335,6 +345,8 @@ fn close_slot(env: &PluginEnv, slot_id: PluginId) {
                 PaneId::Plugin(slot_id),
                 None,
                 None,
+                None,
+                ClosePaneSource::External,
                 None,
             ))
             .map_err(|e| e.to_string())?;
@@ -683,11 +695,19 @@ fn set_popup_size(env: &mut PluginEnv, width: usize, height: usize) {
 pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
     linker
         .func_wrap("zellij", "host_run_plugin_command", host_run_plugin_command)
-        .unwrap();
+        // SAFETY: plugin export setup is controlled; func_wrap only fails on
+        // duplicate/invalid registration during linker construction.
+        .expect("register host_run_plugin_command");
 }
 
 fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
     let mut env = caller.data_mut();
+    if !env.is_alive() && !crate::plugins::pinned_executor::before_close_host_calls_allowed() {
+        // A callback queued before unload/quarantine must not reach the host. There is nobody
+        // left to consume a response, so do not execute or answer the command. BeforeClose is
+        // the exception: unload revokes the load first, and that callback still reverts state.
+        return;
+    }
     let plugin_command = env.name();
     let err_context = || format!("failed to run plugin command {}", plugin_command);
     wasi_read_bytes(env)
@@ -1459,7 +1479,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         existing_pane_id.into(),
                         suppress_replaced_pane,
                     ),
-                    PluginCommand::RunAction(action, context) => run_action(&env, action, context),
+                    PluginCommand::RunAction(action, context) => {
+                        run_action(&env, action, context)?
+                    }
                     PluginCommand::GetSessionEnvironmentVariables => {
                         get_session_environment_variables(env);
                     },
@@ -1681,34 +1703,44 @@ fn show_cursor(env: &PluginEnv, cursor_position: Option<(usize, usize)>) {
 }
 
 fn request_permission(env: &PluginEnv, permissions: Vec<PermissionType>) -> Result<()> {
+    let permission_cache_key = permission_cache_key(env);
     if env.plugin.is_builtin()
         || PermissionCache::from_path_or_default(None)
-            .check_permissions(env.plugin.location.to_string(), &permissions)
+            .check_permissions(permission_cache_key, &permissions)
     {
+        // already granted for these exact module bytes, no prompt is involved
         return env
             .senders
-            .send_to_plugin(PluginInstruction::PermissionRequestResult(
+            .send_to_plugin(PluginInstruction::GrantKnownPermissions(
                 env.plugin_id,
                 Some(acting_client(env)),
                 permissions.to_vec(),
-                PermissionStatus::Granted,
-                None,
+                env.generation,
+                env.plugin_digest.clone(),
             ));
     }
 
     // we do this so that messages that have arrived while the user is seeing the permission screen
     // will be cached and reapplied once the permission is granted
+    let prompt_id = next_permission_prompt_id();
     let _ = env
         .senders
         .send_to_plugin(PluginInstruction::CachePluginEvents {
             plugin_id: env.plugin_id,
+            generation: env.generation,
+            digest: env.plugin_digest.clone(),
+            prompt_id,
         });
 
     env.senders
         .send_to_screen(ScreenInstruction::RequestPluginPermissions(
             permission_pane_id(env),
-            PluginPermission::new(env.plugin.location.to_string(), permissions),
+            PluginPermission::new(env.plugin.location.to_string(), permissions, prompt_id),
         ))
+}
+
+fn permission_cache_key(env: &PluginEnv) -> String {
+    format!("{}#{}", env.plugin.location, env.plugin_digest)
 }
 
 fn get_plugin_ids(env: &PluginEnv) {
@@ -2222,7 +2254,11 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         .non_fatal();
 }
 
-fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, String>) {
+fn run_action(
+    env: &PluginEnv,
+    mut action: Action,
+    context: BTreeMap<String, String>,
+) -> Result<()> {
     // Clone the necessary data to move into the thread
     action.populate_originating_plugin(OriginatingPlugin::new(
         env.plugin_id,
@@ -2232,50 +2268,67 @@ fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, Str
     let action_clone = action.clone();
     let client_id = acting_client(env);
     let plugin_id = env.plugin_id;
+    let scheduled_generation = env.generation;
     let senders = env.senders.clone();
     let default_shell = env.default_shell.clone();
     let default_mode = env.default_mode.clone();
     let plugin_name = env.name().to_string();
+    let spawned_for = plugin_name.clone();
+    let Some(permit) = try_acquire_run_action(plugin_id) else {
+        log::warn!(
+            "Not running an action for plugin {}: run-action limit reached",
+            plugin_id
+        );
+        return Err(anyhow!("run-action limit reached for plugin {plugin_name}"));
+    };
 
-    // Spawn a new thread to execute the action
-    thread::spawn(move || {
-        // Execute the action and capture the result
-        let pane_id = match route_action(
-            action,
-            client_id,
-            None,
-            Some(PaneId::Plugin(plugin_id)),
-            senders.clone(),
-            default_shell,
-            None,
-            default_mode,
-            None,
-            false,
-        ) {
-            Ok((_should_break, result)) => {
-                // Extract pane_id from ActionCompletionResult
-                result.and_then(|r| r.affected_pane_id)
-            },
-            Err(e) => {
-                log::error!("failed to run action in plugin {}: {:?}", plugin_name, e);
-                None
-            },
-        };
+    // The permit is dropped when this thread finishes, including a panic.
+    // A failed spawn drops the closure, which drops the permit.
+    thread::Builder::new()
+        .name("run_action".to_owned())
+        .spawn(move || {
+            let _permit = permit;
+            // Execute the action and capture the result
+            let pane_id = match route_action(
+                action,
+                client_id,
+                None,
+                Some(PaneId::Plugin(plugin_id)),
+                senders.clone(),
+                default_shell,
+                None,
+                default_mode,
+                None,
+                false,
+            ) {
+                Ok((_should_break, result)) => {
+                    // Extract pane_id from ActionCompletionResult
+                    result.and_then(|r| r.affected_pane_id)
+                },
+                Err(e) => {
+                    log::error!("failed to run action in plugin {}: {:?}", plugin_name, e);
+                    None
+                },
+            };
 
-        // After action completes, send ActionComplete event with context
-        // Convert server PaneId to zellij_utils PaneId
-        let pane_id_for_event = pane_id.map(|p| p.into());
-        let updates = vec![(
-            Some(plugin_id),
-            Some(client_id),
-            Event::ActionComplete(action_clone, pane_id_for_event, context),
-        )];
-
-        // Send the ActionComplete event back to the plugin
-        if let Err(e) = senders.send_to_plugin(PluginInstruction::Update(updates)) {
-            log::error!("Failed to send ActionComplete event: {:?}", e);
-        }
-    });
+            // After action completes, send ActionComplete event with context.
+            // Convert server PaneId to zellij_utils PaneId. The generation stays
+            // on the instruction; it is not part of the guest context.
+            let pane_id_for_event = pane_id.map(|p| p.into());
+            if let Err(e) = senders.send_to_plugin(PluginInstruction::ApplyLoadResult {
+                plugin_id,
+                client_id,
+                event: Event::ActionComplete(action_clone, pane_id_for_event, context),
+                generation: scheduled_generation,
+                reservation: None,
+            }) {
+                log::error!("Failed to send ActionComplete event: {:?}", e);
+            }
+        })
+        .map_err(|error| {
+            anyhow!("failed to spawn run_action thread for plugin {spawned_for}: {error}")
+        })?;
+    Ok(())
 }
 
 fn open_file_floating(
@@ -3314,15 +3367,190 @@ fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
         .non_fatal();
 }
 
+const MAX_DIRECTORY_SCANS_IN_FLIGHT: usize = 4;
+const MAX_DIRECTORY_SCANS_PER_PLUGIN: usize = 1;
+const MAX_DIRECTORY_SCAN_ENTRIES: usize = 4096;
+const MAX_PLUGIN_TIMERS_PER_PLUGIN: usize = 64;
+const MAX_PLUGIN_TIMERS_IN_FLIGHT: usize = 256;
+// RunAction starts an OS thread. Stay with the directory-scan thread cap,
+// not the 64/256 timer tasks.
+const MAX_RUN_ACTIONS_PER_PLUGIN: usize = 4;
+const MAX_RUN_ACTIONS_IN_FLIGHT: usize = 16;
+// Separate counters from run actions. Same caps, not higher.
+#[cfg(test)]
+const MAX_RUN_COMMANDS_PER_PLUGIN: usize = MAX_RUN_ACTIONS_PER_PLUGIN;
+#[cfg(test)]
+const MAX_RUN_COMMANDS_IN_FLIGHT: usize = MAX_RUN_ACTIONS_IN_FLIGHT;
+#[cfg(test)]
+const MAX_WEB_REQUESTS_PER_PLUGIN: usize = MAX_RUN_ACTIONS_PER_PLUGIN;
+#[cfg(test)]
+const MAX_WEB_REQUESTS_IN_FLIGHT: usize = MAX_RUN_ACTIONS_IN_FLIGHT;
+
+struct InFlightLimits {
+    total: usize,
+    per_plugin: BTreeMap<PluginId, usize>,
+}
+
+impl InFlightLimits {
+    const fn new() -> Self {
+        Self {
+            total: 0,
+            per_plugin: BTreeMap::new(),
+        }
+    }
+
+    fn try_acquire(
+        &mut self,
+        plugin_id: PluginId,
+        per_plugin_cap: usize,
+        total_cap: usize,
+    ) -> bool {
+        let plugin_count = self.per_plugin.get(&plugin_id).copied().unwrap_or(0);
+        if self.total >= total_cap || plugin_count >= per_plugin_cap {
+            return false;
+        }
+        self.total += 1;
+        self.per_plugin.insert(plugin_id, plugin_count + 1);
+        true
+    }
+
+    fn release(&mut self, plugin_id: PluginId) {
+        self.total = self.total.saturating_sub(1);
+        let Some(count) = self.per_plugin.get_mut(&plugin_id) else {
+            return;
+        };
+        *count = count.saturating_sub(1);
+        if *count == 0 {
+            self.per_plugin.remove(&plugin_id);
+        }
+    }
+}
+
+static DIRECTORY_SCANS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
+static PLUGIN_TIMERS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
+static RUN_ACTIONS: Mutex<InFlightLimits> = Mutex::new(InFlightLimits::new());
+
+struct DirectoryScanPermit {
+    plugin_id: PluginId,
+}
+
+impl Drop for DirectoryScanPermit {
+    fn drop(&mut self) {
+        DIRECTORY_SCANS.lock().unwrap().release(self.plugin_id);
+    }
+}
+
+struct PluginTimerPermit {
+    plugin_id: PluginId,
+}
+
+impl Drop for PluginTimerPermit {
+    fn drop(&mut self) {
+        PLUGIN_TIMERS.lock().unwrap().release(self.plugin_id);
+    }
+}
+
+fn try_acquire_directory_scan(plugin_id: PluginId) -> Option<DirectoryScanPermit> {
+    let mut slots = DIRECTORY_SCANS.lock().unwrap();
+    if slots.try_acquire(
+        plugin_id,
+        MAX_DIRECTORY_SCANS_PER_PLUGIN,
+        MAX_DIRECTORY_SCANS_IN_FLIGHT,
+    ) {
+        Some(DirectoryScanPermit { plugin_id })
+    } else {
+        None
+    }
+}
+
+struct RunActionPermit {
+    plugin_id: PluginId,
+}
+
+impl Drop for RunActionPermit {
+    fn drop(&mut self) {
+        RUN_ACTIONS.lock().unwrap().release(self.plugin_id);
+    }
+}
+
+fn try_acquire_run_action(plugin_id: PluginId) -> Option<RunActionPermit> {
+    let mut slots = RUN_ACTIONS.lock().unwrap();
+    if slots.try_acquire(
+        plugin_id,
+        MAX_RUN_ACTIONS_PER_PLUGIN,
+        MAX_RUN_ACTIONS_IN_FLIGHT,
+    ) {
+        Some(RunActionPermit { plugin_id })
+    } else {
+        None
+    }
+}
+
+fn try_acquire_plugin_timer(plugin_id: PluginId) -> Option<PluginTimerPermit> {
+    let mut slots = PLUGIN_TIMERS.lock().unwrap();
+    if slots.try_acquire(
+        plugin_id,
+        MAX_PLUGIN_TIMERS_PER_PLUGIN,
+        MAX_PLUGIN_TIMERS_IN_FLIGHT,
+    ) {
+        Some(PluginTimerPermit { plugin_id })
+    } else {
+        None
+    }
+}
+
+/// Upper bound for a plugin timer. Timers are used for short user-visible delays; allowing
+/// years-long or larger values only pins host resources and can overflow duration conversion.
+pub(crate) const MAX_PLUGIN_TIMEOUT_SECONDS: f64 = 24.0 * 60.0 * 60.0;
+
+pub(crate) fn plugin_timeout_is_valid(secs: f64) -> bool {
+    secs.is_finite() && secs >= 0.0 && secs <= MAX_PLUGIN_TIMEOUT_SECONDS
+}
+
 fn set_timeout(env: &PluginEnv, secs: f64) {
+    if !plugin_timeout_is_valid(secs) {
+        log::error!(
+            "plugin {} requested an invalid timeout: {}",
+            env.name(),
+            secs
+        );
+        return;
+    }
     let send_plugin_instructions = env.senders.to_plugin.clone();
-    let update_target = Some(env.plugin_id);
+    let plugin_id = env.plugin_id;
     let client_id = acting_client(env);
     let plugin_name = env.name();
-    // Use tokio runtime for async I/O (timer operation)
+    // Own this load instance: after unload/reload/client-remove the same
+    // (plugin_id, client_id) may name a replacement. Do not duration-dedupe.
+    let load_alive = env.load_alive.clone();
+    let scheduled_generation = env.generation;
+    let Some(permit) = try_acquire_plugin_timer(plugin_id) else {
+        log::warn!(
+            "plugin {plugin_name} already has too many outstanding timers; not starting another"
+        );
+        return;
+    };
+    // Use tokio runtime for async I/O (timer operation).
+    // The permit is dropped as soon as this load is dead, not after the
+    // remaining sleep. A live load still waits out its own deadline.
     get_tokio_runtime().spawn(async move {
+        let _permit = permit;
         let start_time = Instant::now();
-        tokio::time::sleep(Duration::from_secs_f64(secs)).await;
+        let sleep = tokio::time::sleep(Duration::from_secs_f64(secs));
+        tokio::pin!(sleep);
+        loop {
+            if !load_alive.load(std::sync::atomic::Ordering::Acquire) {
+                return;
+            }
+            tokio::select! {
+                biased;
+                _ = &mut sleep => break,
+                _ = tokio::time::sleep(Duration::from_millis(50)) => {}
+            }
+        }
+        if !load_alive.load(std::sync::atomic::Ordering::Acquire) {
+            return;
+        }
         // FIXME: The way that elapsed time is being calculated here is not exact; it doesn't take into account the
         // time it takes an event to actually reach the plugin after it's sent to the `wasm` thread.
         let elapsed_time = Instant::now().duration_since(start_time).as_secs_f64();
@@ -3331,17 +3559,18 @@ fn set_timeout(env: &PluginEnv, secs: f64) {
             .ok_or(anyhow!("found no sender to send plugin instruction to"))
             .and_then(|sender| {
                 sender
-                    .send(PluginInstruction::Update(vec![(
-                        update_target,
-                        Some(client_id),
-                        Event::Timer(elapsed_time),
-                    )]))
+                    .send(PluginInstruction::ApplyTimer {
+                        plugin_id,
+                        client_id,
+                        elapsed_seconds: elapsed_time,
+                        generation: scheduled_generation,
+                    })
                     .to_anyhow()
             })
             .with_context(|| {
                 format!(
-                    "failed to set host timeout of {secs} s for plugin {}",
-                    plugin_name
+                    "failed to set host timeout of {secs} s for plugin {} (generation {})",
+                    plugin_name, scheduled_generation
                 )
             })
             .non_fatal();
@@ -3356,6 +3585,14 @@ fn exec_cmd(env: &PluginEnv, mut command_line: Vec<String>) {
             env.name()
         )
     };
+    // `remove(0)` panics on an empty vector and the process panic hook exits the session.
+    if command_line.is_empty() {
+        log::error!(
+            "failed to execute command on host for plugin '{}': command cannot be empty",
+            env.name()
+        );
+        return;
+    }
     let command = command_line.remove(0);
 
     // Bail out if we're forbidden to run command
@@ -3373,6 +3610,62 @@ fn exec_cmd(env: &PluginEnv, mut command_line: Vec<String>) {
         .non_fatal();
 }
 
+fn enqueue_background_job(env: &PluginEnv, job: BackgroundJob) -> bool {
+    match env.senders.to_background_jobs.as_ref() {
+        Some(sender) => sender.send(job).is_ok(),
+        None => false,
+    }
+}
+
+fn map_bytes(map: &BTreeMap<String, String>) -> usize {
+    map.iter().fold(0usize, |bytes, (key, value)| {
+        bytes.saturating_add(key.len()).saturating_add(value.len())
+    })
+}
+
+fn run_command_payload_bytes(
+    command_line: &[String],
+    env_variables: &BTreeMap<String, String>,
+    cwd: &Path,
+    context: &BTreeMap<String, String>,
+) -> usize {
+    command_line
+        .iter()
+        .fold(64usize, |bytes, part| bytes.saturating_add(part.len()))
+        .saturating_add(map_bytes(env_variables))
+        .saturating_add(cwd.as_os_str().len())
+        .saturating_add(map_bytes(context))
+}
+
+fn web_request_payload_bytes(
+    url: &str,
+    headers: &BTreeMap<String, String>,
+    body: &[u8],
+    context: &BTreeMap<String, String>,
+) -> usize {
+    url.len()
+        .saturating_add(map_bytes(headers))
+        .saturating_add(body.len())
+        .saturating_add(map_bytes(context))
+        .saturating_add(64)
+}
+
+fn send_load_result(
+    env: &PluginEnv,
+    event: Event,
+    reservation: Option<BackgroundOperationReservation>,
+) {
+    let _ = env
+        .senders
+        .send_to_plugin(PluginInstruction::ApplyLoadResult {
+            plugin_id: env.plugin_id,
+            client_id: acting_client(env),
+            event,
+            generation: env.generation,
+            reservation,
+        });
+}
+
 fn run_command(
     env: &PluginEnv,
     mut command_line: Vec<String>,
@@ -3382,21 +3675,45 @@ fn run_command(
 ) {
     if command_line.is_empty() {
         log::error!("Command cannot be empty");
-    } else {
-        let command = command_line.remove(0);
-        let cwd = translate_plugin_path(env, cwd);
-        let _ = env
-            .senders
-            .send_to_background_jobs(BackgroundJob::RunCommand(
-                env.plugin_id,
-                acting_client(env),
-                command,
-                command_line,
-                env_variables,
-                cwd,
-                context,
-            ));
+        return;
     }
+    let command = command_line.remove(0);
+    let cwd = translate_plugin_path(env, cwd);
+    let plugin_id = env.plugin_id;
+    let payload_bytes = run_command_payload_bytes(&command_line, &env_variables, &cwd, &context);
+    let Some(reservation) =
+        try_acquire_run_command(plugin_id, env.load_alive.clone(), payload_bytes)
+    else {
+        log::warn!(
+            "Not running a command for plugin {}: run-command limit reached",
+            plugin_id
+        );
+        match try_acquire_refusal_report(plugin_id, env.load_alive.clone()) {
+            Some(report) => send_load_result(
+                env,
+                crate::background_jobs::run_command_limit_event(context),
+                Some(report),
+            ),
+            None => log::warn!(
+                "Dropping repeated run-command refusal for plugin {plugin_id}: refusal backlog is full"
+            ),
+        }
+        return;
+    };
+    enqueue_background_job(
+        env,
+        BackgroundJob::RunCommand(
+            plugin_id,
+            acting_client(env),
+            command,
+            command_line,
+            env_variables,
+            cwd,
+            context,
+            env.generation,
+            reservation,
+        ),
+    );
 }
 
 fn web_request(
@@ -3407,30 +3724,69 @@ fn web_request(
     body: Vec<u8>,
     context: BTreeMap<String, String>,
 ) {
-    let _ = env
-        .senders
-        .send_to_background_jobs(BackgroundJob::WebRequest(
-            env.plugin_id,
+    let plugin_id = env.plugin_id;
+    let payload_bytes = web_request_payload_bytes(&url, &headers, &body, &context);
+    let Some(reservation) =
+        try_acquire_web_request(plugin_id, env.load_alive.clone(), payload_bytes)
+    else {
+        log::warn!(
+            "Not sending a web request for plugin {}: web-request limit reached",
+            plugin_id
+        );
+        match try_acquire_refusal_report(plugin_id, env.load_alive.clone()) {
+            Some(report) => send_load_result(
+                env,
+                crate::background_jobs::web_request_limit_event(context),
+                Some(report),
+            ),
+            None => log::warn!(
+                "Dropping repeated web-request refusal for plugin {plugin_id}: refusal backlog is full"
+            ),
+        }
+        return;
+    };
+    enqueue_background_job(
+        env,
+        BackgroundJob::WebRequest(
+            plugin_id,
             acting_client(env),
             url,
             verb,
             headers,
             body,
             context,
-        ));
+            env.generation,
+            reservation,
+        ),
+    );
 }
 
 fn post_message_to(env: &PluginEnv, plugin_message: PluginMessage) -> Result<()> {
     let worker_name = plugin_message
         .worker_name
         .ok_or(anyhow!("Worker name not specified in message to worker"))?;
-    env.senders
+    if !try_admit_plugin_worker_post(
+        env.plugin_id,
+        &worker_name,
+        &plugin_message.name,
+        &plugin_message.payload,
+    ) {
+        return Ok(());
+    }
+    let plugin_id = env.plugin_id;
+    let messages = vec![(plugin_message.name, plugin_message.payload)];
+    let sent = env
+        .senders
         .send_to_plugin(PluginInstruction::PostMessagesToPluginWorker(
-            env.plugin_id,
+            plugin_id,
             acting_client(env),
-            worker_name,
-            vec![(plugin_message.name, plugin_message.payload)],
-        ))
+            worker_name.clone(),
+            messages.clone(),
+        ));
+    if sent.is_err() {
+        release_admitted_worker_posts(plugin_id, &worker_name, &messages);
+    }
+    sent
 }
 
 fn post_message_to_plugin(env: &PluginEnv, plugin_message: PluginMessage) -> Result<()> {
@@ -3560,6 +3916,8 @@ fn close_self(env: &PluginEnv) {
             PaneId::Plugin(self_pane_id(env)),
             None,
             None,
+            None,
+            ClosePaneSource::External,
             None,
         ))
         .with_context(|| format!("failed to close self"))
@@ -4131,24 +4489,101 @@ fn notify_session_index_changed(env: &PluginEnv) {
         ));
 }
 
-fn delete_session_index_row(session_name: &str) {
-    if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
-        let _ = index.delete(session_name);
+fn delete_dead_session(session_name: String) -> Result<()> {
+    delete_dead_session_cache(&session_name)
+}
+
+/// Identity, folder-name eligibility, then a socket-inventory death check and
+/// the publication fence (tombstone and cache removal). The index row is
+/// removed only after the cache is gone. A live socket, or an inventory that
+/// cannot be read, is not death: the cache and the row stay.
+fn delete_dead_session_cache(session_name: &str) -> Result<()> {
+    let index = zellij_utils::session_index::SessionIndex::open_default().map_err(|error| {
+        anyhow!(
+            "session index lookup failed; the cache and the index row were left in place: {}",
+            error
+        )
+    })?;
+    delete_dead_session_cache_with(
+        session_name,
+        |session_id| {
+            zellij_utils::sessions::remove_fenced_dead_session_cache_and_index(
+                &ZELLIJ_SOCK_DIR,
+                &ZELLIJ_SESSION_INFO_CACHE_DIR,
+                Some(&index),
+                session_id,
+            )
+        },
+        |_| {},
+    )
+}
+
+fn delete_dead_session_cache_with(
+    session_name: &str,
+    remove_cache: impl FnOnce(&str) -> std::io::Result<zellij_utils::sessions::SessionCacheRemoval>,
+    delete_index: impl FnMut(&str),
+) -> Result<()> {
+    delete_dead_session_cache_with_lookup(
+        session_name,
+        zellij_utils::sessions::session_folder_id,
+        |id| {
+            zellij_utils::session_index::session_name_for_id(id).map_err(|error| error.to_string())
+        },
+        remove_cache,
+        delete_index,
+    )
+}
+
+// Dependency injection keeps filesystem/index fixtures private without
+// changing process-global paths or production lookup/error semantics.
+fn delete_dead_session_cache_with_lookup(
+    session_name: &str,
+    lookup: impl FnOnce(&str) -> std::result::Result<String, String>,
+    lookup_display_name: impl FnOnce(&str) -> std::result::Result<Option<String>, String>,
+    remove_cache: impl FnOnce(&str) -> std::io::Result<zellij_utils::sessions::SessionCacheRemoval>,
+    mut delete_index: impl FnMut(&str),
+) -> Result<()> {
+    // The cache folder is keyed by session id. `Ok(None)` keeps the name as the id.
+    // A lookup error must not remove that name's folder or an index row guessed from it.
+    let id = lookup(session_name).map_err(|error| {
+        anyhow!(
+            "session index lookup failed; the cache and the index row were left in place: {}",
+            error
+        )
+    })?;
+    validate_session_folder_name(&id).map_err(|error| anyhow!(error))?;
+    // The session index is keyed by display name, which differs from the argument
+    // when called with an id. A lookup error leaves the row in place.
+    let display_name = match lookup_display_name(&id) {
+        Ok(Some(name)) => name,
+        Ok(None) => id.clone(),
+        Err(error) => {
+            return Err(anyhow!(
+                "session index lookup failed; the cache and the index row were left in place: {}",
+                error
+            ));
+        },
+    };
+    // A failed tombstone leaves the directory and the index row in place.
+    match remove_cache(&id) {
+        Ok(zellij_utils::sessions::SessionCacheRemoval::Removed) => {
+            delete_index(&display_name);
+            Ok(())
+        },
+        Ok(zellij_utils::sessions::SessionCacheRemoval::NotFound) => {
+            Err(anyhow!("Failed to delete dead session: {:?}", session_name))
+        },
+        Err(error) => {
+            Err(error).with_context(|| format!("Failed to delete dead session: {:?}", session_name))
+        },
     }
 }
 
-fn delete_dead_session(session_name: String) -> Result<()> {
-    // The cache folder is keyed by session id; resolve the name (falling back to
-    // treating the argument as the id, e.g. when called with an id directly).
-    let id = zellij_utils::sessions::resolve_session_id(&session_name)
-        .unwrap_or_else(|| session_name.clone());
-    validate_session_folder_name(&id).map_err(|e| anyhow!(e))?;
-    // The session index is keyed by display name, which differs from the argument
-    // when called with an id.
-    let display_name = zellij_utils::sessions::display_name_for_session_id(&id);
-    delete_session_index_row(&display_name);
-    std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&id))
-        .with_context(|| format!("Failed to delete dead session: {:?}", &session_name))
+fn delete_dead_session_reply(session_name: &str) -> DeleteDeadSessionResponse {
+    match delete_dead_session_cache(session_name) {
+        Ok(()) => DeleteDeadSessionResponse::Ok,
+        Err(error) => DeleteDeadSessionResponse::Err(format!("{error:#}")),
+    }
 }
 
 fn delete_all_dead_sessions() -> Result<()> {
@@ -4587,32 +5022,62 @@ fn disconnect_other_clients(env: &PluginEnv) {
 
 fn kill_sessions(session_names: Vec<String>) {
     for session_name in session_names {
-        let resolved = zellij_utils::sessions::resolve_session_socket_path(&session_name)
-            .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(&session_name));
-        if let Err(e) = zellij_utils::sessions::send_kill_session(&resolved) {
+        let resolved = match zellij_utils::sessions::resolve_session_socket_path(&session_name) {
+            Ok(Some(path)) => path,
+            Ok(None) => ZELLIJ_SOCK_DIR.join(&session_name),
+            Err(error) => {
+                log::error!(
+                    "Failed to resolve session {:?}: {}. The session was not killed.",
+                    session_name,
+                    error
+                );
+                continue;
+            },
+        };
+        // Pair the Windows request and reply pipes in one connect. The same
+        // helper is a timed unix connect. Five seconds matches the session probe.
+        if let Err(e) = zellij_utils::sessions::send_kill_session(&resolved, Duration::from_secs(5))
+        {
             log::error!("Failed to kill session {}: {:?}", session_name, e);
         }
     }
 }
 
-// Wedge timeout: only guards against a peer that neither shuts down nor
-// crashes. Normal kill latency is tens of milliseconds (peer's route loop
-// reads the message, server sends Exit back), so 500 ms is several times the
-// expected worst case while still feeling instant to the user. Applied as a
-// single budget over the whole batch -- per-session kills are issued
-// concurrently so killing many sessions does not multiply the wait.
+// Wedge timeout: one budget for writing KillSession and reading a decoded
+// Exit frame. It does not mean the server process was observed to exit.
+// OutcomeUnknown (no decoded Exit) is a failure, same as a send error.
+// Applied over the whole batch -- per-session kills run concurrently.
 const KILL_WEDGE_TIMEOUT: Duration = Duration::from_millis(500);
 
 fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
     use tokio::task::JoinSet;
     let runtime = get_tokio_runtime();
     let result: Result<(), String> = runtime.block_on(async {
-        let mut set: JoinSet<(String, std::io::Result<()>)> = JoinSet::new();
+        let mut set: JoinSet<(String, std::io::Result<zellij_utils::ipc::KillReply>)> =
+            JoinSet::new();
         for name in session_names {
-            let path = zellij_utils::sessions::resolve_session_socket_path(&name)
-                .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(&name));
+            let path = match zellij_utils::sessions::resolve_session_socket_path(&name) {
+                Ok(Some(path)) => path,
+                Ok(None) => ZELLIJ_SOCK_DIR.join(&name),
+                Err(error) => {
+                    set.spawn(async move {
+                        (
+                            name,
+                            Err(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!(
+                                    "session index lookup failed; the session was not killed: {}",
+                                    error
+                                ),
+                            )),
+                        )
+                    });
+                    continue;
+                },
+            };
             set.spawn(async move {
-                let res = zellij_utils::ipc::async_send_kill_and_await(&path).await;
+                let res =
+                    zellij_utils::ipc::async_send_kill_and_await(&path, KILL_WEDGE_TIMEOUT).await;
                 (name, res)
             });
         }
@@ -4620,10 +5085,20 @@ fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
             let mut first_err: Option<String> = None;
             while let Some(joined) = set.join_next().await {
                 match joined {
-                    Ok((_name, Ok(()))) => {},
+                    Ok((
+                        _name,
+                        Ok(zellij_utils::ipc::KillReply::ShutdownAcknowledged),
+                    )) => {},
+                    Ok((name, Ok(zellij_utils::ipc::KillReply::OutcomeUnknown))) => {
+                        if first_err.is_none() {
+                            first_err = Some(format!(
+                                "Session {name}: kill request was written but no Exit reply was decoded; process exit was not observed"
+                            ));
+                        }
+                    },
                     Ok((name, Err(e))) => {
                         if first_err.is_none() {
-                            first_err = Some(format!("Failed to kill session {}: {}", name, e));
+                            first_err = Some(format!("Failed to send kill to session {name}: {e}"));
                         }
                     },
                     Err(e) => {
@@ -4656,23 +5131,10 @@ fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
 }
 
 fn delete_dead_session_and_reply(env: &PluginEnv, session_name: String) {
-    // Cache folder is keyed by session id; resolve the display name.
-    let id = zellij_utils::sessions::resolve_session_id(&session_name)
-        .unwrap_or_else(|| session_name.clone());
-    let response = match validate_session_folder_name(&id) {
-        Err(e) => DeleteDeadSessionResponse::Err(e),
-        Ok(()) => {
-            delete_session_index_row(&session_name);
-            notify_session_index_changed(env);
-            match std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&id)) {
-                Ok(()) => DeleteDeadSessionResponse::Ok,
-                Err(e) => DeleteDeadSessionResponse::Err(format!(
-                    "Failed to delete dead session {}: {}",
-                    session_name, e
-                )),
-            }
-        },
-    };
+    let response = delete_dead_session_reply(&session_name);
+    if let DeleteDeadSessionResponse::Ok = &response {
+        notify_session_index_changed(env);
+    }
     let protobuf_response = ProtobufDeleteDeadSessionResponse::from(response);
     wasi_write_object(env, &protobuf_response.encode_to_vec())
         .with_context(|| "failed to write delete_dead_session response".to_string())
@@ -4703,11 +5165,12 @@ fn delete_all_dead_sessions_and_reply(env: &PluginEnv) {
 }
 
 fn watch_filesystem(env: &PluginEnv) {
-    let _ = env
-        .senders
-        .to_plugin
-        .as_ref()
-        .map(|sender| sender.send(PluginInstruction::WatchFilesystem));
+    let _ = env.senders.to_plugin.as_ref().map(|sender| {
+        sender.send(PluginInstruction::WatchFilesystem {
+            plugin_id: env.plugin_id,
+            host_root: env.plugin_cwd.clone(),
+        })
+    });
 }
 
 // note this removes the requesting plugin
@@ -5165,7 +5628,16 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
         .plugin_cwd
         .canonicalize()
         .unwrap_or_else(|_| env.plugin_cwd.clone());
-    let folder_to_scan = plugin_host_folder.join(folder_to_scan.strip_prefix("/host").unwrap());
+    let Some(relative) = folder_to_scan.strip_prefix("/host").ok() else {
+        // starts_with("/host") above, but strip_prefix can still fail for
+        // non-canonical prefix edge cases (e.g. "/host" vs "/host/").
+        log::error!(
+            "Failed to strip /host prefix from path: {}",
+            folder_to_scan.display()
+        );
+        return;
+    };
+    let folder_to_scan = plugin_host_folder.join(relative);
     match folder_to_scan.canonicalize() {
         Ok(folder_to_scan) => {
             if !folder_to_scan.starts_with(&plugin_host_folder) {
@@ -5179,30 +5651,60 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
             let reading_folder = std::fs::read_dir(&folder_to_scan);
             match reading_folder {
                 Ok(reading_folder) => {
+                    let Some(permit) = try_acquire_directory_scan(env.plugin_id) else {
+                        log::warn!(
+                            "Not scanning {} for plugin {}: directory scan limit reached",
+                            folder_to_scan.display(),
+                            env.plugin_id
+                        );
+                        return;
+                    };
                     let send_plugin_instructions = env.senders.to_plugin.clone();
-                    let update_target = Some(env.plugin_id);
+                    let plugin_id = env.plugin_id;
+                    let update_target = Some(plugin_id);
                     let client_id = acting_client(env);
                     thread::spawn({
                         move || {
-                            let mut paths_in_folder = vec![];
+                            let _permit = permit;
+                            let mut paths_in_folder = Vec::new();
+                            let mut truncated = false;
                             for entry in reading_folder {
+                                if paths_in_folder.len() >= MAX_DIRECTORY_SCAN_ENTRIES {
+                                    truncated = true;
+                                    break;
+                                }
                                 if let Ok(entry) = entry {
                                     let entry_metadata = entry.metadata().ok().map(|m| m.into());
+                                    let entry_path = entry.path();
+                                    let Ok(relative) = entry_path.strip_prefix(&plugin_host_folder)
+                                    else {
+                                        // Symlink / FS race can put an entry outside the host root.
+                                        continue;
+                                    };
                                     paths_in_folder.push((
-                                        PathBuf::from("/host").join(
-                                            entry.path().strip_prefix(&plugin_host_folder).unwrap(),
-                                        ),
+                                        PathBuf::from("/host").join(relative),
                                         entry_metadata.into(),
                                     ));
                                 }
                             }
+                            if truncated {
+                                log::warn!(
+                                    "Directory scan for plugin {plugin_id} stopped after {MAX_DIRECTORY_SCAN_ENTRIES} entries"
+                                );
+                            }
+                            let batch = super::file_system_update_within_host_pipe(paths_in_folder);
+                            let event = if batch.truncated {
+                                Event::FileSystemUpdateIncomplete(batch.entries)
+                            } else {
+                                Event::FileSystemUpdate(batch.entries)
+                            };
                             let _ = send_plugin_instructions
                                 .ok_or(anyhow!("found no sender to send plugin instruction to"))
                                 .map(|sender| {
                                     let _ = sender.send(PluginInstruction::Update(vec![(
                                         update_target,
                                         Some(client_id),
-                                        Event::FileSystemUpdate(paths_in_folder),
+                                        event,
                                     )]));
                                 })
                                 .non_fatal();
@@ -5251,13 +5753,19 @@ fn list_windows_volumes(env: &PluginEnv) {
     thread::spawn(move || {
         let mut entries = enumerate_drives();
         entries.extend(enumerate_wsl_distributions());
+        let batch = super::file_system_update_within_host_pipe(entries);
+        let event = if batch.truncated {
+            Event::FileSystemUpdateIncomplete(batch.entries)
+        } else {
+            Event::FileSystemUpdate(batch.entries)
+        };
         let _ = send_plugin_instructions
             .ok_or(anyhow!("found no sender to send plugin instruction to"))
             .map(|sender| {
                 let _ = sender.send(PluginInstruction::Update(vec![(
                     update_target,
                     Some(client_id),
-                    Event::FileSystemUpdate(entries),
+                    event,
                 )]));
             })
             .non_fatal();
@@ -5269,7 +5777,9 @@ fn enumerate_drives() -> Vec<(PathBuf, Option<zellij_utils::data::FileMetadata>)
     use windows_sys::Win32::Storage::FileSystem::GetLogicalDriveStringsW;
     let mut buf = [0u16; 256];
     let len = unsafe { GetLogicalDriveStringsW(buf.len() as u32, buf.as_mut_ptr()) };
-    if len == 0 {
+    // A short buffer returns the required length, which is at least `buf.len()`.
+    // A successful length excludes the terminating null, so it is strictly shorter.
+    if len == 0 || len as usize >= buf.len() {
         return vec![];
     }
     let drive_strings = &buf[..len as usize];
@@ -5403,6 +5913,7 @@ fn write_to_pane_id(env: &PluginEnv, bytes: Vec<u8>, pane_id: PaneId) {
     let send_result = env.senders.send_to_screen(ScreenInstruction::WriteToPaneId(
         bytes,
         pane_id,
+        Some(acting_client(env)),
         Some(NotificationEnd::new(completion_tx)),
     ));
     if send_result.is_ok() {
@@ -5417,6 +5928,7 @@ fn write_chars_to_pane_id(env: &PluginEnv, chars: String, pane_id: PaneId) {
     let send_result = env.senders.send_to_screen(ScreenInstruction::WriteToPaneId(
         bytes,
         pane_id,
+        Some(acting_client(env)),
         Some(NotificationEnd::new(completion_tx)),
     ));
     if send_result.is_ok() {
@@ -5520,20 +6032,26 @@ fn get_pane_running_command(env: &PluginEnv, pane_id: PaneId) {
 }
 
 fn get_session_list(env: &PluginEnv) {
-    use crate::background_jobs::{scan_session_list_default_dirs, session_scan_state};
+    use crate::background_jobs::{scan_session_list_default_dirs_with_current, session_scan_state};
     use zellij_utils::data::{GetSessionListResponse, SessionListSnapshot};
 
     let response = match session_scan_state() {
         Some(state) => {
-            let (session_name, available_layouts, plugin_list) = {
+            let (session_name, current_info, plugin_list) = {
                 let name = state.current_session_name.lock().unwrap().clone();
                 let info = state.current_session_info.lock().unwrap().clone();
                 let plugins = state.current_session_plugin_list.lock().unwrap().clone();
-                (name, info.available_layouts, plugins)
+                (name, info, plugins)
             };
+            let available_layouts = current_info.available_layouts.clone();
 
             let (live_sessions_map, resurrectable_sessions_map) =
-                scan_session_list_default_dirs(&session_name, &available_layouts, &plugin_list);
+                scan_session_list_default_dirs_with_current(
+                    &session_name,
+                    &available_layouts,
+                    &plugin_list,
+                    &current_info,
+                );
 
             let _ = env
                 .senders
@@ -5543,10 +6061,13 @@ fn get_session_list(env: &PluginEnv) {
                     Some((env.plugin_id, env.client_id)),
                 ));
 
-            let snapshot = SessionListSnapshot {
+            let mut snapshot = SessionListSnapshot {
                 live_sessions: live_sessions_map.into_values().collect(),
                 resurrectable_sessions: resurrectable_sessions_map.into_iter().collect(),
             };
+            for session_info in &mut snapshot.live_sessions {
+                redact_session_info_for_plugin(env, session_info);
+            }
             GetSessionListResponse::Ok(snapshot)
         },
         None => GetSessionListResponse::Err("Session-scan state not initialized".to_string()),
@@ -5735,15 +6256,10 @@ fn try_save_layout(
         .map_err(|e| format!("Failed to create layout directory: {}", e))?;
 
     // Step 7: Write to disk
-    let mut parsed_layout: KdlDocument = layout_kdl.parse().unwrap(); // unwrap
-                                                                      // should
-                                                                      // be
-                                                                      // safe,
-                                                                      // but
-                                                                      // let's
-                                                                      // do
-                                                                      // it
-                                                                      // nicer
+    // Layout::from_kdl already validated this string; re-parse for formatting.
+    let mut parsed_layout: KdlDocument = layout_kdl
+        .parse()
+        .map_err(|e| format!("Failed to re-parse validated layout KDL: {}", e))?;
     parsed_layout.fmt();
     std::fs::write(&file_path, &parsed_layout.to_string())
         .map_err(|io_error| format!("Failed to write layout file: {}", io_error))?;
@@ -5994,13 +6510,19 @@ fn clear_screen_for_pane_id(env: &PluginEnv, pane_id: PaneId) {
 fn scroll_up_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::ScrollUpInPaneId(pane_id));
+        .send_to_screen(ScreenInstruction::ScrollUpInPaneId(
+            acting_client(env),
+            pane_id,
+        ));
 }
 
 fn scroll_down_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::ScrollDownInPaneId(pane_id));
+        .send_to_screen(ScreenInstruction::ScrollDownInPaneId(
+            acting_client(env),
+            pane_id,
+        ));
 }
 
 fn scroll_to_top_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
@@ -6018,13 +6540,19 @@ fn scroll_to_bottom_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
 fn page_scroll_up_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::PageScrollUpInPaneId(pane_id));
+        .send_to_screen(ScreenInstruction::PageScrollUpInPaneId(
+            acting_client(env),
+            pane_id,
+        ));
 }
 
 fn page_scroll_down_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::PageScrollDownInPaneId(pane_id));
+        .send_to_screen(ScreenInstruction::PageScrollDownInPaneId(
+            acting_client(env),
+            pane_id,
+        ));
 }
 
 fn toggle_pane_id_fullscreen(env: &PluginEnv, pane_id: PaneId) {
@@ -6253,6 +6781,7 @@ fn load_new_plugin(
                     cwd,
                     None,
                     skip_cache,
+                    None,
                     None,
                     None,
                     None,
@@ -6525,9 +7054,10 @@ fn clear_key_presses_intercepts(env: &mut PluginEnv) {
     env.intercepting_key_presses = false;
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(acting_client(
-            env,
-        )));
+        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
+            env.plugin_id,
+            acting_client(env),
+        ));
 }
 
 fn replace_pane_with_existing_pane(
@@ -6595,7 +7125,7 @@ fn override_layout(
         retain_existing_plugin_panes,
         apply_only_to_active_tab,
     };
-    run_action(env, action, context);
+    run_action(env, action, context)?;
     Ok(())
 }
 
@@ -6612,7 +7142,13 @@ fn report_panic(env: &PluginEnv, msg: &str) {
             .send_to_plugin(PluginInstruction::UnregisterSettingsEntry(env.plugin_id));
     }
     for pane_id in crash_pane_ids(env) {
-        handle_plugin_crash(pane_id, msg.to_owned(), env.senders.clone());
+        handle_plugin_crash(pane_id, env.generation, msg.to_owned(), env.senders.clone());
+    }
+    if env.shared.is_some() {
+        // shared events and pipes are dispatched by instance id, see `Quarantine`
+        let _ = env
+            .senders
+            .send_to_plugin(PluginInstruction::Quarantine(env.plugin_id, env.generation));
     }
 }
 
@@ -6625,6 +7161,7 @@ pub fn wasi_read_string(plugin_env: &PluginEnv) -> Result<String> {
     plugin_env
         .stdout_pipe
         .lock()
+        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
         .unwrap()
         .read_to_end(&mut buf)
         .map_err(anyError::new)
@@ -6636,10 +7173,17 @@ pub fn wasi_read_string(plugin_env: &PluginEnv) -> Result<String> {
 }
 
 pub fn wasi_write_string(plugin_env: &PluginEnv, buf: &str) -> Result<()> {
+    // `writeln!("{buf}\r")` is the bytes plugins already read. Refuse the whole
+    // line when it does not fit; a short write would be replayed as success.
     let mut stdin = plugin_env.stdin_pipe.lock().unwrap();
-    writeln!(stdin, "{}\r", buf)
-        .map_err(anyError::new)
-        .with_context(|| format!("failed to write string to WASI env"))
+    crate::plugins::plugin_loader::append_capped_host_pipe(
+        &mut stdin,
+        &[buf.as_bytes(), b"\r\n"],
+        "stdin",
+    )
+    .map_err(anyError::new)
+    .with_context(|| format!("failed to write string to WASI env"))?;
+    Ok(())
 }
 
 pub fn wasi_write_object(plugin_env: &PluginEnv, object: &(impl Serialize + ?Sized)) -> Result<()> {
@@ -6694,7 +7238,7 @@ fn additional_required_permissions(command: &PluginCommand) -> &'static [Permiss
     }
 }
 
-fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
+pub(crate) fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
     let permission = match command {
         PluginCommand::OpenFile(..)
         | PluginCommand::OpenFileFloating(..)
@@ -6758,6 +7302,8 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         | PluginCommand::Resize(..)
         | PluginCommand::ResizeWithDirection(..)
         | PluginCommand::FocusNextPane
+        | PluginCommand::FocusPreviousPane
+        | PluginCommand::FocusLastPane
         | PluginCommand::MoveFocus(..)
         | PluginCommand::MoveFocusOrTab(..)
         | PluginCommand::Detach
@@ -6873,6 +7419,7 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
             PermissionType::OpenTerminalsOrPlugins
         },
         PluginCommand::RunContextMenuItem(..) => PermissionType::RunActionsAsUser,
+        PluginCommand::WatchFilesystem => PermissionType::FullHdAccess,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..)
@@ -6881,7 +7428,6 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         PluginCommand::ListClients
         | PluginCommand::DumpSessionLayout { .. }
         | PluginCommand::GetPanePid { .. }
-        | PluginCommand::GetPaneRunningCommand { .. }
         | PluginCommand::GetPaneCwd { .. }
         | PluginCommand::GenerateRandomName
         | PluginCommand::GetLayoutDir
@@ -6894,9 +7440,10 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         | PluginCommand::GetTabInfo(..)
         | PluginCommand::GetNestedSessionKeybinds(..)
         | PluginCommand::GetSessionList
-        | PluginCommand::GetSessionSuggestions { .. }
+        | PluginCommand::GetSessionSuggestions { .. } => PermissionType::ReadApplicationState,
+        PluginCommand::GetPaneRunningCommand { .. }
         | PluginCommand::GetSessionPreview { .. }
-        | PluginCommand::GetSavedSessionPreview(..) => PermissionType::ReadApplicationState,
+        | PluginCommand::GetSavedSessionPreview(..) => PermissionType::ReadPaneContents,
         PluginCommand::RebindKeys { .. }
         | PluginCommand::Reconfigure(..)
         | PluginCommand::ReadConfig
@@ -6935,7 +7482,30 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         },
         PluginCommand::OpenCommandPaneInNewTab(..) => PermissionType::RunCommands,
         PluginCommand::OpenEditorPaneInNewTab(..) => PermissionType::OpenFiles,
-        _ => return None,
+        // Closed set that stays ungated. A new PluginCommand must be named on a
+        // permission arm above; this is not a wildcard and must not become one.
+        PluginCommand::Subscribe(..)
+        | PluginCommand::Unsubscribe(..)
+        | PluginCommand::SetSelectable(..)
+        | PluginCommand::ShowCursor(..)
+        | PluginCommand::GetPluginIds
+        | PluginCommand::GetZellijVersion
+        | PluginCommand::SetTimeout(..)
+        | PluginCommand::PostMessageTo(..)
+        | PluginCommand::PostMessageToPlugin(..)
+        | PluginCommand::HideSelf
+        | PluginCommand::ShowSelf(..)
+        | PluginCommand::ReportPanic(..)
+        | PluginCommand::RequestPluginPermissions(..)
+        | PluginCommand::ScanHostFolder(..)
+        | PluginCommand::CloseSelf
+        | PluginCommand::SetSelfMouseSelectionSupport(..)
+        | PluginCommand::SetSelfCollapsed(..)
+        | PluginCommand::SetSelectableSlot(..)
+        | PluginCommand::HideSlot(..)
+        | PluginCommand::ShowSlot(..)
+        | PluginCommand::CloseSlot(..)
+        | PluginCommand::SetCollapsedSlot(..) => return None,
     };
     Some(permission)
 }
@@ -7050,4 +7620,1503 @@ fn set_live_view_input(env: &PluginEnv, capture: bool) {
             client_id: acting_client(env),
             capture,
         });
+}
+
+#[cfg(test)]
+mod focus_and_dead_session_tests {
+    use super::*;
+    use std::time::SystemTime;
+    use zellij_utils::consts::{
+        session_deletion_tombstone_path, session_incarnation_path, session_info_folder_for_session,
+        session_publication_lock_path,
+    };
+    use zellij_utils::sessions::{
+        clear_session_deletion_fence, ensure_session_publication_allowed,
+        is_session_publication_fenced, read_session_incarnation, SessionCacheRemoval,
+    };
+
+    fn unique_session_id(label: &str) -> String {
+        format!(
+            "{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        )
+    }
+
+    fn remove_sidecars(session_id: &str) {
+        let _ = std::fs::remove_file(session_deletion_tombstone_path(session_id));
+        let _ = std::fs::remove_file(session_incarnation_path(session_id));
+        let _ = std::fs::remove_file(session_publication_lock_path(session_id));
+        let _ = std::fs::remove_dir_all(session_info_folder_for_session(session_id));
+        let _ = std::fs::remove_dir_all(session_deletion_tombstone_path(session_id));
+    }
+
+    #[test]
+    fn focus_previous_and_focus_last_pane_require_change_application_state() {
+        assert_eq!(
+            required_permission(&PluginCommand::FocusPreviousPane),
+            Some(PermissionType::ChangeApplicationState)
+        );
+        assert_eq!(
+            required_permission(&PluginCommand::FocusLastPane),
+            Some(PermissionType::ChangeApplicationState)
+        );
+        assert_eq!(
+            required_permission(&PluginCommand::FocusNextPane),
+            Some(PermissionType::ChangeApplicationState)
+        );
+    }
+
+    #[test]
+    fn delete_dead_session_cache_fence_refusal_does_not_drop_the_index_row() {
+        let mut deleted_index = None;
+        let mut removed_id = None;
+        let error = delete_dead_session_cache_with(
+            "plain-session",
+            |session_id| {
+                removed_id = Some(session_id.to_owned());
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "fence refused",
+                ))
+            },
+            |display_name| deleted_index = Some(display_name.to_owned()),
+        )
+        .expect_err("a fence error must fail the deletion");
+        assert_eq!(removed_id.as_deref(), Some("plain-session"));
+        assert!(deleted_index.is_none());
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("fence refused"),
+            "reply must carry the fence error, got {message}"
+        );
+
+        let mut deleted_index = false;
+        delete_dead_session_cache_with(
+            "../not-a-folder",
+            |_| {
+                panic!("an ineligible name must not reach the fence");
+            },
+            |_| deleted_index = true,
+        )
+        .expect_err("a path-like session id is not eligible");
+        assert!(!deleted_index);
+
+        let mut deleted_index = None;
+        delete_dead_session_cache_with(
+            "missing-cache",
+            |_| Ok(SessionCacheRemoval::NotFound),
+            |display_name| deleted_index = Some(display_name.to_owned()),
+        )
+        .expect_err("a missing cache is not a successful removal");
+        assert!(deleted_index.is_none());
+    }
+
+    #[test]
+    fn delete_dead_session_cache_removes_the_index_only_after_the_fence() {
+        let mut deleted_index = None;
+        delete_dead_session_cache_with(
+            "removed-cache",
+            |session_id| {
+                assert_eq!(session_id, "removed-cache");
+                Ok(SessionCacheRemoval::Removed)
+            },
+            |display_name| deleted_index = Some(display_name.to_owned()),
+        )
+        .expect("Removed is success");
+        assert_eq!(deleted_index.as_deref(), Some("removed-cache"));
+    }
+
+    #[test]
+    fn delete_dead_session_reply_is_ok_only_when_the_fenced_cache_is_removed() {
+        let session_id = unique_session_id("dead-reply");
+        remove_sidecars(&session_id);
+        clear_session_deletion_fence(&session_id);
+        let incarnation = read_session_incarnation(&session_id).unwrap();
+        let folder = session_info_folder_for_session(&session_id);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("session-metadata.kdl"), "session").unwrap();
+
+        assert_eq!(
+            delete_dead_session_reply(&session_id),
+            DeleteDeadSessionResponse::Ok
+        );
+        assert!(
+            !folder.exists(),
+            "successful reply must remove the cache directory"
+        );
+        let tombstone = std::fs::read_to_string(session_deletion_tombstone_path(&session_id))
+            .expect("successful reply must publish the deletion tombstone");
+        assert!(
+            tombstone.contains(&format!("incarnation={incarnation}")),
+            "tombstone must name the live incarnation, got {tombstone}"
+        );
+        let fenced = ensure_session_publication_allowed(&session_id, incarnation).unwrap_err();
+        assert!(is_session_publication_fenced(&fenced));
+        remove_sidecars(&session_id);
+
+        let blocked = unique_session_id("dead-reply-blocked");
+        remove_sidecars(&blocked);
+        let folder = session_info_folder_for_session(&blocked);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("session-metadata.kdl"), "keep").unwrap();
+        std::fs::create_dir(session_deletion_tombstone_path(&blocked)).unwrap();
+        match delete_dead_session_reply(&blocked) {
+            DeleteDeadSessionResponse::Err(error) => {
+                assert!(
+                    error.contains("Failed to delete dead session"),
+                    "fence failure must be the reply error, got {error}"
+                );
+            },
+            DeleteDeadSessionResponse::Ok => panic!("fence failure must not reply Ok"),
+        }
+        assert_eq!(
+            std::fs::read_to_string(folder.join("session-metadata.kdl")).unwrap(),
+            "keep"
+        );
+        assert!(folder.exists());
+        remove_sidecars(&blocked);
+    }
+
+    #[test]
+    fn live_session_is_not_removed_by_the_single_session_delete() {
+        // A unique session name does not isolate the shared SQLite database.
+        // Exercise the production deletion boundary with a private filesystem
+        // and index, without changing process-global environment variables.
+        let dir = tempfile::tempdir().unwrap();
+        let session_id = "live";
+        let sock_dir = dir.path().join("sock");
+        let cache_dir = dir.path().join("cache");
+        std::fs::create_dir_all(&sock_dir).unwrap();
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        let sock_path = sock_dir.join(session_id);
+        assert!(
+            sock_path.as_os_str().len() < zellij_utils::consts::ZELLIJ_SOCK_MAX_LENGTH,
+            "socket path exceeds the platform limit: {}",
+            sock_path.display()
+        );
+        let folder = cache_dir.join(session_id);
+        std::fs::create_dir_all(&folder).unwrap();
+        let marker = folder.join("session-metadata.kdl");
+        std::fs::write(&marker, "live-cache").unwrap();
+        #[cfg(unix)]
+        let _listener = std::os::unix::net::UnixListener::bind(&sock_path)
+            .unwrap_or_else(|error| panic!("bind {}: {error}", sock_path.display()));
+        #[cfg(not(unix))]
+        std::fs::write(&sock_path, b"").unwrap();
+
+        let index = zellij_utils::session_index::SessionIndex::open(
+            &dir.path().join("index.sqlite"),
+            sock_dir.clone(),
+            cache_dir.clone(),
+        )
+        .expect("private session index");
+        index.ensure_row(session_id, 1).unwrap();
+        let mut deleted_index = false;
+        let error = delete_dead_session_cache_with_lookup(
+            session_id,
+            |name| {
+                assert_eq!(name, session_id);
+                Ok(session_id.to_owned())
+            },
+            |id| {
+                assert_eq!(id, session_id);
+                Ok(Some(session_id.to_owned()))
+            },
+            |id| {
+                zellij_utils::sessions::remove_fenced_dead_session_cache(&sock_dir, &cache_dir, id)
+            },
+            |name| {
+                deleted_index = true;
+                index.delete(name).expect("delete from private index");
+            },
+        )
+        .expect_err("a live session must not be deleted");
+        assert!(
+            format!("{error:#}").contains("not definitely dead"),
+            "a live session must be refused, got {error:#}"
+        );
+        assert!(!deleted_index, "refusal must not call the index deleter");
+        assert_eq!(std::fs::read_to_string(&marker).unwrap(), "live-cache");
+        assert!(folder.exists());
+        assert!(
+            index.get(session_id).unwrap().is_some(),
+            "the index row of a live session must stay"
+        );
+        assert!(
+            !cache_dir.join(format!("{session_id}.deleted")).exists(),
+            "a live session must not be tombstoned"
+        );
+    }
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use super::*;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+    use zellij_utils::channels::{self, Receiver, SenderWithContext};
+    use zellij_utils::data::{Event, InputMode, PermissionType};
+    use zellij_utils::errors::ErrorContext;
+    use zellij_utils::input::layout::PluginUserConfiguration;
+    use zellij_utils::input::plugins::PluginConfig;
+
+    fn plugin_env(
+        plugin_id: PluginId,
+        plugin_cwd: PathBuf,
+        to_plugin: SenderWithContext<PluginInstruction>,
+    ) -> PluginEnv {
+        let stdin_pipe = Arc::new(Mutex::new(std::collections::VecDeque::new()));
+        let stdout_pipe = Arc::new(Mutex::new(std::collections::VecDeque::new()));
+        let wasi_ctx = crate::plugins::plugin_loader::PluginLoader::create_wasi_ctx(
+            &plugin_cwd,
+            &plugin_cwd,
+            &plugin_cwd,
+            &plugin_cwd,
+            &"file:/tmp/scan.wasm".to_owned(),
+            plugin_id,
+            false,
+            stdin_pipe.clone(),
+            stdout_pipe.clone(),
+        )
+        .unwrap();
+        PluginEnv {
+            plugin_id,
+            generation: 9,
+            session_scope: 0,
+            load_alive: Arc::new(AtomicBool::new(true)),
+            client_id: 3,
+            plugin: PluginConfig {
+                path: PathBuf::from("/tmp/scan.wasm"),
+                _allow_exec_host_cmd: false,
+                location: RunPluginLocation::File(PathBuf::from("/tmp/scan.wasm")),
+                initial_userspace_configuration: PluginUserConfiguration::new(BTreeMap::new()),
+                initial_cwd: None,
+            },
+            plugin_digest: "scan-digest".to_owned(),
+            permissions: Arc::new(Mutex::new(Some(
+                [PermissionType::ReadApplicationState].into_iter().collect(),
+            ))),
+            quarantined: Arc::new(AtomicBool::new(false)),
+            senders: crate::thread_bus::ThreadSenders {
+                to_plugin: Some(to_plugin),
+                should_silently_fail: true,
+                ..Default::default()
+            },
+            wasi_ctx,
+            plugin_own_data_dir: plugin_cwd.clone(),
+            plugin_own_cache_dir: plugin_cwd.clone(),
+            path_to_default_shell: plugin_cwd.clone(),
+            default_shell: None,
+            layout_dir: None,
+            plugin_cwd,
+            session_env_vars: BTreeMap::new(),
+            input_pipes_to_unblock: Arc::new(Mutex::new(HashSet::new())),
+            input_pipes_to_block: Arc::new(Mutex::new(HashSet::new())),
+            default_mode: InputMode::Normal,
+            subscriptions: Arc::new(Mutex::new(HashSet::new())),
+            stdin_pipe,
+            stdout_pipe,
+            keybinds: Arc::new(Default::default()),
+            intercepting_key_presses: false,
+            pending_popup_size: None,
+            store_limits: wasmi::StoreLimitsBuilder::new().build(),
+            shared: None,
+        }
+    }
+
+    fn timers_in_flight() -> usize {
+        PLUGIN_TIMERS.lock().unwrap().total
+    }
+
+    fn timers_for(plugin_id: PluginId) -> usize {
+        PLUGIN_TIMERS
+            .lock()
+            .unwrap()
+            .per_plugin
+            .get(&plugin_id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Timer tests share the process-wide permit counter.
+    fn lock_timer_tests() -> std::sync::MutexGuard<'static, ()> {
+        static TIMER_TESTS: Mutex<()> = Mutex::new(());
+        TIMER_TESTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn scans_in_flight() -> usize {
+        DIRECTORY_SCANS.lock().unwrap().total
+    }
+
+    fn recv_until(
+        receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+        timeout: Duration,
+        mut matches: impl FnMut(&PluginInstruction) -> bool,
+    ) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            match receiver.recv_timeout(remaining.min(Duration::from_millis(50))) {
+                Ok((instruction, _)) if matches(&instruction) => return true,
+                Ok(_) => {},
+                Err(_) => {},
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn plugin_timeout_past_the_cap_does_not_start_another_one() {
+        let _timer_tests = lock_timer_tests();
+        assert_eq!(MAX_PLUGIN_TIMERS_PER_PLUGIN, 64);
+        assert_eq!(MAX_PLUGIN_TIMERS_IN_FLIGHT, 256);
+
+        let (to_plugin, receiver) = channels::unbounded();
+        let dir = std::env::temp_dir();
+        let env = plugin_env(7, dir.clone(), SenderWithContext::new(to_plugin));
+
+        let holds: Vec<_> = (0..MAX_PLUGIN_TIMERS_PER_PLUGIN)
+            .map(|_| try_acquire_plugin_timer(7).expect("per-plugin timer slot"))
+            .collect();
+        assert!(try_acquire_plugin_timer(7).is_none());
+        let in_flight = timers_in_flight();
+        set_timeout(&env, 0.0);
+        assert_eq!(timers_in_flight(), in_flight);
+        assert!(
+            !recv_until(&receiver, Duration::from_secs(1), |instruction| {
+                matches!(instruction, PluginInstruction::ApplyTimer { .. })
+            }),
+            "a timer past the per-plugin cap must not spawn"
+        );
+        drop(holds);
+        assert_eq!(timers_in_flight(), 0);
+
+        let (to_other, other_receiver) = channels::unbounded();
+        let other = plugin_env(8, dir.clone(), SenderWithContext::new(to_other));
+        let held_again: Vec<_> = (0..MAX_PLUGIN_TIMERS_PER_PLUGIN)
+            .map(|_| try_acquire_plugin_timer(7).unwrap())
+            .collect();
+        set_timeout(&other, 0.0);
+        assert!(
+            recv_until(&other_receiver, Duration::from_secs(2), |instruction| {
+                matches!(
+                    instruction,
+                    PluginInstruction::ApplyTimer {
+                        plugin_id: 8,
+                        generation: 9,
+                        ..
+                    }
+                )
+            }),
+            "another plugin under the per-plugin cap must still start a timer"
+        );
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while timers_in_flight() != held_again.len() {
+            assert!(Instant::now() < deadline, "timer permit was not released");
+            thread::sleep(Duration::from_millis(5));
+        }
+        drop(held_again);
+
+        let global: Vec<_> = (1..=MAX_PLUGIN_TIMERS_IN_FLIGHT)
+            .map(|plugin_id| {
+                try_acquire_plugin_timer(plugin_id as PluginId).expect("process-wide timer slot")
+            })
+            .collect();
+        let (to_blocked, blocked_receiver) = channels::unbounded();
+        let blocked = plugin_env(1000, dir, SenderWithContext::new(to_blocked));
+        let in_flight = timers_in_flight();
+        set_timeout(&blocked, 0.0);
+        assert_eq!(timers_in_flight(), in_flight);
+        assert!(
+            !recv_until(
+                &blocked_receiver,
+                Duration::from_secs(1),
+                |instruction| matches!(instruction, PluginInstruction::ApplyTimer { .. })
+            ),
+            "a timer past the process-wide cap must not spawn"
+        );
+        drop(global);
+        assert_eq!(timers_in_flight(), 0);
+
+        set_timeout(&blocked, 0.0);
+        set_timeout(&blocked, 0.0);
+        let mut fired = 0;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while fired < 2 && Instant::now() < deadline {
+            if recv_until(
+                &blocked_receiver,
+                Duration::from_millis(100),
+                |instruction| {
+                    matches!(
+                        instruction,
+                        PluginInstruction::ApplyTimer {
+                            plugin_id: 1000,
+                            ..
+                        }
+                    )
+                },
+            ) {
+                fired += 1;
+            }
+        }
+        assert_eq!(fired, 2, "timers of the same duration must not be deduped");
+    }
+
+    #[test]
+    fn a_dead_load_releases_its_timer_permit_without_waiting() {
+        let _timer_tests = lock_timer_tests();
+        let (to_dead, dead_receiver) = channels::unbounded();
+        let dead = plugin_env(90210, std::env::temp_dir(), SenderWithContext::new(to_dead));
+        let dead_alive = dead.load_alive.clone();
+        let (to_live, live_receiver) = channels::unbounded();
+        let live = plugin_env(90211, std::env::temp_dir(), SenderWithContext::new(to_live));
+        set_timeout(&dead, 30.0);
+        set_timeout(&live, 0.05);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while timers_for(90210) != 1 || timers_for(90211) != 1 {
+            assert!(Instant::now() < deadline, "timer permits were not acquired");
+            thread::sleep(Duration::from_millis(5));
+        }
+        dead_alive.store(false, std::sync::atomic::Ordering::Release);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while timers_for(90210) != 0 {
+            assert!(
+                Instant::now() < deadline,
+                "unloaded plugin kept its timer permit"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            !recv_until(&dead_receiver, Duration::from_millis(200), |instruction| {
+                matches!(
+                    instruction,
+                    PluginInstruction::ApplyTimer {
+                        plugin_id: 90210,
+                        ..
+                    }
+                )
+            }),
+            "a dead load must not receive ApplyTimer"
+        );
+        assert!(
+            recv_until(&live_receiver, Duration::from_secs(2), |instruction| {
+                matches!(
+                    instruction,
+                    PluginInstruction::ApplyTimer {
+                        plugin_id: 90211,
+                        generation: 9,
+                        ..
+                    }
+                )
+            }),
+            "a live load must still receive its timer"
+        );
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while timers_for(90211) != 0 {
+            assert!(
+                Instant::now() < deadline,
+                "live timer permit was not released"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn lock_scan_tests() -> std::sync::MutexGuard<'static, ()> {
+        static SCAN_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        SCAN_TESTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[test]
+    fn scan_host_folder_past_the_cap_does_not_start_another_one() {
+        let _scan_tests = lock_scan_tests();
+        assert_eq!(MAX_DIRECTORY_SCANS_IN_FLIGHT, 4);
+        assert_eq!(MAX_DIRECTORY_SCANS_PER_PLUGIN, 1);
+        assert_eq!(MAX_DIRECTORY_SCAN_ENTRIES, 4096);
+
+        let host = tempfile::tempdir().unwrap();
+        std::fs::write(host.path().join("one"), b"1").unwrap();
+        let (to_plugin, receiver) = channels::unbounded();
+        let env = plugin_env(
+            4,
+            host.path().to_path_buf(),
+            SenderWithContext::new(to_plugin),
+        );
+
+        let own_slot = try_acquire_directory_scan(4).unwrap();
+        scan_host_folder(&env, PathBuf::from("/host"));
+        assert_eq!(scans_in_flight(), 1);
+        assert!(
+            !recv_until(&receiver, Duration::from_secs(1), |instruction| {
+                matches!(instruction, PluginInstruction::Update(_))
+            }),
+            "a second scan for the same plugin must not spawn"
+        );
+        drop(own_slot);
+
+        let global: Vec<_> = (11..11 + MAX_DIRECTORY_SCANS_IN_FLIGHT as u32)
+            .map(|plugin_id| try_acquire_directory_scan(plugin_id).unwrap())
+            .collect();
+        scan_host_folder(&env, PathBuf::from("/host"));
+        assert_eq!(scans_in_flight(), MAX_DIRECTORY_SCANS_IN_FLIGHT);
+        assert!(
+            !recv_until(&receiver, Duration::from_secs(1), |instruction| {
+                matches!(instruction, PluginInstruction::Update(_))
+            }),
+            "a scan past the process-wide cap must not spawn"
+        );
+        drop(global);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while scans_in_flight() != 0 {
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        scan_host_folder(&env, PathBuf::from("/host"));
+        let (listed, incomplete) = wait_for_scan(&receiver);
+        assert_eq!(
+            listed.len(),
+            1,
+            "an admitted scan must still report its entries"
+        );
+        assert!(!incomplete);
+        wait_until_scans_idle();
+
+        for index in 0..MAX_DIRECTORY_SCAN_ENTRIES {
+            std::fs::write(host.path().join(format!("extra-{index}")), b"x").unwrap();
+        }
+        assert_eq!(
+            std::fs::read_dir(host.path()).unwrap().count(),
+            MAX_DIRECTORY_SCAN_ENTRIES + 1
+        );
+        scan_host_folder(&env, PathBuf::from("/host"));
+        let (listed, incomplete) = wait_for_scan(&receiver);
+        // `extra-*` names do not fit 4096-wide in the host pipe, so the entry
+        // cap is not what truncates this listing. The result is still a
+        // read-order prefix that fits, and one more name does not.
+        assert!(
+            !listed.is_empty() && listed.len() < MAX_DIRECTORY_SCAN_ENTRIES,
+            "expected a pipe-sized prefix, got {}",
+            listed.len()
+        );
+        assert!(incomplete, "a truncated listing must be marked incomplete");
+        assert!(
+            stdin_frame_len(&Event::FileSystemUpdate(listed.clone()))
+                <= crate::plugins::WASI_HOST_PIPE_CAP
+        );
+        let mut observed = Vec::new();
+        for entry in std::fs::read_dir(host.path()).unwrap() {
+            let entry = entry.unwrap();
+            observed.push(PathBuf::from("/host").join(entry.file_name()));
+        }
+        let listed_paths: Vec<_> = listed.iter().map(|(path, _)| path.clone()).collect();
+        assert_eq!(&observed[..listed_paths.len()], listed_paths.as_slice());
+        let next = &observed[listed.len()];
+        let metadata = std::fs::symlink_metadata(host.path().join(next.file_name().unwrap()))
+            .unwrap()
+            .into();
+        let mut one_more = listed;
+        one_more.push((next.clone(), Some(metadata)));
+        assert!(
+            stdin_frame_len(&Event::FileSystemUpdate(one_more))
+                > crate::plugins::WASI_HOST_PIPE_CAP
+        );
+        wait_until_scans_idle();
+    }
+
+    fn wait_until_scans_idle() {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while scans_in_flight() != 0 {
+            assert!(Instant::now() < deadline, "directory scan permit leaked");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn wait_for_scan(
+        receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+    ) -> (
+        Vec<(PathBuf, Option<zellij_utils::data::FileMetadata>)>,
+        bool,
+    ) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            match receiver.recv_timeout(Duration::from_millis(50)) {
+                Ok((PluginInstruction::Update(updates), _)) => {
+                    for (_, _, event) in updates {
+                        match event {
+                            Event::FileSystemUpdate(paths) => return (paths, false),
+                            Event::FileSystemUpdateIncomplete(paths) => return (paths, true),
+                            _ => {},
+                        }
+                    }
+                },
+                Ok(_) => {},
+                Err(_) => {},
+            }
+        }
+        panic!("admitted directory scan did not send FileSystemUpdate");
+    }
+
+    fn stdin_frame_len(event: &Event) -> usize {
+        use prost::Message;
+        let protobuf =
+            zellij_utils::plugin_api::event::event_to_protobuf_with_keybinds(event.clone(), None)
+                .expect("event protobuf");
+        let json = serde_json::to_string(&protobuf.encode_to_vec()).expect("event json");
+        json.len() + 2
+    }
+
+    #[test]
+    fn scan_host_folder_long_names_stay_within_the_host_pipe() {
+        let _scan_tests = lock_scan_tests();
+        let host = tempfile::tempdir().unwrap();
+        let name_len = 180usize;
+        for index in 0..MAX_DIRECTORY_SCAN_ENTRIES {
+            let name = format!("{index:04}{}", "n".repeat(name_len - 4));
+            assert_eq!(name.len(), name_len);
+            std::fs::write(host.path().join(name), b"x").unwrap();
+        }
+        assert_eq!(
+            std::fs::read_dir(host.path()).unwrap().count(),
+            MAX_DIRECTORY_SCAN_ENTRIES
+        );
+
+        let (to_plugin, receiver) = channels::unbounded();
+        let env = plugin_env(
+            44,
+            host.path().to_path_buf(),
+            SenderWithContext::new(to_plugin),
+        );
+        scan_host_folder(&env, PathBuf::from("/host"));
+        let (listed, incomplete) = wait_for_scan(&receiver);
+        wait_until_scans_idle();
+
+        assert!(
+            !listed.is_empty(),
+            "a directory that has entries must still deliver a prefix"
+        );
+        assert!(
+            listed.len() < MAX_DIRECTORY_SCAN_ENTRIES,
+            "4096 long names must not fit in the host pipe unchanged"
+        );
+        assert!(incomplete, "a pipe-sized prefix must be marked incomplete");
+
+        let mut observed = Vec::new();
+        for entry in std::fs::read_dir(host.path()).unwrap() {
+            let entry = entry.unwrap();
+            observed.push(PathBuf::from("/host").join(entry.file_name()));
+        }
+        let listed_paths: Vec<_> = listed.iter().map(|(path, _)| path.clone()).collect();
+        assert_eq!(
+            &observed[..listed_paths.len()],
+            listed_paths.as_slice(),
+            "the delivered entries must be a read-order prefix"
+        );
+
+        let event = Event::FileSystemUpdate(listed.clone());
+        let frame = stdin_frame_len(&event);
+        assert!(
+            frame <= super::super::plugin_loader::WASI_HOST_PIPE_CAP,
+            "stdin frame {frame} exceeds the host pipe"
+        );
+        let protobuf =
+            zellij_utils::plugin_api::event::event_to_protobuf_with_keybinds(event.clone(), None)
+                .unwrap();
+        let encoded = prost::Message::encode_to_vec(&protobuf);
+        wasi_write_object(&env, &encoded).expect("fitted FileSystemUpdate must be accepted");
+        assert_eq!(
+            env.stdin_pipe.lock().unwrap().len(),
+            frame,
+            "wasi_write_object must write the measured stdin frame"
+        );
+
+        let next = &observed[listed.len()];
+        let metadata = std::fs::symlink_metadata(host.path().join(next.file_name().unwrap()))
+            .unwrap()
+            .into();
+        let mut one_more = listed;
+        one_more.push((next.clone(), Some(metadata)));
+        let extended = stdin_frame_len(&Event::FileSystemUpdate(one_more));
+        assert!(
+            extended > super::super::plugin_loader::WASI_HOST_PIPE_CAP,
+            "one more omitted name still fit ({extended} bytes)"
+        );
+    }
+
+    #[test]
+    fn exec_cmd_empty_command_line_does_not_panic_and_denied_host_command_does_not_spawn() {
+        let (to_plugin, _receiver) = channels::unbounded();
+        let dir = tempfile::tempdir().unwrap();
+        let mut env = plugin_env(
+            21,
+            dir.path().to_path_buf(),
+            SenderWithContext::new(to_plugin),
+        );
+
+        // RunCommands is what lets a plugin reach this host function. The
+        // separate `_allow_exec_host_cmd` flag is what must still refuse a spawn.
+        env.permissions
+            .lock()
+            .unwrap()
+            .replace([PermissionType::RunCommands].into_iter().collect());
+        env.plugin._allow_exec_host_cmd = true;
+        exec_cmd(&env, Vec::new());
+
+        env.plugin._allow_exec_host_cmd = false;
+        exec_cmd(&env, Vec::new());
+
+        let marker = dir.path().join("should-not-exist");
+        #[cfg(unix)]
+        let command = {
+            let touch = ["/usr/bin/touch", "/bin/touch"]
+                .into_iter()
+                .find(|path| std::path::Path::new(path).is_file())
+                .expect("touch is required to prove a denied exec_cmd does not spawn");
+            vec![touch.to_owned(), marker.to_string_lossy().into_owned()]
+        };
+        #[cfg(windows)]
+        let command = vec![
+            "cmd".to_owned(),
+            "/C".to_owned(),
+            format!("type nul > \"{}\"", marker.display()),
+        ];
+        exec_cmd(&env, command);
+        let deadline = Instant::now() + Duration::from_millis(500);
+        while Instant::now() < deadline && !marker.exists() {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            !marker.exists(),
+            "exec_cmd without _allow_exec_host_cmd must not spawn"
+        );
+    }
+
+    fn lock_run_action_tests() -> std::sync::MutexGuard<'static, ()> {
+        static RUN_ACTION_TESTS: Mutex<()> = Mutex::new(());
+        RUN_ACTION_TESTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn run_actions_in_flight() -> usize {
+        RUN_ACTIONS.lock().unwrap().total
+    }
+
+    fn run_actions_for(plugin_id: PluginId) -> usize {
+        RUN_ACTIONS
+            .lock()
+            .unwrap()
+            .per_plugin
+            .get(&plugin_id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn switch_mode() -> Action {
+        Action::SwitchToMode {
+            input_mode: InputMode::Locked,
+        }
+    }
+
+    fn saw_action_complete(instruction: &PluginInstruction) -> bool {
+        match instruction {
+            PluginInstruction::Update(updates) => updates
+                .iter()
+                .any(|(_, _, event)| matches!(event, Event::ActionComplete(..))),
+            PluginInstruction::ApplyLoadResult {
+                generation: 9,
+                event: Event::ActionComplete(_, _, context),
+                ..
+            } => !context.keys().any(|key| key == "generation"),
+            _ => false,
+        }
+    }
+
+    #[test]
+    fn run_action_past_the_cap_does_not_spawn_and_is_rejected() {
+        let _lock = lock_run_action_tests();
+        assert_eq!(MAX_RUN_ACTIONS_PER_PLUGIN, 4);
+        assert_eq!(MAX_RUN_ACTIONS_IN_FLIGHT, 16);
+        assert_eq!(run_actions_in_flight(), 0);
+
+        let (to_plugin, receiver) = channels::unbounded();
+        let env = plugin_env(
+            7701,
+            std::env::temp_dir(),
+            SenderWithContext::new(to_plugin),
+        );
+        let holds: Vec<_> = (0..MAX_RUN_ACTIONS_PER_PLUGIN)
+            .map(|_| try_acquire_run_action(7701).expect("per-plugin run-action slot"))
+            .collect();
+        let in_flight = run_actions_in_flight();
+        let rejected = run_action(&env, switch_mode(), BTreeMap::new());
+        assert!(
+            rejected.is_err(),
+            "a run action past the per-plugin cap must fail"
+        );
+        assert_eq!(run_actions_in_flight(), in_flight);
+        assert!(
+            !recv_until(&receiver, Duration::from_millis(400), saw_action_complete),
+            "a rejected run action must not spawn or report success"
+        );
+        drop(holds);
+        assert_eq!(run_actions_in_flight(), 0);
+
+        let global: Vec<_> = (1..=MAX_RUN_ACTIONS_IN_FLIGHT)
+            .map(|plugin_id| {
+                try_acquire_run_action(plugin_id as PluginId).expect("process-wide run-action slot")
+            })
+            .collect();
+        let in_flight = run_actions_in_flight();
+        let rejected = run_action(&env, switch_mode(), BTreeMap::new());
+        assert!(
+            rejected.is_err(),
+            "a run action past the process-wide cap must fail"
+        );
+        assert_eq!(run_actions_in_flight(), in_flight);
+        assert!(
+            !recv_until(&receiver, Duration::from_millis(400), saw_action_complete),
+            "a rejected run action must not spawn or report success"
+        );
+        drop(global);
+        assert_eq!(run_actions_in_flight(), 0);
+    }
+
+    #[test]
+    fn admitted_run_action_releases_its_permit_when_it_finishes() {
+        let _lock = lock_run_action_tests();
+        assert_eq!(run_actions_in_flight(), 0);
+        let (to_plugin, receiver) = channels::unbounded();
+        let env = plugin_env(
+            7702,
+            std::env::temp_dir(),
+            SenderWithContext::new(to_plugin),
+        );
+        run_action(&env, switch_mode(), BTreeMap::new()).expect("first run action is admitted");
+        assert!(
+            recv_until(&receiver, Duration::from_secs(2), saw_action_complete),
+            "an admitted run action must finish and report completion"
+        );
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while run_actions_for(7702) != 0 {
+            assert!(
+                Instant::now() < deadline,
+                "run-action permit was not released"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        let holds: Vec<_> = (0..MAX_RUN_ACTIONS_PER_PLUGIN - 1)
+            .map(|_| try_acquire_run_action(7702).expect("slot after release"))
+            .collect();
+        run_action(&env, switch_mode(), BTreeMap::new()).expect("released permit admits another");
+        assert!(
+            recv_until(&receiver, Duration::from_secs(2), saw_action_complete),
+            "a later run action must run after the permit is released"
+        );
+        drop(holds);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while run_actions_for(7702) != 0 {
+            assert!(
+                Instant::now() < deadline,
+                "the later run-action permit was not released"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn plugin_worker_post_past_the_admission_bound_is_not_enqueued() {
+        use crate::plugins::wasm_bridge::{
+            release_admitted_worker_posts, MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN,
+            MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN,
+        };
+        assert_eq!(MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN, 256);
+        assert_eq!(MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN, 1024 * 1024);
+
+        let plugin_id = 900_001;
+        let (to_plugin, receiver) = channels::unbounded();
+        let env = plugin_env(
+            plugin_id,
+            std::env::temp_dir(),
+            SenderWithContext::new(to_plugin),
+        );
+        let worker = "worker";
+        let huge = "x".repeat(MAX_CACHED_WORKER_MESSAGE_BYTES_PER_PLUGIN + 1);
+        post_message_to(&env, PluginMessage::new_to_worker(worker, "huge", &huge))
+            .expect("a rejected post is not a send failure");
+        env.senders
+            .send_to_plugin(PluginInstruction::Quarantine(plugin_id, 9))
+            .unwrap();
+
+        let mut admitted = Vec::new();
+        for index in 0..MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN {
+            let name = format!("m{index}");
+            post_message_to(&env, PluginMessage::new_to_worker(worker, &name, "p")).unwrap();
+            admitted.push((name, "p".to_owned()));
+        }
+        struct ReleaseAdmitted {
+            plugin_id: PluginId,
+            worker: String,
+            messages: Vec<(String, String)>,
+        }
+        impl Drop for ReleaseAdmitted {
+            fn drop(&mut self) {
+                release_admitted_worker_posts(self.plugin_id, &self.worker, &self.messages);
+            }
+        }
+        let _release = ReleaseAdmitted {
+            plugin_id,
+            worker: worker.to_owned(),
+            messages: admitted,
+        };
+        post_message_to(&env, PluginMessage::new_to_worker(worker, "overflow", "p"))
+            .expect("a post past the count cap is rejected without failing the send");
+        env.senders
+            .send_to_plugin(PluginInstruction::Unload(plugin_id))
+            .unwrap();
+
+        let mut worker_posts = 0usize;
+        let mut saw_huge = false;
+        let mut saw_overflow = false;
+        let mut saw_quarantine = false;
+        let mut saw_unload = false;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            match receiver.recv_timeout(Duration::from_millis(20)) {
+                Ok((PluginInstruction::PostMessagesToPluginWorker(_, _, _, messages), _)) => {
+                    worker_posts += 1;
+                    for (name, _) in &messages {
+                        if name == "huge" {
+                            saw_huge = true;
+                        }
+                        if name == "overflow" {
+                            saw_overflow = true;
+                        }
+                    }
+                },
+                Ok((PluginInstruction::Quarantine(id, generation), _))
+                    if id == plugin_id && generation == 9 =>
+                {
+                    saw_quarantine = true;
+                },
+                Ok((PluginInstruction::Unload(id), _)) if id == plugin_id => {
+                    saw_unload = true;
+                },
+                Ok(_) => {},
+                Err(_) if saw_quarantine && saw_unload => break,
+                Err(_) => {},
+            }
+        }
+        assert!(
+            !saw_huge,
+            "a worker post over the byte cap must not be enqueued"
+        );
+        assert!(
+            !saw_overflow,
+            "a worker post past the count cap must not be enqueued"
+        );
+        assert_eq!(worker_posts, MAX_CACHED_WORKER_MESSAGES_PER_PLUGIN);
+        assert!(
+            saw_quarantine,
+            "a retirement instruction must still be accepted"
+        );
+        assert!(saw_unload, "a control instruction must still be accepted");
+    }
+
+    fn lock_run_command_tests() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: Mutex<()> = Mutex::new(());
+        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_web_request_tests() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: Mutex<()> = Mutex::new(());
+        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn run_commands_in_flight() -> usize {
+        crate::plugins::background_operations::in_flight(
+            crate::plugins::BackgroundOperationKind::RunCommand,
+        )
+    }
+
+    fn web_requests_in_flight() -> usize {
+        crate::plugins::background_operations::in_flight(
+            crate::plugins::BackgroundOperationKind::WebRequest,
+        )
+    }
+
+    fn command_context() -> BTreeMap<String, String> {
+        let mut context = BTreeMap::new();
+        context.insert("token".to_owned(), "kept".to_owned());
+        context
+    }
+
+    struct JobChannels {
+        env: PluginEnv,
+        plugin_rx: Receiver<(PluginInstruction, ErrorContext)>,
+        jobs_rx: Receiver<(BackgroundJob, ErrorContext)>,
+    }
+
+    fn job_channels(plugin_id: PluginId, generation: u64) -> JobChannels {
+        let (to_plugin, plugin_rx) = channels::unbounded();
+        let (to_jobs, jobs_rx) = channels::unbounded();
+        let mut env = plugin_env(
+            plugin_id,
+            std::env::temp_dir(),
+            SenderWithContext::new(to_plugin),
+        );
+        env.generation = generation;
+        env.senders.to_background_jobs = Some(SenderWithContext::new(to_jobs));
+        JobChannels {
+            env,
+            plugin_rx,
+            jobs_rx,
+        }
+    }
+
+    fn recv_load_result(
+        receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+    ) -> PluginInstruction {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            match receiver.recv_timeout(Duration::from_millis(50)) {
+                Ok((instruction, _))
+                    if matches!(instruction, PluginInstruction::ApplyLoadResult { .. }) =>
+                {
+                    return instruction;
+                },
+                Ok(_) => {},
+                Err(channels::RecvTimeoutError::Timeout) => {},
+                Err(channels::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        panic!("load result was not delivered");
+    }
+
+    #[test]
+    fn run_command_past_the_cap_does_not_start_and_reports_the_failure() {
+        let _lock = lock_run_command_tests();
+        assert_eq!(MAX_RUN_COMMANDS_PER_PLUGIN, 4);
+        assert_eq!(MAX_RUN_COMMANDS_IN_FLIGHT, 16);
+        assert_eq!(run_commands_in_flight(), 0);
+
+        let plugin_id = 8801;
+        let jobs = job_channels(plugin_id, 3);
+        let context = command_context();
+        let holds: Vec<_> = (0..MAX_RUN_COMMANDS_PER_PLUGIN)
+            .map(|_| {
+                try_acquire_run_command(plugin_id, Arc::new(AtomicBool::new(true)), 0)
+                    .expect("per-plugin command slot")
+            })
+            .collect();
+        let in_flight = run_commands_in_flight();
+        run_command(
+            &jobs.env,
+            vec!["echo".to_owned()],
+            BTreeMap::new(),
+            std::env::temp_dir(),
+            context.clone(),
+        );
+        assert_eq!(run_commands_in_flight(), in_flight);
+        assert!(
+            jobs.jobs_rx
+                .recv_timeout(Duration::from_millis(200))
+                .is_err(),
+            "a command past the per-plugin cap must not be enqueued"
+        );
+        match recv_load_result(&jobs.plugin_rx) {
+            PluginInstruction::ApplyLoadResult {
+                plugin_id: id,
+                generation,
+                event,
+                ..
+            } => {
+                assert_eq!(id, plugin_id);
+                assert_eq!(generation, 3);
+                assert_eq!(
+                    event,
+                    crate::background_jobs::run_command_limit_event(context.clone())
+                );
+                assert!(!matches!(event, Event::ActionComplete(..)));
+            },
+            other => panic!("expected RunCommandResult, got {other:?}"),
+        }
+        drop(holds);
+        assert_eq!(run_commands_in_flight(), 0);
+
+        let global: Vec<_> = (1..=MAX_RUN_COMMANDS_IN_FLIGHT)
+            .map(|id| {
+                try_acquire_run_command(id as PluginId, Arc::new(AtomicBool::new(true)), 0)
+                    .expect("process-wide command slot")
+            })
+            .collect();
+        let in_flight = run_commands_in_flight();
+        run_command(
+            &jobs.env,
+            vec!["echo".to_owned()],
+            BTreeMap::new(),
+            std::env::temp_dir(),
+            context.clone(),
+        );
+        assert_eq!(run_commands_in_flight(), in_flight);
+        assert!(
+            jobs.jobs_rx
+                .recv_timeout(Duration::from_millis(200))
+                .is_err(),
+            "a command past the process-wide cap must not be enqueued"
+        );
+        match recv_load_result(&jobs.plugin_rx) {
+            PluginInstruction::ApplyLoadResult {
+                generation, event, ..
+            } => {
+                assert_eq!(generation, 3);
+                assert_eq!(
+                    event,
+                    crate::background_jobs::run_command_limit_event(context)
+                );
+            },
+            other => panic!("expected RunCommandResult, got {other:?}"),
+        }
+        drop(global);
+        assert_eq!(run_commands_in_flight(), 0);
+    }
+
+    #[test]
+    fn a_finished_run_command_lets_another_one_start() {
+        let _lock = lock_run_command_tests();
+        assert_eq!(run_commands_in_flight(), 0);
+        let plugin_id = 8802;
+        let jobs = job_channels(plugin_id, 4);
+        let context = command_context();
+        run_command(
+            &jobs.env,
+            vec!["zellij-no-such-run-command".to_owned()],
+            BTreeMap::new(),
+            std::env::temp_dir(),
+            context.clone(),
+        );
+        assert_eq!(run_commands_in_flight(), 1);
+        let (job, _) = jobs
+            .jobs_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("admitted command is enqueued");
+        match job {
+            BackgroundJob::RunCommand(
+                id,
+                client_id,
+                command,
+                args,
+                env_variables,
+                cwd,
+                job_context,
+                generation,
+                reservation,
+            ) => {
+                assert_eq!(id, plugin_id);
+                assert_eq!(generation, 4);
+                assert_eq!(job_context, context);
+                crate::global_async_runtime::get_tokio_runtime().block_on(
+                    crate::background_jobs::perform_run_command(
+                        id,
+                        client_id,
+                        command,
+                        args,
+                        env_variables,
+                        cwd,
+                        job_context,
+                        generation,
+                        jobs.env.senders.clone(),
+                        reservation,
+                    ),
+                );
+            },
+            other => panic!("expected RunCommand, got {other:?}"),
+        }
+        assert_eq!(
+            run_commands_in_flight(),
+            1,
+            "a command whose result is pending must still hold its slot"
+        );
+        match recv_load_result(&jobs.plugin_rx) {
+            PluginInstruction::ApplyLoadResult {
+                generation,
+                event: Event::RunCommandResult(exit, _, _, event_context),
+                reservation: result_reservation,
+                ..
+            } => {
+                assert_eq!(generation, 4);
+                assert_eq!(exit, Some(2));
+                assert_eq!(event_context, context);
+                drop(result_reservation);
+            },
+            other => panic!("expected RunCommandResult, got {other:?}"),
+        }
+        assert_eq!(
+            run_commands_in_flight(),
+            0,
+            "dropping the result must release its slot"
+        );
+
+        run_command(
+            &jobs.env,
+            vec!["zellij-no-such-run-command".to_owned()],
+            BTreeMap::new(),
+            std::env::temp_dir(),
+            context,
+        );
+        assert_eq!(
+            run_commands_in_flight(),
+            1,
+            "a finished command must let another one start"
+        );
+        let (job, _) = jobs
+            .jobs_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the next command is enqueued");
+        let BackgroundJob::RunCommand(
+            id,
+            client_id,
+            command,
+            args,
+            env_variables,
+            cwd,
+            job_context,
+            generation,
+            reservation,
+        ) = job
+        else {
+            panic!("expected RunCommand");
+        };
+        crate::global_async_runtime::get_tokio_runtime().block_on(
+            crate::background_jobs::perform_run_command(
+                id,
+                client_id,
+                command,
+                args,
+                env_variables,
+                cwd,
+                job_context,
+                generation,
+                jobs.env.senders.clone(),
+                reservation,
+            ),
+        );
+        assert_eq!(
+            run_commands_in_flight(),
+            1,
+            "the result still owns the command slot"
+        );
+        match recv_load_result(&jobs.plugin_rx) {
+            PluginInstruction::ApplyLoadResult {
+                reservation: result_reservation,
+                ..
+            } => drop(result_reservation),
+            other => panic!("expected RunCommandResult, got {other:?}"),
+        }
+        assert_eq!(run_commands_in_flight(), 0);
+    }
+
+    #[test]
+    fn web_request_past_the_cap_does_not_start_and_reports_the_failure() {
+        let _lock = lock_web_request_tests();
+        assert_eq!(MAX_WEB_REQUESTS_PER_PLUGIN, 4);
+        assert_eq!(MAX_WEB_REQUESTS_IN_FLIGHT, 16);
+        assert_eq!(web_requests_in_flight(), 0);
+
+        let plugin_id = 8811;
+        let jobs = job_channels(plugin_id, 5);
+        let context = command_context();
+        let holds: Vec<_> = (0..MAX_WEB_REQUESTS_PER_PLUGIN)
+            .map(|_| {
+                try_acquire_web_request(plugin_id, Arc::new(AtomicBool::new(true)), 0)
+                    .expect("per-plugin web slot")
+            })
+            .collect();
+        let in_flight = web_requests_in_flight();
+        web_request(
+            &jobs.env,
+            "http://127.0.0.1/not-started".to_owned(),
+            HttpVerb::Get,
+            BTreeMap::new(),
+            Vec::new(),
+            context.clone(),
+        );
+        assert_eq!(web_requests_in_flight(), in_flight);
+        assert!(
+            jobs.jobs_rx
+                .recv_timeout(Duration::from_millis(200))
+                .is_err(),
+            "a web request past the per-plugin cap must not be enqueued"
+        );
+        match recv_load_result(&jobs.plugin_rx) {
+            PluginInstruction::ApplyLoadResult {
+                plugin_id: id,
+                generation,
+                event,
+                ..
+            } => {
+                assert_eq!(id, plugin_id);
+                assert_eq!(generation, 5);
+                assert_eq!(
+                    event,
+                    crate::background_jobs::web_request_limit_event(context.clone())
+                );
+                assert!(!matches!(event, Event::ActionComplete(..)));
+            },
+            other => panic!("expected WebRequestResult, got {other:?}"),
+        }
+        drop(holds);
+        assert_eq!(web_requests_in_flight(), 0);
+
+        let global: Vec<_> = (1..=MAX_WEB_REQUESTS_IN_FLIGHT)
+            .map(|id| {
+                try_acquire_web_request(id as PluginId, Arc::new(AtomicBool::new(true)), 0)
+                    .expect("process-wide web slot")
+            })
+            .collect();
+        let in_flight = web_requests_in_flight();
+        web_request(
+            &jobs.env,
+            "http://127.0.0.1/not-started".to_owned(),
+            HttpVerb::Get,
+            BTreeMap::new(),
+            Vec::new(),
+            context.clone(),
+        );
+        assert_eq!(web_requests_in_flight(), in_flight);
+        assert!(
+            jobs.jobs_rx
+                .recv_timeout(Duration::from_millis(200))
+                .is_err(),
+            "a web request past the process-wide cap must not be enqueued"
+        );
+        match recv_load_result(&jobs.plugin_rx) {
+            PluginInstruction::ApplyLoadResult {
+                generation, event, ..
+            } => {
+                assert_eq!(generation, 5);
+                assert_eq!(
+                    event,
+                    crate::background_jobs::web_request_limit_event(context)
+                );
+            },
+            other => panic!("expected WebRequestResult, got {other:?}"),
+        }
+        drop(global);
+        assert_eq!(web_requests_in_flight(), 0);
+    }
+
+    #[test]
+    fn a_finished_web_request_lets_another_one_start() {
+        let _lock = lock_web_request_tests();
+        assert_eq!(web_requests_in_flight(), 0);
+        let plugin_id = 8812;
+        let jobs = job_channels(plugin_id, 6);
+        let context = command_context();
+        web_request(
+            &jobs.env,
+            "http://127.0.0.1/not-started".to_owned(),
+            HttpVerb::Post,
+            BTreeMap::new(),
+            Vec::new(),
+            context.clone(),
+        );
+        assert_eq!(web_requests_in_flight(), 1);
+        let (job, _) = jobs
+            .jobs_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("admitted web request is enqueued");
+        let BackgroundJob::WebRequest(
+            id,
+            client_id,
+            url,
+            verb,
+            headers,
+            body,
+            job_context,
+            generation,
+            reservation,
+        ) = job
+        else {
+            panic!("expected WebRequest");
+        };
+        assert_eq!(generation, 6);
+        assert_eq!(job_context, context);
+        crate::global_async_runtime::get_tokio_runtime().block_on(
+            crate::background_jobs::perform_web_request(
+                id,
+                client_id,
+                url,
+                verb,
+                headers,
+                body,
+                job_context,
+                generation,
+                None,
+                jobs.env.senders.clone(),
+                reservation,
+            ),
+        );
+        assert_eq!(
+            web_requests_in_flight(),
+            0,
+            "a request with no http client releases its slot"
+        );
+
+        web_request(
+            &jobs.env,
+            "http://127.0.0.1/not-started".to_owned(),
+            HttpVerb::Post,
+            BTreeMap::new(),
+            Vec::new(),
+            context,
+        );
+        assert_eq!(
+            web_requests_in_flight(),
+            1,
+            "a finished web request must let another one start"
+        );
+        let (job, _) = jobs
+            .jobs_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the next web request is enqueued");
+        let BackgroundJob::WebRequest(
+            id,
+            client_id,
+            url,
+            verb,
+            headers,
+            body,
+            job_context,
+            generation,
+            reservation,
+        ) = job
+        else {
+            panic!("expected WebRequest");
+        };
+        crate::global_async_runtime::get_tokio_runtime().block_on(
+            crate::background_jobs::perform_web_request(
+                id,
+                client_id,
+                url,
+                verb,
+                headers,
+                body,
+                job_context,
+                generation,
+                None,
+                jobs.env.senders.clone(),
+                reservation,
+            ),
+        );
+        assert_eq!(web_requests_in_flight(), 0);
+    }
 }

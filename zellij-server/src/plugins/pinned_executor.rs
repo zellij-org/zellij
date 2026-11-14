@@ -1,19 +1,119 @@
+use crate::diagnostics;
 use crate::plugins::plugin_map::PluginMap;
 use crate::plugins::wasm_bridge::PluginCache;
 use crate::ClientId;
 use crate::ThreadSenders;
-use std::collections::{HashMap, HashSet};
+use std::cell::Cell;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::thread;
+
+thread_local! {
+    static PLUGIN_EXECUTOR_THREAD: Cell<bool> = const { Cell::new(false) };
+    /// Unload revokes `load_alive` before `BeforeClose`, so a guest blocked in
+    /// a host call cannot keep issuing commands. The close callback still has
+    /// to reach the host (a theme preview reverts from there). This flag is
+    /// set only around that callback, on the thread running it. A worker on
+    /// another thread stays revoked.
+    static BEFORE_CLOSE_HOST_CALLS: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Whether the current thread is a pinned plugin executor. Guest callbacks are
+/// optional off this thread: inline host cleanup must not run them.
+pub fn on_plugin_executor() -> bool {
+    PLUGIN_EXECUTOR_THREAD.with(|flag| flag.get())
+}
+
+/// Host calls from the `BeforeClose` guest callback are allowed even after
+/// `load_alive` was revoked. Other threads do not see the flag.
+pub fn before_close_host_calls_allowed() -> bool {
+    BEFORE_CLOSE_HOST_CALLS.with(|flag| flag.get())
+}
+
+pub fn with_before_close_host_calls<R>(body: impl FnOnce() -> R) -> R {
+    BEFORE_CLOSE_HOST_CALLS.with(|flag| {
+        let previous = flag.replace(true);
+        let result = body();
+        flag.set(previous);
+        result
+    })
+}
 use wasmi::Engine;
+
+const DEFAULT_JOB_BASE_BYTES: usize = 256;
+
+#[derive(Clone, Copy, Debug)]
+struct QueueLimits {
+    max_jobs_per_thread: usize,
+    max_bytes_per_thread: usize,
+    max_jobs_per_owner: usize,
+    max_bytes_per_owner: usize,
+    reserved_jobs_per_thread: usize,
+    reserved_bytes_per_thread: usize,
+    reserved_retirement_jobs_per_thread: usize,
+    reserved_retirement_bytes_per_thread: usize,
+    job_base_bytes: usize,
+}
+
+impl Default for QueueLimits {
+    fn default() -> Self {
+        Self {
+            max_jobs_per_thread: 2048,
+            max_bytes_per_thread: 32 * 1024 * 1024,
+            max_jobs_per_owner: 256,
+            max_bytes_per_owner: 4 * 1024 * 1024,
+            reserved_jobs_per_thread: 64,
+            reserved_bytes_per_thread: 4 * 1024 * 1024,
+            reserved_retirement_jobs_per_thread: 64,
+            reserved_retirement_bytes_per_thread: 4 * 1024 * 1024,
+            job_base_bytes: DEFAULT_JOB_BASE_BYTES,
+        }
+    }
+}
+
+/// Admission class for work submitted to a pinned plugin thread.
+///
+/// `Ordered` work is delivered in submission order and is dropped when the
+/// owner's budget is exhausted. `Replaceable` work carries a key: while an
+/// earlier job with the same key is still pending and no other job has been
+/// submitted for that owner afterwards, the newer payload replaces it.
+/// `Lifecycle` work (loads, cleanups and completion-bearing control work) can
+/// use the capacity reserved outside the ordinary budgets. `Retirement` work
+/// has its own additional headroom so event saturation cannot prevent a plugin
+/// from being retired.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JobClass {
+    Ordered,
+    Replaceable(u64),
+    Lifecycle,
+    Retirement,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JobRejection {
+    BudgetExceeded,
+    OwnerNotRegistered,
+    QueueClosed,
+}
+
+impl std::fmt::Display for JobRejection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            JobRejection::BudgetExceeded => write!(f, "plugin job queue budget exceeded"),
+            JobRejection::OwnerNotRegistered => write!(f, "plugin has no executor assignment"),
+            JobRejection::QueueClosed => write!(f, "plugin executor thread is shutting down"),
+        }
+    }
+}
+
+impl std::error::Error for JobRejection {}
 
 /// A dynamic thread pool that pins jobs to specific threads based on plugin_id
 /// Starts with 1 thread and expands when threads are busy, shrinks when plugins unload
 pub struct PinnedExecutor {
-    // Sparse vector - Some(thread) for active threads, None for removed threads
-    execution_threads: Arc<Mutex<Vec<Option<ExecutionThread>>>>,
+    // Live workers keyed by monotonically increasing, non-reused thread ids
+    execution_threads: Arc<Mutex<HashMap<usize, Arc<ExecutionThread>>>>,
 
     // Maps plugin_id -> thread_index (permanent assignment)
     plugin_assignments: Arc<Mutex<HashMap<u32, usize>>>,
@@ -33,27 +133,397 @@ pub struct PinnedExecutor {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
     plugin_cache: PluginCache,
     engine: Engine,
+    limits: QueueLimits,
 }
 
 struct ExecutionThread {
-    sender: Sender<Job>,
-    jobs_in_flight: Arc<AtomicUsize>, // Busy state tracking
+    queue: Arc<ThreadQueue>,
 }
 
+/// A unit of work executed on a plugin's pinned thread.
+pub type PluginWork = Box<
+    dyn FnOnce(ThreadSenders, Arc<Mutex<PluginMap>>, Arc<Mutex<Vec<ClientId>>>, PluginCache, Engine)
+        + Send
+        + 'static,
+>;
+
 enum Job {
-    Work(
-        Box<
-            dyn FnOnce(
-                    ThreadSenders,
-                    Arc<Mutex<PluginMap>>,
-                    Arc<Mutex<Vec<ClientId>>>,
-                    PluginCache,
-                    Engine,
-                ) + Send
-                + 'static,
-        >,
-    ),
-    Shutdown, // Signal to exit the worker loop
+    Work {
+        owner: u32,
+        accounted_bytes: usize,
+        work: PluginWork,
+    },
+    Coalesced {
+        slot: Arc<Mutex<CoalesceSlot>>,
+    },
+    Reserved {
+        owner: u32,
+        accounted_bytes: usize,
+        slot: Arc<ReservedJob>,
+    },
+}
+
+struct CoalesceSlot {
+    owner: u32,
+    sequence: u64,
+    work: Option<PluginWork>,
+    accounted_bytes: usize,
+}
+
+#[derive(Default)]
+struct ReservedJobState {
+    work: Option<PluginWork>,
+    cancelled: bool,
+}
+
+#[derive(Default)]
+struct ReservedJob {
+    state: Mutex<ReservedJobState>,
+    wake: Condvar,
+}
+
+/// A lifecycle job whose capacity is reserved before the caller publishes the
+/// state the job will operate on. Dropping it without committing cancels the
+/// placeholder; the worker skips it and the reserved capacity is released.
+pub struct JobReservation {
+    slot: Arc<ReservedJob>,
+    committed: bool,
+}
+
+impl JobReservation {
+    pub fn commit(mut self, work: PluginWork) {
+        {
+            let mut state = self.slot.state.lock().unwrap();
+            if !state.cancelled {
+                state.work = Some(work);
+            }
+        }
+        self.committed = true;
+        self.slot.wake.notify_one();
+    }
+}
+
+impl Drop for JobReservation {
+    fn drop(&mut self) {
+        if self.committed {
+            return;
+        }
+        {
+            let mut state = self.slot.state.lock().unwrap();
+            state.cancelled = true;
+        }
+        self.slot.wake.notify_one();
+    }
+}
+
+/// A load reservation that also owns rollback of the executor assignment it
+/// created. It must be committed after the caller publishes its pending-load
+/// state.
+pub struct PluginLoadReservation {
+    reservation: Option<JobReservation>,
+    executor: Arc<PinnedExecutor>,
+    plugin_id: u32,
+    newly_registered: bool,
+}
+
+impl PluginLoadReservation {
+    pub fn commit(mut self, work: PluginWork) {
+        if let Some(reservation) = self.reservation.take() {
+            reservation.commit(work);
+        }
+    }
+}
+
+impl Drop for PluginLoadReservation {
+    fn drop(&mut self) {
+        if self.reservation.is_some() && self.newly_registered {
+            self.executor.unregister_plugin(self.plugin_id);
+        }
+    }
+}
+
+#[derive(Default)]
+struct OwnerCounts {
+    jobs: usize,
+    bytes: usize,
+}
+
+#[derive(Default)]
+struct QueueCounts {
+    jobs: usize,
+    bytes: usize,
+    owners: HashMap<u32, OwnerCounts>,
+}
+
+impl QueueCounts {
+    fn owner(&self, owner: u32) -> (usize, usize) {
+        self.owners
+            .get(&owner)
+            .map(|counts| (counts.jobs, counts.bytes))
+            .unwrap_or((0, 0))
+    }
+
+    fn admit(&mut self, owner: u32, jobs: usize, bytes: usize) {
+        self.jobs = self.jobs.saturating_add(jobs);
+        self.bytes = self.bytes.saturating_add(bytes);
+        let owner_counts = self.owners.entry(owner).or_default();
+        owner_counts.jobs = owner_counts.jobs.saturating_add(jobs);
+        owner_counts.bytes = owner_counts.bytes.saturating_add(bytes);
+    }
+
+    fn adjust_bytes(&mut self, owner: u32, delta: isize) {
+        if delta >= 0 {
+            self.bytes = self.bytes.saturating_add(delta as usize);
+            let owner_counts = self.owners.entry(owner).or_default();
+            owner_counts.bytes = owner_counts.bytes.saturating_add(delta as usize);
+        } else {
+            let released = delta.unsigned_abs();
+            self.bytes = self.bytes.saturating_sub(released);
+            let owner_counts = self.owners.entry(owner).or_default();
+            owner_counts.bytes = owner_counts.bytes.saturating_sub(released);
+        }
+    }
+
+    fn release(&mut self, owner: u32, jobs: usize, bytes: usize) {
+        self.jobs = self.jobs.saturating_sub(jobs);
+        self.bytes = self.bytes.saturating_sub(bytes);
+        if let Some(owner_counts) = self.owners.get_mut(&owner) {
+            owner_counts.jobs = owner_counts.jobs.saturating_sub(jobs);
+            owner_counts.bytes = owner_counts.bytes.saturating_sub(bytes);
+            if owner_counts.jobs == 0 && owner_counts.bytes == 0 {
+                self.owners.remove(&owner);
+            }
+        }
+    }
+}
+
+struct ThreadQueueState {
+    jobs: VecDeque<Job>,
+    shutdown: bool,
+    counts: QueueCounts,
+    coalesced: HashMap<(u32, u64), Weak<Mutex<CoalesceSlot>>>,
+    next_sequence: u64,
+    last_sequence: HashMap<u32, u64>,
+}
+
+struct ThreadQueue {
+    state: Mutex<ThreadQueueState>,
+    wake: Condvar,
+    limits: QueueLimits,
+}
+
+impl ThreadQueue {
+    fn new(limits: QueueLimits) -> Self {
+        Self {
+            state: Mutex::new(ThreadQueueState {
+                jobs: VecDeque::new(),
+                shutdown: false,
+                counts: QueueCounts::default(),
+                coalesced: HashMap::new(),
+                next_sequence: 0,
+                last_sequence: HashMap::new(),
+            }),
+            wake: Condvar::new(),
+            limits,
+        }
+    }
+
+    fn can_admit(
+        &self,
+        state: &ThreadQueueState,
+        owner: u32,
+        class: JobClass,
+        accounted_bytes: usize,
+        replaced_bytes: Option<usize>,
+    ) -> bool {
+        let (owner_jobs, owner_bytes) = state.counts.owner(owner);
+        let replacement = replaced_bytes.unwrap_or(0);
+        let projected_jobs = state
+            .counts
+            .jobs
+            .saturating_add(if replaced_bytes.is_some() { 0 } else { 1 });
+        let projected_bytes = state
+            .counts
+            .bytes
+            .saturating_sub(replacement)
+            .saturating_add(accounted_bytes);
+        let projected_owner_jobs =
+            owner_jobs.saturating_add(if replaced_bytes.is_some() { 0 } else { 1 });
+        let projected_owner_bytes = owner_bytes
+            .saturating_sub(replacement)
+            .saturating_add(accounted_bytes);
+
+        if class == JobClass::Retirement {
+            projected_jobs
+                <= self
+                    .limits
+                    .max_jobs_per_thread
+                    .saturating_add(self.limits.reserved_retirement_jobs_per_thread)
+                && projected_bytes
+                    <= self
+                        .limits
+                        .max_bytes_per_thread
+                        .saturating_add(self.limits.reserved_retirement_bytes_per_thread)
+        } else if class == JobClass::Lifecycle {
+            projected_jobs <= self.limits.max_jobs_per_thread
+                && projected_bytes <= self.limits.max_bytes_per_thread
+        } else {
+            projected_jobs.saturating_add(self.limits.reserved_jobs_per_thread)
+                <= self.limits.max_jobs_per_thread
+                && projected_bytes.saturating_add(self.limits.reserved_bytes_per_thread)
+                    <= self.limits.max_bytes_per_thread
+                && projected_owner_jobs <= self.limits.max_jobs_per_owner
+                && projected_owner_bytes <= self.limits.max_bytes_per_owner
+        }
+    }
+
+    fn enqueue(
+        &self,
+        owner: u32,
+        class: JobClass,
+        payload_bytes: usize,
+        work: PluginWork,
+    ) -> Result<(), (JobRejection, PluginWork)> {
+        let accounted_bytes = payload_bytes
+            .saturating_add(self.limits.job_base_bytes)
+            .max(1);
+        let mut state = self.state.lock().unwrap();
+        if state.shutdown {
+            return Err((JobRejection::QueueClosed, work));
+        }
+
+        let sequence = state.next_sequence.wrapping_add(1);
+        if let JobClass::Replaceable(key) = class {
+            let existing_slot = state
+                .coalesced
+                .get(&(owner, key))
+                .and_then(|slot| slot.upgrade());
+            if let Some(slot) = existing_slot {
+                let mut slot = slot.lock().unwrap();
+                let still_latest = state.last_sequence.get(&owner).copied() == Some(slot.sequence);
+                if still_latest && slot.work.is_some() {
+                    if !self.can_admit(
+                        &state,
+                        owner,
+                        class,
+                        accounted_bytes,
+                        Some(slot.accounted_bytes),
+                    ) {
+                        return Err((JobRejection::BudgetExceeded, work));
+                    }
+                    state.counts.adjust_bytes(
+                        owner,
+                        accounted_bytes as isize - slot.accounted_bytes as isize,
+                    );
+                    let replaced_work = std::mem::replace(&mut slot.work, Some(work));
+                    slot.accounted_bytes = accounted_bytes;
+                    slot.sequence = sequence;
+                    state.next_sequence = sequence;
+                    state.last_sequence.insert(owner, sequence);
+                    drop(slot);
+                    drop(state);
+                    drop(replaced_work);
+                    return Ok(());
+                }
+            }
+
+            if !self.can_admit(&state, owner, class, accounted_bytes, None) {
+                return Err((JobRejection::BudgetExceeded, work));
+            }
+            let slot = Arc::new(Mutex::new(CoalesceSlot {
+                owner,
+                sequence,
+                work: Some(work),
+                accounted_bytes,
+            }));
+            state.coalesced.insert((owner, key), Arc::downgrade(&slot));
+            state.counts.admit(owner, 1, accounted_bytes);
+            state.next_sequence = sequence;
+            state.last_sequence.insert(owner, sequence);
+            state.jobs.push_back(Job::Coalesced { slot });
+        } else {
+            if !self.can_admit(&state, owner, class, accounted_bytes, None) {
+                return Err((JobRejection::BudgetExceeded, work));
+            }
+            state.counts.admit(owner, 1, accounted_bytes);
+            state.next_sequence = sequence;
+            state.last_sequence.insert(owner, sequence);
+            state.jobs.push_back(Job::Work {
+                owner,
+                accounted_bytes,
+                work,
+            });
+        }
+        diagnostics::record_plugin_jobs_in_flight(state.counts.jobs);
+        self.wake.notify_one();
+        Ok(())
+    }
+
+    fn reserve(
+        &self,
+        owner: u32,
+        class: JobClass,
+        payload_bytes: usize,
+    ) -> Result<JobReservation, JobRejection> {
+        let accounted_bytes = payload_bytes
+            .saturating_add(self.limits.job_base_bytes)
+            .max(1);
+        let mut state = self.state.lock().unwrap();
+        if state.shutdown {
+            return Err(JobRejection::QueueClosed);
+        }
+        if !self.can_admit(&state, owner, class, accounted_bytes, None) {
+            return Err(JobRejection::BudgetExceeded);
+        }
+        let sequence = state.next_sequence.wrapping_add(1);
+        let slot = Arc::new(ReservedJob::default());
+        state.counts.admit(owner, 1, accounted_bytes);
+        state.next_sequence = sequence;
+        state.last_sequence.insert(owner, sequence);
+        state.jobs.push_back(Job::Reserved {
+            owner,
+            accounted_bytes,
+            slot: slot.clone(),
+        });
+        diagnostics::record_plugin_jobs_in_flight(state.counts.jobs);
+        self.wake.notify_one();
+        Ok(JobReservation {
+            slot,
+            committed: false,
+        })
+    }
+
+    fn complete(&self, owner: u32, accounted_bytes: usize) {
+        let mut state = self.state.lock().unwrap();
+        state.counts.release(owner, 1, accounted_bytes);
+        if state.counts.owner(owner).0 == 0 {
+            state.last_sequence.remove(&owner);
+            state
+                .coalesced
+                .retain(|(entry_owner, _), _| *entry_owner != owner);
+        }
+        diagnostics::record_plugin_jobs_in_flight(state.counts.jobs);
+    }
+
+    fn request_shutdown(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.shutdown = true;
+        self.wake.notify_all();
+    }
+
+    fn queued_jobs(&self) -> usize {
+        self.state.lock().unwrap().counts.jobs
+    }
+
+    #[cfg(test)]
+    fn queued_bytes(&self) -> usize {
+        self.state.lock().unwrap().counts.bytes
+    }
+
+    #[cfg(test)]
+    fn owner_queued_jobs(&self, owner: u32) -> usize {
+        self.state.lock().unwrap().counts.owner(owner).0
+    }
 }
 
 impl PinnedExecutor {
@@ -67,19 +537,73 @@ impl PinnedExecutor {
         plugin_cache: &PluginCache,
         engine: &Engine,
     ) -> Self {
+        Self::new_with_limits(
+            max_threads,
+            senders,
+            plugin_map,
+            connected_clients,
+            plugin_cache,
+            engine,
+            QueueLimits::default(),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_tiny_limits_for_test(
+        max_threads: usize,
+        senders: &ThreadSenders,
+        plugin_map: &Arc<Mutex<PluginMap>>,
+        connected_clients: &Arc<Mutex<Vec<ClientId>>>,
+        plugin_cache: &PluginCache,
+        engine: &Engine,
+    ) -> Self {
+        Self::new_with_limits(
+            max_threads,
+            senders,
+            plugin_map,
+            connected_clients,
+            plugin_cache,
+            engine,
+            QueueLimits {
+                max_jobs_per_thread: 1,
+                max_bytes_per_thread: 64 * 1024,
+                max_jobs_per_owner: 1,
+                max_bytes_per_owner: 64 * 1024,
+                reserved_jobs_per_thread: 0,
+                reserved_bytes_per_thread: 0,
+                reserved_retirement_jobs_per_thread: 0,
+                reserved_retirement_bytes_per_thread: 0,
+                job_base_bytes: 32,
+            },
+        )
+    }
+
+    fn new_with_limits(
+        max_threads: usize,
+        senders: &ThreadSenders,
+        plugin_map: &Arc<Mutex<PluginMap>>,
+        connected_clients: &Arc<Mutex<Vec<ClientId>>>,
+        plugin_cache: &PluginCache,
+        engine: &Engine,
+        limits: QueueLimits,
+    ) -> Self {
         let max_threads = max_threads.max(1); // At least 1
 
-        let thread_0 = Self::spawn_thread(
+        let mut execution_threads = HashMap::new();
+        if let Some(thread_0) = Self::spawn_thread(
             0,
             senders.clone(),
             plugin_map.clone(),
             connected_clients.clone(),
             plugin_cache.clone(),
             engine.clone(),
-        );
+            limits,
+        ) {
+            execution_threads.insert(0, Arc::new(thread_0));
+        }
 
         PinnedExecutor {
-            execution_threads: Arc::new(Mutex::new(vec![Some(thread_0)])),
+            execution_threads: Arc::new(Mutex::new(execution_threads)),
             plugin_assignments: Arc::new(Mutex::new(HashMap::new())),
             thread_plugins: Arc::new(Mutex::new(HashMap::new())),
             next_thread_idx: AtomicUsize::new(1), // Next will be index 1
@@ -89,6 +613,7 @@ impl PinnedExecutor {
             connected_clients: connected_clients.clone(),
             plugin_cache: plugin_cache.clone(),
             engine: engine.clone(),
+            limits,
         }
     }
 
@@ -99,23 +624,40 @@ impl PinnedExecutor {
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         plugin_cache: PluginCache,
         engine: Engine,
-    ) -> ExecutionThread {
-        let (sender, receiver) = channel::<Job>();
-        let jobs_in_flight = Arc::new(AtomicUsize::new(0));
-        let jobs_in_flight_clone = jobs_in_flight.clone();
+        limits: QueueLimits,
+    ) -> Option<ExecutionThread> {
+        let queue = Arc::new(ThreadQueue::new(limits));
+        let worker_queue = queue.clone();
 
         let thread_handle = thread::Builder::new()
             .name(format!("plugin-exec-{}", thread_idx))
-            .spawn({
-                move || {
-                    let senders = senders;
-                    let plugin_map = plugin_map;
-                    let connected_clients = connected_clients;
-                    let plugin_cache = plugin_cache;
-                    let engine = engine;
-                    while let Ok(job) = receiver.recv() {
-                        match job {
-                            Job::Work(work) => {
+            .spawn(move || {
+                PLUGIN_EXECUTOR_THREAD.with(|flag| flag.set(true));
+                while let Some(job) = Self::next_job(&worker_queue) {
+                    match job {
+                        Job::Work {
+                            owner,
+                            accounted_bytes,
+                            work,
+                        } => {
+                            work(
+                                senders.clone(),
+                                plugin_map.clone(),
+                                connected_clients.clone(),
+                                plugin_cache.clone(),
+                                engine.clone(),
+                            );
+                            worker_queue.complete(owner, accounted_bytes);
+                        },
+                        Job::Coalesced { slot } => {
+                            let taken = {
+                                let mut slot = slot.lock().unwrap();
+                                let owner = slot.owner;
+                                let accounted_bytes = slot.accounted_bytes;
+                                slot.accounted_bytes = 0;
+                                slot.work.take().map(|work| (owner, accounted_bytes, work))
+                            };
+                            if let Some((owner, accounted_bytes, work)) = taken {
                                 work(
                                     senders.clone(),
                                     plugin_map.clone(),
@@ -123,31 +665,69 @@ impl PinnedExecutor {
                                     plugin_cache.clone(),
                                     engine.clone(),
                                 );
-                                jobs_in_flight_clone.fetch_sub(1, Ordering::SeqCst);
-                            },
-                            Job::Shutdown => break,
-                        }
+                                worker_queue.complete(owner, accounted_bytes);
+                            }
+                        },
+                        Job::Reserved {
+                            owner,
+                            accounted_bytes,
+                            slot,
+                        } => {
+                            let work = {
+                                let mut state = slot.state.lock().unwrap();
+                                while state.work.is_none() && !state.cancelled {
+                                    state = slot.wake.wait(state).unwrap();
+                                }
+                                state.work.take()
+                            };
+                            if let Some(work) = work {
+                                work(
+                                    senders.clone(),
+                                    plugin_map.clone(),
+                                    connected_clients.clone(),
+                                    plugin_cache.clone(),
+                                    engine.clone(),
+                                );
+                            }
+                            worker_queue.complete(owner, accounted_bytes);
+                        },
                     }
                 }
             });
-        if let Err(e) = thread_handle {
-            log::error!("Failed to spawn plugin execution thread: {}", e);
+        match thread_handle {
+            Ok(_) => Some(ExecutionThread { queue }),
+            Err(e) => {
+                log::error!("Failed to spawn plugin execution thread: {}", e);
+                None
+            },
         }
+    }
 
-        ExecutionThread {
-            sender,
-            jobs_in_flight,
+    fn next_job(queue: &Arc<ThreadQueue>) -> Option<Job> {
+        let mut state = queue.state.lock().unwrap();
+        loop {
+            if let Some(job) = state.jobs.pop_front() {
+                return Some(job);
+            }
+            if state.shutdown {
+                return None;
+            }
+            state = queue.wake.wait(state).unwrap();
         }
     }
 
     /// Register a plugin and assign it to a thread
     /// Called from wasm_bridge when loading a plugin
+    #[cfg(test)]
     pub fn register_plugin(&self, plugin_id: u32) -> usize {
+        self.register_plugin_inner(plugin_id).0
+    }
+
+    fn register_plugin_inner(&self, plugin_id: u32) -> (usize, bool) {
         let mut assignments = self.plugin_assignments.lock().unwrap();
 
-        // If already assigned (shouldn't happen, but defensive)
         if let Some(&thread_idx) = assignments.get(&plugin_id) {
-            return thread_idx;
+            return (thread_idx, false);
         }
 
         let mut thread_plugins = self.thread_plugins.lock().unwrap();
@@ -156,42 +736,44 @@ impl PinnedExecutor {
         // Find a non-busy thread with assigned plugins (prefer reusing threads)
         let mut best_thread: Option<(usize, usize)> = None; // (index, load)
 
-        for (idx, thread_opt) in threads.iter().enumerate() {
-            if let Some(thread) = thread_opt {
-                let is_busy = thread.jobs_in_flight.load(Ordering::SeqCst) > 0;
-                if !is_busy {
-                    let load = thread_plugins.get(&idx).map(|s| s.len()).unwrap_or(0);
-                    if best_thread.is_none() || best_thread.map(|b| load < b.1).unwrap_or(false) {
-                        best_thread = Some((idx, load));
-                    }
+        for (idx, thread) in threads.iter() {
+            let is_busy = thread.queue.queued_jobs() > 0;
+            if !is_busy {
+                let load = thread_plugins.get(idx).map(|s| s.len()).unwrap_or(0);
+                let is_better = best_thread
+                    .map(|(best_idx, best_load)| {
+                        load < best_load || (load == best_load && *idx < best_idx)
+                    })
+                    .unwrap_or(true);
+                if is_better {
+                    best_thread = Some((*idx, load));
                 }
             }
         }
 
         let thread_idx = if let Some((idx, _)) = best_thread {
             // Found a non-busy thread
-            idx
+            Some(idx)
         } else {
             // All threads are busy - need to expand
             if threads.len() < self.max_threads {
                 // Spawn a new thread
                 let new_idx = self.next_thread_idx.fetch_add(1, Ordering::SeqCst);
                 drop(threads); // Release lock before spawning
-                self.add_thread(new_idx);
-                new_idx
+                if self.add_thread(new_idx) {
+                    Some(new_idx)
+                } else {
+                    let threads = self.execution_threads.lock().unwrap();
+                    Self::least_loaded_thread(&threads, &thread_plugins)
+                }
             } else {
                 // At max capacity, assign to least-loaded thread
-                threads
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(idx, t)| t.as_ref().map(|_| idx))
-                    .min_by_key(|&idx| thread_plugins.get(&idx).map(|s| s.len()).unwrap_or(0))
-                    .unwrap_or_else(|| {
-                        log::error!("Failed to find free thread to run the plugin!");
-                        0 // this is a misconfiguration, but we don't want to crash the app
-                          // if it happens
-                    })
+                Self::least_loaded_thread(&threads, &thread_plugins)
             }
+        };
+        let Some(thread_idx) = thread_idx else {
+            log::error!("Failed to find or spawn a thread to run the plugin!");
+            return (0, false);
         };
 
         // Update mappings
@@ -201,28 +783,44 @@ impl PinnedExecutor {
             .or_insert_with(HashSet::new)
             .insert(plugin_id);
 
-        thread_idx
+        (thread_idx, true)
     }
 
-    fn add_thread(&self, thread_idx: usize) {
+    fn least_loaded_thread(
+        threads: &HashMap<usize, Arc<ExecutionThread>>,
+        thread_plugins: &HashMap<usize, HashSet<u32>>,
+    ) -> Option<usize> {
+        threads
+            .keys()
+            .min_by_key(|idx| {
+                (
+                    thread_plugins.get(*idx).map(|s| s.len()).unwrap_or(0),
+                    **idx,
+                )
+            })
+            .copied()
+    }
+
+    fn add_thread(&self, thread_idx: usize) -> bool {
         let mut threads = self.execution_threads.lock().unwrap();
-        let new_thread = Self::spawn_thread(
+        let Some(new_thread) = Self::spawn_thread(
             thread_idx,
             self.senders.clone(),
             self.plugin_map.clone(),
             self.connected_clients.clone(),
             self.plugin_cache.clone(),
             self.engine.clone(),
-        );
+            self.limits,
+        ) else {
+            return false;
+        };
 
-        // Extend vector if needed
-        while threads.len() <= thread_idx {
-            threads.push(None);
-        }
-        threads[thread_idx] = Some(new_thread);
+        threads.insert(thread_idx, Arc::new(new_thread));
+        true
     }
 
     /// Execute job pinned to plugin's assigned thread
+    #[cfg(test)]
     pub fn execute_for_plugin<F>(&self, plugin_id: u32, f: F)
     where
         F: FnOnce(
@@ -234,39 +832,43 @@ impl PinnedExecutor {
             ) + Send
             + 'static,
     {
-        // Look up assigned thread
-        let thread_idx = {
-            let assignments = self.plugin_assignments.lock().unwrap();
-            assignments.get(&plugin_id).copied()
-        };
-        let Some(thread_idx) = thread_idx else {
-            log::error!("Failed to find thread for plugin with id: {}", plugin_id);
-            return;
-        };
+        self.execute_for_plugin_with(plugin_id, JobClass::Ordered, 0, f);
+    }
 
-        // Get thread and mark as busy
-        let threads = self.execution_threads.lock().unwrap();
-        let thread = threads[thread_idx].as_ref();
-        let Some(thread) = thread else {
-            log::error!("Failed to find thread for plugin with id: {}", plugin_id);
-            return;
-        };
-
-        // Increment busy counter BEFORE sending work
-        thread.jobs_in_flight.fetch_add(1, Ordering::SeqCst);
-
-        // Send work
-        let job = Job::Work(Box::new(f));
-        if let Err(_) = thread.sender.send(job) {
-            // Thread died unexpectedly - this is a critical error
-            thread.jobs_in_flight.fetch_sub(1, Ordering::SeqCst);
-            log::error!("Plugin executor thread {} has died", thread_idx);
+    /// Execute work with an explicit admission class, logging a bounded
+    /// rejection instead of propagating it. Callers that must turn rejection
+    /// into a client-visible failure use [`Self::try_execute_for_plugin`].
+    pub fn execute_for_plugin_with<F>(
+        &self,
+        plugin_id: u32,
+        class: JobClass,
+        payload_bytes: usize,
+        f: F,
+    ) where
+        F: FnOnce(
+                ThreadSenders,
+                Arc<Mutex<PluginMap>>,
+                Arc<Mutex<Vec<ClientId>>>,
+                PluginCache,
+                Engine,
+            ) + Send
+            + 'static,
+    {
+        if let Err(e) = self.try_execute_for_plugin(plugin_id, class, payload_bytes, f) {
+            log::warn!("Plugin executor rejected work for {}: {}", plugin_id, e);
         }
     }
 
-    /// Load a plugin: register it and execute the load work on its assigned thread
-    /// This combines registration + execution for plugin loading
-    pub fn execute_plugin_load<F>(&self, plugin_id: u32, f: F)
+    /// Execute work with an explicit admission class and an estimate of the
+    /// captured payload's heap bytes. Admission never blocks and is resolved
+    /// before any worker starts the job.
+    pub fn try_execute_for_plugin<F>(
+        &self,
+        plugin_id: u32,
+        class: JobClass,
+        payload_bytes: usize,
+        f: F,
+    ) -> Result<(), JobRejection>
     where
         F: FnOnce(
                 ThreadSenders,
@@ -277,11 +879,163 @@ impl PinnedExecutor {
             ) + Send
             + 'static,
     {
-        // Register plugin and assign to a thread
-        self.register_plugin(plugin_id);
+        self.enqueue_work(plugin_id, class, payload_bytes, Box::new(f))
+            .map_err(|(rejection, _work)| rejection)
+    }
 
-        // Execute the load work on the assigned thread
-        self.execute_for_plugin(plugin_id, f);
+    /// Queue lifecycle work, or run it on the caller when the lifecycle queue
+    /// rejects it. Mandatory host cleanup uses this so a full queue cannot drop
+    /// the closure. The closure must not wait on guest execution.
+    pub fn submit_lifecycle_or_run<F>(&self, plugin_id: u32, f: F)
+    where
+        F: FnOnce(
+                ThreadSenders,
+                Arc<Mutex<PluginMap>>,
+                Arc<Mutex<Vec<ClientId>>>,
+                PluginCache,
+                Engine,
+            ) + Send
+            + 'static,
+    {
+        match self.enqueue_work(plugin_id, JobClass::Lifecycle, 0, Box::new(f)) {
+            Ok(()) => {},
+            Err((rejection, work)) => {
+                log::warn!(
+                    "Plugin {} lifecycle cleanup was rejected ({}); running it inline",
+                    plugin_id,
+                    rejection
+                );
+                self.run_work_inline(work);
+            },
+        }
+    }
+
+    fn enqueue_work(
+        &self,
+        plugin_id: u32,
+        class: JobClass,
+        payload_bytes: usize,
+        work: PluginWork,
+    ) -> Result<(), (JobRejection, PluginWork)> {
+        let thread = {
+            let assignments = self.plugin_assignments.lock().unwrap();
+            let Some(thread_idx) = assignments.get(&plugin_id).copied() else {
+                log::error!("Failed to find thread for plugin with id: {}", plugin_id);
+                return Err((JobRejection::OwnerNotRegistered, work));
+            };
+            drop(assignments);
+
+            let threads = self.execution_threads.lock().unwrap();
+            let Some(thread) = threads.get(&thread_idx).cloned() else {
+                log::error!("Failed to find thread for plugin with id: {}", plugin_id);
+                return Err((JobRejection::QueueClosed, work));
+            };
+            thread
+        };
+        thread.queue.enqueue(plugin_id, class, payload_bytes, work)
+    }
+
+    fn run_work_inline(&self, work: PluginWork) {
+        work(
+            self.senders.clone(),
+            self.plugin_map.clone(),
+            self.connected_clients.clone(),
+            self.plugin_cache.clone(),
+            self.engine.clone(),
+        );
+    }
+
+    /// Reserve lifecycle capacity and a queue position without supplying the
+    /// work yet. Callers use this before publishing the state the work will
+    /// consume, then commit or drop the reservation.
+    pub fn reserve_job(
+        &self,
+        plugin_id: u32,
+        class: JobClass,
+        payload_bytes: usize,
+    ) -> Result<JobReservation, JobRejection> {
+        if !matches!(class, JobClass::Lifecycle | JobClass::Retirement) {
+            return Err(JobRejection::BudgetExceeded);
+        }
+        let thread = {
+            let assignments = self.plugin_assignments.lock().unwrap();
+            let Some(thread_idx) = assignments.get(&plugin_id).copied() else {
+                return Err(JobRejection::OwnerNotRegistered);
+            };
+            drop(assignments);
+
+            let threads = self.execution_threads.lock().unwrap();
+            let Some(thread) = threads.get(&thread_idx).cloned() else {
+                return Err(JobRejection::QueueClosed);
+            };
+            thread
+        };
+        thread.queue.reserve(plugin_id, class, payload_bytes)
+    }
+
+    /// Register an owner and reserve its load before the caller publishes any
+    /// pending-load state. Dropping an uncommitted reservation also removes an
+    /// assignment created by this reservation.
+    pub fn reserve_plugin_load(
+        self: &Arc<Self>,
+        plugin_id: u32,
+        payload_bytes: usize,
+    ) -> Result<PluginLoadReservation, JobRejection> {
+        let (_, newly_registered) = self.register_plugin_inner(plugin_id);
+        match self.reserve_job(plugin_id, JobClass::Lifecycle, payload_bytes) {
+            Ok(reservation) => Ok(PluginLoadReservation {
+                reservation: Some(reservation),
+                executor: self.clone(),
+                plugin_id,
+                newly_registered,
+            }),
+            Err(e) => {
+                if newly_registered {
+                    self.unregister_plugin(plugin_id);
+                }
+                Err(e)
+            },
+        }
+    }
+
+    /// Load a plugin: register it and execute the load work on its assigned thread
+    /// This combines registration + execution for plugin loading
+    #[cfg(test)]
+    pub fn execute_plugin_load<F>(self: &Arc<Self>, plugin_id: u32, f: F)
+    where
+        F: FnOnce(
+                ThreadSenders,
+                Arc<Mutex<PluginMap>>,
+                Arc<Mutex<Vec<ClientId>>>,
+                PluginCache,
+                Engine,
+            ) + Send
+            + 'static,
+    {
+        let _ = self.execute_plugin_load_with_payload(plugin_id, 0, f);
+    }
+
+    /// Execute plugin load work while accounting for the bytes it captures
+    /// (typically the module image).
+    pub fn execute_plugin_load_with_payload<F>(
+        self: &Arc<Self>,
+        plugin_id: u32,
+        payload_bytes: usize,
+        f: F,
+    ) -> Result<(), JobRejection>
+    where
+        F: FnOnce(
+                ThreadSenders,
+                Arc<Mutex<PluginMap>>,
+                Arc<Mutex<Vec<ClientId>>>,
+                PluginCache,
+                Engine,
+            ) + Send
+            + 'static,
+    {
+        let reservation = self.reserve_plugin_load(plugin_id, payload_bytes)?;
+        reservation.commit(Box::new(f));
+        Ok(())
     }
 
     /// Unload a plugin: execute cleanup work, then unregister and potentially shrink pool
@@ -298,18 +1052,69 @@ impl PinnedExecutor {
                 Engine,
             ) + Send
             + 'static,
-    ) {
+    ) -> Result<(), JobRejection> {
+        self.execute_plugin_unload_many(plugin_id, vec![Box::new(f)])
+    }
+
+    /// Unload a plugin family: run every cleanup job on the plugin's pinned
+    /// thread, then retire its executor assignment exactly once.
+    ///
+    /// A plugin can own several client instances that all share one executor
+    /// assignment. Submitting a separate unload per instance lets the first
+    /// job's unregistration drop later submissions before their cleanup runs;
+    /// batching them into a single job keeps every cleanup ahead of the one
+    /// retirement.
+    pub fn execute_plugin_unload_many(
+        self: &Arc<Self>,
+        plugin_id: u32,
+        cleanups: Vec<PluginWork>,
+    ) -> Result<(), JobRejection> {
+        if cleanups.is_empty() && !self.is_registered(plugin_id) {
+            // nothing to run and nothing to retire
+            return Ok(());
+        }
         let executor = self.clone();
-        self.execute_for_plugin(
-            plugin_id,
+        let work: PluginWork = Box::new(
             move |senders, plugin_map, connected_clients, plugin_cache, engine| {
                 // Execute the cleanup work
-                f(senders, plugin_map, connected_clients, plugin_cache, engine);
+                for cleanup in cleanups {
+                    cleanup(
+                        senders.clone(),
+                        plugin_map.clone(),
+                        connected_clients.clone(),
+                        plugin_cache.clone(),
+                        engine.clone(),
+                    );
+                }
 
                 // Unregister plugin and potentially shrink the pool
                 executor.unregister_plugin(plugin_id);
             },
         );
+        match self.enqueue_work(plugin_id, JobClass::Retirement, 0, work) {
+            Ok(()) => Ok(()),
+            Err((rejection, work)) => {
+                // Retirement headroom is exhausted (or the queue is gone).
+                // Dropping `work` would skip host cleanup after ownership
+                // records were already removed. Run it on the caller instead.
+                // That closure must not wait on the guest execution mutex.
+                log::warn!(
+                    "Plugin {} retirement was rejected ({}); running host cleanup inline",
+                    plugin_id,
+                    rejection
+                );
+                self.run_work_inline(work);
+                Ok(())
+            },
+        }
+    }
+
+    pub fn is_registered(&self, plugin_id: u32) -> bool {
+        self.plugin_assignments
+            .lock()
+            // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+            .unwrap()
+            .contains_key(&plugin_id)
     }
 
     /// Unregister a plugin and potentially shrink the pool
@@ -332,59 +1137,74 @@ impl PinnedExecutor {
     }
 
     fn try_shrink_pool(&self) {
+        let mut thread_plugins = self.thread_plugins.lock().unwrap();
         let mut threads = self.execution_threads.lock().unwrap();
-        let thread_plugins = self.thread_plugins.lock().unwrap();
 
         // Find threads with no assigned plugins (except thread 0, always keep it)
         let threads_to_remove: Vec<usize> = threads
-            .iter()
-            .enumerate()
-            .skip(1) // Never remove thread 0
-            .filter_map(|(idx, thread_opt)| {
-                if thread_opt.is_some() {
-                    let has_plugins = thread_plugins
-                        .get(&idx)
+            .keys()
+            .copied()
+            .filter(|idx| {
+                *idx != 0
+                    && !thread_plugins
+                        .get(idx)
                         .map(|s| !s.is_empty())
-                        .unwrap_or(false);
-                    if !has_plugins {
-                        Some(idx)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
+                        .unwrap_or(false)
             })
             .collect();
 
         // Shutdown and remove idle threads
         for idx in threads_to_remove {
-            if let Some(thread) = threads[idx].take() {
-                let _ = thread.sender.send(Job::Shutdown);
+            if let Some(thread) = threads.remove(&idx) {
+                thread.queue.request_shutdown();
+                thread_plugins.remove(&idx);
             }
         }
     }
 
     #[cfg(test)]
     pub fn thread_count(&self) -> usize {
+        self.execution_threads.lock().unwrap().len()
+    }
+
+    #[cfg(test)]
+    pub fn queued_jobs(&self) -> usize {
         self.execution_threads
             .lock()
             .unwrap()
-            .iter()
-            .filter(|t| t.is_some())
-            .count()
+            .values()
+            .map(|thread| thread.queue.queued_jobs())
+            .sum()
+    }
+
+    #[cfg(test)]
+    pub fn queued_bytes(&self) -> usize {
+        self.execution_threads
+            .lock()
+            .unwrap()
+            .values()
+            .map(|thread| thread.queue.queued_bytes())
+            .sum()
+    }
+
+    #[cfg(test)]
+    pub fn owner_queued_jobs(&self, owner: u32) -> usize {
+        self.execution_threads
+            .lock()
+            .unwrap()
+            .values()
+            .map(|thread| thread.queue.owner_queued_jobs(owner))
+            .sum()
     }
 }
 
 impl Drop for PinnedExecutor {
     fn drop(&mut self) {
-        let mut threads = self.execution_threads.lock().unwrap();
+        let threads = self.execution_threads.lock().unwrap();
 
-        // Send shutdown to all threads
-        for thread_opt in threads.iter_mut() {
-            if let Some(thread) = thread_opt {
-                let _ = thread.sender.send(Job::Shutdown);
-            }
+        // Ask every worker to drain its admitted work and then exit.
+        for thread in threads.values() {
+            thread.queue.request_shutdown();
         }
     }
 }
@@ -430,7 +1250,7 @@ mod tests {
             to_screen: Some(to_screen),
             to_plugin: Some(to_plugin),
             to_server: Some(to_server),
-            to_pty_writer: Some(to_pty_writer),
+            to_pty_writer: Some(crate::thread_bus::PtyWriteSender::new(to_pty_writer, None)),
             to_background_jobs: Some(to_background_jobs),
             should_silently_fail: false,
         };
@@ -438,9 +1258,10 @@ mod tests {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients = Arc::new(Mutex::new(vec![]));
 
-        let plugin_cache = Arc::new(Mutex::new(
-            std::collections::HashMap::<PathBuf, Module>::new(),
-        ));
+        let plugin_cache = Arc::new(Mutex::new(std::collections::HashMap::<
+            PathBuf,
+            (String, Module),
+        >::new()));
 
         let engine = Engine::default();
 
@@ -448,15 +1269,48 @@ mod tests {
     }
 
     fn create_test_executor(max_threads: usize) -> Arc<PinnedExecutor> {
+        create_test_executor_with_limits(max_threads, QueueLimits::default())
+    }
+
+    fn create_test_executor_with_limits(
+        max_threads: usize,
+        limits: QueueLimits,
+    ) -> Arc<PinnedExecutor> {
         let (senders, plugin_map, clients, cache, engine) = create_test_dependencies();
-        Arc::new(PinnedExecutor::new(
+        Arc::new(PinnedExecutor::new_with_limits(
             max_threads,
             &senders,
             &plugin_map,
             &clients,
             &cache,
             &engine,
+            limits,
         ))
+    }
+
+    fn small_test_limits() -> QueueLimits {
+        QueueLimits {
+            max_jobs_per_thread: 8,
+            max_bytes_per_thread: 2048,
+            max_jobs_per_owner: 4,
+            max_bytes_per_owner: 1024,
+            reserved_jobs_per_thread: 1,
+            reserved_bytes_per_thread: 128,
+            reserved_retirement_jobs_per_thread: 1,
+            reserved_retirement_bytes_per_thread: 128,
+            job_base_bytes: 32,
+        }
+    }
+
+    fn wait_for<F: Fn() -> bool>(condition: F) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !condition() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "condition was not met before the test deadline"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
     }
 
     // Helper to create a job that signals completion via channel
@@ -550,6 +1404,51 @@ mod tests {
         assert_eq!(executor.thread_count(), 2);
 
         // Release barrier
+        barrier.wait();
+    }
+
+    #[test]
+    fn test_pool_expands_after_retired_thread_slots() {
+        let executor = create_test_executor(2);
+        executor.register_plugin(1);
+
+        let barrier = Arc::new(Barrier::new(2));
+        let barrier_clone = barrier.clone();
+        executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
+            barrier_clone.wait();
+        });
+        thread::sleep(Duration::from_millis(50));
+
+        assert_eq!(executor.register_plugin(2), 1);
+        let (tx_unload, rx_unload) = channel();
+        let _ = executor.execute_plugin_unload(2, make_signaling_job(tx_unload));
+        rx_unload
+            .recv_timeout(Duration::from_secs(5))
+            .expect("Unload should complete");
+        thread::sleep(Duration::from_millis(100));
+        assert_eq!(executor.thread_count(), 1);
+        assert!(
+            !executor.thread_plugins.lock().unwrap().contains_key(&1),
+            "retired worker bookkeeping must be removed"
+        );
+
+        barrier.wait();
+        thread::sleep(Duration::from_millis(50));
+
+        let barrier = Arc::new(Barrier::new(2));
+        let barrier_clone = barrier.clone();
+        executor.execute_for_plugin(1, move |_s, _p, _c, _ca, _e| {
+            barrier_clone.wait();
+        });
+        thread::sleep(Duration::from_millis(50));
+
+        assert_ne!(
+            executor.register_plugin(3),
+            0,
+            "A retired slot must not prevent the pool from expanding"
+        );
+        assert_eq!(executor.thread_count(), 2);
+
         barrier.wait();
     }
 
@@ -805,7 +1704,7 @@ mod tests {
         let counter_clone = counter.clone();
         let (tx_unload, rx_unload) = channel();
 
-        executor.execute_plugin_unload(1, move |_s, _p, _c, _ca, _e| {
+        let _ = executor.execute_plugin_unload(1, move |_s, _p, _c, _ca, _e| {
             counter_clone.fetch_add(1, Ordering::SeqCst);
             tx_unload.send(()).unwrap();
         });
@@ -827,6 +1726,80 @@ mod tests {
     }
 
     #[test]
+    fn test_unload_many_runs_every_cleanup_before_single_retirement() {
+        // A plugin that was instantiated once per connected client shares one
+        // executor assignment; its unload must run every instance's cleanup
+        // and retire the assignment exactly once.
+        let executor = create_test_executor(2);
+        executor.register_plugin(1);
+        executor.register_plugin(2);
+
+        let cleanup_count = 3;
+        let (tx, rx) = channel();
+        let cleanups: Vec<PluginWork> = (0..cleanup_count)
+            .map(|_| {
+                let tx = tx.clone();
+                let job = move |_s, _p, _c, _ca, _e| {
+                    tx.send(()).unwrap();
+                };
+                Box::new(job) as PluginWork
+            })
+            .collect();
+
+        let _ = executor.execute_plugin_unload_many(1, cleanups);
+
+        for _ in 0..cleanup_count {
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("Every instance cleanup must run before retirement");
+        }
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while executor.plugin_assignments.lock().unwrap().contains_key(&1) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Assignment was not retired"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        // The sibling plugin's assignment and thread survive the retirement
+        assert!(executor.plugin_assignments.lock().unwrap().contains_key(&2));
+        let (tx2, rx2) = channel();
+        executor.execute_for_plugin(2, make_signaling_job(tx2));
+        rx2.recv_timeout(Duration::from_secs(5))
+            .expect("Sibling plugin must remain schedulable");
+
+        // The retired plugin id can be registered again
+        executor.register_plugin(1);
+        let (tx3, rx3) = channel();
+        executor.execute_for_plugin(1, make_signaling_job(tx3));
+        rx3.recv_timeout(Duration::from_secs(5))
+            .expect("Re-registered plugin must remain schedulable");
+    }
+
+    #[test]
+    fn test_unload_without_cleanups_still_retires_the_assignment() {
+        // A plugin whose initialization failed has no instance left to clean up
+        // but still holds an assignment.
+        let executor = create_test_executor(2);
+        executor.register_plugin(1);
+        let _ = executor.execute_plugin_unload_many(1, vec![]);
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while executor.is_registered(1) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Assignment was not retired"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        // Unloading an id that is not registered has nothing to run or retire
+        let _ = executor.execute_plugin_unload_many(1, vec![]);
+        assert!(!executor.is_registered(1));
+    }
+
+    #[test]
     fn test_unload_sequence_is_correct() {
         let executor = create_test_executor(4);
 
@@ -842,7 +1815,7 @@ mod tests {
         let sequence_clone = sequence.clone();
         let (tx_unload, rx_unload) = channel();
 
-        executor.execute_plugin_unload(1, move |_s, _p, _c, _ca, _e| {
+        let _ = executor.execute_plugin_unload(1, move |_s, _p, _c, _ca, _e| {
             sequence_clone.lock().unwrap().push("cleanup");
             tx_unload.send(()).unwrap();
         });
@@ -889,7 +1862,7 @@ mod tests {
 
         // Unload plugin 2
         let (tx_unload2, rx_unload2) = channel();
-        executor.execute_plugin_unload(2, make_signaling_job(tx_unload2));
+        let _ = executor.execute_plugin_unload(2, make_signaling_job(tx_unload2));
         rx_unload2
             .recv_timeout(Duration::from_secs(5))
             .expect("Unload should complete");
@@ -918,7 +1891,7 @@ mod tests {
             .expect("Load should complete");
 
         let (tx_unload, rx_unload) = channel();
-        executor.execute_plugin_unload(1, make_signaling_job(tx_unload));
+        let _ = executor.execute_plugin_unload(1, make_signaling_job(tx_unload));
         rx_unload
             .recv_timeout(Duration::from_secs(5))
             .expect("Unload should complete");
@@ -967,7 +1940,7 @@ mod tests {
 
         // Unload plugin 2
         let (tx_unload, rx_unload) = channel();
-        executor.execute_plugin_unload(2, make_signaling_job(tx_unload));
+        let _ = executor.execute_plugin_unload(2, make_signaling_job(tx_unload));
         rx_unload
             .recv_timeout(Duration::from_secs(5))
             .expect("Unload should complete");
@@ -1019,7 +1992,7 @@ mod tests {
 
         // Unload plugin 2 (shrinks pool)
         let (tx_unload, rx_unload) = channel();
-        executor.execute_plugin_unload(2, make_signaling_job(tx_unload));
+        let _ = executor.execute_plugin_unload(2, make_signaling_job(tx_unload));
         rx_unload
             .recv_timeout(Duration::from_secs(5))
             .expect("Unload should complete");
@@ -1143,7 +2116,7 @@ mod tests {
 
         // Unload plugin 1
         let (tx2, rx2) = channel();
-        executor.execute_plugin_unload(1, make_signaling_job(tx2));
+        let _ = executor.execute_plugin_unload(1, make_signaling_job(tx2));
         rx2.recv_timeout(Duration::from_secs(5))
             .expect("Unload should complete");
 
@@ -1223,7 +2196,7 @@ mod tests {
         // Unload 3 plugins
         for i in 1..=3 {
             let tx_clone = tx.clone();
-            executor.execute_plugin_unload(i, make_signaling_job(tx_clone));
+            let _ = executor.execute_plugin_unload(i, make_signaling_job(tx_clone));
         }
 
         // Wait for unloads
@@ -1283,7 +2256,7 @@ mod tests {
 
         // Unload plugin 2
         let tx_clone = tx.clone();
-        executor.execute_plugin_unload(2, make_signaling_job(tx_clone));
+        let _ = executor.execute_plugin_unload(2, make_signaling_job(tx_clone));
         rx.recv_timeout(Duration::from_secs(5))
             .expect("Unload should complete");
 
@@ -1312,7 +2285,7 @@ mod tests {
         // Unload plugins 1, 3
         for i in &[1, 3] {
             let tx_clone = tx.clone();
-            executor.execute_plugin_unload(*i, make_signaling_job(tx_clone));
+            let _ = executor.execute_plugin_unload(*i, make_signaling_job(tx_clone));
         }
         for _ in 0..2 {
             rx.recv_timeout(Duration::from_secs(5))
@@ -1328,5 +2301,459 @@ mod tests {
         );
 
         drop(executor);
+    }
+
+    #[test]
+    fn a_slow_successful_callback_bounds_the_ordered_backlog() {
+        let limits = small_test_limits();
+        let executor = create_test_executor_with_limits(1, limits);
+        executor.register_plugin(1);
+
+        let (started_tx, started_rx) = channel();
+        let (release_tx, release_rx) = channel();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        let blocking_release = release_rx.clone();
+        executor
+            .try_execute_for_plugin(1, JobClass::Ordered, 0, move |_s, _p, _c, _ca, _e| {
+                started_tx.send(()).unwrap();
+                let _ = blocking_release.lock().unwrap().recv();
+            })
+            .expect("the blocking job must be admitted");
+        started_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the blocking job should start");
+
+        let executed = Arc::new(AtomicUsize::new(0));
+        let mut accepted = 0;
+        for _ in 0..100 {
+            let executed = executed.clone();
+            if executor
+                .try_execute_for_plugin(1, JobClass::Ordered, 128, move |_s, _p, _c, _ca, _e| {
+                    executed.fetch_add(1, Ordering::SeqCst);
+                })
+                .is_ok()
+            {
+                accepted += 1;
+            }
+        }
+
+        assert!(accepted > 0, "some ordered work should fit the budget");
+        assert!(
+            accepted < 100,
+            "a blocked worker must not admit an unbounded ordered backlog"
+        );
+        assert!(executor.owner_queued_jobs(1) <= limits.max_jobs_per_owner);
+        assert!(executor.queued_jobs() <= limits.max_jobs_per_thread);
+        assert!(executor.queued_bytes() <= limits.max_bytes_per_thread);
+
+        release_tx.send(()).unwrap();
+        wait_for(|| executed.load(Ordering::SeqCst) == accepted && executor.queued_jobs() == 0);
+        assert_eq!(executed.load(Ordering::SeqCst), accepted);
+    }
+
+    #[test]
+    fn replaceable_state_coalesces_to_the_latest_payload() {
+        let executor = create_test_executor_with_limits(1, small_test_limits());
+        executor.register_plugin(1);
+
+        let (started_tx, started_rx) = channel();
+        let (release_tx, release_rx) = channel();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        let blocking_release = release_rx.clone();
+        executor
+            .try_execute_for_plugin(1, JobClass::Ordered, 0, move |_s, _p, _c, _ca, _e| {
+                started_tx.send(()).unwrap();
+                let _ = blocking_release.lock().unwrap().recv();
+            })
+            .expect("the blocking job must be admitted");
+        started_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the blocking job should start");
+
+        let executed = Arc::new(Mutex::new(Vec::new()));
+        for value in 0..50u32 {
+            let executed = executed.clone();
+            executor
+                .try_execute_for_plugin(
+                    1,
+                    JobClass::Replaceable(7),
+                    32,
+                    move |_s, _p, _c, _ca, _e| executed.lock().unwrap().push(value),
+                )
+                .expect("replaceable state should coalesce instead of growing");
+        }
+
+        assert_eq!(
+            executor.owner_queued_jobs(1),
+            2,
+            "only the blocked job and one pending replaceable slot should remain"
+        );
+
+        release_tx.send(()).unwrap();
+        wait_for(|| executor.queued_jobs() == 0);
+        assert_eq!(*executed.lock().unwrap(), vec![49]);
+    }
+
+    #[test]
+    fn coalescing_does_not_reorder_replaceable_state_past_ordered_work() {
+        let executor = create_test_executor_with_limits(1, small_test_limits());
+        executor.register_plugin(1);
+
+        let (started_tx, started_rx) = channel();
+        let (release_tx, release_rx) = channel();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        let blocking_release = release_rx.clone();
+        executor
+            .try_execute_for_plugin(1, JobClass::Ordered, 0, move |_s, _p, _c, _ca, _e| {
+                started_tx.send(()).unwrap();
+                let _ = blocking_release.lock().unwrap().recv();
+            })
+            .expect("the blocking job must be admitted");
+        started_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the blocking job should start");
+
+        let executed = Arc::new(Mutex::new(Vec::new()));
+        let push = |executed: &Arc<Mutex<Vec<&'static str>>>, value| {
+            let executed = executed.clone();
+            move |_s: ThreadSenders,
+                  _p: Arc<Mutex<PluginMap>>,
+                  _c: Arc<Mutex<Vec<ClientId>>>,
+                  _ca: PluginCache,
+                  _e: Engine| executed.lock().unwrap().push(value)
+        };
+        executor
+            .try_execute_for_plugin(1, JobClass::Replaceable(1), 32, push(&executed, "state-a"))
+            .unwrap();
+        executor
+            .try_execute_for_plugin(1, JobClass::Ordered, 32, push(&executed, "event"))
+            .unwrap();
+        executor
+            .try_execute_for_plugin(1, JobClass::Replaceable(1), 32, push(&executed, "state-b"))
+            .unwrap();
+
+        release_tx.send(()).unwrap();
+        wait_for(|| executor.queued_jobs() == 0);
+        assert_eq!(
+            *executed.lock().unwrap(),
+            vec!["state-a", "event", "state-b"]
+        );
+    }
+
+    #[test]
+    fn a_reserved_lifecycle_job_is_a_coalescing_barrier() {
+        let executor = create_test_executor_with_limits(1, small_test_limits());
+        executor.register_plugin(1);
+
+        let (started_tx, started_rx) = channel();
+        let (release_tx, release_rx) = channel();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        let blocking_release = release_rx.clone();
+        executor
+            .try_execute_for_plugin(1, JobClass::Ordered, 0, move |_s, _p, _c, _ca, _e| {
+                started_tx.send(()).unwrap();
+                let _ = blocking_release.lock().unwrap().recv();
+            })
+            .unwrap();
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
+        let executed = Arc::new(Mutex::new(Vec::new()));
+        let push = |executed: &Arc<Mutex<Vec<&'static str>>>, value| {
+            let executed = executed.clone();
+            move |_s: ThreadSenders,
+                  _p: Arc<Mutex<PluginMap>>,
+                  _c: Arc<Mutex<Vec<ClientId>>>,
+                  _ca: PluginCache,
+                  _e: Engine| executed.lock().unwrap().push(value)
+        };
+        executor
+            .try_execute_for_plugin(1, JobClass::Replaceable(1), 32, push(&executed, "before"))
+            .unwrap();
+        let reservation = executor
+            .reserve_job(1, JobClass::Lifecycle, 0)
+            .expect("the reserved lifecycle job must be admitted");
+        executor
+            .try_execute_for_plugin(1, JobClass::Replaceable(1), 32, push(&executed, "after"))
+            .unwrap();
+        reservation.commit(Box::new(push(&executed, "reserved")));
+
+        release_tx.send(()).unwrap();
+        wait_for(|| executor.queued_jobs() == 0);
+        assert_eq!(
+            *executed.lock().unwrap(),
+            vec!["before", "reserved", "after"]
+        );
+    }
+
+    #[test]
+    fn replaceable_keys_with_different_destinations_both_execute() {
+        let executor = create_test_executor_with_limits(1, small_test_limits());
+        executor.register_plugin(1);
+
+        let (started_tx, started_rx) = channel();
+        let (release_tx, release_rx) = channel();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        let blocking_release = release_rx.clone();
+        executor
+            .try_execute_for_plugin(1, JobClass::Ordered, 0, move |_s, _p, _c, _ca, _e| {
+                started_tx.send(()).unwrap();
+                let _ = blocking_release.lock().unwrap().recv();
+            })
+            .unwrap();
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
+        let executed = Arc::new(Mutex::new(Vec::new()));
+        let push = |executed: &Arc<Mutex<Vec<&'static str>>>, value| {
+            let executed = executed.clone();
+            move |_s: ThreadSenders,
+                  _p: Arc<Mutex<PluginMap>>,
+                  _c: Arc<Mutex<Vec<ClientId>>>,
+                  _ca: PluginCache,
+                  _e: Engine| executed.lock().unwrap().push(value)
+        };
+        executor
+            .try_execute_for_plugin(
+                1,
+                JobClass::Replaceable(0x0200_0000_0000_000b),
+                32,
+                push(&executed, "client-11"),
+            )
+            .unwrap();
+        executor
+            .try_execute_for_plugin(
+                1,
+                JobClass::Replaceable(0x0200_0000_0000_000c),
+                32,
+                push(&executed, "client-12"),
+            )
+            .unwrap();
+
+        release_tx.send(()).unwrap();
+        wait_for(|| executor.queued_jobs() == 0);
+        assert_eq!(
+            *executed.lock().unwrap(),
+            vec!["client-11", "client-12"],
+            "different destinations must not replace one another"
+        );
+    }
+
+    #[test]
+    fn replaceable_keys_from_different_generations_both_execute() {
+        let executor = create_test_executor_with_limits(1, small_test_limits());
+        executor.register_plugin(1);
+
+        let (started_tx, started_rx) = channel();
+        let (release_tx, release_rx) = channel();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        let blocking_release = release_rx.clone();
+        executor
+            .try_execute_for_plugin(1, JobClass::Ordered, 0, move |_s, _p, _c, _ca, _e| {
+                started_tx.send(()).unwrap();
+                let _ = blocking_release.lock().unwrap().recv();
+            })
+            .unwrap();
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
+        let executed = Arc::new(Mutex::new(Vec::new()));
+        let push = |executed: &Arc<Mutex<Vec<&'static str>>>, value| {
+            let executed = executed.clone();
+            move |_s: ThreadSenders,
+                  _p: Arc<Mutex<PluginMap>>,
+                  _c: Arc<Mutex<Vec<ClientId>>>,
+                  _ca: PluginCache,
+                  _e: Engine| executed.lock().unwrap().push(value)
+        };
+        executor
+            .try_execute_for_plugin(
+                1,
+                JobClass::Replaceable(0x0200_0001_0000_000b),
+                32,
+                push(&executed, "generation-1"),
+            )
+            .unwrap();
+        executor
+            .try_execute_for_plugin(
+                1,
+                JobClass::Replaceable(0x0200_0002_0000_000b),
+                32,
+                push(&executed, "generation-2"),
+            )
+            .unwrap();
+
+        release_tx.send(()).unwrap();
+        wait_for(|| executor.queued_jobs() == 0);
+        assert_eq!(
+            *executed.lock().unwrap(),
+            vec!["generation-1", "generation-2"]
+        );
+    }
+
+    #[test]
+    fn unavailable_or_missing_workers_return_a_load_admission_error() {
+        let executor = create_test_executor(1);
+        assert!(matches!(
+            executor.reserve_job(42, JobClass::Lifecycle, 0),
+            Err(JobRejection::OwnerNotRegistered)
+        ));
+        assert!(!executor.is_registered(42));
+
+        executor.register_plugin(1);
+        executor.execution_threads.lock().unwrap().clear();
+        assert!(matches!(
+            executor.reserve_plugin_load(1, 0),
+            Err(JobRejection::QueueClosed)
+        ));
+    }
+
+    #[test]
+    fn retirement_rejection_still_settles_the_plugin_assignment() {
+        let executor = create_test_executor_with_limits(1, small_test_limits());
+        executor.register_plugin(1);
+        executor.register_plugin(2);
+
+        let (started_tx, started_rx) = channel();
+        let (release_tx, release_rx) = channel();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        let blocking_release = release_rx.clone();
+        executor
+            .try_execute_for_plugin(1, JobClass::Ordered, 0, move |_s, _p, _c, _ca, _e| {
+                started_tx.send(()).unwrap();
+                let _ = blocking_release.lock().unwrap().recv();
+            })
+            .unwrap();
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
+        for _ in 0..7 {
+            executor
+                .try_execute_for_plugin(2, JobClass::Lifecycle, 0, |_s, _p, _c, _ca, _e| {})
+                .expect("lifecycle headroom should be available");
+        }
+        executor
+            .try_execute_for_plugin(2, JobClass::Retirement, 0, |_s, _p, _c, _ca, _e| {})
+            .expect("retirement headroom should be available");
+
+        let (cleanup_tx, cleanup_rx) = channel();
+        let result = executor.execute_plugin_unload_many(
+            1,
+            vec![Box::new(move |_s, _p, _c, _ca, _e| {
+                cleanup_tx.send(()).unwrap();
+            })],
+        );
+        assert!(
+            result.is_ok(),
+            "a rejected retirement must still run host cleanup, got {result:?}"
+        );
+        assert!(
+            !executor.is_registered(1),
+            "a rejected retirement must still settle its assignment"
+        );
+        cleanup_rx
+            .try_recv()
+            .expect("rejected retirement must invoke the cleanup closure inline");
+
+        release_tx.send(()).unwrap();
+        wait_for(|| executor.queued_jobs() == 0);
+    }
+
+    #[test]
+    fn rejected_lifecycle_submit_still_runs_retirement_cleanup() {
+        let executor = create_test_executor_with_limits(1, small_test_limits());
+        executor.register_plugin(1);
+        executor.register_plugin(2);
+
+        let (started_tx, started_rx) = channel();
+        let (release_tx, release_rx) = channel();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        let blocking_release = release_rx.clone();
+        executor
+            .try_execute_for_plugin(1, JobClass::Ordered, 0, move |_s, _p, _c, _ca, _e| {
+                started_tx.send(()).unwrap();
+                let _ = blocking_release.lock().unwrap().recv();
+            })
+            .unwrap();
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
+        let mut rejected_lifecycle = false;
+        for _ in 0..64 {
+            if executor
+                .try_execute_for_plugin(2, JobClass::Lifecycle, 0, |_s, _p, _c, _ca, _e| {})
+                .is_err()
+            {
+                rejected_lifecycle = true;
+                break;
+            }
+        }
+        assert!(
+            rejected_lifecycle,
+            "the lifecycle queue must be full before the mandatory cleanup"
+        );
+
+        let ran = Arc::new(AtomicUsize::new(0));
+        let ran_in_cleanup = ran.clone();
+        executor.submit_lifecycle_or_run(2, move |_s, _p, _c, _ca, _e| {
+            ran_in_cleanup.fetch_add(1, Ordering::SeqCst);
+        });
+        assert_eq!(
+            ran.load(Ordering::SeqCst),
+            1,
+            "a rejected lifecycle submit must run the mandatory cleanup on the caller"
+        );
+        assert!(
+            !on_plugin_executor(),
+            "inline cleanup must not pretend to be the guest executor"
+        );
+
+        release_tx.send(()).unwrap();
+        wait_for(|| executor.queued_jobs() == 0);
+    }
+
+    #[test]
+    fn lifecycle_work_is_admitted_and_retires_while_a_host_call_blocks() {
+        let limits = small_test_limits();
+        let executor = create_test_executor_with_limits(1, limits);
+        executor.register_plugin(1);
+
+        let (started_tx, started_rx) = channel();
+        let (release_tx, release_rx) = channel();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        let blocking_release = release_rx.clone();
+        executor
+            .try_execute_for_plugin(1, JobClass::Ordered, 0, move |_s, _p, _c, _ca, _e| {
+                started_tx.send(()).unwrap();
+                let _ = blocking_release.lock().unwrap().recv();
+            })
+            .expect("the blocking job must be admitted");
+        started_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the blocking job should start");
+
+        let mut rejected_ordered_work = false;
+        for _ in 0..100 {
+            if executor
+                .try_execute_for_plugin(1, JobClass::Ordered, 128, |_s, _p, _c, _ca, _e| {})
+                .is_err()
+            {
+                rejected_ordered_work = true;
+                break;
+            }
+        }
+        assert!(
+            rejected_ordered_work,
+            "the ordered backlog should be saturated before testing reserved capacity"
+        );
+
+        let (cleanup_tx, cleanup_rx) = channel();
+        let _ = executor.execute_plugin_unload_many(
+            1,
+            vec![Box::new(move |_s, _p, _c, _ca, _e| {
+                cleanup_tx.send(()).unwrap();
+            })],
+        );
+
+        release_tx.send(()).unwrap();
+        cleanup_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("retirement work must use reserved capacity");
+        wait_for(|| !executor.is_registered(1));
     }
 }

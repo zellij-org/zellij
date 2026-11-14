@@ -8,8 +8,44 @@ use std::fmt::Debug;
 use zellij_utils::input::actions::SearchDirection;
 use zellij_utils::position::Position;
 
+/// A search that has moved the viewport and still has history to scan.
+/// One turn moves at most [`crate::panes::grid::SCREEN_ROW_QUANTUM`] rows.
+#[derive(Clone)]
+pub(crate) struct PendingSearch {
+    dir: SearchDirection,
+    phase: SearchPhase,
+    rows: isize,
+    origin: Option<Selection>,
+    /// The direction to try if this scan finishes without a hit.
+    fallback: Option<SearchDirection>,
+}
+
+#[derive(Clone, Copy)]
+enum SearchPhase {
+    /// Walking toward a hit from the current viewport.
+    Move,
+    /// Putting the viewport back after a scan that found nothing.
+    Undo,
+    /// Wrapped search is moving to the opposite end.
+    GoToEnd,
+    /// Wrapped to the opposite end and is walking back.
+    WrapBack,
+}
+
 fn is_word_boundary(x: &Option<char>) -> bool {
     x.map_or(true, |c| !c.is_alphanumeric() && c != '_')
+}
+
+/// Last displayed character of a physical row. Soft-wrapped rows do not store
+/// the previous row's text, so a whole-word check at the row start uses this.
+/// Trailing blanks are compressed out of `columns` but still occupy cells;
+/// the character a following row continues from is that space. A hard line
+/// break is not a character: callers pass `None` for a canonical row.
+fn row_last_char(row: &Row) -> Option<char> {
+    if row.stored_cell_count() > row.columns.len() {
+        return Some(' ');
+    }
+    row.columns.last().map(|cell| cell.last_char())
 }
 
 struct HaystackCell {
@@ -19,29 +55,107 @@ struct HaystackCell {
     width: usize,
 }
 
+struct HaystackRow {
+    byte_start: usize,
+    byte_end: usize,
+}
+
 struct Haystack {
     text: String,
     cells: Vec<HaystackCell>,
+    row: HaystackRow,
+    folded: Option<FoldedText>,
 }
 
 impl Haystack {
-    fn new(ridx: usize, row: &Row, tail: &[&Row]) -> Self {
+    /// Materialize `first` plus just enough continuation rows for a match that
+    /// starts in `first` to finish and see one boundary character after it.
+    fn new<'a>(
+        ridx: usize,
+        first: &Row,
+        below: impl Iterator<Item = (usize, &'a Row)>,
+        needle_len: usize,
+        case_insensitive: bool,
+    ) -> Self {
         let mut text = String::new();
         let mut cells = Vec::new();
-        for (offset, current) in std::iter::once(row).chain(tail.iter().copied()).enumerate() {
+        let mut folded = case_insensitive.then(FoldedTextBuilder::default);
+        let push_row = |text: &mut String,
+                        cells: &mut Vec<HaystackCell>,
+                        folded: &mut Option<FoldedTextBuilder>,
+                        row_offset: usize,
+                        current: &Row| {
             let mut column = 0;
             for cell in &current.columns {
                 cells.push(HaystackCell {
                     byte_start: text.len(),
-                    row: ridx + offset,
+                    row: ridx + row_offset,
                     column,
                     width: cell.width(),
                 });
-                cell.push_text_to(&mut text);
+                let cell_start = text.len();
+                cell.push_text_to(text);
+                if let Some(folded) = folded.as_mut() {
+                    for (offset, c) in text[cell_start..].char_indices() {
+                        folded.push_char(cell_start + offset, c);
+                    }
+                }
                 column += cell.width();
             }
+        };
+        push_row(&mut text, &mut cells, &mut folded, 0, first);
+        let row = HaystackRow {
+            byte_start: 0,
+            byte_end: text.len(),
+        };
+        let measure_len = |text: &String, folded: &Option<FoldedTextBuilder>| {
+            folded
+                .as_ref()
+                .map_or(text.len(), |folded| folded.text.len())
+        };
+        let target = measure_len(&text, &folded).saturating_add(needle_len);
+        let mut rows_pushed = 1;
+        let mut below = below;
+        let mut line_ended = false;
+        while measure_len(&text, &folded) < target {
+            match below.next() {
+                Some((row_offset, row)) if !row.is_canonical => {
+                    push_row(&mut text, &mut cells, &mut folded, row_offset, row);
+                    rows_pushed += 1;
+                },
+                _ => {
+                    line_ended = true;
+                    break;
+                },
+            }
         }
-        Haystack { text, cells }
+        // A match can end exactly at `target`; keep one following character
+        // when the logical line continues so boundary checks see real context.
+        if !line_ended && measure_len(&text, &folded) == target {
+            if let Some((row_offset, row)) = below.next().filter(|(_, row)| !row.is_canonical) {
+                push_row(&mut text, &mut cells, &mut folded, row_offset, row);
+                rows_pushed += 1;
+            }
+        }
+        #[cfg(test)]
+        SEARCH_WORK.with(|counter| {
+            let work = counter.get();
+            counter.set(SearchWork {
+                windows: work.windows + 1,
+                rows: work.rows + rows_pushed,
+                cells: work.cells + cells.len(),
+                bytes: work.bytes + text.len(),
+            });
+        });
+        #[cfg(not(test))]
+        let _ = rows_pushed;
+        let original_len = text.len();
+        Haystack {
+            text,
+            cells,
+            row,
+            folded: folded.map(|folded| folded.finish(original_len)),
+        }
     }
 
     fn cell_containing(&self, byte_offset: usize) -> Option<&HaystackCell> {
@@ -53,36 +167,124 @@ impl Haystack {
     }
 }
 
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct SearchWork {
+    pub windows: usize,
+    pub rows: usize,
+    pub cells: usize,
+    pub bytes: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    static SEARCH_WORK: std::cell::Cell<SearchWork> = std::cell::Cell::new(SearchWork {
+        windows: 0,
+        rows: 0,
+        cells: 0,
+        bytes: 0,
+    });
+}
+
+#[cfg(test)]
+pub(crate) fn search_work() -> SearchWork {
+    SEARCH_WORK.with(|work| work.get())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_search_work() {
+    SEARCH_WORK.with(|work| work.set(SearchWork::default()));
+}
+
+/// The rows of the logical line that starts at `index`: the row itself plus
+/// the non-canonical rows that continue it.
+fn viewport_line<'a>(viewport: &'a VecDeque<Row>, index: usize) -> Vec<&'a Row> {
+    let mut rows = Vec::new();
+    for (offset, row) in viewport.iter().skip(index).enumerate() {
+        if offset > 0 && row.is_canonical {
+            break;
+        }
+        rows.push(row);
+    }
+    rows
+}
+
+/// Whole-word predecessor at the start of a logical line. A canonical row is
+/// a hard break (`None`). A soft wrap uses the last character of the previous
+/// physical row: `row_above` at viewport index 0, otherwise the previous
+/// viewport row.
+fn leading_predecessor<'a>(
+    rows: &[&Row],
+    index: usize,
+    viewport: &'a VecDeque<Row>,
+    row_above: Option<&'a Row>,
+) -> Option<char> {
+    if !rows.first().is_some_and(|row| !row.is_canonical) {
+        return None;
+    }
+    let previous = if index == 0 {
+        row_above
+    } else {
+        viewport.get(index - 1)
+    };
+    previous.and_then(row_last_char)
+}
+
 struct FoldedText {
     text: String,
     original_starts: Vec<(usize, usize)>,
 }
 
-impl FoldedText {
-    fn new(original: &str) -> Self {
-        let mut text = String::with_capacity(original.len());
-        let mut original_starts = Vec::with_capacity(original.len() + 1);
-        for (offset, c) in original.char_indices() {
-            original_starts.push((text.len(), offset));
-            text.extend(c.to_lowercase());
-        }
-        original_starts.push((text.len(), original.len()));
-        FoldedText {
-            text,
-            original_starts,
-        }
+#[derive(Default)]
+struct FoldedTextBuilder {
+    text: String,
+    original_starts: Vec<(usize, usize)>,
+}
+
+impl FoldedTextBuilder {
+    fn push_char(&mut self, original_offset: usize, c: char) {
+        self.original_starts
+            .push((self.text.len(), original_offset));
+        self.text.extend(c.to_lowercase());
     }
 
+    fn finish(mut self, original_len: usize) -> FoldedText {
+        self.original_starts.push((self.text.len(), original_len));
+        FoldedText {
+            text: self.text,
+            original_starts: self.original_starts,
+        }
+    }
+}
+
+impl FoldedText {
     fn original_offset(&self, folded_offset: usize) -> Option<usize> {
         self.original_starts
             .binary_search_by_key(&folded_offset, |(folded, _)| *folded)
             .ok()
             .map(|index| self.original_starts[index].1)
     }
+
+    /// The offset in the folded text of a char boundary in the original text.
+    fn offset_of_original(&self, original_offset: usize) -> Option<usize> {
+        self.original_starts
+            .binary_search_by_key(&original_offset, |(_, original)| *original)
+            .ok()
+            .map(|index| self.original_starts[index].0)
+    }
 }
 
 fn fold_case(text: &str) -> String {
     text.chars().flat_map(|c| c.to_lowercase()).collect()
+}
+
+/// Round `offset` up to the next char boundary, clamped to `text.len()`.
+fn ceil_char_boundary(text: &str, offset: usize) -> usize {
+    let mut offset = offset.min(text.len());
+    while offset < text.len() && !text.is_char_boundary(offset) {
+        offset += 1;
+    }
+    offset
 }
 
 #[derive(Debug, Clone, Default)]
@@ -147,33 +349,56 @@ impl SearchResult {
         self.wrap_search || self.whole_word_only || self.case_insensitive
     }
 
-    fn find_matches_in(&self, haystack: &Haystack) -> Vec<(usize, usize)> {
-        let original = haystack.text.as_str();
+    /// Find the matches that start in one row of a haystack.
+    ///
+    /// The row is matched as if it were the first row of its own haystack: a
+    /// match must start before the row ends, and non-overlapping matching
+    /// restarts at the row start. That start is a grapheme boundary. It is a
+    /// word boundary only for a hard line break. `predecessor` is the last
+    /// character of the previous physical row when this row continues it.
+    /// Matches may extend past the row into the rows below it.
+    fn find_matches_in_row(
+        &self,
+        original: &str,
+        row: &HaystackRow,
+        search_text: &str,
+        folded: Option<&FoldedText>,
+        needle: &str,
+        predecessor: Option<char>,
+    ) -> Vec<(usize, usize)> {
         let mut found = Vec::new();
-        let folded;
-        let folded_needle;
-        let (search_text, needle) = if self.case_insensitive {
-            folded = FoldedText::new(original);
-            folded_needle = fold_case(&self.needle);
-            (folded.text.as_str(), folded_needle.as_str())
-        } else {
-            folded = FoldedText {
-                text: String::new(),
-                original_starts: Vec::new(),
-            };
-            (original, self.needle.as_str())
-        };
         if needle.is_empty() {
             return found;
         }
-        let mut position = 0;
-        while position <= search_text.len() {
-            let Some(relative) = search_text[position..].find(needle) else {
+        let (search_start, search_end) = match folded {
+            Some(folded) => match (
+                folded.offset_of_original(row.byte_start),
+                folded.offset_of_original(row.byte_end),
+            ) {
+                (Some(start), Some(end)) => (start, end),
+                _ => return found,
+            },
+            None => (row.byte_start, row.byte_end),
+        };
+        // The match may start in this row and continue below it, so the window
+        // extends by up to a needle's length past the row boundary.
+        let window_end = ceil_char_boundary(
+            search_text,
+            search_text
+                .len()
+                .min(search_end.saturating_add(needle.len().saturating_sub(1))),
+        );
+        let mut position = search_start;
+        while position < search_end && position <= window_end {
+            let Some(relative) = search_text[position..window_end].find(needle) else {
                 break;
             };
             let start = position + relative;
+            if start >= search_end {
+                break;
+            }
             let end = start + needle.len();
-            let original_range = if self.case_insensitive {
+            let original_range = if let Some(folded) = folded {
                 folded
                     .original_offset(start)
                     .zip(folded.original_offset(end))
@@ -181,7 +406,13 @@ impl SearchResult {
                 Some((start, end))
             };
             let accepted = original_range.filter(|(original_start, original_end)| {
-                self.accepts_match(original, *original_start, *original_end)
+                self.accepts_match(
+                    original,
+                    *original_start,
+                    *original_end,
+                    row.byte_start,
+                    predecessor,
+                )
             });
             match accepted {
                 Some(range) => {
@@ -201,16 +432,31 @@ impl SearchResult {
         found
     }
 
-    fn accepts_match(&self, text: &str, start: usize, end: usize) -> bool {
+    fn accepts_match(
+        &self,
+        text: &str,
+        start: usize,
+        end: usize,
+        row_start: usize,
+        predecessor: Option<char>,
+    ) -> bool {
         if start >= end {
             return false;
         }
-        if !grapheme_join::is_boundary_at(text, start) || !grapheme_join::is_boundary_at(text, end)
-        {
+        if start != row_start && !grapheme_join::is_boundary_at(text, start) {
+            return false;
+        }
+        if !grapheme_join::is_boundary_at(text, end) {
             return false;
         }
         if self.whole_word_only {
-            let before = text[..start].chars().next_back();
+            // `predecessor` is set only for a soft wrap. A hard break passes
+            // none, which stays a word boundary.
+            let before = if start == row_start {
+                predecessor
+            } else {
+                text[..start].chars().next_back()
+            };
             let after = text[end..].chars().next();
             if !is_word_boundary(&before) || !is_word_boundary(&after) {
                 return false;
@@ -219,24 +465,97 @@ impl SearchResult {
         true
     }
 
-    /// Search a row and its tail.
-    /// The tail are all the non-canonical lines below `row`, with `row` not necessarily being canonical itself.
-    pub(crate) fn search_row(&self, ridx: usize, row: &Row, tail: &[&Row]) -> Vec<Selection> {
+    /// Search the rows of one logical line, materializing one bounded window
+    /// per starting row instead of the whole continuation tail.
+    #[cfg(test)]
+    pub(crate) fn search_rows(&self, ridx: usize, rows: &[&Row]) -> Vec<Selection> {
+        self.search_line(ridx, rows, None)
+    }
+
+    /// Search one logical line. `leading_predecessor` is the last character
+    /// before `rows[0]` when that row is a soft wrap from outside the slice.
+    fn search_line(
+        &self,
+        ridx: usize,
+        rows: &[&Row],
+        leading_predecessor: Option<char>,
+    ) -> Vec<Selection> {
+        let mut res = Vec::new();
+        if self.needle.is_empty() || rows.is_empty() {
+            return res;
+        }
+        // Empty rows contribute no searchable text. Index the content rows
+        // once so a long blank continuation tail is never walked per starting
+        // row.
+        let content_rows: Vec<usize> = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| !row.columns.is_empty())
+            .map(|(index, _)| index)
+            .collect();
+        let mut next_content_row = 0;
+        for (offset, row) in rows.iter().enumerate() {
+            if row.columns.is_empty() {
+                continue;
+            }
+            while next_content_row < content_rows.len() && content_rows[next_content_row] <= offset
+            {
+                next_content_row += 1;
+            }
+            let below = content_rows[next_content_row..]
+                .iter()
+                .copied()
+                .map(move |index| (index - offset, rows[index]))
+                .take_while(|(_, row)| !row.is_canonical);
+            let predecessor = if row.is_canonical {
+                None
+            } else if offset == 0 {
+                leading_predecessor
+            } else {
+                rows.get(offset - 1).copied().and_then(row_last_char)
+            };
+            res.extend(self.search_starting_row(ridx + offset, row, below, predecessor));
+        }
+        res
+    }
+
+    pub(crate) fn search_starting_row<'a>(
+        &self,
+        ridx: usize,
+        row: &Row,
+        below: impl Iterator<Item = (usize, &'a Row)>,
+        predecessor: Option<char>,
+    ) -> Vec<Selection> {
         let mut res = Vec::new();
         if self.needle.is_empty() || row.columns.is_empty() {
             return res;
         }
-        let haystack = Haystack::new(ridx, row, tail);
-        for (start, end) in self.find_matches_in(&haystack) {
+        let folded_needle = self.case_insensitive.then(|| fold_case(&self.needle));
+        let needle_len = folded_needle
+            .as_ref()
+            .map_or(self.needle.len(), |needle| needle.len());
+        let haystack = Haystack::new(ridx, row, below, needle_len, self.case_insensitive);
+        if haystack.text.is_empty() {
+            return res;
+        }
+        let (search_text, needle) = match (&haystack.folded, &folded_needle) {
+            (Some(folded), Some(needle)) => (folded.text.as_str(), needle.as_str()),
+            _ => (haystack.text.as_str(), self.needle.as_str()),
+        };
+        for (start, end) in self.find_matches_in_row(
+            &haystack.text,
+            &haystack.row,
+            search_text,
+            haystack.folded.as_ref(),
+            needle,
+            predecessor,
+        ) {
             let (Some(first), Some(last)) = (
                 haystack.cell_containing(start),
                 haystack.cell_containing(end - 1),
             ) else {
                 continue;
             };
-            if first.row != ridx {
-                continue;
-            }
             let mut selection = Selection::default();
             selection.start(Position::new(first.row as i32, first.column as u16));
             selection.end(Position::new(
@@ -246,6 +565,22 @@ impl SearchResult {
             res.push(selection);
         }
         res
+    }
+
+    /// Search a row and its tail.
+    /// The tail are all the non-canonical lines below `row`, with `row` not necessarily being canonical itself.
+    #[cfg(test)]
+    pub(crate) fn search_row(&self, ridx: usize, row: &Row, tail: &[&Row]) -> Vec<Selection> {
+        self.search_starting_row(
+            ridx,
+            row,
+            tail.iter()
+                .copied()
+                .enumerate()
+                .map(|(offset, row)| (offset + 1, row))
+                .take_while(|(_, row)| !row.is_canonical),
+            None,
+        )
     }
 
     pub(crate) fn move_active_selection_to_next(&mut self) {
@@ -283,10 +618,15 @@ impl SearchResult {
         }
     }
 
+    /// Shift existing hits down and search the row newly revealed at the top.
+    /// `row_above` is the physical row just above the viewport. It is consulted
+    /// only when that revealed row is a soft wrap; a canonical row is a hard
+    /// break and has no predecessor character.
     pub(crate) fn move_down(
         &mut self,
         amount: usize,
         viewport: &VecDeque<Row>,
+        row_above: Option<&Row>,
         grid_height: usize,
     ) -> bool {
         let mut found_something = false;
@@ -299,32 +639,38 @@ impl SearchResult {
         self.adjust_selections_to_moved_viewport(grid_height);
 
         // Search the new line for our needle
-        if !self.needle.is_empty() {
-            if let Some(row) = viewport.front() {
-                let mut tail = Vec::new();
-                loop {
-                    let tail_idx = 1 + tail.len();
-                    if tail_idx < viewport.len() && !viewport[tail_idx].is_canonical {
-                        tail.push(&viewport[tail_idx]);
-                    } else {
-                        break;
-                    }
-                }
-                let selections = self.search_row(0, row, &tail);
-                for selection in selections.iter().rev() {
-                    self.selections.insert(0, *selection);
-                    found_something = true;
-                }
-            }
+        if self.needle.is_empty() || viewport.is_empty() {
+            return found_something;
         }
+        let rows = viewport_line(viewport, 0);
+        let predecessor = leading_predecessor(&rows, 0, viewport, row_above);
+        let selections = self.search_starting_row(
+            0,
+            rows[0],
+            rows.iter()
+                .copied()
+                .enumerate()
+                .skip(1)
+                .map(|(offset, row)| (offset, row)),
+            predecessor,
+        );
+        found_something = !selections.is_empty();
+        // One splice keeps search order. Inserting each hit at 0 is the same
+        // order only when walked backwards, and shifts the retained hits once
+        // per new match.
+        self.selections.splice(0..0, selections);
         found_something
     }
 
+    /// Shift existing hits up and search the row newly revealed at the bottom.
+    /// `row_above` is the predecessor when that row is viewport index 0 and a
+    /// soft wrap (the only on-screen row continued from scrollback).
     pub(crate) fn move_up(
         &mut self,
         amount: usize,
         viewport: &VecDeque<Row>,
         lines_below: &VecDeque<Row>,
+        row_above: Option<&Row>,
         grid_height: usize,
     ) -> bool {
         let mut found_something = false;
@@ -336,20 +682,112 @@ impl SearchResult {
         self.adjust_selections_to_moved_viewport(grid_height);
 
         // Search the new line for our needle
-        if !self.needle.is_empty() {
-            if let Some(row) = viewport.back() {
-                let tail: Vec<&Row> = lines_below.iter().take_while(|r| !r.is_canonical).collect();
-                let selections = self.search_row(viewport.len() - 1, row, &tail);
-                for selection in selections {
-                    // We are only interested in results that start in the this new row
-                    if selection.start.line() as usize == viewport.len() - 1 {
-                        self.selections.push(selection);
-                        found_something = true;
-                    }
-                }
-            }
+        if self.needle.is_empty() {
+            return found_something;
         }
+        let Some(row) = viewport.back() else {
+            return found_something;
+        };
+        let below = lines_below
+            .iter()
+            .take_while(|row| !row.is_canonical)
+            .enumerate()
+            .map(|(offset, row)| (offset + 1, row));
+        let row_index = viewport.len() - 1;
+        let predecessor = {
+            let rows = [row];
+            leading_predecessor(&rows, row_index, viewport, row_above)
+        };
+        let selections = self.search_starting_row(row_index, row, below, predecessor);
+        found_something = !selections.is_empty();
+        self.selections.extend(selections);
         found_something
+    }
+
+    /// `move_down` for a viewport that jumped `amount` rows in one transfer.
+    /// Existing hits shift by the whole distance; only lines still on screen
+    /// are searched, at their final indexes. `row_above` is the physical row
+    /// just above the viewport, used when a revealed line is a soft wrap.
+    pub(crate) fn move_down_rows(
+        &mut self,
+        amount: usize,
+        viewport: &VecDeque<Row>,
+        row_above: Option<&Row>,
+        grid_height: usize,
+    ) {
+        if amount == 0 {
+            return;
+        }
+        self.selections
+            .iter_mut()
+            .chain(self.active.iter_mut())
+            .for_each(|selection| selection.move_down(amount));
+        self.adjust_selections_to_moved_viewport(grid_height);
+        if self.needle.is_empty() || viewport.is_empty() {
+            return;
+        }
+        let visible_new = amount.min(viewport.len());
+        let mut new_selections = Vec::new();
+        let mut index = 0;
+        while index < visible_new {
+            let rows = viewport_line(viewport, index);
+            let line_len = rows.len();
+            new_selections.extend(
+                self.search_line(
+                    index,
+                    &rows,
+                    leading_predecessor(&rows, index, viewport, row_above),
+                )
+                .into_iter()
+                .filter(|selection| (selection.start.line() as usize) < visible_new),
+            );
+            index += line_len;
+        }
+        self.selections.splice(0..0, new_selections);
+    }
+
+    /// `move_up` for a viewport that jumped `amount` rows in one transfer.
+    /// `row_above` is the soft-wrap predecessor of viewport index 0.
+    pub(crate) fn move_up_rows(
+        &mut self,
+        amount: usize,
+        viewport: &VecDeque<Row>,
+        lines_below: &VecDeque<Row>,
+        row_above: Option<&Row>,
+        grid_height: usize,
+    ) {
+        if amount == 0 {
+            return;
+        }
+        self.selections
+            .iter_mut()
+            .chain(self.active.iter_mut())
+            .for_each(|selection| selection.move_up(amount));
+        self.adjust_selections_to_moved_viewport(grid_height);
+        if self.needle.is_empty() || viewport.is_empty() {
+            return;
+        }
+        let start = viewport.len().saturating_sub(amount);
+        let mut index = start;
+        while index < viewport.len() {
+            let row = &viewport[index];
+            let predecessor = {
+                let rows = [row];
+                leading_predecessor(&rows, index, viewport, row_above)
+            };
+            // Join the physical rows first. A hard newline in the viewport
+            // must end the logical line before `lines_below` is considered.
+            let below = viewport
+                .iter()
+                .skip(index + 1)
+                .chain(lines_below.iter())
+                .take_while(|row| !row.is_canonical)
+                .enumerate()
+                .map(|(offset, row)| (offset + 1, row));
+            self.selections
+                .extend(self.search_starting_row(index, row, below, predecessor));
+            index += 1;
+        }
     }
 
     fn adjust_selections_to_moved_viewport(&mut self, grid_height: usize) {
@@ -363,14 +801,32 @@ impl SearchResult {
 
 impl Grid {
     pub fn search_down(&mut self) {
+        self.pending_search = None;
         self.search_scrollbuffer(SearchDirection::Down);
     }
 
     pub fn search_up(&mut self) {
+        self.pending_search = None;
         self.search_scrollbuffer(SearchDirection::Up);
     }
 
+    /// Continue a search that stopped at the row quantum. Returns true
+    /// when more viewport movement is still queued.
+    pub(crate) fn continue_pending_search(&mut self) -> bool {
+        let Some(pending) = self.pending_search.clone() else {
+            return false;
+        };
+        self.search_scrollbuffer(pending.dir);
+        if self.pending_search.is_none() && self.search_results.selections.is_empty() {
+            if let Some(fallback) = pending.fallback {
+                self.search_scrollbuffer(fallback);
+            }
+        }
+        self.pending_search.is_some()
+    }
+
     pub fn clear_search(&mut self) {
+        self.pending_search = None;
         // Clearing all previous highlights
         for res in &self.search_results.selections {
             self.output_buffer
@@ -380,16 +836,20 @@ impl Grid {
     }
 
     pub fn set_search_string(&mut self, needle: &str) {
+        self.pending_search = None;
         self.search_results.needle = needle.to_string();
         self.search_viewport();
         // If the current viewport does not contain any hits,
         // we jump around until we find something. Starting
         // going backwards.
         if self.search_results.selections.is_empty() {
-            self.search_up();
-        }
-        if self.search_results.selections.is_empty() {
-            self.search_down();
+            self.search_scrollbuffer(SearchDirection::Up);
+            if self.search_results.selections.is_empty() {
+                match self.pending_search.as_mut() {
+                    Some(pending) => pending.fallback = Some(SearchDirection::Down),
+                    None => self.search_scrollbuffer(SearchDirection::Down),
+                }
+            }
         }
         // We still don't want to pre-select anything at this stage
         self.search_results.active = None;
@@ -397,31 +857,27 @@ impl Grid {
     }
 
     pub fn search_viewport(&mut self) {
-        for ridx in 0..self.viewport.len() {
-            let row = &self.viewport[ridx];
-            let mut tail = Vec::new();
-            loop {
-                let tail_idx = ridx + tail.len() + 1;
-                if tail_idx < self.viewport.len() && !self.viewport[tail_idx].is_canonical {
-                    tail.push(&self.viewport[tail_idx]);
-                } else {
-                    break;
-                }
-            }
-            let selections = self.search_results.search_row(ridx, row, &tail);
+        let mut index = 0;
+        while index < self.viewport.len() {
+            let rows = viewport_line(&self.viewport, index);
+            let line_len = rows.len();
+            let leading_predecessor =
+                leading_predecessor(&rows, index, &self.viewport, self.lines_above.back());
+            let selections = self
+                .search_results
+                .search_line(index, &rows, leading_predecessor);
             for sel in &selections {
                 // Cast works because we can' be negative here
                 self.output_buffer
                     .update_lines(sel.start.line() as usize, sel.end.line() as usize);
             }
-
-            for selection in selections {
-                self.search_results.selections.push(selection);
-            }
+            self.search_results.selections.extend(selections);
+            index += line_len;
         }
     }
 
     pub fn toggle_search_case_sensitivity(&mut self) {
+        self.pending_search = None;
         self.search_results.case_insensitive = !self.search_results.case_insensitive;
         for line in self.search_results.selections.drain(..) {
             self.output_buffer
@@ -437,6 +893,7 @@ impl Grid {
     }
 
     pub fn toggle_search_whole_words(&mut self) {
+        self.pending_search = None;
         self.search_results.whole_word_only = !self.search_results.whole_word_only;
         for line in self.search_results.selections.drain(..) {
             self.output_buffer
@@ -449,6 +906,25 @@ impl Grid {
     }
 
     fn search_scrollbuffer(&mut self, dir: SearchDirection) {
+        if let Some(pending) = self.pending_search.clone() {
+            match pending.phase {
+                SearchPhase::Move | SearchPhase::Undo => {
+                    match self.search_viewport_move(pending.dir) {
+                        None => return,
+                        Some(found_something) => {
+                            if !found_something && self.search_results.wrap_search {
+                                self.search_viewport_wrap(pending.dir);
+                            }
+                            return;
+                        },
+                    }
+                },
+                SearchPhase::GoToEnd | SearchPhase::WrapBack => {
+                    self.search_viewport_wrap(pending.dir);
+                    return;
+                },
+            }
+        }
         let first_sel = self.search_results.selections.first();
         let last_sel = self.search_results.selections.last();
 
@@ -467,12 +943,15 @@ impl Grid {
             // We can stay in the viewport and just move the active selection
             self.search_viewport_again(search_viewport_for_the_first_time, dir);
         } else {
-            // Need to move the viewport
-            let found_something = self.search_viewport_move(dir);
-
-            // We haven't found anything, but we are allowed to wrap around
-            if !found_something && self.search_results.wrap_search {
-                self.search_viewport_wrap(dir);
+            // Need to move the viewport. `None` means this turn hit the
+            // row quantum; the search stays pending and must not wrap yet.
+            match self.search_viewport_move(dir) {
+                None => {},
+                Some(found_something) => {
+                    if !found_something && self.search_results.wrap_search {
+                        self.search_viewport_wrap(dir);
+                    }
+                },
             }
         }
     }
@@ -482,9 +961,12 @@ impl Grid {
         search_viewport_for_the_first_time: bool,
         dir: SearchDirection,
     ) {
-        let new_active = match dir {
-            SearchDirection::Up => self.search_results.selections.last().cloned().unwrap(),
-            SearchDirection::Down => self.search_results.selections.first().cloned().unwrap(),
+        // Caller only invokes when selections is non-empty.
+        let Some(new_active) = (match dir {
+            SearchDirection::Up => self.search_results.selections.last().cloned(),
+            SearchDirection::Down => self.search_results.selections.first().cloned(),
+        }) else {
+            return;
         };
         // We can stay in the viewport and just move the active selection
         let active_idx = self.search_results.active.get_or_insert(new_active);
@@ -513,34 +995,88 @@ impl Grid {
         }
     }
 
-    fn search_viewport_move(&mut self, dir: SearchDirection) -> bool {
-        // We need to move the viewport
-        let mut rows = 0;
+    pub(super) fn search_viewport_move(&mut self, dir: SearchDirection) -> Option<bool> {
+        // We need to move the viewport. `None` means the row quantum was
+        // spent before the scan finished.
+        if let Some(pending) = self.pending_search.clone() {
+            if pending.dir == dir && matches!(pending.phase, SearchPhase::Undo) {
+                return self.undo_search_move(dir, pending.rows, pending.origin, pending.fallback);
+            }
+        }
+        let resume = self
+            .pending_search
+            .clone()
+            .filter(|pending| pending.dir == dir && matches!(pending.phase, SearchPhase::Move));
+        let mut rows = resume.as_ref().map(|pending| pending.rows).unwrap_or(0);
+        let fallback = resume.as_ref().and_then(|pending| pending.fallback);
         let mut found_something = false;
 
         // We might loose the current selection, if we can't find anything
-        let current_active_selection = self.search_results.active;
+        let current_active_selection = resume
+            .as_ref()
+            .map(|pending| pending.origin)
+            .unwrap_or(self.search_results.active);
+        let mut stepped = 0isize;
         while !found_something && !self.search_reached_opposite_end(dir) {
-            rows += 1;
-            found_something = match dir {
-                SearchDirection::Up => self.scroll_up_one_line(),
-                SearchDirection::Down => self.scroll_down_one_line(),
-            };
-        }
-
-        if found_something {
-            self.search_adjust_to_new_selection(dir);
-        } else {
-            // We didn't find something, so we scroll back to the start
-            for _ in 0..rows {
-                match dir {
-                    SearchDirection::Up => self.scroll_down_one_line(),
-                    SearchDirection::Down => self.scroll_up_one_line(),
-                };
+            if stepped >= crate::panes::grid::SCREEN_ROW_QUANTUM as isize {
+                self.pending_search = Some(PendingSearch {
+                    dir,
+                    phase: SearchPhase::Move,
+                    rows,
+                    origin: current_active_selection,
+                    fallback,
+                });
+                return None;
             }
-            self.search_results.active = current_active_selection;
+            let scroll_result = match dir {
+                SearchDirection::Up => self.scroll_up_one_line_with_progress(),
+                SearchDirection::Down => self.scroll_down_one_line_with_progress(),
+            };
+            if !scroll_result.moved {
+                break;
+            }
+            rows += 1;
+            stepped += 1;
+            found_something = scroll_result.found_something;
         }
-        found_something
+        if found_something {
+            self.pending_search = None;
+            self.search_adjust_to_new_selection(dir);
+            return Some(true);
+        }
+        self.undo_search_move(dir, rows, current_active_selection, fallback)
+    }
+
+    fn undo_search_move(
+        &mut self,
+        dir: SearchDirection,
+        rows_left: isize,
+        origin: Option<Selection>,
+        fallback: Option<SearchDirection>,
+    ) -> Option<bool> {
+        // Scroll back in bulk quanta. A scan that crossed the whole
+        // history must not undo it one line at a time in this turn.
+        if rows_left > 0 {
+            let step = (rows_left as usize).min(crate::panes::grid::SCREEN_ROW_QUANTUM);
+            let moved = match dir {
+                SearchDirection::Up => self.scroll_down_rows(step),
+                SearchDirection::Down => self.scroll_up_rows(step),
+            };
+            let remaining = rows_left.saturating_sub(moved as isize);
+            if remaining > 0 && moved > 0 {
+                self.pending_search = Some(PendingSearch {
+                    dir,
+                    phase: SearchPhase::Undo,
+                    rows: remaining,
+                    origin,
+                    fallback,
+                });
+                return None;
+            }
+        }
+        self.pending_search = None;
+        self.search_results.active = origin;
+        Some(false)
     }
 
     fn search_adjust_to_new_selection(&mut self, dir: SearchDirection) {
@@ -555,7 +1091,9 @@ impl Grid {
                     let distance = (last.end.line() - last.start.line()) as usize;
                     if distance < self.height {
                         for _ in 0..distance {
-                            self.scroll_down_one_line();
+                            if !self.scroll_down_one_line_with_progress().moved {
+                                break;
+                            }
                         }
                     }
                 }
@@ -567,10 +1105,35 @@ impl Grid {
 
     fn search_viewport_wrap(&mut self, dir: SearchDirection) {
         // We might loose the current selection, if we can't find anything
-        let current_active_selection = self.search_results.active;
+        let current_active_selection = self
+            .pending_search
+            .as_ref()
+            .filter(|pending| {
+                pending.dir == dir
+                    && matches!(pending.phase, SearchPhase::GoToEnd | SearchPhase::WrapBack)
+            })
+            .map(|pending| pending.origin)
+            .unwrap_or(self.search_results.active);
+        let resuming_walk = self.pending_search.as_ref().is_some_and(|pending| {
+            pending.dir == dir && matches!(pending.phase, SearchPhase::WrapBack)
+        });
+        let fallback = self
+            .pending_search
+            .as_ref()
+            .and_then(|pending| pending.fallback);
         // UP
         // Go to the opposite end (bottom when searching up and top when searching down)
-        let mut rows = self.move_viewport_to_opposite_end(dir);
+        let mut rows = if resuming_walk {
+            self.pending_search
+                .as_ref()
+                .map(|pending| pending.rows)
+                .unwrap_or(0)
+        } else {
+            match self.move_viewport_to_opposite_end(dir, current_active_selection) {
+                Some(rows) => rows,
+                None => return,
+            }
+        };
 
         // We are at the bottom or top. Maybe we found already something there
         // If not, scroll back again, until we find something
@@ -581,14 +1144,31 @@ impl Grid {
 
         // We didn't find anything at the opposing end of the scrollbuffer, so we scroll back until we find something
         if !found_something {
-            while rows >= 0 && !found_something {
+            let mut stepped = 0isize;
+            while rows > 0 && !found_something {
+                if stepped >= crate::panes::grid::SCREEN_ROW_QUANTUM as isize {
+                    self.pending_search = Some(PendingSearch {
+                        dir,
+                        phase: SearchPhase::WrapBack,
+                        rows,
+                        origin: current_active_selection,
+                        fallback,
+                    });
+                    return;
+                }
                 rows -= 1;
-                found_something = match dir {
-                    SearchDirection::Up => self.scroll_up_one_line(),
-                    SearchDirection::Down => self.scroll_down_one_line(),
+                stepped += 1;
+                let scroll_result = match dir {
+                    SearchDirection::Up => self.scroll_up_one_line_with_progress(),
+                    SearchDirection::Down => self.scroll_down_one_line_with_progress(),
                 };
+                if !scroll_result.moved {
+                    break;
+                }
+                found_something = scroll_result.found_something;
             }
         }
+        self.pending_search = None;
         if found_something {
             self.search_results.active = match dir {
                 SearchDirection::Up => self.search_results.selections.last().cloned(),
@@ -596,7 +1176,9 @@ impl Grid {
                     // We need to scroll until the found item is at the top
                     if let Some(first) = self.search_results.selections.first() {
                         for _ in 0..first.start.line() {
-                            self.scroll_down_one_line();
+                            if !self.scroll_down_one_line_with_progress().moved {
+                                break;
+                            }
                         }
                     }
                     self.search_results.selections.first().cloned()
@@ -609,24 +1191,52 @@ impl Grid {
         }
     }
 
-    fn move_viewport_to_opposite_end(&mut self, dir: SearchDirection) -> isize {
-        let mut rows = 0;
-        match dir {
-            SearchDirection::Up => {
-                // Go to the bottom
-                while !self.lines_below.is_empty() {
-                    rows += 1;
-                    self.scroll_down_one_line();
-                }
-            },
-            SearchDirection::Down => {
-                // Go to the top
-                while !self.lines_above.is_empty() {
-                    rows += 1;
-                    self.scroll_up_one_line();
-                }
-            },
+    fn move_viewport_to_opposite_end(
+        &mut self,
+        dir: SearchDirection,
+        origin: Option<Selection>,
+    ) -> Option<isize> {
+        let mut rows = self
+            .pending_search
+            .as_ref()
+            .filter(|pending| pending.dir == dir && matches!(pending.phase, SearchPhase::GoToEnd))
+            .map(|pending| pending.rows)
+            .unwrap_or(0);
+        let fallback = self
+            .pending_search
+            .as_ref()
+            .and_then(|pending| pending.fallback);
+        let mut stepped = 0usize;
+        loop {
+            let done = match dir {
+                SearchDirection::Up => self.lines_below.is_empty(),
+                SearchDirection::Down => self.lines_above.is_empty(),
+            };
+            if done {
+                self.pending_search = None;
+                return Some(rows);
+            }
+            if stepped >= crate::panes::grid::SCREEN_ROW_QUANTUM {
+                self.pending_search = Some(PendingSearch {
+                    dir,
+                    phase: SearchPhase::GoToEnd,
+                    rows,
+                    origin,
+                    fallback,
+                });
+                return None;
+            }
+            let budget = crate::panes::grid::SCREEN_ROW_QUANTUM - stepped;
+            let moved = match dir {
+                SearchDirection::Up => self.scroll_down_rows(budget),
+                SearchDirection::Down => self.scroll_up_rows(budget),
+            };
+            if moved == 0 {
+                self.pending_search = None;
+                return Some(rows);
+            }
+            rows += moved as isize;
+            stepped = stepped.saturating_add(moved);
         }
-        rows
     }
 }

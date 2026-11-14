@@ -44,5 +44,8 @@ Some(
                 stdout_message: None,
             },
         ),
+        Some(
+            0,
+        ),
     ),
 )

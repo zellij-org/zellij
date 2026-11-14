@@ -1,5 +1,6 @@
 use super::super::Grid;
 use crate::panes::grid::SixelImageStore;
+use crate::panes::kitty_graphics::store::KITTY_IMAGE_METADATA_BYTES;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::link_handler::LinkHandler;
 use crate::vt_parser;
@@ -61,6 +62,122 @@ fn row_from_str(content: &str) -> crate::panes::grid::Row {
 
 fn row_to_string(row: &crate::panes::grid::Row) -> String {
     row.columns.iter().map(|cell| cell.character).collect()
+}
+
+#[test]
+fn a_wide_character_in_a_one_column_row_does_not_create_an_empty_leading_row() {
+    use crate::panes::grid::Row;
+
+    let rows = Row::rewrap_rows(vec![row_from_str("你")], 1);
+
+    // the character is kept and its stored width is clipped to the pane, not replaced by blanks
+    assert!(rows.iter().all(|row| row.width() <= 1));
+    assert_eq!(rows.iter().map(row_to_string).collect::<String>(), "你");
+    assert_eq!(rows[0].columns[0].width(), 1);
+    assert_eq!(rows[0].columns[0].natural_width(), 2);
+    assert!(rows
+        .iter()
+        .all(|row| row.columns.iter().all(|cell| cell.character != ' ')));
+
+    let widened = Row::rewrap_rows(rows, 4);
+    assert_eq!(widened.len(), 1);
+    assert_eq!(row_to_string(&widened[0]), "你");
+    assert_eq!(widened[0].columns[0].width(), 2);
+    assert!(widened.iter().all(|row| row.width() <= 4));
+}
+
+#[test]
+fn blanking_a_wide_character_keeps_the_columns_of_the_osc133_markers() {
+    use crate::panes::grid::{Osc133MarkerKind, Row};
+
+    // the marker is at column 3: after the two columns of the wide character and the "X"
+    let mut row = row_from_str("你Xy");
+    row.add_osc133_marker(3, Osc133MarkerKind::Prompt);
+
+    let rows = Row::rewrap_rows(vec![row], 1);
+
+    assert!(rows.iter().all(|row| row.width() <= 1));
+    assert_eq!(rows.iter().map(row_to_string).collect::<String>(), "你Xy");
+    let marked: Vec<(usize, usize)> = rows
+        .iter()
+        .enumerate()
+        .flat_map(|(index, row)| row.osc133_markers.iter().map(move |m| (index, m.column)))
+        .collect();
+    // 你 clips from 2 columns to 1, so the marker shifts by -1 and stays just after "X"
+    assert_eq!(row_to_string(&rows[1]), "X");
+    assert_eq!(marked, vec![(1, 1)]);
+
+    let widened = Row::rewrap_rows(rows, 4);
+    assert_eq!(widened.len(), 1);
+    assert_eq!(row_to_string(&widened[0]), "你Xy");
+    assert_eq!(widened[0].columns[0].width(), 2);
+    assert!(widened[0].width() <= 4);
+    let marked: Vec<usize> = widened[0]
+        .osc133_markers
+        .iter()
+        .map(|marker| marker.column)
+        .collect();
+    assert_eq!(marked, vec![3]);
+}
+
+#[test]
+fn a_narrow_soft_wrapped_wide_character_regains_its_width() {
+    use crate::panes::grid::Row;
+
+    // one logical line, soft-wrapped at width 3: "你" (2) + "a" fill the first row, "b" the next
+    let wrapped = Row::rewrap_rows(vec![row_from_str("你ab")], 3);
+    assert_eq!(wrapped.len(), 2);
+    assert_eq!(row_to_string(&wrapped[0]), "你a");
+    assert_eq!(wrapped[0].columns[0].width(), 2);
+    assert_eq!(row_to_string(&wrapped[1]), "b");
+
+    let narrow = Row::rewrap_rows(wrapped, 1);
+    assert!(narrow.iter().all(|row| row.width() <= 1));
+    assert_eq!(narrow.iter().map(row_to_string).collect::<String>(), "你ab");
+    assert_eq!(narrow[0].columns[0].character, '你');
+    assert_eq!(narrow[0].columns[0].width(), 1);
+    assert_eq!(narrow[0].columns[0].natural_width(), 2);
+
+    let restored = Row::rewrap_rows(narrow, 3);
+    assert_eq!(restored.len(), 2);
+    assert_eq!(row_to_string(&restored[0]), "你a");
+    assert_eq!(restored[0].columns[0].width(), 2);
+    assert_eq!(row_to_string(&restored[1]), "b");
+    assert_eq!(
+        restored.iter().map(row_to_string).collect::<String>(),
+        "你ab"
+    );
+    assert!(restored.iter().all(|row| row.width() <= 3));
+}
+
+#[test]
+fn reflow_keeps_a_vs16_cluster_at_its_stored_width_unless_reflow_clipped_it() {
+    use crate::panes::grid::Row;
+    use crate::panes::terminal_character::TerminalCharacter;
+
+    let mut stored_narrow = TerminalCharacter::new_with_width('⚠', 1, Default::default());
+    assert!(stored_narrow.attach('\u{FE0F}'));
+    assert_eq!(stored_narrow.natural_width(), 2);
+    let wide = Row::rewrap_rows(vec![Row::from_columns(vec![stored_narrow])], 80);
+    assert_eq!(wide[0].columns[0].width(), 1);
+    let narrow = Row::rewrap_rows(wide, 1);
+    assert_eq!(narrow[0].columns[0].width(), 1);
+    let widened = Row::rewrap_rows(narrow, 80);
+    assert_eq!(widened[0].columns[0].width(), 1);
+
+    let mut keycap = TerminalCharacter::new_with_width('1', 1, Default::default());
+    assert!(keycap.attach('\u{FE0F}'));
+    assert!(keycap.attach('\u{20E3}'));
+    assert_eq!(keycap.natural_width(), 2);
+    let keycap = Row::rewrap_rows(vec![Row::from_columns(vec![keycap])], 80);
+    assert_eq!(keycap[0].columns[0].width(), 1);
+
+    let mut clipped = TerminalCharacter::new_with_width('⚠', 2, Default::default());
+    assert!(clipped.attach('\u{FE0F}'));
+    let narrow = Row::rewrap_rows(vec![Row::from_columns(vec![clipped])], 1);
+    assert_eq!(narrow[0].columns[0].width(), 1);
+    let widened = Row::rewrap_rows(narrow, 80);
+    assert_eq!(widened[0].columns[0].width(), 2);
 }
 
 #[test]
@@ -1920,7 +2037,6 @@ pub fn fish_select_tab_completion_options() {
     // changes.
     // this is not clearly seen in the snapshot because it does not include styles,
     // but we can see the command line change and the cursor staying in place
-    // terminal_emulator_color_codes,
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -1958,10 +2074,8 @@ pub fn vim_scroll_region_down() {
     // the region is defined here by vim as 1-26 (there are 28 rows)
     // then the cursor is moved to line 26 and a new line is added
     // what should happen is that the first line in the scroll region (1) is deleted
-    // terminal_emulator_color_codes,
     // and an empty line is inserted in the last scroll region line (26)
     // this tests also has other steps afterwards that fills the line with the next line in the
-    // sixel_image_store,
     // file
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -2000,7 +2114,6 @@ pub fn vim_ctrl_d() {
     // this case) lines inside the scroll region and push the other lines up
     // what happens here is that 13 lines are deleted and instead 13 empty lines are added at the
     // end of the scroll region
-    // terminal_emulator_color_codes,
     // vim makes sure to fill these empty lines with the rest of the file
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -2039,7 +2152,6 @@ pub fn vim_ctrl_u() {
     // this case) lines at the cursor, pushing away (deleting) the last line in the scroll region
     // this causes the effect of scrolling up X lines (vim replaces the lines with the ones in the
     // file above the current content)
-    // terminal_emulator_color_codes,
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -2173,10 +2285,8 @@ pub fn vim_overwrite() {
     // * open a file in vim
     // * open the same file in another window
     // * change the file in the other window and save
-    // terminal_emulator_color_codes,
     // * change the file in the original vim window and save
     // * confirm you would like to change the file by pressing 'y' and then ENTER
-    // sixel_image_store,
     // * if everything looks fine, this test passed :)
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -2504,13 +2614,9 @@ pub fn top_and_quit() {
 
 #[test]
 pub fn exa_plus_omf_theme() {
-    // this tests that we handle a tab delimited table properly
-    // without overriding the previous content
-    // this is a potential bug because the \t character is a goto
-    // if we forwarded it as is to the terminal, we would be skipping
-    // over existing on-screen content without deleting it, so we must
-    // terminal_emulator_color_codes,
-    // convert it to spaces
+    // A tab moves the cursor to the next stop. The skipped cells are
+    // filled with spaces, so a tab-delimited table does not leave the
+    // previous content in place.
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -2673,6 +2779,33 @@ pub fn scroll_down_with_line_wraps() {
     grid.scroll_up_one_line();
     grid.scroll_down_one_line();
     assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn scroll_progress_stops_when_viewport_height_is_invalid() {
+    let mut grid = create_grid_with_scrollback();
+    grid.scroll_up_one_line();
+    assert!(grid.is_scrolled);
+
+    grid.height += 1;
+
+    assert!(!grid.scroll_down_one_line_with_progress().moved);
+}
+
+#[test]
+fn search_stops_when_viewport_cannot_scroll() {
+    use zellij_utils::input::actions::SearchDirection;
+
+    let mut grid = create_grid_with_scrollback();
+    grid.scroll_up_one_line();
+    assert!(grid.is_scrolled);
+
+    grid.height += 1;
+
+    assert_eq!(
+        grid.search_viewport_move(SearchDirection::Down),
+        Some(false)
+    );
 }
 
 #[test]
@@ -2954,7 +3087,6 @@ pub fn full_screen_scroll_region_and_scroll_up() {
     // full viewport and then scrolling up would cause
     // lines to get deleted from the viewport rather
     // than moving to "lines_above"
-    // terminal_emulator_color_codes,
     let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -3286,17 +3418,11 @@ fn terminal_pixel_size_reports() {
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
     vte_parser.feed(&mut grid, &content);
-    // CSI 14t and CSI 16t are forwarded to the host; Zellij no longer
-    // synthesises local replies from character_cell_size for these.
-    assert!(grid.pending_messages_to_pty.is_empty());
-    use crate::host_query::HostQuery;
     assert_eq!(
-        grid.pending_forwarded_queries,
-        vec![
-            HostQuery::TextAreaPixelSize,
-            HostQuery::CharacterCellPixelSize
-        ],
+        grid.pending_messages_to_pty,
+        vec![b"\x1b[4;1071;776t".to_vec(), b"\x1b[6;21;8t".to_vec()],
     );
+    assert!(grid.pending_forwarded_queries.is_empty());
 }
 
 #[test]
@@ -3328,17 +3454,11 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
     vte_parser.feed(&mut grid, &content);
-    // Forwarding is independent of character_cell_size availability —
-    // the host terminal is authoritative for these queries regardless
-    // of what Zellij knows locally.
     assert!(grid.pending_messages_to_pty.is_empty());
     use crate::host_query::HostQuery;
     assert_eq!(
         grid.pending_forwarded_queries,
-        vec![
-            HostQuery::TextAreaPixelSize,
-            HostQuery::CharacterCellPixelSize
-        ],
+        vec![HostQuery::CharacterCellPixelSize],
     );
 }
 
@@ -3501,6 +3621,100 @@ pub fn sixel_images_are_reaped_when_resetting() {
         0,
         "all images were deleted from the store"
     );
+}
+
+#[test]
+fn a_full_reset_restores_default_tabstops_and_forgets_the_repeat_source() {
+    let mut grid = create_grid_with_size_and_raw(2, 20, b"\x1b[3g\x1b[1;3H\x1bHabc");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(&mut grid, b"\x1bc");
+    assert_eq!(
+        grid.horizontal_tabstops,
+        super::create_horizontal_tabstops(20),
+        "a full reset must restore the default tab stops"
+    );
+
+    parser.feed(&mut grid, b"\x1b[2b");
+    assert_eq!(
+        grid.cursor.x, 0,
+        "a full reset must forget the character preceding it"
+    );
+    parser.feed(&mut grid, b"\t");
+    assert_eq!(
+        grid.cursor.x, 8,
+        "tabs after a full reset must use the default tab stops"
+    );
+    assert!(
+        !row_to_string(&grid.viewport[0]).contains('c'),
+        "the pre-reset repeat source must not reappear"
+    );
+}
+
+#[test]
+fn zero_character_cell_sizes_do_not_panic_image_clipping() {
+    use crate::output::{FloatingPanesStack, KittyImageChunk, SixelImageChunk};
+    use zellij_utils::pane_size::{Dimension, PaneGeom};
+
+    let floating_panes_stack = FloatingPanesStack {
+        layers: vec![PaneGeom {
+            x: 0,
+            y: 0,
+            cols: Dimension::fixed(10),
+            rows: Dimension::fixed(10),
+            stacked: None,
+            is_pinned: false,
+            logical_position: None,
+        }],
+    };
+    let kitty = KittyImageChunk {
+        cell_x: 0,
+        cell_y: 0,
+        internal_image_id: 1,
+        source_px_x: 0,
+        source_px_y: 0,
+        source_px_width: 30,
+        source_px_height: 40,
+        cell_offset_x: 0,
+        cell_offset_y: 0,
+        z_index: 0,
+        scaled_image: None,
+        placement_uid: 1,
+    };
+    let sixel = SixelImageChunk {
+        cell_x: 0,
+        cell_y: 0,
+        sixel_image_pixel_x: 0,
+        sixel_image_pixel_y: 0,
+        sixel_image_pixel_width: 30,
+        sixel_image_pixel_height: 40,
+        sixel_image_id: 7,
+    };
+    for character_cell_size in [
+        SizeInPixels {
+            width: 0,
+            height: 20,
+        },
+        SizeInPixels {
+            width: 10,
+            height: 0,
+        },
+    ] {
+        assert_eq!(
+            floating_panes_stack.visible_kitty_image_chunks(
+                vec![kitty],
+                None,
+                &character_cell_size
+            ),
+            vec![kitty]
+        );
+        let visible_sixel_chunks = floating_panes_stack.visible_sixel_image_chunks(
+            vec![sixel],
+            None,
+            &character_cell_size,
+        );
+        assert_eq!(visible_sixel_chunks.len(), 1);
+        assert_eq!(visible_sixel_chunks[0].sixel_image_id, 7);
+    }
 }
 
 #[test]
@@ -3731,6 +3945,35 @@ pub fn osc_4_color_query() {
         .map(|q| String::from_utf8(q.to_query_bytes()).unwrap())
         .collect();
     assert_eq!(forwarded_string, "\u{1b}]4;222;?\u{1b}\\");
+}
+
+#[test]
+pub fn osc_4_query_with_eight_registers_forwards_all_of_them() {
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        97,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    let content = "\u{1b}]4;1;?;2;?;3;?;4;?;5;?;6;?;7;?;8;?\u{1b}\\";
+    vte_parser.feed(&mut grid, content.as_bytes());
+    let forwarded_string: String = grid
+        .pending_forwarded_queries
+        .iter()
+        .map(|q| String::from_utf8(q.to_query_bytes()).unwrap())
+        .collect();
+    assert_eq!(forwarded_string, content);
 }
 
 #[test]
@@ -5441,6 +5684,49 @@ fn pane_contents_scrollback_no_truncation_when_max_zero() {
 }
 
 #[test]
+fn pane_contents_limit_matches_the_newest_history_rows() {
+    let grid = create_grid_with_scrollback();
+    let limit = 4;
+    assert!(
+        grid.lines_above.len() > limit,
+        "the fixture has to be longer than the requested window"
+    );
+    let start = grid.lines_above.len() - limit;
+    let oldest = row_to_string(&grid.lines_above[start]);
+    let newest = row_to_string(&grid.lines_above[grid.lines_above.len() - 1]);
+
+    let result = grid.pane_contents(true, Some(limit));
+    assert_eq!(result.lines_above_viewport.len(), limit);
+    assert_eq!(
+        result.lines_above_viewport.first().map(String::as_str),
+        Some(oldest.as_str())
+    );
+    assert_eq!(
+        result.lines_above_viewport.last().map(String::as_str),
+        Some(newest.as_str())
+    );
+
+    let ansi_full = grid.pane_contents_with_ansi(true, None);
+    let ansi = grid.pane_contents_with_ansi(true, Some(limit));
+    assert_eq!(ansi.lines_above_viewport.len(), limit);
+    assert_eq!(
+        ansi.lines_above_viewport.as_slice(),
+        &ansi_full.lines_above_viewport[start..]
+    );
+
+    let full = grid.pane_contents(true, Some(grid.lines_above.len()));
+    assert_eq!(full.lines_above_viewport.len(), grid.lines_above.len());
+    assert_eq!(
+        full.lines_above_viewport.first().map(String::as_str),
+        Some(row_to_string(&grid.lines_above[0]).as_str())
+    );
+    assert_eq!(
+        full.lines_above_viewport.last().map(String::as_str),
+        Some(newest.as_str())
+    );
+}
+
+#[test]
 fn pane_contents_scrollback_truncates_to_last_n() {
     let grid = create_grid_with_scrollback();
     let result = grid.pane_contents(true, Some(5));
@@ -5836,7 +6122,6 @@ fn viewport_texts(grid: &Grid) -> Vec<String> {
 }
 
 fn create_grid_with_size_and_raw(rows: usize, cols: usize, content: &[u8]) -> Grid {
-    let mut vte_parser = vt_parser::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
@@ -5855,13 +6140,27 @@ fn create_grid_with_size_and_raw(rows: usize, cols: usize, content: &[u8]) -> Gr
         true,
         false,
     );
-    vte_parser.feed(&mut grid, &content);
+    feed_bytes(&mut grid, content);
     grid
 }
 
 fn feed_bytes(grid: &mut Grid, bytes: &[u8]) {
     let mut vte_parser = vt_parser::Parser::new();
-    vte_parser.feed(grid, bytes);
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let consumed = vte_parser.feed_until_paused(grid, &bytes[offset..]);
+        offset += consumed;
+        if grid.rep_pending() {
+            while grid.rep_pending() {
+                let _ = grid.continue_pending_rep();
+            }
+            continue;
+        }
+        if consumed == 0 {
+            vte_parser.feed(grid, &bytes[offset..]);
+            break;
+        }
+    }
 }
 
 // All tests below use a 10-row, 40-col grid with scroll region 1;8
@@ -6204,6 +6503,41 @@ fn wrap_at_bottom_of_nonzero_top_scroll_region_keeps_hyperlink_tracking() {
 }
 
 #[test]
+fn overwriting_a_scanned_url_replaces_its_link_anchors() {
+    let old_url = "https://old.example";
+    let new_url = "https://new.example";
+    assert_eq!(old_url.len(), new_url.len());
+    let mut grid = create_grid_with_size_and_raw(5, 40, old_url.as_bytes());
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(&mut grid, b"\x1b[2;1H");
+    grid.link_urls_in_changed_lines();
+    assert_eq!(linked_uris(&grid), vec![old_url.to_owned()]);
+
+    parser.feed(&mut grid, b"\x1b[1;1H");
+    parser.feed(&mut grid, new_url.as_bytes());
+    parser.feed(&mut grid, b"\x1b[2;1H");
+    grid.link_urls_in_changed_lines();
+
+    let handler = grid.link_handler.borrow();
+    let visible_uris: Vec<String> = grid
+        .viewport
+        .iter()
+        .flat_map(|row| row.columns.iter())
+        .filter_map(|cell| handler.uri(cell.styles.link_anchor))
+        .map(str::to_owned)
+        .collect();
+    assert!(
+        visible_uris.iter().all(|uri| uri == new_url),
+        "overwritten URL kept stale anchors or new URL was not linked: {visible_uris:?}"
+    );
+    assert_eq!(
+        visible_uris.len(),
+        new_url.len(),
+        "every overwritten cell should point at the new URL"
+    );
+}
+
+#[test]
 fn scroll_region_newline_sets_bg_color_on_new_row() {
     // Set bg color, set scroll region 1-5, fill 5 lines, then newline to scroll
     let content = b"\x1b[48;2;26;26;26m\x1b[1;5r\
@@ -6319,36 +6653,25 @@ fn new_grid_for_forwarding_test() -> Grid {
 }
 
 #[test]
-fn csi_14t_forwards_to_host_not_local() {
-    // CSI 14t used to synthesize a local "\x1b[4;H;Wt" reply; after the
-    // refactor it must be forwarded to the host instead so apps observe
-    // the terminal's real window pixel dimensions.
+fn csi_14t_reports_the_pane_text_area_locally() {
     let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     parser.feed(&mut grid, b"\x1b[14t");
-    assert!(
-        grid.pending_messages_to_pty.is_empty(),
-        "local reply path must not fire for 14t"
-    );
-    assert_eq!(grid.pending_forwarded_queries.len(), 1);
     assert_eq!(
-        grid.pending_forwarded_queries[0],
-        crate::host_query::HostQuery::TextAreaPixelSize,
-        "forwarded classification must be TextAreaPixelSize"
+        grid.pending_messages_to_pty,
+        vec![b"\x1b[4;160;160t".to_vec()],
+        "14t must report the pane text area, not the outer window"
     );
+    assert!(grid.pending_forwarded_queries.is_empty());
 }
 
 #[test]
-fn csi_16t_forwards_to_host_not_local() {
+fn csi_16t_reports_the_shared_cell_size_locally() {
     let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     parser.feed(&mut grid, b"\x1b[16t");
-    assert!(grid.pending_messages_to_pty.is_empty());
-    assert_eq!(grid.pending_forwarded_queries.len(), 1);
-    assert_eq!(
-        grid.pending_forwarded_queries[0],
-        crate::host_query::HostQuery::CharacterCellPixelSize,
-    );
+    assert_eq!(grid.pending_messages_to_pty, vec![b"\x1b[6;16;8t".to_vec()]);
+    assert!(grid.pending_forwarded_queries.is_empty());
 }
 
 #[test]
@@ -6525,6 +6848,56 @@ fn a_synchronized_update_held_past_the_cap_releases_on_the_next_paint() {
 }
 
 #[test]
+fn repeated_synchronized_begins_do_not_renew_the_hard_deadline() {
+    let mut parser = vt_parser::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    parser.feed(&mut grid, b"\x1b[?2026hfirst");
+    let opened_at = grid
+        .render_lock_opened_at
+        .expect("the first begin opens the render lock");
+
+    parser.feed(&mut grid, b"\x1b[?2026h\x1b[?2026hsecond");
+    assert_eq!(
+        grid.render_lock_opened_at,
+        Some(opened_at),
+        "later begins must not postpone the hard deadline"
+    );
+    assert_eq!(
+        grid.render_lock_deadline(),
+        Some(opened_at + super::SYNCHRONIZED_UPDATE_CAP)
+    );
+
+    parser.feed(&mut grid, b"\x1b[?2026l");
+    assert!(grid.render_lock_deadline().is_none());
+    parser.feed(&mut grid, b"\x1b[?2026hnew");
+    assert!(
+        grid.render_lock_opened_at > Some(opened_at),
+        "a new interval gets a new deadline"
+    );
+}
+
+#[test]
+fn a_full_terminal_reset_clears_a_synchronized_update_lock() {
+    let mut parser = vt_parser::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    parser.feed(&mut grid, b"\x1b[?2026hhello");
+    assert!(grid.is_mid_frame());
+    assert!(grid.render_lock_deadline().is_some());
+
+    parser.feed(&mut grid, b"\x1bc");
+
+    assert!(!grid.is_mid_frame(), "reset must release the render lock");
+    assert!(
+        grid.render_lock_deadline().is_none(),
+        "reset must clear the hard deadline instead of waiting for it"
+    );
+    assert!(
+        grid.render(0, 0, &Style::default()).unwrap().is_some(),
+        "a paint after reset must not stay suppressed"
+    );
+}
+
+#[test]
 fn csi_2031_dollar_p_when_disabled_replies_reset() {
     // DECRQM mode 2031 (Application Theme Reporting) is per-pane state
     // tracked locally by Zellij. With no prior `CSI ? 2031 h`, the mode
@@ -6597,6 +6970,24 @@ fn csi_22t_and_23t_stay_local() {
         Some("hello"),
         "pop should restore the previously-pushed title"
     );
+}
+
+#[test]
+fn long_titles_are_truncated_before_they_reach_the_title_stack() {
+    let mut parser = vt_parser::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    // Multi-byte characters straddle the limit: truncation must keep a
+    // character boundary.
+    let long_title = "€".repeat(super::MAX_TITLE_BYTES);
+    parser.feed(&mut grid, format!("\x1b]2;{long_title}\x07").as_bytes());
+    let title = grid.title.clone().expect("title is set");
+    assert!(title.len() <= super::MAX_TITLE_BYTES);
+    assert!(long_title.starts_with(&title));
+    for _ in 0..super::MAX_TITLE_STACK_SIZE + 10 {
+        parser.feed(&mut grid, b"\x1b[22;0t");
+    }
+    let retained: usize = grid.title_stack.iter().map(String::len).sum();
+    assert!(retained <= (super::MAX_TITLE_STACK_SIZE + 1) * super::MAX_TITLE_BYTES);
 }
 
 #[test]
@@ -6689,7 +7080,8 @@ fn csi_996n_pushes_color_palette_mode_query_to_forwarded_queries() {
     use crate::host_query::HostQuery;
     let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
-    parser.feed(&mut grid, b"\x1b[?996n");
+    let query = b"\x1b[?996n";
+    assert_eq!(parser.feed_until_paused(&mut grid, query), query.len());
     assert_eq!(
         grid.pending_forwarded_queries,
         vec![HostQuery::ColorPaletteMode],
@@ -7267,6 +7659,10 @@ fn rgba_raster(width: usize, height: usize) -> Vec<u8> {
     (0..width * height * 4).map(|i| (i % 251) as u8).collect()
 }
 
+fn kitty_payload_bytes(store: &KittyImageStore) -> usize {
+    store.total_bytes() - store.image_count() * KITTY_IMAGE_METADATA_BYTES
+}
+
 fn kitty_placement_id_set(grid: &Grid) -> Vec<(u32, u32)> {
     let mut ids: Vec<(u32, u32)> = grid
         .kitty_placements()
@@ -7448,7 +7844,7 @@ fn kitty_delete_all_visible() {
     let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
     build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
     feed_kitty_bytes(
         &mut grid,
         &mut vte_parser,
@@ -7456,7 +7852,7 @@ fn kitty_delete_all_visible() {
         &kitty_apc("a=d", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7470,7 +7866,7 @@ fn kitty_delete_all_visible() {
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![]);
     assert_eq!(kitty_image_store.borrow().image_count(), 0);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 0);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 0);
 }
 
 #[test]
@@ -7486,7 +7882,7 @@ fn kitty_delete_by_image_id() {
         &kitty_apc("a=d,d=i,i=2", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7510,7 +7906,7 @@ fn kitty_delete_by_image_id() {
         &kitty_apc("a=d,d=i,i=2,p=1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(2, 2)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 3200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 3200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7524,7 +7920,7 @@ fn kitty_delete_by_image_id() {
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
     assert_eq!(kitty_image_store.borrow().image_count(), 2);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 4000);
 }
 
 #[test]
@@ -7541,7 +7937,7 @@ fn kitty_delete_by_image_number() {
         &kitty_apc("a=T,f=24,s=10,v=20,I=7,C=1", &rgb_raster(10, 20)),
     );
     assert_eq!(grid.kitty_placement_count(), 4);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 8000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 8000);
     feed_kitty_bytes(
         &mut grid,
         &mut vte_parser,
@@ -7549,14 +7945,14 @@ fn kitty_delete_by_image_number() {
         &kitty_apc("a=d,d=n,I=7", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 8000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 8000);
     feed_kitty_bytes(
         &mut grid,
         &mut vte_parser,
         &mut interceptor,
         &kitty_apc("a=d,d=N,I=7", b""),
     );
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
     assert_eq!(kitty_image_store.borrow().image_count(), 3);
 }
 
@@ -7573,7 +7969,7 @@ fn kitty_delete_cursor_intersecting() {
         &kitty_apc("a=d,d=c", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7587,7 +7983,7 @@ fn kitty_delete_cursor_intersecting() {
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0)]);
     assert_eq!(kitty_image_store.borrow().image_count(), 2);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 6400);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 6400);
 }
 
 #[test]
@@ -7603,7 +7999,7 @@ fn kitty_delete_cell_intersecting() {
         &kitty_apc("a=d,d=p,x=11,y=6", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7616,7 +8012,7 @@ fn kitty_delete_cell_intersecting() {
         &kitty_apc("a=d,d=P,x=11,y=6", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 4000);
 }
 
 #[test]
@@ -7639,7 +8035,7 @@ fn kitty_delete_cell_with_z() {
         &kitty_apc("a=d,d=q,x=11,y=6,z=1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7652,7 +8048,7 @@ fn kitty_delete_cell_with_z() {
         &kitty_apc("a=d,d=Q,x=11,y=6,z=1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 4000);
 }
 
 #[test]
@@ -7668,7 +8064,7 @@ fn kitty_delete_column() {
         &kitty_apc("a=d,d=x,x=1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(2, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7681,7 +8077,7 @@ fn kitty_delete_column() {
         &kitty_apc("a=d,d=X,x=1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(2, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 4000);
 }
 
 #[test]
@@ -7697,7 +8093,7 @@ fn kitty_delete_row() {
         &kitty_apc("a=d,d=y,y=6", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7710,7 +8106,7 @@ fn kitty_delete_row() {
         &kitty_apc("a=d,d=Y,y=6", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 4000);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 4000);
 }
 
 #[test]
@@ -7726,7 +8122,7 @@ fn kitty_delete_by_z_index() {
         &kitty_apc("a=d,d=z,z=-1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7739,7 +8135,7 @@ fn kitty_delete_by_z_index() {
         &kitty_apc("a=d,d=Z,z=-1", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(1, 0), (2, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 6400);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 6400);
 }
 
 #[test]
@@ -7755,7 +8151,7 @@ fn kitty_delete_image_id_range() {
         &kitty_apc("a=d,d=r,x=1,y=2", b""),
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(5, 0)]);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 7200);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 7200);
 
     let (mut grid, kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
@@ -7769,7 +8165,7 @@ fn kitty_delete_image_id_range() {
     );
     assert_eq!(kitty_placement_id_set(&grid), vec![(5, 0)]);
     assert_eq!(kitty_image_store.borrow().image_count(), 1);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 800);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 800);
 }
 
 #[test]
@@ -7809,7 +8205,7 @@ fn kitty_retransmit_to_existing_id_replaces_image() {
         &kitty_apc("a=T,f=32,s=4,v=4,i=1,C=1", &rgba_raster(4, 4)),
     );
     assert_eq!(grid.kitty_placement_count(), 1);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 64);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 64);
     feed_kitty_bytes(
         &mut grid,
         &mut vte_parser,
@@ -7818,7 +8214,7 @@ fn kitty_retransmit_to_existing_id_replaces_image() {
     );
     assert_eq!(grid.kitty_placement_count(), 0);
     assert_eq!(kitty_image_store.borrow().image_count(), 1);
-    assert_eq!(kitty_image_store.borrow().total_bytes(), 16);
+    assert_eq!(kitty_payload_bytes(&kitty_image_store.borrow()), 16);
 }
 
 #[test]
@@ -8201,9 +8597,13 @@ fn kitty_reply_icat_detection_sequence() {
     let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
     let mut vte_parser = vt_parser::Parser::new();
     let mut interceptor = KittyApcInterceptor::new();
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("tty-graphics-protocol-icat-detect.bin");
-    std::fs::write(&path, [1u8, 2, 3]).unwrap();
+    // like icat, a marker-named file directly in the temp directory
+    let mut file = tempfile::Builder::new()
+        .prefix("tty-graphics-protocol-")
+        .tempfile_in(std::env::temp_dir())
+        .unwrap();
+    std::io::Write::write_all(&mut file, &[1u8, 2, 3]).unwrap();
+    let (_file, path) = file.keep().unwrap();
     let path_bytes = path.to_str().unwrap().as_bytes();
     feed_kitty_bytes(
         &mut grid,
@@ -8237,15 +8637,21 @@ fn kitty_reply_icat_detection_sequence() {
         grid.pending_messages_to_pty[0],
         b"\x1b_Gi=1;OK\x1b\\".to_vec()
     );
-    assert_eq!(
-        grid.pending_messages_to_pty[1],
-        b"\x1b_Gi=2;OK\x1b\\".to_vec()
+    let file_reply = String::from_utf8(grid.pending_messages_to_pty[1].clone()).unwrap();
+    assert!(
+        file_reply.starts_with("\x1b_Gi=2;ENOTSUPPORTED"),
+        "a temp-file query must not read the host file, got {file_reply:?}"
     );
+    assert!(file_reply.ends_with("\x1b\\"));
     let third = String::from_utf8(grid.pending_messages_to_pty[2].clone()).unwrap();
     assert!(third.starts_with("\x1b_Gi=3;ENOTSUPPORTED"));
     assert!(third.ends_with("\x1b\\"));
     assert!(path.starts_with(std::env::temp_dir()));
-    assert!(!path.exists());
+    assert!(
+        path.exists(),
+        "refusing the transfer must not delete the file"
+    );
+    let _ = std::fs::remove_file(&path);
 }
 
 #[test]
@@ -9277,7 +9683,8 @@ fn xtsmgraphics_geometry_reports_failure_when_host_does_not_support_sixel() {
 fn osc_52_read_is_forwarded_to_the_host() {
     let mut grid = new_grid_for_forwarding_test();
     let mut vte_parser = vt_parser::Parser::new();
-    vte_parser.feed(&mut grid, b"\x1b]52;c;?\x07");
+    let query = b"\x1b]52;c;?\x07";
+    assert_eq!(vte_parser.feed_until_paused(&mut grid, query), query.len());
     assert!(
         grid.pending_messages_to_pty.is_empty(),
         "clipboard reads must never be answered locally"
@@ -9295,7 +9702,8 @@ fn osc_52_read_is_forwarded_to_the_host() {
 fn osc_52_read_keeps_the_selection_and_terminator_of_the_query() {
     let mut grid = new_grid_for_forwarding_test();
     let mut vte_parser = vt_parser::Parser::new();
-    vte_parser.feed(&mut grid, b"\x1b]52;p;?\x1b\\");
+    let query = b"\x1b]52;p;?\x1b\\";
+    assert!(vte_parser.feed_until_paused(&mut grid, query) > 0);
     assert_eq!(
         grid.pending_forwarded_queries,
         vec![crate::host_query::HostQuery::ClipboardContent {
@@ -9326,6 +9734,37 @@ fn xtgettcap_answers_the_ms_capability() {
         grid.pending_messages_to_pty,
         vec![b"\x1bP1+r4D73=1B5D35323B25703125733B257032257307\x1b\\".to_vec()]
     );
+}
+
+#[test]
+fn an_oversized_xtgettcap_query_is_discarded_whole() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut query = b"\x1bP+q4d73".to_vec();
+    query.resize(query.len() + super::MAX_XTGETTCAP_DCS_BYTES, b'0');
+    query.extend_from_slice(b"\x1b\\");
+    vte_parser.feed(&mut grid, &query);
+    assert!(grid.pending_messages_to_pty.is_empty());
+    // The next query is answered normally.
+    vte_parser.feed(&mut grid, b"\x1bP+q4d73\x1b\\");
+    assert_eq!(grid.pending_messages_to_pty.len(), 1);
+}
+
+#[test]
+fn unterminated_dcs_payloads_are_bounded() {
+    let mut grid = create_grid_with_content("");
+    let mut vte_parser = vt_parser::Parser::new();
+    let chunk = vec![b'a'; 64 * 1024];
+    vte_parser.feed(&mut grid, b"\x1bPz");
+    for _ in 0..(super::MAX_UI_COMPONENT_DCS_BYTES / chunk.len() + 2) {
+        vte_parser.feed(&mut grid, &chunk);
+    }
+    assert!(grid.ui_component_bytes.is_none());
+    vte_parser.feed(&mut grid, b"\x1b\\\x1bP+q");
+    for _ in 0..(super::MAX_XTGETTCAP_DCS_BYTES / chunk.len() + 2) {
+        vte_parser.feed(&mut grid, &chunk);
+    }
+    assert!(grid.xtgettcap_bytes.is_none());
 }
 
 #[test]
@@ -9688,6 +10127,42 @@ fn the_notification_state_remembered_per_pane_is_bounded() {
 }
 
 #[test]
+fn oversized_and_numerous_notification_ids_stay_within_the_byte_budget() {
+    let mut grid = new_grid_for_forwarding_test();
+    let mut vte_parser = vt_parser::Parser::new();
+    let oversized_id = "x".repeat(super::MAX_NOTIFICATION_ID_BYTES + 1);
+    vte_parser.feed(
+        &mut grid,
+        format!("\x1b]99;i={}:a=report;notification\x1b\\", oversized_id).as_bytes(),
+    );
+    assert!(grid.notification_tracker.known_ids.is_empty());
+    assert_eq!(grid.notification_tracker.known_id_bytes, 0);
+    assert!(grid.notification_tracker.wants_report.is_empty());
+    assert!(grid.notification_tracker.assemblies.is_empty());
+
+    for index in 0..80 {
+        let id = format!("{:0>250}", index);
+        vte_parser.feed(
+            &mut grid,
+            format!("\x1b]99;i={}:a=report;notification\x1b\\", id).as_bytes(),
+        );
+        grid.pending_desktop_notifications.clear();
+    }
+    let retained_bytes: usize = grid
+        .notification_tracker
+        .known_ids
+        .iter()
+        .map(String::len)
+        .sum();
+    assert!(
+        grid.notification_tracker.known_ids.len() <= super::MAX_TRACKED_NOTIFICATION_IDS
+            && retained_bytes <= super::MAX_TRACKED_NOTIFICATION_ID_BYTES
+            && grid.notification_tracker.known_id_bytes == retained_bytes,
+        "notification ids must stay within both the entry and byte budgets"
+    );
+}
+
+#[test]
 fn a_single_notification_being_assembled_is_bounded() {
     let mut grid = new_grid_for_forwarding_test();
     let mut vte_parser = vt_parser::Parser::new();
@@ -9988,6 +10463,131 @@ fn feed(grid: &mut Grid, content: &str) {
     vte_parser.feed(grid, content.as_bytes());
 }
 
+fn stored_text(grid: &Grid) -> String {
+    grid.lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+        .map(row_to_string)
+        .collect()
+}
+
+#[test]
+fn resize_around_a_wide_glyph_keeps_the_cursor_after_the_following_character() {
+    // 4 columns: `a` `你` `X`, cursor pending-wrap at (4, 0). At 2 columns the
+    // wide glyph does not fit after `a`, so the line is `a` / `你` / `X`.
+    // Dividing the linear index by the new width lands on `你` and the next
+    // write replaces `X`.
+    let mut grid = create_sized_grid_with_content(1, 4, "a你X\u{1b}7");
+    assert_eq!((grid.cursor.x, grid.cursor.y), (4, 0));
+
+    grid.change_size(3, 2);
+
+    assert_eq!(
+        grid.viewport.iter().map(row_to_string).collect::<Vec<_>>(),
+        vec!["a".to_owned(), "你".to_owned(), "X".to_owned()]
+    );
+    assert_eq!(
+        (grid.cursor.x, grid.cursor.y),
+        (1, 2),
+        "cursor was {:?}, saved {:?}",
+        (grid.cursor.x, grid.cursor.y),
+        grid.saved_cursor_position
+            .as_ref()
+            .map(|cursor| (cursor.x, cursor.y))
+    );
+    assert_eq!(
+        grid.saved_cursor_position
+            .as_ref()
+            .map(|cursor| (cursor.x, cursor.y)),
+        Some((1, 2))
+    );
+
+    feed(&mut grid, "Y");
+    assert_eq!(stored_text(&grid), "a你XY");
+}
+
+#[test]
+fn widening_a_clipped_glyph_keeps_the_cursor_past_its_restored_width() {
+    let mut grid = create_sized_grid_with_content(4, 4, "a你X");
+    assert_eq!((grid.cursor.x, grid.cursor.y), (4, 0));
+
+    grid.change_size(4, 1);
+    assert_eq!(grid.viewport[1].columns[0].width(), 1);
+    assert_eq!((grid.cursor.x, grid.cursor.y), (1, 2));
+
+    grid.change_size(3, 4);
+    assert_eq!(grid.viewport[0].columns[1].character, '你');
+    assert_eq!(grid.viewport[0].columns[1].width(), 2);
+    assert_eq!((grid.cursor.x, grid.cursor.y), (4, 0));
+
+    feed(&mut grid, "Y");
+    assert_eq!(stored_text(&grid), "a你XY");
+}
+
+#[test]
+fn a_following_canonical_row_does_not_drop_the_wide_glyph_cursor_correction() {
+    let mut grid = create_sized_grid_with_content(6, 4, "a你X\u{1b}7\n\rZ");
+    assert_eq!(
+        grid.saved_cursor_position
+            .as_ref()
+            .map(|cursor| (cursor.x, cursor.y)),
+        Some((4, 0))
+    );
+
+    grid.change_size(6, 1);
+
+    assert_eq!(
+        grid.viewport
+            .iter()
+            .take(4)
+            .map(row_to_string)
+            .collect::<Vec<_>>(),
+        vec![
+            "a".to_owned(),
+            "你".to_owned(),
+            "X".to_owned(),
+            "Z".to_owned()
+        ]
+    );
+    assert_eq!(
+        grid.saved_cursor_position
+            .as_ref()
+            .map(|cursor| (cursor.x, cursor.y)),
+        Some((1, 2))
+    );
+}
+
+#[test]
+fn cursor_reflow_of_clipped_wide_text_does_not_overwrite_the_next_character() {
+    let mut grid = create_sized_grid_with_content(1, 3, "你X");
+    assert_eq!(grid.cursor.x, 3, "the cursor is pending-wrap after 你X");
+
+    grid.change_size(2, 1);
+    feed(&mut grid, "Y");
+
+    let mut stored = String::new();
+    for row in grid
+        .lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+    {
+        stored.push_str(&row_to_string(row));
+    }
+    assert_eq!(
+        stored, "你XY",
+        "reflow must keep 你 and X, and Y must land on the next free cell"
+    );
+    assert!(
+        grid.viewport
+            .iter()
+            .any(|row| row_to_string(row).contains('X')),
+        "X must still be on screen, not replaced by Y: viewport={:?}",
+        grid.viewport.iter().map(row_to_string).collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn same_size_forced_reflow_keeps_cursor_at_start_of_wrapped_row() {
     let mut grid = create_sized_grid_with_content(5, 10, "0123456789a\u{8}");
@@ -9999,6 +10599,69 @@ fn same_size_forced_reflow_keeps_cursor_at_start_of_wrapped_row() {
     feed(&mut grid, "\rX");
     assert_eq!(rendered_row(&grid, 0), "0123456789");
     assert_eq!(rendered_row(&grid, 1), "X");
+}
+
+#[test]
+fn forced_reflow_normalizes_an_orphaned_continuation_row() {
+    let mut grid = create_sized_grid_with_content(3, 10, "");
+    grid.lines_above.clear();
+    grid.viewport.clear();
+    grid.viewport.push_back(row_from_str("orphan"));
+
+    grid.force_change_size(3, 10);
+
+    assert_eq!(grid.viewport.len(), 1);
+    assert!(grid.viewport[0].is_canonical);
+    assert_eq!(row_to_string(&grid.viewport[0]), "orphan");
+}
+
+#[test]
+fn orphan_row_recovery_keeps_the_cursor_on_its_line() {
+    // [orphan continuation, "first", "second"]: the orphan becomes its own
+    // canonical line, so the cursor (and saved cursor) on "first" must stay
+    // on "first" rather than moving up onto the orphan.
+    let mut grid = create_sized_grid_with_content(3, 10, "");
+    grid.lines_above.clear();
+    grid.viewport.clear();
+    grid.viewport.push_back(row_from_str("orphan"));
+    grid.viewport.push_back(row_from_str("first").canonical());
+    grid.viewport.push_back(row_from_str("second").canonical());
+    grid.move_cursor_to(
+        2,
+        1,
+        crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER,
+    );
+    grid.save_cursor_position();
+
+    grid.force_change_size(3, 10);
+
+    assert_eq!(row_to_string(&grid.viewport[1]), "first");
+    assert_eq!(cursor_position(&grid), Some((2, 1)));
+    grid.move_cursor_to(
+        0,
+        2,
+        crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER,
+    );
+    grid.restore_cursor_position();
+    assert_eq!(cursor_position(&grid), Some((2, 1)));
+}
+
+#[test]
+fn orphan_row_recovery_keeps_a_cursor_on_the_orphan_row() {
+    let mut grid = create_sized_grid_with_content(3, 10, "");
+    grid.lines_above.clear();
+    grid.viewport.clear();
+    grid.viewport.push_back(row_from_str("orphan"));
+    grid.viewport.push_back(row_from_str("first").canonical());
+    grid.move_cursor_to(
+        3,
+        0,
+        crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER,
+    );
+
+    grid.force_change_size(3, 10);
+
+    assert_eq!(cursor_position(&grid), Some((3, 0)));
 }
 
 #[test]
@@ -10478,6 +11141,129 @@ fn scrollback_length_matches_a_full_recount_when_long_wrapped_lines_are_evicted(
             "a run wider than the viewport must be accounted exactly on eviction, round {round}"
         );
     }
+}
+
+#[test]
+fn scrollback_length_counts_unsplittable_wide_characters_exactly() {
+    // Three width-2 characters at width 3 wrap onto three display rows:
+    // the naive ceil(6/3) = 2 undercounts because a wide character can
+    // never straddle a wrap boundary.
+    let wide_line = "\u{4e16}\u{4e16}\u{4e16}".as_bytes();
+    let mut grid = create_grid_with_size_and_raw(2, 3, b"");
+    let mut content: Vec<u8> = Vec::new();
+    for _ in 0..40 {
+        content.extend_from_slice(wide_line);
+        content.extend_from_slice(b"\r\n");
+    }
+    feed_bytes(&mut grid, &content);
+    assert_eq!(grid.width, 3);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "the reported length must match a character-exact recount"
+    );
+    // With each width-2 character alone on a display row, the recount is
+    // at least the stored row count; the aggregate estimate
+    // (ceil(6/3) = 2 per line of three stored rows) would undercount it.
+    assert!(scrollback_recount(&mut grid) >= grid.lines_above.len());
+}
+
+#[test]
+fn scrollback_length_stays_exact_while_wide_char_runs_are_evicted() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let wide_line = "\u{4e16}\u{4e16}\u{4e16}\u{4e16}".as_bytes();
+    let mut grid = filled_scrollback(3, 4, wide_line, scroll_buffer_size / 2 + 50);
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    grid.change_size(3, 3);
+    let batch = repeated_lines("\u{4e16}\u{4e16}".as_bytes(), 300);
+    for round in 0..6 {
+        feed_bytes(&mut grid, &batch);
+        assert_eq!(
+            grid.scrollback_position_and_length().1,
+            scrollback_recount(&mut grid),
+            "wide-character runs must be accounted exactly on eviction, round {round}"
+        );
+    }
+}
+
+#[test]
+fn evicting_from_a_stale_long_wrapped_line_stays_cheap_and_exact() {
+    // One logical line of 2,000 rows at width 200 at the very front of a
+    // nearly full scrollback, then a resize (which leaves the stored wrap
+    // stale). Every later eviction used to re-wrap the whole remaining
+    // run character by character, so the work grew with
+    // evictions * cells in the run.
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let columns = 200;
+    let run_rows = 2_000;
+    let mut grid = create_grid_with_size_and_raw(5, columns, b"");
+    let mut long_line = vec![b'a'; columns * run_rows];
+    long_line.extend_from_slice(b"\r\n");
+    feed_bytes(&mut grid, &long_line);
+    let filler = scroll_buffer_size - run_rows - 100;
+    feed_bytes(&mut grid, &repeated_lines(b"short", filler));
+    assert!(grid.lines_above.len() < scroll_buffer_size);
+    grid.change_size(5, columns - 1);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "the length must be exact right after the resize"
+    );
+
+    super::reset_wrap_character_step_count();
+    let evictions = 400;
+    feed_bytes(&mut grid, &repeated_lines(b"short", 100 + evictions));
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    let steps = super::wrap_character_step_count();
+    assert!(
+        steps <= 10 * evictions,
+        "stale-run evictions must not walk the run character by character: {steps} steps for {evictions} evictions"
+    );
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "single-width stale runs must be accounted exactly on eviction"
+    );
+}
+
+#[test]
+fn evicting_from_a_stale_wide_character_run_is_bounded_per_eviction() {
+    // A stale run of width-2 characters is recomputed from the wrap rule.
+    // The two walks stop once they share an open row, so the work stays
+    // proportional to the pane width, and the reported length stays exact.
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let columns = 100;
+    let run_rows = 1_500;
+    let mut grid = create_grid_with_size_and_raw(5, columns, b"");
+    let mut long_line = "\u{4e16}".repeat(columns / 2 * run_rows).into_bytes();
+    long_line.extend_from_slice(b"\r\n");
+    feed_bytes(&mut grid, &long_line);
+    feed_bytes(
+        &mut grid,
+        &repeated_lines(b"short", scroll_buffer_size - run_rows - 100),
+    );
+    grid.change_size(5, columns - 1);
+
+    super::reset_wrap_character_step_count();
+    let evictions = 300;
+    feed_bytes(&mut grid, &repeated_lines(b"short", 100 + evictions));
+    let steps = super::wrap_character_step_count();
+    assert!(
+        steps <= evictions * columns * 8,
+        "wide-character stale runs must stop once the wrap states meet: {steps} steps"
+    );
+    let reported = grid.scrollback_position_and_length().1;
+    let recount = scrollback_recount(&mut grid);
+    assert_eq!(
+        reported, recount,
+        "wide-character eviction deltas must match a full recount"
+    );
+    grid.change_size(5, columns);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "a resize recounts the whole scrollback exactly"
+    );
 }
 
 #[test]
@@ -11057,6 +11843,15 @@ impl<'a> vt_parser::Handler for OneCharAtATime<'a> {
     fn esc_dispatch(&mut self, sequence: &vt_parser::Sequence) {
         self.0.esc_dispatch(sequence)
     }
+    fn paused(&self) -> bool {
+        self.0.paused()
+    }
+    fn resume_paused(&mut self) -> bool {
+        self.0.resume_paused()
+    }
+    fn defer_pending_escape(&mut self, bytes: &[u8]) -> bool {
+        self.0.defer_pending_escape(bytes)
+    }
 }
 
 fn empty_grid(rows: usize, cols: usize, grapheme_mode: bool) -> Grid {
@@ -11410,12 +12205,64 @@ fn inserting_a_line_below_the_rows_of_a_fresh_alternate_screen_does_not_panic() 
 
 #[test]
 fn a_cursor_position_report_above_the_scroll_region_does_not_underflow() {
+    // DECOM off: CPR is absolute. Cursor at screen row 1 with a mid-screen
+    // scroll region must still report 1 (never underflow via region math).
     let mut grid = empty_grid(20, 80, false);
     vt_parser::Parser::new().feed(&mut grid, b"\x1b[5;10r\x1b[1;1H\x1b[6n");
     assert_eq!(
         grid.pending_messages_to_pty.last().map(|m| m.as_slice()),
         Some(&b"\x1b[1;1R"[..])
     );
+}
+
+#[test]
+fn cursor_position_reports_respect_origin_mode_and_scroll_region() {
+    // (label, input, expected CPR bytes)
+    let cases: &[(&str, &[u8], &[u8])] = &[
+        // DECOM off + scroll region: absolute screen row (not region-relative).
+        (
+            "decom_off_absolute_inside_region",
+            b"\x1b[5;10r\x1b[7;1H\x1b[6n",
+            b"\x1b[7;1R",
+        ),
+        (
+            "decom_off_absolute_above_region",
+            b"\x1b[5;10r\x1b[1;1H\x1b[6n",
+            b"\x1b[1;1R",
+        ),
+        // DECOM on: CPR rows are relative to the scroll-region top.
+        (
+            "decom_on_relative_home",
+            b"\x1b[5;10r\x1b[?6h\x1b[1;1H\x1b[6n",
+            b"\x1b[1;1R",
+        ),
+        (
+            "decom_on_relative_row_three",
+            b"\x1b[5;10r\x1b[?6h\x1b[3;1H\x1b[6n",
+            b"\x1b[3;1R",
+        ),
+        (
+            "decom_cleared_returns_to_absolute",
+            b"\x1b[5;10r\x1b[?6h\x1b[3;1H\x1b[?6l\x1b[6n",
+            b"\x1b[1;1R",
+        ),
+    ];
+    for (label, input, expected) in cases {
+        let mut grid = empty_grid(20, 80, false);
+        vt_parser::Parser::new().feed(&mut grid, input);
+        assert_eq!(
+            grid.pending_messages_to_pty.last().map(|m| m.as_slice()),
+            Some(*expected),
+            "{label}"
+        );
+    }
+}
+
+#[test]
+fn ed2_preserves_the_scroll_region() {
+    let mut grid = empty_grid(20, 80, false);
+    vt_parser::Parser::new().feed(&mut grid, b"\x1b[5;10r\x1b[2J");
+    assert_eq!(grid.scroll_region, (4, 9));
 }
 
 fn linked_uris(grid: &Grid) -> Vec<String> {
@@ -11576,4 +12423,3823 @@ fn oversized_xtgettcap_request_is_dropped() {
     sequence.extend_from_slice(b"\x1b\\");
     vte_parser.feed(&mut grid, &sequence);
     assert!(grid.pending_messages_to_pty.is_empty());
+}
+
+#[test]
+fn kitty_anchors_survive_scroll_steps_without_full_reanchor() {
+    // Oracle: ordinary scroll steps take the incremental anchor path.
+    // If skipping the O(history) reanchor dropped a needed update, a
+    // manual full reanchor afterwards would change the placements —
+    // comparing before and after proves the skip is lossless.
+    let (mut grid, _kitty_image_store) = new_kitty_grid(20, 40);
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    for i in 0..45 {
+        let line = format!("scrollback line {i}\r\n");
+        feed_kitty_bytes(
+            &mut grid,
+            &mut vte_parser,
+            &mut interceptor,
+            line.as_bytes(),
+        );
+    }
+    build_three_kitty_placements(&mut grid, &mut vte_parser, &mut interceptor);
+
+    let snapshot = |grid: &Grid| grid.kitty_placements().to_vec();
+
+    for _ in 0..5 {
+        grid.scroll_up_one_line();
+    }
+    let before = snapshot(&grid);
+    grid.kitty_reanchor_all_from_pixels_for_test();
+    assert_eq!(before, snapshot(&grid), "stale anchors after scrolling up");
+
+    for _ in 0..5 {
+        grid.scroll_down_one_line();
+    }
+    let before = snapshot(&grid);
+    grid.kitty_reanchor_all_from_pixels_for_test();
+    assert_eq!(
+        before,
+        snapshot(&grid),
+        "stale anchors after scrolling down"
+    );
+}
+
+#[test]
+fn scrolling_down_through_wrapped_lines_does_not_rewrap_them_again() {
+    // Rows that are already wrapped at the current width move between
+    // lines_below and the viewport directly; reconstructing every
+    // pulled logical line was O(line length) per scroll step.
+    use crate::panes::grid::{reset_rewrap_rows_call_count, rewrap_rows_call_count};
+    let (mut grid, _kitty_image_store) = new_kitty_grid(10, 20);
+    let mut vte_parser = vt_parser::Parser::new();
+    // long lines that wrap into several display rows at width 20
+    for i in 0..30 {
+        let line = format!("a very long wrapped line number {i} that spans rows\r\n");
+        vte_parser.feed(&mut grid, line.as_bytes());
+    }
+    for _ in 0..8 {
+        grid.scroll_up_one_line();
+    }
+    reset_rewrap_rows_call_count();
+    for _ in 0..8 {
+        grid.scroll_down_one_line();
+    }
+    assert_eq!(
+        rewrap_rows_call_count(),
+        0,
+        "scroll-down through already-wrapped rows must not reflow them"
+    );
+}
+
+#[test]
+fn scrolling_down_through_a_line_taller_than_the_viewport_does_not_rewrap_it_per_step() {
+    // One logical line of 5,000 display rows at width 200 fills the
+    // 24-row viewport with continuation rows, so no canonical row is
+    // visible. The stored wrap is valid at this width, yet the fast
+    // path used to refuse such a viewport and rewrap the remaining
+    // line on every step (billions of cells in total).
+    use crate::panes::grid::{reset_rewrap_rows_call_count, rewrap_rows_call_count};
+    let columns = 200;
+    let run_rows = 5_000;
+    let mut grid = create_grid_with_size_and_raw(24, columns, b"");
+    let mut long_line = vec![b'a'; columns * run_rows];
+    long_line.extend_from_slice(b"\r\nend\r\n");
+    feed_bytes(&mut grid, &long_line);
+    let steps = 4_000;
+    for _ in 0..steps {
+        grid.scroll_up_one_line();
+    }
+    assert!(grid.viewport.iter().all(|row| !row.is_canonical));
+    reset_rewrap_rows_call_count();
+    for _ in 0..steps {
+        grid.scroll_down_one_line();
+    }
+    assert!(
+        rewrap_rows_call_count() <= 2,
+        "{} rewraps while scrolling down through one stored line",
+        rewrap_rows_call_count()
+    );
+    assert_eq!(grid.lines_below.len(), 0, "scrolled back to the bottom");
+}
+
+#[test]
+fn park_at_live_bottom_keeps_the_scrolled_rows_and_appends_under_them() {
+    let mut grid = create_grid_with_scrollback();
+    grid.move_viewport_up(1);
+    assert!(grid.is_scrolled);
+    let viewed = grid.dump_screen(false);
+    let above = grid.lines_above.len();
+    let below_before = grid.lines_below.len();
+    assert!(grid.park_at_live_bottom());
+    feed_bytes(&mut grid, &b"NEW-LINE\r\n".repeat(40));
+    grid.unpark_live_bottom();
+    assert_eq!(grid.dump_screen(false), viewed);
+    assert_eq!(grid.lines_above.len(), above);
+    assert!(grid.is_scrolled);
+    assert!(grid.lines_below.len() > below_before);
+    let full_after_return = {
+        grid.reset_viewport();
+        grid.dump_screen(true)
+    };
+    assert!(
+        full_after_return.contains("NEW-LINE"),
+        "parsed output should be in the document, got {full_after_return:?}"
+    );
+}
+
+#[test]
+fn parking_reuses_the_gap_cell_count_between_output_chunks() {
+    use crate::panes::grid::{park_gap_cell_rows_scanned, reset_park_gap_cell_rows_scanned};
+
+    let mut grid = create_grid_with_scrollback();
+    grid.move_viewport_up(20);
+    assert!(grid.park_at_live_bottom());
+    grid.unpark_live_bottom();
+
+    reset_park_gap_cell_rows_scanned();
+    assert!(grid.park_at_live_bottom());
+    grid.unpark_live_bottom();
+    assert_eq!(
+        park_gap_cell_rows_scanned(),
+        0,
+        "a second park repeated the gap scan"
+    );
+}
+
+fn overlap_park_pane(scrolled: bool) -> crate::panes::TerminalPane {
+    use crate::tab::Pane;
+    use zellij_utils::pane_size::PaneGeom;
+
+    let mut geom = PaneGeom::default();
+    geom.rows.set_inner(3);
+    geom.cols.set_inner(40);
+    let mut pane = crate::panes::TerminalPane::new(
+        1,
+        geom,
+        Style::default(),
+        0,
+        String::new(),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        None,
+        None,
+        false,
+        true,
+        true,
+        true,
+        false,
+        None,
+    );
+    let mut content = Vec::new();
+    for index in 0..12 {
+        content.extend_from_slice(format!("line-{index}\r\n").as_bytes());
+    }
+    pane.handle_pty_bytes_for_test(content);
+    if scrolled {
+        pane.scroll_up(1, 1);
+        assert!(pane.grid.is_scrolled, "the fixture must be scrolled");
+    }
+    pane
+}
+
+fn grid_document_snapshot(grid: &Grid) -> Vec<String> {
+    grid.lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+        .map(|row| {
+            let mut snapshot = String::new();
+            for cell in &row.columns {
+                snapshot.push_str(&format!("{:?}{:?}", cell, cell.styles));
+            }
+            snapshot.push_str(&format!(
+                "|trailing={}|bg={:?}|canonical={}|markers={:?}",
+                row.trailing_blanks,
+                row.bg_color,
+                row.is_canonical,
+                row.osc133_markers.as_slice(),
+            ));
+            snapshot
+        })
+        .collect()
+}
+
+#[test]
+fn a_short_scroll_keeps_edits_to_the_overlapping_live_rows() {
+    use crate::tab::Pane;
+
+    // These hit the overlap rows through the live window: overwrite, styles,
+    // erase, prompt markers, insert/delete line, a partial scroll region, and
+    // a final overwrite after those shifts.
+    let operations: &[&[u8]] = &[
+        b"\x1b[1;1Hoverwritten",
+        b"\x1b[2;1H\x1b[31mstyled\x1b[0m",
+        b"\x1b[3;1H\x1b[K",
+        b"\x1b[2;1H\x1b]133;A\x07\x1b]133;B\x07prompt\x1b]133;C\x07",
+        b"\x1b[1;1H\x1b[L",
+        b"\x1b[2;1H\x1b[M",
+        b"\x1b[2;3r\x1b[3;1H\n\x1b[r",
+        b"\x1b[1;1Hlast",
+    ];
+
+    let mut plain = overlap_park_pane(false);
+    let mut parked = overlap_park_pane(true);
+    for operation in operations {
+        plain.handle_pty_bytes_for_test(operation.to_vec());
+        parked.handle_pty_bytes_for_test(operation.to_vec());
+    }
+    plain.clear_scroll();
+    parked.clear_scroll();
+
+    assert!(plain.grid.lines_below.is_empty());
+    assert!(parked.grid.lines_below.is_empty());
+    assert_eq!(
+        grid_document_snapshot(&plain.grid),
+        grid_document_snapshot(&parked.grid),
+        "a pinned view one row above the bottom changed the live document"
+    );
+    assert_eq!(
+        format!("{:?}", plain.grid.cursor),
+        format!("{:?}", parked.grid.cursor)
+    );
+}
+
+fn assert_rep_matches_literals(
+    width: usize,
+    height: usize,
+    margin: Option<(usize, usize)>,
+    seed: char,
+    count: usize,
+) {
+    let mut rep_grid = create_grid_with_size_and_raw(height, width, b"");
+    let mut literal_grid = create_grid_with_size_and_raw(height, width, b"");
+    let mut prefix = Vec::new();
+    if let Some((top, bottom)) = margin {
+        prefix.extend_from_slice(format!("\x1b[{};{}r", top, bottom).as_bytes());
+    }
+    prefix.extend_from_slice(b"\x1b]133;A\x07");
+    let mut seed_buffer = [0u8; 4];
+    prefix.extend_from_slice(seed.encode_utf8(&mut seed_buffer).as_bytes());
+
+    let mut rep = prefix.clone();
+    rep.extend_from_slice(format!("\x1b[{}b", count).as_bytes());
+    let mut literal = prefix;
+    for _ in 0..count {
+        literal.extend_from_slice(seed.encode_utf8(&mut seed_buffer).as_bytes());
+    }
+    feed_bytes(&mut rep_grid, &rep);
+    feed_bytes(&mut literal_grid, &literal);
+
+    assert_eq!(
+        grid_document_snapshot(&rep_grid),
+        grid_document_snapshot(&literal_grid),
+        "REP diverged from literal output at width {width}, height {height}, margin {margin:?}, seed {seed:?}, count {count}"
+    );
+    assert_eq!(
+        format!("{:?}", rep_grid.cursor),
+        format!("{:?}", literal_grid.cursor)
+    );
+    assert_eq!(rep_grid.scroll_region, literal_grid.scroll_region);
+    assert_eq!(
+        rep_grid.scrollback_position_and_length(),
+        literal_grid.scrollback_position_and_length()
+    );
+    assert_eq!(rep_grid.scrollback_cells, literal_grid.scrollback_cells);
+}
+
+#[test]
+fn rep_matches_literal_repetition_across_widths_and_margins() {
+    for width in [4usize, 10, 80] {
+        for margin in [None, Some((1, 3)), Some((2, 3))] {
+            assert_rep_matches_literals(width, 4, margin, 'A', 100);
+        }
+    }
+    assert_rep_matches_literals(7, 3, None, '\u{4f60}', 17);
+    assert_rep_matches_literals(5, 3, Some((1, 2)), '\u{4f60}', 23);
+    assert_rep_matches_literals(10, 4, Some((1, 3)), 'A', 5_000);
+    assert_rep_matches_literals(7, 3, None, '\u{4f60}', 2_000);
+}
+
+fn feed_ordered_rep(grid: &mut Grid, parser: &mut vt_parser::Parser, bytes: &[u8]) {
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let consumed = parser.feed_until_paused(grid, &bytes[offset..]);
+        offset += consumed;
+        if grid.rep_pending() {
+            while grid.rep_pending() {
+                let _ = grid.continue_pending_rep();
+            }
+            continue;
+        }
+        if consumed == 0 {
+            break;
+        }
+    }
+}
+
+fn document_contains(grid: &Grid, needle: char) -> bool {
+    grid.lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+        .flat_map(|row| row.columns.iter())
+        .any(|cell| cell.character == needle)
+}
+
+#[test]
+fn maximum_rep_is_resumable_ordered_and_matches_literal_output() {
+    let mut grid = create_grid_with_size_and_raw(4, 20, b"");
+    let mut parser = vt_parser::Parser::new();
+    let input = b"a\x1b[65535bX";
+    let consumed = parser.feed_until_paused(&mut grid, input);
+    assert!(consumed < input.len());
+    assert!(grid.rep_pending());
+    assert!(grid.pending_rep_remaining().unwrap() > 0);
+    assert!(!document_contains(&grid, 'X'));
+
+    let mut steps = 0;
+    while grid.rep_pending() {
+        let _ = grid.continue_pending_rep();
+        steps += 1;
+    }
+    assert!(steps > 1, "a maximum REP must be spread over steps");
+    assert!(!document_contains(&grid, 'X'));
+
+    let consumed_rest = parser.feed_until_paused(&mut grid, &input[consumed..]);
+    assert_eq!(consumed_rest, input.len() - consumed);
+    assert!(document_contains(&grid, 'X'));
+
+    let mut literal = create_grid_with_size_and_raw(4, 20, b"");
+    let mut literal_input = vec![b'a'; 65_536];
+    literal_input.push(b'X');
+    feed_bytes(&mut literal, &literal_input);
+    assert_eq!(
+        grid_document_snapshot(&grid),
+        grid_document_snapshot(&literal),
+        "maximum REP diverged from literal output"
+    );
+    assert_eq!(
+        format!("{:?}", grid.cursor),
+        format!("{:?}", literal.cursor)
+    );
+    assert_eq!(
+        grid.scrollback_position_and_length(),
+        literal.scrollback_position_and_length()
+    );
+    assert_eq!(grid.scrollback_cells, literal.scrollback_cells);
+}
+
+#[test]
+fn rep_orders_trailing_bytes_and_is_partition_invariant() {
+    let input = b"a\x1b[3000bBC";
+    let mut whole = create_grid_with_size_and_raw(5, 11, b"");
+    let mut whole_parser = vt_parser::Parser::new();
+    feed_ordered_rep(&mut whole, &mut whole_parser, input);
+
+    let mut bytewise = create_grid_with_size_and_raw(5, 11, b"");
+    let mut bytewise_parser = vt_parser::Parser::new();
+    for byte in input {
+        feed_ordered_rep(&mut bytewise, &mut bytewise_parser, &[*byte]);
+    }
+    assert_eq!(
+        grid_document_snapshot(&whole),
+        grid_document_snapshot(&bytewise),
+        "REP must be invariant across byte-by-byte partitioning"
+    );
+    assert_eq!(
+        format!("{:?}", whole.cursor),
+        format!("{:?}", bytewise.cursor)
+    );
+
+    let mut delayed = create_grid_with_size_and_raw(5, 11, b"");
+    let mut delayed_parser = vt_parser::Parser::new();
+    let first = b"a\x1b[3000b";
+    assert_eq!(
+        delayed_parser.feed_until_paused(&mut delayed, first),
+        first.len()
+    );
+    assert!(delayed.rep_pending());
+    assert_eq!(
+        delayed_parser.feed_until_paused(&mut delayed, b"BC"),
+        0,
+        "later bytes must not run before the repeat finishes"
+    );
+    assert!(!document_contains(&delayed, 'B'));
+    assert!(!document_contains(&delayed, 'C'));
+    while delayed.rep_pending() {
+        let _ = delayed.continue_pending_rep();
+    }
+    assert_eq!(delayed_parser.feed_until_paused(&mut delayed, b"BC"), 2);
+    assert_eq!(
+        grid_document_snapshot(&whole),
+        grid_document_snapshot(&delayed),
+        "delayed trailing bytes must land in order"
+    );
+
+    let mut literal = create_grid_with_size_and_raw(5, 11, b"");
+    let mut literal_input = vec![b'a'; 3_001];
+    literal_input.extend_from_slice(b"BC");
+    feed_bytes(&mut literal, &literal_input);
+    assert_eq!(
+        grid_document_snapshot(&whole),
+        grid_document_snapshot(&literal)
+    );
+}
+
+#[test]
+fn many_small_rep_sequences_share_one_turn_budget() {
+    let mut grid = create_grid_with_size_and_raw(5, 20, b"");
+    grid.begin_terminal_input_turn();
+    let mut input = vec![b'a'];
+    for _ in 0..10 {
+        input.extend_from_slice(b"\x1b[1000b");
+    }
+    let mut parser = vt_parser::Parser::new();
+    let consumed = parser.feed_until_paused(&mut grid, &input);
+    let one_sequence = b"\x1b[1000b".len();
+    assert_eq!(
+        consumed,
+        1 + 2 * one_sequence,
+        "two 1000-cell repeats must consume the aggregate 1024-cell turn budget"
+    );
+    assert!(grid.rep_pending());
+    assert_eq!(grid.pending_rep_remaining(), Some(976));
+
+    while grid.rep_pending() {
+        let _ = grid.continue_pending_rep();
+    }
+    let mut pos = consumed;
+    while pos < input.len() {
+        let consumed = parser.feed_until_paused(&mut grid, &input[pos..]);
+        assert!(consumed > 0, "a paused REP must make progress");
+        pos += consumed;
+        while grid.rep_pending() {
+            let _ = grid.continue_pending_rep();
+        }
+    }
+
+    let mut literal = create_grid_with_size_and_raw(5, 20, b"");
+    let mut literal_input = vec![b'a'];
+    literal_input.extend(std::iter::repeat_n(b'a', 10_000));
+    feed_bytes(&mut literal, &literal_input);
+    assert_eq!(
+        grid_document_snapshot(&grid),
+        grid_document_snapshot(&literal)
+    );
+}
+
+#[test]
+fn synchronous_feed_drains_rep_before_consuming_trailing_bytes() {
+    let mut grid = create_grid_with_size_and_raw(4, 10, b"");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(&mut grid, b"a\x1b[65535bBC");
+    assert!(!grid.rep_pending(), "synchronous feed left REP pending");
+    assert!(document_contains(&grid, 'B'));
+    assert!(document_contains(&grid, 'C'));
+
+    let mut literal = create_grid_with_size_and_raw(4, 10, b"");
+    let mut input = vec![b'a'; 65_536];
+    input.extend_from_slice(b"BC");
+    feed_bytes(&mut literal, &input);
+    assert_eq!(
+        grid_document_snapshot(&grid),
+        grid_document_snapshot(&literal),
+        "synchronous feed must not overtake pending REP work"
+    );
+    assert_eq!(
+        format!("{:?}", grid.cursor),
+        format!("{:?}", literal.cursor)
+    );
+}
+
+#[test]
+fn reset_cancels_pending_rep_and_clears_its_effect() {
+    let mut grid = create_grid_with_size_and_raw(4, 10, b"");
+    let mut parser = vt_parser::Parser::new();
+    assert_eq!(parser.feed_until_paused(&mut grid, b"a\x1b[65535b"), 9);
+    assert!(grid.rep_pending());
+    grid.reset_terminal_state();
+    assert!(!grid.rep_pending());
+    assert!(grid.lines_above.is_empty());
+    assert!(!document_contains(&grid, 'a'));
+
+    assert_eq!(
+        parser.feed_until_paused(&mut grid, b"Z"),
+        1,
+        "bytes after an externally cancelled REP start cleanly"
+    );
+    assert!(document_contains(&grid, 'Z'));
+}
+
+#[test]
+fn rep_without_autowrap_matches_literal_past_the_edge() {
+    let mut rep_grid = create_grid_with_size_and_raw(3, 10, b"");
+    let mut literal_grid = create_grid_with_size_and_raw(3, 10, b"");
+    let mut rep = b"\x1b[?7lA".to_vec();
+    rep.extend_from_slice(b"\x1b[10000b");
+    let mut literal = b"\x1b[?7lA".to_vec();
+    literal.extend(std::iter::repeat_n(b'A', 10_000));
+    feed_bytes(&mut rep_grid, &rep);
+    feed_bytes(&mut literal_grid, &literal);
+    assert_eq!(
+        grid_document_snapshot(&rep_grid),
+        grid_document_snapshot(&literal_grid)
+    );
+    assert_eq!(
+        format!("{:?}", rep_grid.cursor),
+        format!("{:?}", literal_grid.cursor)
+    );
+}
+
+#[test]
+fn a_partially_truncated_park_takes_rows_from_the_gap_instead_of_inserting_blanks() {
+    let cap = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    let mut parser = vt_parser::Parser::new();
+    let mut fill = Vec::with_capacity(cap * 4);
+    for index in 0..cap {
+        fill.extend_from_slice(format!("line-{index}\r\n").as_bytes());
+    }
+    parser.feed(&mut grid, &fill);
+    let moved = grid.scroll_up_rows(usize::MAX);
+    assert!(moved > 0);
+    assert!(grid.lines_above.is_empty());
+    assert!(grid.park_at_live_bottom());
+
+    parser.feed(&mut grid, b"a\r\nb\r\nc\r\nd\r\n");
+    assert!(grid.history_was_truncated());
+    grid.unpark_live_bottom();
+
+    assert_eq!(grid.viewport.len(), 3);
+    assert!(
+        grid.viewport.iter().all(|row| !row.columns.is_empty()),
+        "unparking a truncated view inserted a synthetic blank row: {:?}",
+        grid.viewport.iter().map(row_to_string).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn canonical_line_coordinates_include_a_leading_continuation_group() {
+    use crate::panes::grid::Row;
+    use std::collections::VecDeque;
+
+    let mut grid = create_grid_with_size_and_raw(3, 8, b"");
+    grid.viewport = VecDeque::from([
+        Row::new(),
+        Row::new(),
+        Row::new().canonical(),
+        Row::new().canonical(),
+    ]);
+    assert_eq!(grid.canonical_line_y_coordinates(0), 0);
+    assert_eq!(grid.canonical_line_y_coordinates(1), 2);
+    assert_eq!(grid.canonical_line_y_coordinates(2), 3);
+}
+
+#[test]
+fn setting_a_search_string_keeps_a_paused_upward_scan() {
+    let mut grid = create_grid_with_size_and_raw(4, 20, b"");
+    let mut parser = vt_parser::Parser::new();
+    let mut lines = Vec::new();
+    for index in 0..400 {
+        if index == 5 {
+            lines.extend_from_slice(b"NEEDLE\r\n");
+        } else {
+            lines.extend_from_slice(format!("line-{index}\r\n").as_bytes());
+        }
+    }
+    parser.feed(&mut grid, &lines);
+    grid.set_search_string("NEEDLE");
+    assert!(
+        grid.pending_search.is_some(),
+        "the upward scan should still be in progress"
+    );
+    let mut guard = 0;
+    while grid.pending_search.is_some() {
+        grid.continue_pending_search();
+        guard += 1;
+        assert!(guard < 100, "search did not finish");
+    }
+    assert!(!grid.search_results.selections.is_empty());
+    assert!(grid.dump_screen(false).contains("NEEDLE"));
+}
+
+#[test]
+fn a_paused_upward_search_tries_downward_when_it_finds_nothing() {
+    let mut grid = create_grid_with_size_and_raw(4, 20, b"");
+    let mut parser = vt_parser::Parser::new();
+    let mut lines = Vec::new();
+    for index in 0..400 {
+        if index == 350 {
+            lines.extend_from_slice(b"LOWER-NEEDLE\r\n");
+        } else {
+            lines.extend_from_slice(format!("line-{index}\r\n").as_bytes());
+        }
+    }
+    parser.feed(&mut grid, &lines);
+    grid.scroll_up_rows(250);
+    grid.set_search_string("LOWER-NEEDLE");
+    assert!(grid.pending_search.is_some());
+    let mut guard = 0;
+    while grid.pending_search.is_some() {
+        grid.continue_pending_search();
+        guard += 1;
+        assert!(guard < 100, "search did not finish");
+    }
+    assert!(!grid.search_results.selections.is_empty());
+    assert!(grid.dump_screen(false).contains("LOWER-NEEDLE"));
+}
+
+struct HistoryCapGuard;
+
+impl Drop for HistoryCapGuard {
+    fn drop(&mut self) {
+        super::set_history_row_cap_override_for_test(None);
+    }
+}
+
+/// Retention that pops the held overlap must not discard the live copy.
+#[test]
+fn unpark_keeps_live_bytes_after_parked_overlap_retention() {
+    let _guard = HistoryCapGuard;
+    // Below the overlap. The default 10000 never pops a viewport-sized held buffer.
+    super::set_history_row_cap_override_for_test(Some(2));
+
+    let mut grid = create_grid_with_size_and_raw(4, 20, b"");
+    let mut content = Vec::new();
+    for index in 0..5 {
+        content.extend_from_slice(format!("line-{index}\r\n").as_bytes());
+    }
+    feed_bytes(&mut grid, &content);
+    grid.scroll_up_rows(1);
+    assert_eq!(
+        grid.lines_below.len(),
+        1,
+        "one row below the viewport makes the live screen overlap the held view"
+    );
+    let overlap = grid.height - grid.lines_below.len();
+    assert!(overlap > 2);
+    assert!(
+        grid.park_at_live_bottom(),
+        "a scrolled pane with no images should park"
+    );
+    {
+        let park = grid.live_bottom.as_ref().expect("park survives retention");
+        assert!(
+            park.held.len() < grid.height,
+            "retention did not pop held rows (held {})",
+            park.held.len()
+        );
+        assert!(
+            park.overlap_skip <= park.held.len(),
+            "overlap_skip {} points past held {}",
+            park.overlap_skip,
+            park.held.len()
+        );
+        assert!(
+            park.overlap_skip < overlap,
+            "popping held did not shrink an overlap that covered the dropped front"
+        );
+    }
+    grid.viewport[0] = row_from_str("LIVEKEEP").canonical();
+    grid.unpark_live_bottom();
+    let document = document_text(&grid);
+    assert!(
+        document.contains("LIVEKEEP"),
+        "unpark dropped the live overlap row: {document:?}"
+    );
+}
+
+fn document_text(grid: &Grid) -> String {
+    let mut text = String::new();
+    for row in grid
+        .lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+    {
+        text.push_str(&row_to_string(row));
+        text.push('\n');
+    }
+    text
+}
+
+fn canonical_row_count(grid: &Grid) -> usize {
+    grid.lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+        .filter(|row| row.is_canonical)
+        .count()
+}
+
+/// Scrollback, the pinned view, and the gap share one row budget. Output
+/// while the user stays scrolled must not keep every new parsed row.
+#[test]
+fn parked_output_stays_inside_the_scrollback_budget() {
+    let cap = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(3, 8, b"MARKER-ROW\r\n");
+    let mut parser = vt_parser::Parser::new();
+    let mut fill = Vec::with_capacity(cap * 3);
+    for _ in 0..cap {
+        fill.extend_from_slice(b"x\r\n");
+    }
+    parser.feed(&mut grid, &fill);
+    grid.move_viewport_up(2);
+    assert!(
+        grid.park_at_live_bottom(),
+        "a scrolled pane with no images should park"
+    );
+    let mut more = Vec::with_capacity(500 * 3);
+    for _ in 0..500 {
+        more.extend_from_slice(b"y\r\n");
+    }
+    parser.feed(&mut grid, &more);
+    assert!(
+        grid.is_live_bottom_parked(),
+        "five hundred lines do not evict the whole pinned view"
+    );
+    assert!(
+        grid.parked_history_rows() <= cap,
+        "parked history {} exceeded the scrollback cap {cap}",
+        grid.parked_history_rows()
+    );
+    let mut flood = Vec::with_capacity((cap + 20) * 3);
+    for _ in 0..(cap + 20) {
+        flood.extend_from_slice(b"z\r\n");
+    }
+    parser.feed(&mut grid, &flood);
+    assert!(
+        grid.history_was_truncated(),
+        "evicting the pinned view has to record truncation"
+    );
+    assert!(
+        grid.parked_history_rows() <= cap,
+        "after the flood, retained rows {} still exceed {cap}",
+        grid.parked_history_rows()
+    );
+    grid.unpark_live_bottom();
+    let document = document_text(&grid);
+    assert!(
+        !document.contains("MARKER-ROW"),
+        "the pinned anchor was evicted and must not come back"
+    );
+    assert!(grid.lines_above.len() + grid.lines_below.len() <= cap);
+}
+
+/// `ESC c` retires the parked projection. A later unpark is what the pane
+/// does after the chunk, and it must not put the pre-reset screen back.
+#[test]
+fn reset_while_parked_does_not_restore_the_old_viewport() {
+    let mut grid = create_grid_with_size_and_raw(5, 40, b"PARKED-SECRET\r\n");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(&mut grid, &b"live-line\r\n".repeat(8));
+    grid.move_viewport_up(4);
+    assert!(grid.park_at_live_bottom());
+    parser.feed(&mut grid, b"\x1bcafter-reset\r\n");
+    grid.unpark_live_bottom();
+    let document = document_text(&grid);
+    assert!(
+        document.contains("after-reset"),
+        "reset output should be on the new screen, got {document:?}"
+    );
+    assert!(
+        !document.contains("PARKED-SECRET"),
+        "unpark after reset restored pre-reset text: {document:?}"
+    );
+    assert!(!grid.is_live_bottom_parked());
+    assert!(!grid.history_was_truncated());
+}
+
+#[test]
+fn reset_across_chunks_drops_the_park_before_the_next_chunk() {
+    let mut grid = create_grid_with_size_and_raw(5, 40, b"PARKED-SECRET\r\n");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(&mut grid, &b"live-line\r\n".repeat(8));
+    grid.move_viewport_up(4);
+    assert!(grid.park_at_live_bottom());
+    parser.feed(&mut grid, b"\x1bc");
+    // The pane unparks at the end of each chunk, before the next one arrives.
+    grid.unpark_live_bottom();
+    assert!(!document_text(&grid).contains("PARKED-SECRET"));
+    parser.feed(&mut grid, b"after-reset\r\n");
+    grid.unpark_live_bottom();
+    let document = document_text(&grid);
+    assert!(document.contains("after-reset"), "{document:?}");
+    assert!(!document.contains("PARKED-SECRET"), "{document:?}");
+}
+
+#[test]
+fn a_reset_retires_a_paused_display_row_recount() {
+    let mut paused = create_grid_with_size_and_raw(5, 20, b"");
+    let mut old_content = Vec::new();
+    for index in 0..400 {
+        old_content.extend_from_slice(format!("old-{index}\r\n").as_bytes());
+    }
+    feed_bytes(&mut paused, &old_content);
+    assert!(
+        paused.lines_above.len() > super::SCREEN_ROW_QUANTUM,
+        "the recount must span more than one quantum"
+    );
+    paused.start_display_row_recount(11);
+    assert!(!paused.continue_display_row_recount());
+    assert!(paused.display_recount_pending());
+
+    let fresh_content = repeated_lines(b"fresh-line", 60);
+    feed_bytes(&mut paused, b"\x1bc");
+    feed_bytes(&mut paused, &fresh_content);
+    while paused.display_recount_pending() {
+        paused.continue_display_row_recount();
+    }
+
+    let mut fresh = create_grid_with_size_and_raw(5, 20, b"");
+    feed_bytes(&mut fresh, &fresh_content);
+    assert_eq!(
+        paused.scrollback_position_and_length(),
+        fresh.scrollback_position_and_length(),
+        "the reset publishes a recount that belongs to the retired history"
+    );
+    assert_eq!(paused.dump_screen(true), fresh.dump_screen(true));
+}
+
+#[test]
+fn a_mutation_between_recount_steps_does_not_publish_a_partial_sum() {
+    let mut grid = create_grid_with_size_and_raw(5, 20, b"");
+    let content = repeated_lines(b"012345678901234567890123456789", 400);
+    feed_bytes(&mut grid, &content);
+    assert!(
+        grid.lines_above.len() > super::SCREEN_ROW_QUANTUM,
+        "the recount must span more than one step"
+    );
+    grid.start_display_row_recount(grid.width);
+    assert!(!grid.continue_display_row_recount());
+    assert!(grid.display_recount_pending());
+
+    // A public mutation between screen turns must be incorporated by the
+    // ongoing measurement rather than publishing a stale partial sum.
+    grid.add_canonical_line();
+    while grid.display_recount_pending() {
+        grid.continue_display_row_recount();
+    }
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "a tail mutation must not lose or restart the in-progress summary"
+    );
+}
+
+#[test]
+fn a_mutation_between_reflow_steps_invalidates_the_scan() {
+    use crate::panes::grid::Row;
+    use crate::panes::terminal_character::TerminalCharacter;
+
+    let mut grid = create_grid_with_scrollback();
+    grid.lines_above.clear();
+    let mut canonical = Row::from_columns(
+        std::iter::repeat(TerminalCharacter::new_styled('a', Default::default()))
+            .take(8)
+            .collect(),
+    )
+    .canonical();
+    let _ = canonical.width_cached();
+    grid.lines_above.push_back(canonical);
+    for _ in 0..200 {
+        let mut row = Row::from_columns(
+            std::iter::repeat(TerminalCharacter::new_styled('b', Default::default()))
+                .take(8)
+                .collect(),
+        );
+        let _ = row.width_cached();
+        row.is_canonical = false;
+        grid.lines_above.push_back(row);
+    }
+    grid.width = 3;
+    grid.arm_pending_scroll_up(1);
+    assert!(grid.pending_line_reflow.is_some());
+    assert_eq!(grid.drive_pending_scroll_up(), 0);
+    assert!(
+        grid.pending_line_reflow.is_some(),
+        "the scan must span more than one quantum"
+    );
+
+    grid.add_canonical_line();
+    let before_len = grid.lines_above.len();
+    assert_eq!(grid.drive_pending_scroll_up(), 0);
+    assert!(
+        grid.pending_line_reflow.is_none(),
+        "a stale reflow job must be dropped, not resumed"
+    );
+    assert_eq!(
+        grid.lines_above.len(),
+        before_len,
+        "an invalidated reflow job must not publish a cut"
+    );
+}
+
+#[test]
+fn alternate_screen_while_parked_saves_and_restores_the_primary_view() {
+    let mut grid = create_grid_with_size_and_raw(4, 20, b"");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(
+        &mut grid,
+        b"PARKED-SECRET\r\na\r\nb\r\nc\r\nd\r\ne\r\nf\r\nBOTTOM\r\n",
+    );
+    grid.move_viewport_up(6);
+    assert!(
+        grid.dump_screen(false).contains("PARKED-SECRET"),
+        "the scrolled viewport should be holding the secret"
+    );
+    assert!(grid.park_at_live_bottom());
+    parser.feed(&mut grid, b"\x1b[?1049h");
+    assert!(!grid.is_live_bottom_parked());
+    assert!(
+        !grid.dump_screen(true).contains("PARKED-SECRET"),
+        "the alternate screen is a new buffer"
+    );
+    parser.feed(&mut grid, b"\x1b[?1049l");
+    assert!(
+        grid.dump_screen(true).contains("PARKED-SECRET"),
+        "leaving the alternate screen restores the primary document"
+    );
+}
+
+#[test]
+fn resize_while_parked_unparks_and_keeps_the_held_text() {
+    let mut grid = create_grid_with_size_and_raw(4, 20, b"PARKED-SECRET\r\n");
+    let mut parser = vt_parser::Parser::new();
+    parser.feed(&mut grid, &b"later\r\n".repeat(8));
+    grid.move_viewport_up(4);
+    assert!(grid.park_at_live_bottom());
+    grid.change_size(5, 24);
+    assert!(!grid.is_live_bottom_parked());
+    assert!(document_text(&grid).contains("PARKED-SECRET"));
+}
+
+#[test]
+fn a_kitty_placement_while_parked_returns_the_held_text_on_the_next_line() {
+    let (mut grid, _store) = new_kitty_grid(5, 20);
+    let mut parser = vt_parser::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut parser,
+        &mut interceptor,
+        b"PARKED-SECRET\r\n",
+    );
+    feed_kitty_bytes(
+        &mut grid,
+        &mut parser,
+        &mut interceptor,
+        &b"later\r\n".repeat(8),
+    );
+    grid.move_viewport_up(4);
+    assert!(grid.park_at_live_bottom());
+    feed_kitty_bytes(
+        &mut grid,
+        &mut parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=1,v=1,i=1,C=1", &rgb_raster(1, 1)),
+    );
+    assert!(
+        !grid.kitty_placements().is_empty(),
+        "the image should be placed before the following newline"
+    );
+    feed_kitty_bytes(&mut grid, &mut parser, &mut interceptor, b"\r\n");
+    assert!(
+        !grid.is_live_bottom_parked(),
+        "a placement uses scrollback coordinates, so the park cannot stay up"
+    );
+    assert!(document_text(&grid).contains("PARKED-SECRET"));
+}
+
+/// A resize quantum must not turn the cut in a soft-wrapped line into a newline.
+#[test]
+fn a_bounded_resize_keeps_one_logical_line() {
+    let width = 4usize;
+    let stored_rows = 300usize;
+    let mut bytes = Vec::with_capacity(stored_rows * width);
+    for index in 0..stored_rows {
+        let byte = b'a' + (index % 26) as u8;
+        bytes.extend(std::iter::repeat(byte).take(width));
+    }
+    let mut grid = create_grid_with_size_and_raw(3, width, &bytes);
+    assert!(
+        grid.lines_above.len() > super::SCREEN_ROW_QUANTUM,
+        "the line has to be longer than one resize quantum, above={}",
+        grid.lines_above.len()
+    );
+    assert_eq!(
+        canonical_row_count(&grid),
+        1,
+        "the fixture is one soft-wrapped line"
+    );
+    let before = logical_characters(&grid);
+    grid.change_size(3, width + 3);
+    assert_eq!(
+        canonical_row_count(&grid),
+        1,
+        "a quantum boundary became a hard line break"
+    );
+    assert!(
+        grid.lines_above.front().is_some_and(|row| row.is_canonical),
+        "the original canonical start stays in scrollback"
+    );
+    assert!(
+        grid.viewport.iter().all(|row| !row.is_canonical),
+        "the visible suffix is still a continuation"
+    );
+    assert_eq!(logical_characters(&grid), before);
+    // Copy splits logical lines on canonical rows. One soft line stays one
+    // copied line, including the characters that sat on the resize quantum.
+    let copied = grid
+        .text_in_range(
+            Position::new(-(grid.lines_above.len() as i32), 0),
+            Position::new(
+                grid.viewport.len().saturating_sub(1) as i32,
+                grid.width as u16,
+            ),
+        )
+        .expect("the line should copy");
+    assert!(
+        !copied.contains('\n'),
+        "a resize quantum became a newline in copied text"
+    );
+    let junction = 127 * width + 2;
+    assert_eq!(&copied[junction..junction + 4], "xxyy");
+    assert_eq!(copied, before);
+    // Search joins the non-canonical tail. The same junction has to be a hit
+    // on that one logical line, not only an earlier repeat of "xxyy".
+    grid.search_results.needle = "xxyy".to_owned();
+    // A match is reported on the row where it starts. Search each row of the
+    // one logical line, not only the canonical head.
+    let mut hits = Vec::new();
+    for index in 0..grid.lines_above.len() {
+        if index > 0 && grid.lines_above[index].is_canonical {
+            break;
+        }
+        let tail: Vec<&super::super::Row> = grid
+            .lines_above
+            .iter()
+            .skip(index + 1)
+            .take_while(|row| !row.is_canonical)
+            .collect();
+        hits.extend(
+            grid.search_results
+                .search_row(index, &grid.lines_above[index], &tail),
+        );
+    }
+    let junction_hit = hits.iter().any(|hit| {
+        let mut offset = 0usize;
+        for (index, row) in grid.lines_above.iter().enumerate() {
+            if index as isize == hit.start.line.0 {
+                let mut column = 0usize;
+                for character in &row.columns {
+                    if column >= hit.start.column.0 as usize {
+                        return offset == junction;
+                    }
+                    offset += character.character.len_utf8();
+                    column += character.width();
+                }
+                return offset == junction;
+            }
+            offset += row
+                .columns
+                .iter()
+                .map(|character| character.character.len_utf8())
+                .sum::<usize>();
+        }
+        false
+    });
+    assert!(
+        junction_hit,
+        "search did not find the quantum junction on the original logical line"
+    );
+}
+
+fn logical_characters(grid: &Grid) -> String {
+    let mut text = String::new();
+    for row in grid
+        .lines_above
+        .iter()
+        .chain(grid.viewport.iter())
+        .chain(grid.lines_below.iter())
+    {
+        text.push_str(row_to_string(row).trim_end());
+    }
+    text
+}
+
+#[test]
+fn retiring_canonical_rows_from_the_front_does_not_copy_the_index() {
+    let (mut grid, _store) = new_kitty_grid(5, 10);
+    let before: Vec<usize> = (0..200).collect();
+    grid.kitty_grid.set_canonical_starts(before.clone());
+    for _ in 0..50 {
+        grid.kitty_grid.note_front_row_removed(true);
+    }
+    let after = grid.kitty_grid.canonical_starts_current();
+    assert_eq!(
+        after,
+        before[50..]
+            .iter()
+            .map(|start| start - 50)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(grid.kitty_grid.index_entries_copied(), 0);
+    assert_eq!(grid.kitty_grid.index_offsets_renumbered(), 0);
+    assert!(grid.kitty_grid.index_front_pops() >= 50);
+
+    // The front row is not a canonical start, so retiring it moves the
+    // base and leaves the stored starts in place.
+    grid.kitty_grid.set_canonical_starts(vec![2, 10, 40, 80]);
+    grid.kitty_grid.note_front_row_removed(false);
+    assert_eq!(grid.kitty_grid.index_front_pops(), 50);
+    assert_eq!(
+        grid.kitty_grid.canonical_starts_current(),
+        vec![1, 9, 39, 79]
+    );
+    grid.kitty_grid.note_front_row_removed(false);
+    grid.kitty_grid.note_front_row_removed(true);
+    assert_eq!(grid.kitty_grid.index_front_pops(), 51);
+    assert_eq!(grid.kitty_grid.canonical_starts_current(), vec![7, 37, 77]);
+    assert_eq!(grid.kitty_grid.index_entries_copied(), 0);
+    assert_eq!(grid.kitty_grid.index_offsets_renumbered(), 0);
+}
+
+#[test]
+fn reanchoring_placements_does_not_clone_the_canonical_index() {
+    let (mut grid, _store) = new_kitty_grid(8, 20);
+    let mut parser = vt_parser::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=2,v=2,i=1,C=1", &rgb_raster(2, 2)),
+    );
+    assert!(!grid.kitty_placements().is_empty());
+    let copies_before = grid.kitty_grid.index_entries_copied();
+    grid.kitty_reanchor_all_from_pixels_for_test();
+    assert_eq!(grid.kitty_grid.index_entries_copied(), copies_before);
+    assert_eq!(grid.kitty_grid.index_offsets_renumbered(), 0);
+}
+
+#[test]
+fn a_long_stale_scroll_up_waits_for_a_display_boundary() {
+    use crate::panes::grid::Row;
+    use crate::panes::terminal_character::TerminalCharacter;
+
+    let mut grid = create_grid_with_scrollback();
+    grid.lines_above.clear();
+    let mut canonical = Row::from_columns(
+        std::iter::repeat(TerminalCharacter::new_styled('a', Default::default()))
+            .take(8)
+            .collect(),
+    )
+    .canonical();
+    let _ = canonical.width_cached();
+    grid.lines_above.push_back(canonical);
+    for _ in 0..200 {
+        let mut row = Row::from_columns(
+            std::iter::repeat(TerminalCharacter::new_styled('b', Default::default()))
+                .take(8)
+                .collect(),
+        );
+        let _ = row.width_cached();
+        row.is_canonical = false;
+        grid.lines_above.push_back(row);
+    }
+    // Stored rows are 8 columns wide. The pane is narrower, so the tail is stale.
+    grid.width = 3;
+    let before_cells: usize = grid
+        .lines_above
+        .iter()
+        .map(|row| row.columns.len())
+        .sum::<usize>()
+        + grid
+            .viewport
+            .iter()
+            .map(|row| row.columns.len())
+            .sum::<usize>();
+    // The first turns only walk the prefix. That is not the top of the buffer.
+    assert!(
+        !grid.advance_toward_top(2),
+        "a paused scan must not report that the viewport is at the top"
+    );
+    assert!(grid.pending_line_reflow.is_some() || grid.lines_above.len() < 201);
+    let mut guard = 0;
+    while grid.pending_line_reflow.is_some() && guard < 20 {
+        let _ = grid.scroll_up_rows(2);
+        guard += 1;
+    }
+    assert!(
+        grid.pending_line_reflow.is_none(),
+        "the display-boundary scan did not finish"
+    );
+    let after_cells: usize = grid
+        .lines_above
+        .iter()
+        .map(|row| row.columns.len())
+        .sum::<usize>()
+        + grid
+            .viewport
+            .iter()
+            .map(|row| row.columns.len())
+            .sum::<usize>()
+        + grid
+            .lines_below
+            .iter()
+            .map(|row| row.columns.len())
+            .sum::<usize>();
+    assert_eq!(
+        before_cells, after_cells,
+        "reflow must keep every character"
+    );
+    let front = row_to_string(&grid.viewport[0]);
+    assert!(
+        front.chars().all(|character| character == 'b') && front.chars().count() <= 3,
+        "the revealed row should be the stale tail reflowed at the pane width, got {front:?}"
+    );
+}
+
+#[test]
+fn reset_viewport_moves_in_bulk_and_a_short_budget_stops() {
+    use super::{reset_scroll_down_one_line_call_count, scroll_down_one_line_call_count};
+
+    let mut grid = create_grid_with_scrollback();
+    grid.move_viewport_up(10);
+    assert!(grid.is_scrolled);
+    reset_scroll_down_one_line_call_count();
+    grid.reset_viewport();
+    assert!(!grid.is_scrolled);
+    assert!(grid.lines_below.is_empty());
+    assert_eq!(scroll_down_one_line_call_count(), 0);
+
+    grid.move_viewport_up(10);
+    reset_scroll_down_one_line_call_count();
+    assert!(
+        !grid.advance_to_bottom(2),
+        "two rows cannot finish a ten-row return to the bottom"
+    );
+    assert!(grid.is_scrolled);
+    assert!(!grid.lines_below.is_empty());
+    assert_eq!(scroll_down_one_line_call_count(), 0);
+}
+
+#[test]
+fn reset_viewport_stops_after_one_row_quantum() {
+    let mut grid = create_grid_with_size_and_raw(5, 20, b"");
+    let distance = super::SCREEN_ROW_QUANTUM + 10;
+    let mut content = Vec::new();
+    for index in 0..distance + grid.height {
+        content.extend_from_slice(format!("row-{index}\r\n").as_bytes());
+    }
+    feed_bytes(&mut grid, &content);
+    let moved_up = grid.scroll_up_rows(distance);
+    assert!(
+        moved_up > super::SCREEN_ROW_QUANTUM,
+        "the fixture must scroll further than one quantum, moved {moved_up}"
+    );
+    let before = grid.lines_below.len();
+    assert!(before > super::SCREEN_ROW_QUANTUM);
+    grid.reset_viewport();
+    let moved = before - grid.lines_below.len();
+    assert!(
+        !grid.lines_below.is_empty(),
+        "one reset_viewport finished a {}-row return",
+        before
+    );
+    assert!(
+        moved <= super::SCREEN_ROW_QUANTUM,
+        "reset_viewport moved {moved} rows, quantum is {}",
+        super::SCREEN_ROW_QUANTUM
+    );
+    assert!(moved > 0, "reset_viewport did not move toward the bottom");
+    let mid = grid.lines_below.len();
+    grid.reset_viewport();
+    assert!(
+        grid.lines_below.len() < mid,
+        "a second reset_viewport should continue toward the bottom"
+    );
+}
+
+#[test]
+fn add_canonical_line_inserts_a_canonical_viewport_row() {
+    use crate::panes::terminal_character::TerminalCharacter;
+
+    let mut grid = create_grid_with_size_and_raw(4, 8, b"");
+    grid.move_cursor_to(
+        0,
+        grid.height - 1,
+        TerminalCharacter::new_styled(' ', Default::default()),
+    );
+    assert_eq!(grid.cursor.y, grid.height - 1);
+    let above = grid.lines_above.len();
+    grid.add_canonical_line();
+    assert!(
+        grid.lines_above.len() > above,
+        "the cursor was on the bottom scroll-region row, so the new row must scroll"
+    );
+    assert!(
+        grid.viewport.back().is_some_and(|row| row.is_canonical),
+        "the row inserted into the viewport must be canonical"
+    );
+}
+
+#[test]
+fn a_stale_line_reflow_stops_after_the_requested_rows() {
+    use crate::panes::grid::Row;
+    use crate::panes::terminal_character::TerminalCharacter;
+    use std::collections::VecDeque;
+
+    let mut rows = VecDeque::new();
+    let columns: Vec<_> = (0..500)
+        .map(|_| TerminalCharacter::new_styled('a', Default::default()))
+        .collect();
+    rows.push_back(Row::from_columns(columns).canonical());
+    let taken = super::take_reflow_prefix(&mut rows, 2, 10);
+    let taken_columns: usize = taken.iter().map(|row| row.columns.len()).sum();
+    assert_eq!(taken_columns, 20);
+    let left: usize = rows.iter().map(|row| row.columns.len()).sum();
+    assert_eq!(left, 480);
+    assert!(!rows.front().expect("remainder").is_canonical);
+}
+
+/// A grid `columns` cells wide whose scrollback holds `line_count`
+/// full-width rows, each starting with its five-digit index and an `x`
+/// after it, so that serialized output can be inspected by row.
+fn wide_marked_scrollback(columns: usize, line_count: usize) -> Grid {
+    let mut grid = create_grid_with_size_and_raw(5, columns, b"");
+    let mut content: Vec<u8> = Vec::with_capacity(line_count * (columns + 2));
+    for index in 0..line_count {
+        content.extend_from_slice(format!("{index:05}").as_bytes());
+        content.resize(content.len() + columns - 5, b'x');
+        content.extend_from_slice(b"\r\n");
+    }
+    feed_bytes(&mut grid, &content);
+    grid
+}
+
+#[test]
+fn serialize_snapshot_is_bounded_by_cells_not_just_rows() {
+    // 8,000 rows of 1,000 cells is 8M cells: nearly twice the absolute
+    // snapshot ceiling and far above one screen-thread quantum. One call
+    // must keep the newest quantum, not fill the 4MiB ceiling.
+    let budget = super::MAX_SERIALIZE_SNAPSHOT_CELLS;
+    let quantum = super::SCREEN_ROW_QUANTUM;
+    let line_count = 8_000;
+    let mut grid = wide_marked_scrollback(1_000, line_count);
+    assert!(grid.lines_above.len() < *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000));
+    let stored_cells: usize = grid
+        .lines_above
+        .iter_mut()
+        .map(|row| row.width_cached())
+        .sum();
+    assert!(stored_cells > budget + budget / 2);
+    assert!(grid.lines_above.len() + grid.viewport.len() > quantum);
+
+    super::reset_serialize_budget_rows_scanned();
+    let first = grid.serialize(Some(usize::MAX));
+    let scanned = super::serialize_budget_rows_scanned();
+    assert!(
+        first.is_none(),
+        "an unfinished snapshot must not return a partial viewport"
+    );
+    assert!(
+        grid.serialize_snapshot_has_more(),
+        "rows past the first quantum remain"
+    );
+    assert!(
+        scanned <= quantum,
+        "one serialize call scanned {scanned} rows, past the {quantum} quantum"
+    );
+    let mut serialized = None;
+    for _ in 0..line_count {
+        serialized = grid.serialize(Some(usize::MAX));
+        if serialized.is_some() {
+            break;
+        }
+    }
+    let serialized = serialized.expect("the snapshot pass finishes");
+    assert!(!grid.serialize_snapshot_has_more());
+    let serialized_filler = serialized.matches('x').count();
+    let quantum_cells = quantum * 1_000;
+    assert!(
+        serialized_filler <= budget,
+        "{serialized_filler} serialized cells exceed the {budget} ceiling"
+    );
+    assert!(
+        serialized_filler > quantum_cells / 2,
+        "{serialized_filler} serialized cells: the quantum must be used, not an empty snapshot"
+    );
+    assert!(
+        !serialized.contains("00000x"),
+        "the oldest rows must be the ones dropped"
+    );
+    assert!(
+        serialized.contains(&format!("{:05}x", line_count - 1)),
+        "the newest row must survive the ceiling"
+    );
+}
+
+#[test]
+fn serialize_resume_ignores_a_row_appended_between_quanta() {
+    // A row that arrives after the freeze used to shift `taken_rows`, so the
+    // next quantum repeated a copied marker and never reached the older ones.
+    let quantum = super::SCREEN_ROW_QUANTUM;
+    let line_count = quantum + 30;
+    let mut grid = wide_marked_scrollback(20, line_count);
+    let newest = format!("{:05}x", line_count - 1);
+    assert!(grid.serialize(Some(usize::MAX)).is_none());
+    assert!(grid.serialize_snapshot_has_more());
+    feed_bytes(&mut grid, b"APPENDED_ROW_MARKER\r\n");
+
+    let mut serialized = None;
+    for _ in 0..8 {
+        serialized = grid.serialize(Some(usize::MAX));
+        if serialized.is_some() {
+            break;
+        }
+    }
+    let serialized = serialized.expect("the frozen pass finishes");
+    assert!(!grid.serialize_snapshot_has_more());
+    assert_eq!(
+        serialized.matches(newest.as_str()).count(),
+        1,
+        "the first quantum's newest marker must appear once"
+    );
+    assert!(
+        !serialized.contains("APPENDED_ROW_MARKER"),
+        "a row appended after the freeze is not part of this pass"
+    );
+    for index in 0..line_count {
+        let marker = format!("{:05}x", index);
+        assert_eq!(
+            serialized.matches(marker.as_str()).count(),
+            1,
+            "pre-freeze marker {marker} must appear once"
+        );
+    }
+}
+
+#[test]
+fn serialize_keeps_a_rewrap_tail_with_its_line() {
+    // Narrowing splits a wide line. The continuation is a new row with a
+    // newer stamp than the lines below it. The saved text must stay in
+    // screen order: the tail of B before C.
+    let mut grid =
+        create_grid_with_size_and_raw(6, 20, b"AAAA\r\nBBBBBBBBBBBBBBBBBBBB\r\nCCCC\r\n");
+    grid.change_size(6, 10);
+    let serialized = grid
+        .serialize(Some(usize::MAX))
+        .expect("four wrapped rows finish in one call");
+    let cccc = serialized.find("CCCC").expect("C survives the resize");
+    let bees_before_c = serialized[..cccc].matches('B').count();
+    let bees_after_c = serialized[cccc..].matches('B').count();
+    assert_eq!(
+        bees_before_c, 20,
+        "both halves of B must precede C, snapshot:\n{serialized}"
+    );
+    assert_eq!(
+        bees_after_c, 0,
+        "B's rewrap tail must not follow C, snapshot:\n{serialized}"
+    );
+    assert!(serialized.find("AAAA").is_some_and(|index| index < cccc));
+}
+
+#[test]
+fn serialize_keeps_a_pending_line_rewrapped_between_quanta() {
+    // The wide line sits past the first quantum, so its stamp is still
+    // pending. Narrowing does not rewrap history. Scrolling that line into
+    // the viewport does, and the new tail gets a stamp the freeze never saw.
+    let quantum = super::SCREEN_ROW_QUANTUM;
+    let mut bytes = b"WWWWWWWWWWXXXXXXXXXX\r\n".to_vec();
+    for index in 0..(quantum + 40) {
+        bytes.extend(format!("L{index:05}\r\n").into_bytes());
+    }
+    let mut grid = create_grid_with_size_and_raw(4, 20, &bytes);
+    assert!(grid.serialize(Some(usize::MAX)).is_none());
+    grid.change_size(4, 10);
+    assert!(
+        grid.scroll_up_rows(10_000) > 0,
+        "scrolling must pull the pending history line"
+    );
+    let rewrapped = grid.viewport.iter().any(|row| !row.is_canonical)
+        || grid.lines_above.iter().any(|row| !row.is_canonical);
+    assert!(
+        rewrapped,
+        "the wide line has to be split before the pass resumes"
+    );
+
+    let mut serialized = None;
+    for _ in 0..8 {
+        serialized = grid.serialize(Some(usize::MAX));
+        if serialized.is_some() {
+            break;
+        }
+    }
+    let serialized = serialized.expect("the pass finishes after the reflow");
+    let first = serialized.find('W').expect("the carried half survives");
+    let last = serialized.rfind('X').expect("the rewrap tail survives");
+    let between = &serialized[first..=last];
+    assert!(
+        first
+            < serialized
+                .find('X')
+                .expect("the tail follows the carried half")
+    );
+    assert_eq!(between.matches('W').count(), 10);
+    assert_eq!(between.matches('X').count(), 10);
+    assert!(
+        !between.contains('\n') && !between.contains('\r'),
+        "the pending line must stay one logical line, between: {between:?}"
+    );
+    for index in 0..(quantum + 40) {
+        let marker = format!("L{index:05}");
+        assert!(
+            serialized.contains(&marker),
+            "scrollback row {marker} must stay in the snapshot"
+        );
+    }
+}
+
+#[test]
+fn serialize_does_not_repeat_a_half_copied_before_reflow() {
+    // The continuation is inside the first quantum. The canonical row is
+    // still pending. Narrowing and scrolling rewrites the line, and the
+    // half already saved must not be written again.
+    let quantum = super::SCREEN_ROW_QUANTUM;
+    let mut bytes = b"WWWWWWWWWWXXXXXXXXXX\r\n".to_vec();
+    for index in 0..(quantum - 2) {
+        bytes.extend(format!("L{index:05}\r\n").into_bytes());
+    }
+    let mut grid = create_grid_with_size_and_raw(4, 10, &bytes);
+    assert!(grid.serialize(Some(usize::MAX)).is_none());
+    grid.change_size(4, 5);
+    assert!(grid.scroll_up_rows(10_000) > 0);
+    assert!(
+        grid.viewport
+            .iter()
+            .chain(grid.lines_above.iter())
+            .chain(grid.lines_below.iter())
+            .any(|row| !row.is_canonical),
+        "scrolling the wide line into the narrower viewport has to rewrap it"
+    );
+    let mut serialized = None;
+    for _ in 0..8 {
+        serialized = grid.serialize(Some(usize::MAX));
+        if serialized.is_some() {
+            break;
+        }
+    }
+    let serialized = serialized.expect("the pass finishes after the reflow");
+    assert_eq!(
+        serialized.matches('W').count(),
+        10,
+        "the carried half must be saved once, snapshot:\n{serialized}"
+    );
+    assert_eq!(
+        serialized.matches('X').count(),
+        10,
+        "the half copied before the reflow must not be repeated, snapshot:\n{serialized}"
+    );
+}
+
+#[test]
+fn serialize_does_not_break_a_wrapped_line_at_a_quantum_boundary() {
+    // A continuation that is the oldest row of a later quantum was saved
+    // with a hard newline, splitting one logical line.
+    let quantum = super::SCREEN_ROW_QUANTUM;
+    let width = 10;
+    let rows = quantum + 1;
+    let grid = create_grid_with_size_and_raw(4, width, &vec![b'B'; rows * width]);
+    let mut serialized = None;
+    for _ in 0..4 {
+        serialized = grid.serialize(Some(usize::MAX));
+        if serialized.is_some() {
+            break;
+        }
+    }
+    let serialized = serialized.expect("the wrapped line finishes");
+    let first = serialized.find('B').expect("the line has cells");
+    let last = serialized.rfind('B').expect("the line has cells");
+    let between = &serialized[first..=last];
+    assert_eq!(between.matches('B').count(), rows * width);
+    assert!(
+        !between.contains('\n') && !between.contains('\r'),
+        "a wrapped line must stay one line across the quantum boundary:\n{serialized}"
+    );
+}
+
+#[test]
+fn serialize_budget_only_scans_the_requested_rows() {
+    // Well under the cell budget, so a scan that ignored the request
+    // would walk all 3,000 rows before running out of history.
+    let grid = wide_marked_scrollback(1_000, 3_000);
+    super::reset_serialize_budget_rows_scanned();
+    let serialized = grid
+        .serialize(Some(100))
+        .expect("viewport+scrollback serializes");
+    let scanned = super::serialize_budget_rows_scanned();
+    assert!(
+        scanned <= 200,
+        "a 100-row request scanned {scanned} history rows"
+    );
+    assert!(serialized.contains("02990x"));
+    assert!(!serialized.contains("02000x"));
+}
+
+#[test]
+fn serialize_snapshot_viewport_is_bounded_by_cells() {
+    // The oldest viewport row's snapshot cost alone exceeds the budget, so a
+    // serialize that still cloned every viewport row would keep its marker.
+    let budget = super::MAX_SERIALIZE_SNAPSHOT_CELLS;
+    let mut grid =
+        create_grid_with_size_and_raw(2, 40, b"OLDEST_VIEWPORT_ROW\r\nNEWEST_VIEWPORT_ROW");
+    assert!(
+        grid.lines_above.is_empty(),
+        "the markers must sit in the viewport, not scrollback"
+    );
+    assert!(row_text(&grid.viewport[0]).contains("OLDEST_VIEWPORT_ROW"));
+    assert!(row_text(grid.viewport.back().expect("newest row")).contains("NEWEST_VIEWPORT_ROW"));
+    grid.viewport[0].trailing_blanks = u32::try_from(budget).expect("budget fits in u32");
+    let viewport_cells: usize = grid.viewport.iter().map(|row| row.snapshot_cost()).sum();
+    assert!(
+        viewport_cells > budget,
+        "viewport snapshot cost {viewport_cells} must exceed the {budget} budget"
+    );
+
+    let serialized = grid
+        .serialize(Some(0))
+        .expect("bounded viewport serializes");
+    assert!(
+        !serialized.contains("OLDEST_VIEWPORT_ROW"),
+        "the oldest viewport row must be dropped, not copied"
+    );
+    assert!(
+        serialized.contains("NEWEST_VIEWPORT_ROW"),
+        "the newest retained viewport row must be present"
+    );
+}
+
+fn scrollback_cells_recount(grid: &Grid) -> usize {
+    grid.lines_above
+        .iter()
+        .map(|row| row.stored_cell_count())
+        .sum()
+}
+
+#[test]
+fn scrollback_cells_follow_a_recount_through_cell_eviction_clears_and_the_alternate_screen() {
+    // Rows 2,000 cells wide: the retained-cell ceiling is hit long before
+    // the row cap, so eviction here is by cells and not by row count.
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let cell_budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let columns = 2_000;
+    let fed_rows = cell_budget / columns + 300;
+    assert!(fed_rows < scroll_buffer_size);
+    let mut grid = create_grid_with_size_and_raw(5, columns, b"");
+    let wide_line = vec![b'x'; columns];
+    feed_bytes(&mut grid, &repeated_lines(&wide_line, fed_rows));
+
+    assert!(
+        grid.lines_above.len() < fed_rows - 5,
+        "rows must have been evicted by the cell ceiling ({} kept of {fed_rows})",
+        grid.lines_above.len()
+    );
+    assert!(grid.lines_above.len() < scroll_buffer_size);
+    // The ceiling includes the row just admitted. A single newest row
+    // may still exceed it; every row here fits, so the sum must not.
+    assert!(grid.scrollback_cells <= cell_budget);
+    assert!(
+        grid.scrollback_cells + columns > cell_budget,
+        "eviction must stop as soon as the ceiling holds"
+    );
+    assert_eq!(grid.scrollback_cells, scrollback_cells_recount(&grid));
+
+    // The counter stays exact while eviction continues.
+    feed_bytes(&mut grid, &repeated_lines(&wide_line, 100));
+    assert!(grid.scrollback_cells <= cell_budget);
+    assert_eq!(grid.scrollback_cells, scrollback_cells_recount(&grid));
+
+    // Entering the alternate screen sets the scrollback aside; leaving
+    // it restores exactly what was set aside.
+    let cells_before_alternate_screen = grid.scrollback_cells;
+    feed_bytes(&mut grid, b"\x1b[?1049h");
+    assert_eq!(grid.scrollback_cells, scrollback_cells_recount(&grid));
+    feed_bytes(&mut grid, &repeated_lines(b"alternate", 30));
+    assert_eq!(grid.scrollback_cells, scrollback_cells_recount(&grid));
+    feed_bytes(&mut grid, b"\x1b[?1049l");
+    assert_eq!(grid.scrollback_cells, cells_before_alternate_screen);
+    assert_eq!(grid.scrollback_cells, scrollback_cells_recount(&grid));
+
+    // Clearing the scrollback and a full reset both zero it.
+    feed_bytes(&mut grid, b"\x1b[3J");
+    assert!(grid.lines_above.is_empty());
+    assert_eq!(grid.scrollback_cells, 0);
+    feed_bytes(&mut grid, &repeated_lines(&wide_line, 40));
+    assert_eq!(grid.scrollback_cells, scrollback_cells_recount(&grid));
+    assert!(grid.scrollback_cells > 0);
+    feed_bytes(&mut grid, b"\x1bc");
+    assert!(grid.lines_above.is_empty());
+    assert_eq!(grid.scrollback_cells, 0);
+}
+
+fn recounted_scrollback_cells(grid: &Grid) -> usize {
+    grid.lines_above
+        .iter()
+        .map(|row| row.stored_cell_count())
+        .sum()
+}
+
+#[test]
+fn scrollback_cell_count_stays_exact_when_reflow_joins_a_wrapped_line_into_the_viewport() {
+    // A long logical line straddles the scrollback/viewport boundary, so
+    // the viewport starts with a continuation row. Every width change
+    // pulls that line's scrollback rows into the viewport to rewrap it;
+    // those rows must be debited from the retained-cell counter, or the
+    // counter only ever grows and scrollback is evicted early.
+    let mut grid = create_grid_with_size_and_raw(4, 20, b"");
+    let mut content: Vec<u8> = Vec::new();
+    for i in 0..30 {
+        content.extend_from_slice(format!("line {i}\r\n").as_bytes());
+    }
+    // 200 columns of text at width 20 wraps onto 10 rows; with 4 viewport
+    // rows the line starts in scrollback and ends in the viewport.
+    content.extend_from_slice("x".repeat(200).as_bytes());
+    feed_bytes(&mut grid, &content);
+    assert!(
+        !grid.viewport[0].is_canonical,
+        "witness setup: the viewport must begin with a continuation row"
+    );
+    assert_eq!(grid.scrollback_cells, recounted_scrollback_cells(&grid));
+    for (round, width) in [17, 23, 11, 29, 20, 13].into_iter().enumerate() {
+        grid.change_size(4, width);
+        assert_eq!(
+            grid.scrollback_cells,
+            recounted_scrollback_cells(&grid),
+            "retained-cell counter drifted after reflow round {round} (width {width})"
+        );
+    }
+}
+
+#[test]
+fn repeated_osc133_markers_on_one_row_are_bounded() {
+    // `ESC ] 133 ; D ; 0 BEL` prints nothing and does not move the
+    // cursor, so every repeat used to add one more marker to the same
+    // row at zero cell cost.
+    let mut grid = create_grid_with_size_and_raw(5, 20, b"");
+    let marker = b"\x1b]133;D;0\x07";
+    let mut content: Vec<u8> = Vec::new();
+    for _ in 0..50_000 {
+        content.extend_from_slice(marker);
+    }
+    feed_bytes(&mut grid, &content);
+    let markers: usize = grid
+        .viewport
+        .iter()
+        .map(|row| row.osc133_markers.iter().count())
+        .sum();
+    assert_eq!(markers, 1, "repeats at one position collapse to one marker");
+
+    // Distinct positions are capped per row, keeping the newest.
+    let mut grid = create_grid_with_size_and_raw(5, 1_000, b"");
+    let mut content: Vec<u8> = Vec::new();
+    for _ in 0..500 {
+        content.extend_from_slice(b"x\x1b]133;D;0\x07");
+    }
+    feed_bytes(&mut grid, &content);
+    let row = &grid.viewport[0];
+    let kept: Vec<usize> = row.osc133_markers.iter().map(|m| m.column).collect();
+    assert_eq!(kept.len(), super::MAX_OSC133_MARKERS_PER_ROW);
+    assert_eq!(*kept.last().unwrap(), 500, "the newest marker is kept");
+}
+
+#[test]
+fn serialization_snapshot_budget_counts_osc133_markers() {
+    let mut grid = create_grid_with_size_and_raw(5, 20, b"abc\x1b]133;D;0\x07\x1b]133;C\x07");
+    let row = &grid.viewport[0];
+    assert_eq!(row.osc133_markers.iter().count(), 2);
+    assert_eq!(row.snapshot_cost(), row.width() + 2);
+    // an empty row still pays for the markers a clone would copy
+    feed_bytes(&mut grid, b"\r\n\x1b]133;D;0\x07\x1b]133;C\x07");
+    let empty_row = &grid.viewport[1];
+    assert_eq!(empty_row.width(), 0);
+    assert_eq!(empty_row.snapshot_cost(), 2);
+}
+
+#[test]
+fn evicting_a_stored_row_of_wide_characters_debits_its_exact_display_rows() {
+    // 5,000 width-2 characters wrap to one character per row at width
+    // 3: 5,000 display rows. Estimating from the 10,000-cell total gave
+    // ceil(10000 / 3) = 3,334, a 1,666-row phantom per eviction.
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(5, 10_000, b"");
+    let mut wide_line = "\u{4e16}".repeat(5_000).into_bytes();
+    wide_line.extend_from_slice(b"\r\n");
+    feed_bytes(&mut grid, &wide_line);
+    feed_bytes(&mut grid, &repeated_lines(b"x", 20));
+    grid.change_size(5, 3);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid)
+    );
+    assert!(grid.scrollback_position_and_length().1 >= 5_000);
+    feed_bytes(&mut grid, &repeated_lines(b"x", scroll_buffer_size + 10));
+    assert!(grid.lines_above.iter().all(|row| row.columns.len() <= 3));
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "the wide row's rows must be debited exactly when it is evicted"
+    );
+}
+
+#[test]
+fn evicting_a_row_whose_character_is_wider_than_the_pane_stays_exact() {
+    // "你a" wraps at width 2 into [你] and [a]. At width 1 the wide
+    // character overflows its row, so the single-cell shortcut must not
+    // treat the open row as having room: evicting the 你 row removes one
+    // display row, not two.
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(5, 2, b"");
+    feed_bytes(&mut grid, "\u{4f60}a\r\n".as_bytes());
+    feed_bytes(&mut grid, &repeated_lines(b"x", 10));
+    grid.change_size(5, 1);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid)
+    );
+    let missing = scroll_buffer_size - grid.lines_above.len() - 1;
+    feed_bytes(&mut grid, &repeated_lines(b"x", missing));
+    for _ in 0..30 {
+        feed_bytes(&mut grid, b"x\r\n");
+        assert_eq!(
+            grid.scrollback_position_and_length().1,
+            scrollback_recount(&mut grid),
+            "after {} stored rows",
+            grid.lines_above.len()
+        );
+    }
+}
+
+#[test]
+fn a_multi_row_cell_eviction_telescopes_the_display_row_deltas() {
+    // A logical line of three 900-cell rows is stored, the pane widens to
+    // 2,000 columns (stored rows are not reflowed, so the line now spans
+    // two display rows) and a single push evicts the first two stored
+    // rows by the retained-cell ceiling. The line shrinks from two
+    // display rows to one; the deltas used to be taken against the final
+    // state for both rows and summed to zero.
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let cell_budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let mut grid = create_grid_with_size_and_raw(1, 900, b"");
+    let mut run = vec![b'a'; 2_700];
+    run.extend_from_slice(b"\r\n");
+    feed_bytes(&mut grid, &run);
+    feed_bytes(&mut grid, b"z\r\n");
+    grid.change_size(1, 2_000);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid)
+    );
+    // Fill to just under the ceiling. The next row is sized so one push
+    // must drop two 900-cell rows of the wrapped line before the
+    // retained total, including that row, fits. (Admitting it over the
+    // ceiling and evicting on a later short row is the old hole.)
+    let line_of = |length: usize| {
+        let mut line = vec![b'b'; length];
+        line.extend_from_slice(b"\r\n");
+        line
+    };
+    while grid.scrollback_cells + 2_000 <= cell_budget {
+        feed_bytes(&mut grid, &line_of(2_000));
+    }
+    let mut remaining = cell_budget - grid.scrollback_cells;
+    assert!(remaining < 2_000);
+    if remaining > 500 {
+        feed_bytes(&mut grid, &line_of(remaining - 100));
+        remaining = cell_budget - grid.scrollback_cells;
+    }
+    assert!(remaining <= 500);
+    assert_eq!(grid.lines_above.front().unwrap().stored_cell_count(), 900);
+    assert_eq!(grid.lines_above[1].stored_cell_count(), 900);
+    let incoming = remaining + 1_400;
+    assert!(incoming <= 2_000, "the evicting line must be a single row");
+    assert!(grid.lines_above.front().unwrap().is_canonical);
+    let rows_before = grid.lines_above.len();
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "exact before the evicting push"
+    );
+    feed_bytes(&mut grid, &line_of(incoming));
+    assert_eq!(
+        grid.lines_above.len(),
+        rows_before - 1,
+        "one push must evict two stored rows and keep the third"
+    );
+    assert!(grid.scrollback_cells <= cell_budget);
+    assert_eq!(grid.scrollback_cells, recounted_scrollback_cells(&grid));
+    assert!(
+        !grid.lines_above.front().unwrap().is_canonical,
+        "two of the line's three stored rows must have been evicted at once"
+    );
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "a multi-row eviction must account the height change of the shrinking line"
+    );
+}
+#[test]
+fn a_resized_long_ascii_run_evicts_with_bounded_row_visits() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let width = 80usize;
+    let mut grid = create_grid_with_size_and_raw(2, width, b"");
+    // One unbroken logical line fills and then starts evicting the
+    // scrollback, so its canonical head is gone and the front is a run of
+    // 80-cell continuation rows.
+    let line_rows = scroll_buffer_size + 2_000;
+    let mut line = vec![b'a'; line_rows * width];
+    line.extend_from_slice(b"\r\n");
+    feed_bytes(&mut grid, &line);
+    feed_bytes(&mut grid, b"x\r\n");
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    assert!(
+        !grid.lines_above.front().unwrap().is_canonical,
+        "the canonical head must have been evicted"
+    );
+    let front_run = grid
+        .lines_above
+        .iter()
+        .take_while(|row| !row.is_canonical)
+        .count();
+    assert!(front_run > 1_000, "front run was only {front_run}");
+
+    grid.change_size(2, width + 1);
+    reset_line_index_counters();
+    let evictions = 500usize;
+    let mut more = Vec::new();
+    for _ in 0..evictions {
+        more.extend_from_slice(b"x\r\n");
+    }
+    feed_bytes(&mut grid, &more);
+
+    let (rows, cells, boundaries) = line_index_counters();
+    grid.finish_display_row_recount();
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "the eviction deltas and the recount must agree"
+    );
+    assert!(
+        rows <= evictions * 8 + 2_000,
+        "revisited {rows} rows while evicting {evictions} rows of a {front_run}-row run"
+    );
+    assert!(
+        cells <= evictions * 8 + 2_000,
+        "scanned {cells} cells while evicting {evictions} rows of a {front_run}-row run"
+    );
+    assert!(
+        boundaries <= rows,
+        "boundary discovery must be covered by the row budget"
+    );
+}
+
+#[test]
+fn deferred_recount_reserves_room_instead_of_starving_under_churn() {
+    // Chronological policy: while a measured mixed-width line fills the
+    // window, continued output evicts the oldest front and reopens
+    // measurement. The temporary 2x reserve must still keep the in-flight
+    // measure job from starving; after output stops, trim+measure must
+    // settle under the normal cap.
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let pattern = "\u{754c}a";
+    let initial = pattern.repeat(scroll_buffer_size * 4 + 5_000);
+    feed_bytes(&mut grid, initial.as_bytes());
+    assert!(
+        grid.lines_above.len() >= scroll_buffer_size,
+        "the unbroken mixed line did not reach the scrollback cap"
+    );
+
+    grid.resize_keeping_recount_open(5, 11);
+    assert!(grid.display_recount_pending());
+    let max_turns = 220;
+    let mut turns = 0;
+    let mut saw_reserve = false;
+    let mut max_rows = grid.lines_above.len();
+    while grid.display_recount_pending() && turns < max_turns {
+        feed_bytes(&mut grid, pattern.repeat(16).as_bytes());
+        max_rows = max_rows.max(grid.lines_above.len());
+        if grid.retention_reserve_active() {
+            saw_reserve = true;
+        }
+        let _ = grid.continue_display_row_recount();
+        turns += 1;
+        assert!(
+            grid.lines_above.len() <= scroll_buffer_size.saturating_mul(2),
+            "scrollback grew past the 2x recount reserve: {}",
+            grid.lines_above.len()
+        );
+    }
+    assert!(
+        saw_reserve || max_rows > scroll_buffer_size,
+        "churn never opened the recount reserve (max_rows={max_rows})"
+    );
+
+    // Stop producing: chronological trim and remasure must settle.
+    let mut settle = 0;
+    while grid.display_recount_pending() && settle < 500 {
+        let _ = grid.continue_display_row_recount();
+        settle += 1;
+    }
+    assert!(
+        !grid.display_recount_pending(),
+        "recount did not settle after churn stopped (rows={}, front_unmeasured={}, settle={settle})",
+        grid.lines_above.len(),
+        grid.line_index.front_line_unmeasured()
+    );
+    assert!(
+        grid.lines_above.len() <= scroll_buffer_size,
+        "the recount reserve was not trimmed: {} > {scroll_buffer_size}",
+        grid.lines_above.len()
+    );
+}
+
+#[test]
+fn a_finished_overlong_line_rolls_chronologically_when_the_next_line_arrives() {
+    // Declared policy: chronological front eviction. The first canonical row
+    // after a measured mixed-width line that fills the retention window must
+    // not synchronously retire the whole line (O(H)); it retires only what
+    // the budgets require — typically one oldest row — and settles any
+    // remaining measure work through the recount quantum.
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    for index in 0..scroll_buffer_size {
+        push_scrollback_row(
+            &mut grid,
+            mixed_tagged_scrollback_row(index == 0, index as u32),
+        );
+    }
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    assert_eq!(grid.line_index.line_count(), 1);
+    assert!(grid.line_index.front_line_is_measured());
+    assert!(!grid.line_index.front_row_cut_is_exact());
+    let front_before = grid.line_index.front_line_row_count().unwrap_or(0);
+    assert_eq!(front_before, scroll_buffer_size);
+    let evicted_before = grid.scrollback_rows_evicted;
+    let oldest_before = scrollback_row_tag(grid.lines_above.front().expect("scrollback"));
+
+    // First canonical row after the long mixed-width run.
+    let evicted = push_scrollback_row(
+        &mut grid,
+        mixed_tagged_scrollback_row(true, scroll_buffer_size as u32),
+    );
+    assert_eq!(
+        evicted, 1,
+        "admitting one canonical row should retire one oldest front row, not the whole line"
+    );
+    assert!(
+        (grid.scrollback_rows_evicted.saturating_sub(evicted_before) as usize)
+            <= super::SCREEN_ROW_QUANTUM,
+        "first newline after a long mixed-width run must stay within one retirement quantum"
+    );
+    assert_ne!(
+        scrollback_row_tag(grid.lines_above.front().expect("scrollback")),
+        oldest_before,
+        "chronological retention must evict the oldest front row"
+    );
+    assert!(
+        (evicted as usize) < front_before,
+        "must not retire the whole overlong line at once"
+    );
+
+    let mut settle = 0;
+    while grid.display_recount_pending() && settle < 500 {
+        let _ = grid.continue_display_row_recount();
+        settle += 1;
+    }
+    assert!(!grid.display_recount_pending());
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "rolling the finished overlong line must stay exact after settlement"
+    );
+    assert!(
+        grid.line_index.line_count() > 1,
+        "the new canonical row must start a second logical line"
+    );
+}
+
+/// Declared retention policy for the measured mixed-width full-history branch:
+/// chronological front eviction. Continuation appends must keep a contiguous
+/// newest suffix — never the frozen-prefix-plus-newest-gap shape
+/// `r0..r6,r11` from the review's reduced model.
+#[test]
+fn measured_mixed_width_full_history_keeps_chronological_rows() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    // One logical line of mixed-width rows fills the retention window.
+    for index in 0..scroll_buffer_size {
+        push_scrollback_row(
+            &mut grid,
+            mixed_tagged_scrollback_row(index == 0, index as u32),
+        );
+    }
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    assert_eq!(grid.line_index.line_count(), 1);
+    assert!(grid.line_index.front_line_is_measured());
+    assert!(
+        !grid.line_index.front_row_cut_is_exact(),
+        "tagged wide+narrow rows must take the mixed-width cut path"
+    );
+    assert_eq!(
+        grid.line_index.front_line_row_count(),
+        Some(scroll_buffer_size)
+    );
+
+    let before: Vec<u32> = grid.lines_above.iter().map(scrollback_row_tag).collect();
+    assert_eq!(before.first().copied(), Some(0));
+    assert_eq!(
+        before.last().copied(),
+        Some((scroll_buffer_size - 1) as u32)
+    );
+
+    // Reduced model: capacity N with continuations N..N+3. Chronological
+    // retention keeps tags 4..N+3; the rejected freeze policy kept 0..N-2,N+3.
+    let appended = 4u32;
+    for offset in 0..appended {
+        let tag = scroll_buffer_size as u32 + offset;
+        push_scrollback_row(&mut grid, mixed_tagged_scrollback_row(false, tag));
+    }
+    // Front cuts of a mixed line reopen measurement; settle so the retained
+    // row set is stable before asserting the policy.
+    let mut settle = 0;
+    while grid.display_recount_pending() && settle < 500 {
+        let _ = grid.continue_display_row_recount();
+        settle += 1;
+    }
+
+    let after: Vec<u32> = grid.lines_above.iter().map(scrollback_row_tag).collect();
+    let expected: Vec<u32> = (appended..(scroll_buffer_size as u32 + appended)).collect();
+    assert_eq!(
+        after, expected,
+        "policy=chronological: retained rows must be the contiguous newest suffix"
+    );
+    let freeze_shaped: Vec<u32> = (0..(scroll_buffer_size as u32 - 1))
+        .chain(std::iter::once(scroll_buffer_size as u32 + appended - 1))
+        .collect();
+    assert_ne!(
+        after, freeze_shaped,
+        "must not keep the frozen-prefix-plus-newest gap shape"
+    );
+    assert!(
+        !grid.history_was_truncated(),
+        "chronological front eviction is ordinary rolling retention, not truncation"
+    );
+}
+
+fn scrollback_tags(grid: &Grid) -> Vec<u32> {
+    grid.lines_above.iter().map(scrollback_row_tag).collect()
+}
+
+fn assert_contiguous_tag_range(tags: &[u32]) {
+    assert!(!tags.is_empty(), "scrollback has no tagged rows");
+    assert!(
+        tags.windows(2).all(|pair| pair[1] == pair[0] + 1),
+        "retained tags must be a contiguous integer range, got {}..{} ({} rows)",
+        tags.first().copied().unwrap_or(0),
+        tags.last().copied().unwrap_or(0),
+        tags.len()
+    );
+}
+
+/// Fill one logical line to the recount reserve, with measurement active.
+/// Tags are the source-row ids `0..len`.
+fn fill_reserve_during_recount(grid: &mut Grid) -> usize {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let reserve = scroll_buffer_size.saturating_mul(2);
+    for tag in 0..scroll_buffer_size as u32 {
+        push_scrollback_row(grid, mixed_tagged_scrollback_row(tag == 0, tag));
+    }
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    grid.start_display_row_recount(grid.width);
+    let _ = grid.continue_display_row_recount();
+    assert!(
+        grid.retention_reserve_active(),
+        "the recount reserve must be open before the ceiling is tested"
+    );
+    for tag in scroll_buffer_size as u32..reserve as u32 {
+        push_scrollback_row(grid, mixed_tagged_scrollback_row(false, tag));
+    }
+    assert_eq!(grid.lines_above.len(), reserve);
+    assert!(grid.retention_reserve_active());
+    reserve
+}
+
+#[test]
+fn recount_reserve_keeps_a_contiguous_scrollback_suffix() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let reserve = fill_reserve_during_recount(&mut grid);
+    let extra = 4u32;
+    for offset in 0..extra {
+        push_scrollback_row(
+            &mut grid,
+            mixed_tagged_scrollback_row(false, reserve as u32 + offset),
+        );
+    }
+    let tags = scrollback_tags(&grid);
+    let expected: Vec<u32> = (extra..reserve as u32 + extra).collect();
+    assert_eq!(
+        tags, expected,
+        "over the recount reserve the retained rows must be the newest contiguous suffix"
+    );
+    let holed: Vec<u32> = (0..reserve as u32 - 1)
+        .chain(std::iter::once(reserve as u32 + extra - 1))
+        .collect();
+    assert_ne!(
+        tags, holed,
+        "must not keep an old prefix glued to the newest row"
+    );
+    assert!(tags.len() <= scroll_buffer_size.saturating_mul(2));
+    assert_contiguous_tag_range(&tags);
+}
+
+#[test]
+fn recount_reserve_does_not_join_a_dropped_middle_into_one_logical_line() {
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let reserve = fill_reserve_during_recount(&mut grid);
+    let extra = 4u32;
+    for offset in 0..extra {
+        push_scrollback_row(
+            &mut grid,
+            mixed_tagged_scrollback_row(false, reserve as u32 + offset),
+        );
+    }
+    let tags = scrollback_tags(&grid);
+    assert_contiguous_tag_range(&tags);
+    assert_ne!(tags[0], 0, "the oldest source row must have left the front");
+    // One soft-wrapped line: search and copy both join until the next
+    // canonical row. A hole would glue r0's text to the newest row.
+    let newest = *tags.last().expect("suffix");
+    let previous = newest - 1;
+    let previous_index = tags
+        .iter()
+        .position(|tag| *tag == previous)
+        .expect("neighbor");
+    grid.search_results.needle = format!("{previous:05}\u{754c}{newest:05}");
+    let tail: Vec<&super::super::Row> = grid
+        .lines_above
+        .iter()
+        .skip(previous_index + 1)
+        .take_while(|row| !row.is_canonical)
+        .collect();
+    let hits =
+        grid.search_results
+            .search_row(previous_index, &grid.lines_above[previous_index], &tail);
+    assert!(
+        !hits.is_empty(),
+        "search did not see adjacent surviving rows {previous} and {newest} as one line"
+    );
+    let mut joined = String::new();
+    for (index, row) in grid.lines_above.iter().enumerate() {
+        if index > 0 && row.is_canonical {
+            break;
+        }
+        joined.push_str(&row_text(row));
+    }
+    assert!(
+        joined.contains(&format!("{previous:05}\u{754c}{newest:05}")),
+        "logical-line join split adjacent surviving rows"
+    );
+    assert!(
+        !joined.contains(&format!("00000\u{754c}{newest:05}")),
+        "logical-line join glued dropped id 0 to newest id {newest}"
+    );
+    assert!(
+        !joined.contains("00000"),
+        "the joined line still contains dropped source row 0"
+    );
+    let copied = grid
+        .text_in_range(
+            Position::new(-(grid.lines_above.len() as i32), 0),
+            Position::new(0, grid.width as u16),
+        )
+        .expect("scrollback should copy");
+    assert!(
+        copied.contains(&format!("{previous:05}\u{754c}{newest:05}")),
+        "copy split the surviving logical line"
+    );
+    assert!(
+        !copied.contains("00000"),
+        "copy included dropped source row 0 next to the surviving suffix"
+    );
+    assert_eq!(grid.line_index.line_count(), 1);
+}
+
+#[test]
+fn recount_reserve_with_graphics_rejects_the_incoming_row() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let (mut grid, _store) = new_kitty_grid(5, 10);
+    let reserve = fill_reserve_during_recount(&mut grid);
+    let mut parser = vt_parser::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=1,v=1,i=1,C=1", &rgb_raster(1, 1)),
+    );
+    assert!(
+        !grid.kitty_placements().is_empty(),
+        "the fixture must retain a placement so back-drop is unsafe"
+    );
+    // Placing the image can scroll. Re-open the recount if that cleared it,
+    // then pad back to the reserve ceiling without going past it.
+    if !grid.retention_reserve_active() {
+        grid.start_display_row_recount(grid.width);
+        let _ = grid.continue_display_row_recount();
+    }
+    assert!(grid.retention_reserve_active());
+    while grid.lines_above.len() < reserve
+        && grid.lines_above.len() < scroll_buffer_size.saturating_mul(2)
+    {
+        let tag = grid.lines_above.len() as u32;
+        push_scrollback_row(&mut grid, mixed_tagged_scrollback_row(false, tag));
+    }
+    let before = scrollback_tags(&grid);
+    assert_contiguous_tag_range(&before);
+    assert_eq!(
+        before.len(),
+        reserve.min(scroll_buffer_size.saturating_mul(2))
+    );
+    let rejected = before.len() as u32 + 50_000;
+    let evicted = push_scrollback_row(&mut grid, mixed_tagged_scrollback_row(false, rejected));
+    assert_eq!(
+        evicted, 0,
+        "a placement must reject the row instead of evicting"
+    );
+    let after = scrollback_tags(&grid);
+    assert_eq!(
+        after, before,
+        "rejecting the row must keep the retained range"
+    );
+    assert!(!after.contains(&rejected));
+    assert_contiguous_tag_range(&after);
+    assert!(grid.history_was_truncated());
+}
+
+#[test]
+fn recount_cursor_advances_while_the_producer_evicts_the_front() {
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let reserve = fill_reserve_during_recount(&mut grid);
+    let mut previous = scrollback_row_tag(
+        &grid.lines_above[grid
+            .line_index
+            .measure_cursor_source_row()
+            .expect("recount cursor")],
+    );
+    for cycle in 0..6 {
+        let tag = reserve as u32 + cycle;
+        push_scrollback_row(&mut grid, mixed_tagged_scrollback_row(false, tag));
+        assert_contiguous_tag_range(&scrollback_tags(&grid));
+        assert!(grid.lines_above.len() <= reserve);
+        let _ = grid.continue_display_row_recount();
+        let source = grid
+            .line_index
+            .measure_cursor_source_row()
+            .expect("cursor must stay active on the long line");
+        let current = scrollback_row_tag(&grid.lines_above[source]);
+        assert!(
+            current >= previous.saturating_add(64),
+            "cycle {cycle}: cursor tag moved {previous} -> {current}, which is not sustained progress"
+        );
+        previous = current;
+    }
+
+    // The six turns above stay inside the first visit. A contaminated pass
+    // used to finish, discard every boundary, and start again at row zero,
+    // so the next front cut poisoned that pass too. Cover several full
+    // traversals while a continuation row keeps arriving.
+    let quantum = super::SCREEN_ROW_QUANTUM.max(1);
+    let traversals = (reserve / quantum)
+        .saturating_mul(3)
+        .saturating_add(quantum);
+    let mut saw_published_pass = false;
+    let mut resets = 0usize;
+    for cycle in 0..traversals {
+        let tag = reserve as u32 + 6 + cycle as u32;
+        push_scrollback_row(&mut grid, mixed_tagged_scrollback_row(false, tag));
+        assert_contiguous_tag_range(&scrollback_tags(&grid));
+        assert!(grid.lines_above.len() <= reserve);
+        let _ = grid.continue_display_row_recount();
+        match grid.line_index.measure_cursor_source_row() {
+            Some(source) => {
+                let current = scrollback_row_tag(&grid.lines_above[source]);
+                let anchored = grid.line_index.measure_anchor_offset().unwrap_or(0) > 0;
+                if !anchored && current.saturating_add(quantum as u32) < previous {
+                    resets += 1;
+                }
+                previous = current;
+            },
+            None => {
+                // The cursor is cleared only after the line summary is stored.
+                // Trim may invalidate it before this assertion runs; the
+                // published total must still agree with a fresh wrap once
+                // the recount is allowed to settle below.
+                saw_published_pass = true;
+                previous = scrollback_row_tag(grid.lines_above.front().expect("scrollback"));
+            },
+        }
+    }
+    assert_eq!(
+        resets, 0,
+        "front eviction restarted the measure cursor during a pass"
+    );
+    assert!(
+        saw_published_pass,
+        "no measurement was published across {traversals} front-evicting quanta"
+    );
+    let mut settle = 0;
+    while grid.display_recount_pending() && settle < reserve {
+        let _ = grid.continue_display_row_recount();
+        settle += 1;
+    }
+    assert!(
+        !grid.display_recount_pending(),
+        "recount still pending after {settle} settle quanta"
+    );
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "published widths diverged from a fresh wrap of the retained rows"
+    );
+}
+
+fn mixed_tagged_scrollback_row(canonical: bool, tag: u32) -> super::Row {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = super::Row::new();
+    if canonical {
+        row = row.canonical();
+    }
+    // Wide + narrow makes uniform_character_width stay unset once measured.
+    row.columns.push(TerminalCharacter::new('\u{754c}'));
+    for character in format!("{tag:05}").chars() {
+        row.columns.push(TerminalCharacter::new(character));
+    }
+    row
+}
+
+fn scrollback_row_tag(row: &super::Row) -> u32 {
+    let text = row_text(row);
+    let digits: String = text.chars().skip(1).collect();
+    digits.parse().expect("tagged scrollback row")
+}
+
+fn line_index_counters() -> (usize, usize, usize) {
+    use crate::panes::line_index::{boundary_discoveries, cell_visits, row_visits};
+    (row_visits(), cell_visits(), boundary_discoveries())
+}
+
+fn reset_line_index_counters() {
+    use crate::panes::line_index::{
+        reset_boundary_discoveries, reset_cell_visits, reset_row_visits,
+    };
+    reset_row_visits();
+    reset_cell_visits();
+    reset_boundary_discoveries();
+}
+
+#[test]
+fn a_terminated_wide_glyph_run_evicts_with_bounded_line_index_work() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let width = 80usize;
+    let run_rows = 3_000usize;
+    let mut grid = create_grid_with_size_and_raw(2, width, b"");
+    let mut line = "\u{4e16}".repeat(width / 2 * run_rows).into_bytes();
+    line.extend_from_slice(b"\r\n");
+    feed_bytes(&mut grid, &line);
+    feed_bytes(
+        &mut grid,
+        &repeated_lines(b"x", scroll_buffer_size - run_rows - 100),
+    );
+
+    reset_line_index_counters();
+    grid.change_size(2, width + 2);
+    let (discovery_rows, _, discovery_boundaries) = line_index_counters();
+    assert!(
+        discovery_rows <= grid.lines_above.len() * 4 + 2_000,
+        "initial wide-line discovery visited {discovery_rows} rows for {} stored rows",
+        grid.lines_above.len()
+    );
+    assert!(
+        discovery_boundaries <= discovery_rows,
+        "boundary discovery must be charged with the row walk"
+    );
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "80 -> 82 reflow must keep the wide-glyph total exact"
+    );
+
+    reset_line_index_counters();
+    let evicted_before = grid.scrollback_rows_evicted;
+    feed_bytes(&mut grid, &repeated_lines(b"x", run_rows + 500));
+    let evicted = (grid.scrollback_rows_evicted - evicted_before) as usize;
+    let (rows, cells, boundaries) = line_index_counters();
+    assert!(
+        evicted >= run_rows / 2,
+        "the fixture must evict the wide run"
+    );
+    assert!(
+        rows <= evicted * 8 + 2_000,
+        "wide-glyph eviction revisited {rows} rows for {evicted} evictions"
+    );
+    assert!(
+        cells <= evicted * 8 + 2_000,
+        "wide-glyph eviction scanned {cells} cells for {evicted} evictions"
+    );
+    assert!(
+        boundaries <= rows,
+        "boundary discovery must be covered by the row budget"
+    );
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "terminated wide-glyph eviction must match the recount oracle"
+    );
+}
+
+#[test]
+fn a_growing_wide_glyph_run_keeps_its_summary_and_bounded_work() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let width = 80usize;
+    let run_rows = 3_000usize;
+    let mut grid = create_grid_with_size_and_raw(2, width, b"");
+    feed_bytes(
+        &mut grid,
+        &repeated_lines(b"x", scroll_buffer_size - run_rows - 100),
+    );
+    feed_bytes(
+        &mut grid,
+        "\u{4e16}".repeat(width / 2 * run_rows).as_bytes(),
+    );
+
+    reset_line_index_counters();
+    grid.change_size(2, width + 2);
+    let (discovery_rows, _, _) = line_index_counters();
+    assert!(
+        discovery_rows <= grid.lines_above.len() * 4 + 2_000,
+        "initial growing-line discovery visited {discovery_rows} rows"
+    );
+
+    reset_line_index_counters();
+    let evicted_before = grid.scrollback_rows_evicted;
+    let growth_rows = scroll_buffer_size + 1_000;
+    feed_bytes(&mut grid, "\u{4e16}".repeat(41 * growth_rows).as_bytes());
+    let evicted = (grid.scrollback_rows_evicted - evicted_before) as usize;
+    let (rows, cells, boundaries) = line_index_counters();
+    assert!(
+        !grid.lines_above.front().unwrap().is_canonical,
+        "the growing wide line must reach the eviction front"
+    );
+    assert!(
+        rows <= evicted * 8 + growth_rows,
+        "continued wide output revisited {rows} rows for {evicted} evictions and {growth_rows} appended rows"
+    );
+    assert!(
+        cells <= evicted * 8 + growth_rows * 64,
+        "continued wide output scanned {cells} cells"
+    );
+    assert!(
+        boundaries <= rows,
+        "boundary discovery must be covered by the row budget"
+    );
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "growing wide-glyph eviction must match the recount oracle"
+    );
+}
+
+#[test]
+fn randomized_grid_operations_match_the_reference_recount() {
+    struct Lcg(u64);
+    impl Lcg {
+        fn next(&mut self) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            self.0
+        }
+
+        fn below(&mut self, limit: usize) -> usize {
+            (self.next() % limit as u64) as usize
+        }
+    }
+
+    let mut rng = Lcg(0x1234_5678_9abc_def0);
+    let mut grid = create_grid_with_size_and_raw(6, 20, b"");
+    for step in 0..400 {
+        match rng.below(10) {
+            0..=3 => {
+                let mut content = Vec::new();
+                for _ in 0..=rng.below(3) {
+                    match rng.below(4) {
+                        0 => content
+                            .extend_from_slice("wide \u{4e16}\u{4e16}\u{4e16}\r\n".as_bytes()),
+                        1 => content.extend_from_slice(b"short\r\n"),
+                        2 => content.extend_from_slice(b"\r\n"),
+                        _ => content.extend_from_slice("0123456789abcdef\r\n".as_bytes()),
+                    }
+                }
+                feed_bytes(&mut grid, &content);
+            },
+            4 => {
+                let rows = 4 + rng.below(5);
+                let columns = 6 + rng.below(20);
+                grid.change_size(rows, columns);
+            },
+            5 => {
+                grid.scroll_up_one_line();
+            },
+            6 => {
+                grid.scroll_down_one_line();
+            },
+            7 => {
+                grid.clear_lines_above();
+            },
+            8 => {
+                grid.reset_terminal_state();
+            },
+            _ => {
+                grid.delete_viewport_and_scroll();
+            },
+        }
+        grid.finish_display_row_recount();
+        let recorded = grid.scrollback_position_and_length().1;
+        let recounted = scrollback_recount(&mut grid) + grid.lines_below.len();
+        assert_eq!(
+            recorded, recounted,
+            "step {step}: display length diverged from the recount oracle"
+        );
+        assert_eq!(
+            grid.scrollback_cells,
+            grid.lines_above
+                .iter()
+                .map(|row| row.stored_cell_count())
+                .sum::<usize>(),
+            "step {step}: stored scrollback cells were lost"
+        );
+    }
+}
+
+fn scrollback_row_of_cells(cells: usize, marker: Option<char>) -> super::Row {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = super::Row::new().canonical();
+    let blanks = if let Some(marker) = marker {
+        row.columns.push(TerminalCharacter::new(marker));
+        cells - 1
+    } else {
+        cells
+    };
+    row.trailing_blanks = u32::try_from(blanks).expect("cell count fits in trailing blanks");
+    row
+}
+
+fn push_scrollback_row(grid: &mut Grid, row: super::Row) -> usize {
+    grid.content_epoch = grid.content_epoch.wrapping_add(1);
+    let evicted = super::bounded_push(
+        &mut grid.lines_above,
+        &mut grid.sixel_grid,
+        &mut grid.kitty_grid,
+        row,
+        &mut grid.scrollback_cells,
+        &mut grid.line_index,
+        &mut grid.history_truncated,
+    );
+    grid.scrollback_rows_evicted += evicted as u64;
+    grid.content_epoch = grid.content_epoch.wrapping_add(1);
+    evicted
+}
+
+fn assert_scrollback_admission_postcondition(grid: &Grid) {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
+    let budget = scroll_buffer_size.saturating_mul(super::MAX_SCROLLBACK_ROW_CELLS);
+    assert!(
+        grid.lines_above.len() <= scroll_buffer_size,
+        "scrollback held {} rows above the cap {scroll_buffer_size}",
+        grid.lines_above.len()
+    );
+    assert!(
+        grid.scrollback_cells <= budget || grid.lines_above.len() == 1,
+        "retained {} cells above the budget {budget} across {} rows",
+        grid.scrollback_cells,
+        grid.lines_above.len()
+    );
+    assert_eq!(
+        grid.scrollback_cells,
+        scrollback_cells_recount(grid),
+        "scrollback_cells drifted from the stored rows"
+    );
+}
+
+#[test]
+fn scrollback_cell_budget_holds_for_a_third_2048_cell_row() {
+    // Cap 4 makes the budget 4096, so 2048 + 2048 is already full and a
+    // third 2048 must evict. The live cap is larger and 2048 * 5000
+    // equals that budget; the same hole is one more 2048 on top of it.
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let row_cells = 2_048;
+    assert_eq!(budget % row_cells, 0);
+    let rows_at_budget = budget / row_cells;
+    assert!(rows_at_budget < scroll_buffer_size);
+    let mut grid = create_grid_with_size_and_raw(1, 10, b"");
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, Some('A')));
+    for _ in 1..rows_at_budget {
+        push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, None));
+    }
+    assert_eq!(grid.scrollback_cells, budget);
+    assert_eq!(grid.lines_above.len(), rows_at_budget);
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, Some('Z')));
+    assert_scrollback_admission_postcondition(&grid);
+    assert_eq!(grid.scrollback_cells, budget);
+    assert_eq!(grid.lines_above.len(), rows_at_budget);
+    assert_ne!(
+        grid.lines_above
+            .front()
+            .unwrap()
+            .columns
+            .first()
+            .map(|cell| cell.character),
+        Some('A'),
+        "the oldest 2048-cell row has to leave to admit the third"
+    );
+}
+
+#[test]
+fn scrollback_cell_budget_exact_fit_evicts_nothing() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let row_cells = 2_048;
+    let rows_before = budget / row_cells - 1;
+    let mut grid = create_grid_with_size_and_raw(1, 10, b"");
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, Some('A')));
+    for _ in 1..rows_before {
+        push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, None));
+    }
+    assert_eq!(grid.scrollback_cells + row_cells, budget);
+    let rows_before = grid.lines_above.len();
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, Some('Z')));
+    assert_scrollback_admission_postcondition(&grid);
+    assert_eq!(grid.scrollback_cells, budget);
+    assert_eq!(grid.lines_above.len(), rows_before + 1);
+    assert_eq!(
+        grid.lines_above
+            .front()
+            .unwrap()
+            .columns
+            .first()
+            .map(|cell| cell.character),
+        Some('A'),
+        "a row that fits with zero spare cells must not evict"
+    );
+}
+
+#[test]
+fn scrollback_cell_budget_one_row_evicts_several_front_rows() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let row_cells = 2_048;
+    let rows_at_budget = budget / row_cells;
+    let mut grid = create_grid_with_size_and_raw(1, 10, b"");
+    for marker in ['A', 'B', 'C', 'D'] {
+        push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, Some(marker)));
+    }
+    for _ in 4..rows_at_budget {
+        push_scrollback_row(&mut grid, scrollback_row_of_cells(row_cells, None));
+    }
+    assert_eq!(grid.scrollback_cells, budget);
+    let incoming = row_cells * 3;
+    assert!(incoming <= budget);
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(incoming, Some('Z')));
+    assert_scrollback_admission_postcondition(&grid);
+    assert_eq!(grid.scrollback_cells, budget);
+    assert_eq!(grid.lines_above.len(), rows_at_budget - 3 + 1);
+    assert_eq!(
+        grid.lines_above
+            .front()
+            .unwrap()
+            .columns
+            .first()
+            .map(|cell| cell.character),
+        Some('D'),
+        "three front rows have to leave, and the fourth stays"
+    );
+}
+
+#[test]
+fn scrollback_keeps_one_oversized_newest_row_when_empty() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let mut grid = create_grid_with_size_and_raw(1, 10, b"");
+    let oversized = budget + 2_048;
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(oversized, Some('W')));
+    assert_scrollback_admission_postcondition(&grid);
+    assert_eq!(grid.lines_above.len(), 1);
+    assert_eq!(grid.scrollback_cells, oversized);
+    assert!(grid.scrollback_cells > budget);
+}
+
+#[test]
+fn scrollback_later_smaller_row_evicts_the_oversized_row() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let mut grid = create_grid_with_size_and_raw(1, 10, b"");
+    push_scrollback_row(
+        &mut grid,
+        scrollback_row_of_cells(budget + 2_048, Some('W')),
+    );
+    assert_eq!(grid.lines_above.len(), 1);
+    assert!(grid.scrollback_cells > budget);
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(2_048, Some('S')));
+    assert_scrollback_admission_postcondition(&grid);
+    assert_eq!(grid.lines_above.len(), 1);
+    assert_eq!(grid.scrollback_cells, 2_048);
+    assert_eq!(
+        grid.lines_above
+            .front()
+            .unwrap()
+            .columns
+            .first()
+            .map(|cell| cell.character),
+        Some('S')
+    );
+}
+
+#[test]
+fn scrollback_row_cap_still_evicts_when_the_cell_budget_has_room() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let budget = scroll_buffer_size * super::MAX_SCROLLBACK_ROW_CELLS;
+    let mut grid = create_grid_with_size_and_raw(1, 10, b"");
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(2, Some('A')));
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(3, Some('B')));
+    for _ in 2..scroll_buffer_size {
+        push_scrollback_row(&mut grid, scrollback_row_of_cells(1, None));
+    }
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    assert!(grid.scrollback_cells + 1 <= budget);
+    push_scrollback_row(&mut grid, scrollback_row_of_cells(1, Some('Z')));
+    assert_scrollback_admission_postcondition(&grid);
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    assert_eq!(grid.scrollback_cells, scroll_buffer_size + 2);
+    assert_eq!(
+        grid.lines_above
+            .front()
+            .unwrap()
+            .columns
+            .first()
+            .map(|cell| cell.character),
+        Some('B'),
+        "only the oldest row is evicted when cells are under the budget"
+    );
+    assert_eq!(grid.scrollback_cells, scrollback_cells_recount(&grid));
+    assert!(grid.scrollback_cells <= budget);
+}
+
+#[test]
+fn erasing_to_line_start_after_restoring_a_cursor_into_the_alternate_screen_does_not_panic() {
+    // the saved cursor survives the switch to the alternate screen, whose viewport is
+    // only one row tall until something is drawn on it
+    let mut grid = create_grid_with_size_and_raw(20, 40, b"\x1b[10;1H\x1b7\x1b[?1049h\x1b8\x1b[1K");
+    assert!(grid.cursor.y < grid.height);
+    assert!(grid.viewport.len() > grid.cursor.y);
+    feed_bytes(&mut grid, b"\x1b[1J\x1b[2K\x1b[1Kx");
+    assert!(grid.viewport.len() <= grid.height);
+}
+
+#[test]
+fn an_invalid_scroll_region_is_ignored() {
+    // top below bottom, top past the screen and a one line region are all invalid
+    for sequence in [
+        &b"\x1b[60000;50r"[..],
+        b"\x1b[5;3r",
+        b"\x1b[4;4r",
+        b"\x1b[25;30r",
+    ] {
+        let mut grid = create_grid_with_size_and_raw(10, 40, b"\x1b[2;8r\x1b[5;9H");
+        let cursor = (grid.cursor.x, grid.cursor.y);
+        feed_bytes(&mut grid, sequence);
+        assert_eq!(grid.scroll_region, (1, 7), "{:?}", sequence);
+        assert_eq!((grid.cursor.x, grid.cursor.y), cursor, "{:?}", sequence);
+    }
+}
+
+#[test]
+fn a_scroll_region_bottom_past_the_screen_is_clamped() {
+    let grid = create_grid_with_size_and_raw(10, 40, b"\x1b[3;60000r");
+    assert_eq!(grid.scroll_region, (2, 9));
+}
+
+#[test]
+fn scroll_region_operations_never_grow_the_viewport_beyond_the_screen() {
+    for region in [&b""[..], b"\x1b[60000;50r", b"\x1b[3;7r", b"\x1b[3;60000r"] {
+        for operation in [
+            &b"\x1b[65535S"[..],
+            b"\x1b[65535T",
+            b"\x1b[65535L",
+            b"\x1b[65535M",
+            b"\x1b[1;1H\x1b[65535L",
+            b"\x1b[5;1H\x1b[65535M",
+            b"\x1b[5;1H\x1b[65535L\x1b[65535S",
+        ] {
+            // a grid that has not drawn anything has a short viewport
+            let mut grid = create_grid_with_size_and_raw(10, 40, b"");
+            feed_bytes(&mut grid, region);
+            feed_bytes(&mut grid, operation);
+            assert!(
+                grid.viewport.len() <= grid.height,
+                "{:?} then {:?} left {} rows",
+                region,
+                operation,
+                grid.viewport.len()
+            );
+        }
+    }
+}
+
+#[test]
+fn scrolling_by_a_huge_count_adds_at_most_a_screenful_to_the_scrollback() {
+    for sequence in [
+        &b"\x1b[65535S"[..],
+        b"\x1b[65535T",
+        b"\x1b[65535M",
+        b"\x1b[65535L",
+        b"\x1b[3;8r\x1b[65535S",
+        b"\x1b[3;8r\x1b[3;1H\x1b[65535M",
+    ] {
+        let mut grid = create_grid_with_size_and_raw(10, 40, b"one\r\ntwo\r\nthree");
+        feed_bytes(&mut grid, sequence);
+        assert!(
+            grid.lines_above.len() <= grid.height,
+            "{:?} put {} lines in the scrollback",
+            sequence,
+            grid.lines_above.len()
+        );
+        assert!(grid.viewport.len() <= grid.height);
+    }
+}
+
+#[test]
+fn counts_larger_than_the_screen_still_have_their_full_effect() {
+    // SU: the whole screen scrolls into the scrollback and a blank one remains
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"one\r\ntwo\r\nthree");
+    feed_bytes(&mut grid, b"\x1b[65535S");
+    assert_eq!(grid.lines_above.len(), 5);
+    assert_eq!(scrollback_texts(&grid)[..3], ["one", "two", "three"]);
+    assert!(viewport_texts(&grid)
+        .iter()
+        .all(|row| row.trim().is_empty()));
+    // IL / DL stop at the end of the region
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"1\r\n2\r\n3\r\n4\r\n5\x1b[2;1H");
+    feed_bytes(&mut grid, b"\x1b[65535L");
+    assert_eq!(
+        viewport_texts(&grid)
+            .iter()
+            .map(|row| row.trim().to_owned())
+            .collect::<Vec<_>>(),
+        vec!["1", "", "", "", ""]
+    );
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"1\r\n2\r\n3\r\n4\r\n5\x1b[2;1H");
+    feed_bytes(&mut grid, b"\x1b[65535M");
+    assert_eq!(
+        viewport_texts(&grid)
+            .iter()
+            .map(|row| row.trim().to_owned())
+            .collect::<Vec<_>>(),
+        vec!["1", "", "", "", ""]
+    );
+    // ICH / DCH / ECH
+    let row_after = |sequence: &[u8]| {
+        let mut grid = create_grid_with_size_and_raw(5, 10, b"abcdefghij\x1b[1;3H");
+        feed_bytes(&mut grid, sequence);
+        row_text(&grid.viewport[0]).trim_end().to_owned()
+    };
+    assert_eq!(row_after(b"\x1b[3@"), "ab   cdefg");
+    assert_eq!(row_after(b"\x1b[65535@"), "ab");
+    assert_eq!(row_after(b"\x1b[2P"), "abefghij");
+    assert_eq!(row_after(b"\x1b[65535P"), "ab");
+    assert_eq!(row_after(b"\x1b[3X"), "ab   fghij");
+    assert_eq!(row_after(b"\x1b[65535X"), "ab");
+    // CHT / CBT
+    let mut grid = create_grid_with_size_and_raw(5, 40, b"");
+    feed_bytes(&mut grid, b"\x1b[65535I");
+    assert_eq!(grid.cursor.x, 39);
+    feed_bytes(&mut grid, b"\x1b[65535Z");
+    assert_eq!(grid.cursor.x, 0);
+}
+
+#[test]
+fn repeating_a_character_wraps_like_typing_it() {
+    let typed = |count: usize, setup: &[u8]| {
+        let mut content = setup.to_vec();
+        content.extend(std::iter::repeat(b'a').take(count));
+        let grid = create_grid_with_size_and_raw(5, 10, &content);
+        (viewport_texts(&grid), grid.cursor.x, grid.cursor.y)
+    };
+    let repeated = |count: usize, setup: &[u8]| {
+        let mut content = setup.to_vec();
+        content.extend_from_slice(format!("a\x1b[{}b", count - 1).as_bytes());
+        let grid = create_grid_with_size_and_raw(5, 10, &content);
+        (viewport_texts(&grid), grid.cursor.x, grid.cursor.y)
+    };
+    for setup in [&b""[..], b"xyz\x1b[2;4H", b"\x1b[5;7H"] {
+        for count in [
+            2, 9, 10, 11, 25, 49, 59, 60, 61, 69, 70, 71, 72, 75, 81, 100, 1003, 65536,
+        ] {
+            assert_eq!(
+                typed(count, setup),
+                repeated(count, setup),
+                "count {} after {:?}",
+                count,
+                setup
+            );
+        }
+    }
+    // without line wrapping the repeat stops at the edge
+    let grid = create_grid_with_size_and_raw(5, 10, b"\x1b[?7la\x1b[65535b");
+    assert_eq!(viewport_texts(&grid)[0], "aaaaaaaaaa");
+    assert!(viewport_texts(&grid)[1..]
+        .iter()
+        .all(|row| row.trim().is_empty()));
+}
+
+#[test]
+fn huge_repeat_counts_cost_no_more_than_the_screen_allows() {
+    let mut grid = create_grid_with_size_and_raw(24, 80, b"abc");
+    let started = std::time::Instant::now();
+    for _ in 0..300 {
+        feed_bytes(
+            &mut grid,
+            b"\x1b[1;1H\x1b[65535@\x1b[65535P\x1b[65535X\x1b[65535I\x1b[65535Z",
+        );
+    }
+    for _ in 0..20 {
+        feed_bytes(&mut grid, b"a\x1b[65535b");
+    }
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "took {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn a_newline_below_the_scroll_region_on_the_last_line_does_not_add_a_row() {
+    let mut grid = create_grid_with_size_and_raw(10, 40, b"\x1b[1;3r\x1b[10;1H");
+    for _ in 0..5 {
+        feed_bytes(&mut grid, b"\n");
+        assert!(grid.viewport.len() <= grid.height);
+    }
+    assert_eq!(grid.cursor.y, 9);
+}
+
+const HOSTILE_UI_COMPONENTS: &[&[u8]] = &[
+    b"\x1bPztable;0;0;1\x1b\\",
+    b"\x1bPztext;0/0/70000/1;z\x1b\\",
+    b"\x1bPzdialog;0/0/1000000000/1000000000\x1b\\",
+];
+
+#[test]
+fn ui_component_sequences_are_ignored_in_a_terminal_pane() {
+    // an ordinary grid is what a terminal pane has: the sequence is an unknown DCS
+    let mut grid = new_grid_for_nested_frames();
+    feed_bytes(
+        &mut grid,
+        format!(
+            "\x1bPztext;{}\x1b\\after",
+            serialize_text_bytes("component")
+        )
+        .as_bytes(),
+    );
+    let screen = viewport_texts(&grid).join("\n");
+    assert!(!screen.contains("component"), "{:?}", screen);
+    assert!(screen.contains("after"), "{:?}", screen);
+    assert!(grid.ui_component_bytes.is_none());
+    for hostile in HOSTILE_UI_COMPONENTS {
+        feed_bytes(&mut grid, hostile);
+    }
+    assert!(grid.viewport.len() <= grid.height);
+    // while a grid that shows a plugin renders it
+    let grid = render_ui_component("text", &serialize_text_bytes("component"));
+    assert!(viewport_texts(&grid).join("\n").contains("component"));
+}
+
+#[test]
+fn no_row_is_wider_than_the_pane_after_it_shrinks_below_a_wide_character() {
+    // U+FF13 is two columns wide
+    let content = "\u{ff13}\r\n\u{ff13}ab\r\n\u{ff13}\r\n\u{ff13}\u{ff13}\u{ff13}\r\n\u{ff13}";
+    let mut grid = create_grid_with_size_and_raw(3, 10, content.as_bytes());
+    grid.change_size(1, 1);
+    let too_wide = |grid: &Grid| {
+        // (the lines above and below the screen are only reflowed as they come into it)
+        grid.viewport
+            .iter()
+            .map(|row| row.width())
+            .filter(|width| *width > 1)
+            .count()
+    };
+    assert_eq!(too_wide(&grid), 0);
+    // reflowing the lines kept above and below the screen into it must not bring any back
+    for _ in 0..20 {
+        grid.scroll_up_one_line();
+        assert_eq!(too_wide(&grid), 0);
+    }
+    for _ in 0..20 {
+        grid.scroll_down_one_line();
+        assert_eq!(too_wide(&grid), 0);
+    }
+    grid.change_size(3, 10);
+    assert!(grid.viewport.iter().all(|row| row.width() <= 10));
+}
+
+#[test]
+fn a_scroll_region_below_the_screen_cannot_make_scrolling_grow_the_viewport() {
+    let mut content = Vec::new();
+    for line in 0..24 {
+        content.extend_from_slice(format!("line {}\r\n", line).as_bytes());
+    }
+    for region in ["42;96", "100;200", "30;24", "25;30", "24;24", "1;1"] {
+        for operation in ["S", "T", "L", "M", "\n"] {
+            let mut grid = create_grid_with_size_and_raw(24, 80, &content);
+            let operation_bytes = if operation == "\n" {
+                operation.to_owned()
+            } else {
+                format!("\x1b[{}", operation)
+            };
+            feed_bytes(
+                &mut grid,
+                format!("\x1b[{}r{}", region, operation_bytes).as_bytes(),
+            );
+            assert_eq!(
+                grid.viewport.len(),
+                24,
+                "region {} then {:?}",
+                region,
+                operation
+            );
+        }
+    }
+}
+
+fn plugin_grid(rows: usize, cols: usize) -> Grid {
+    let mut grid = create_grid_with_size_and_raw(rows, cols, b"");
+    grid.enable_ui_components();
+    grid
+}
+
+fn ui_component_stress_payloads() -> Vec<String> {
+    let max = usize::MAX.to_string();
+    let coordinates = [
+        String::new(),
+        "0/0/0/0".to_owned(),
+        "0/0/1/1".to_owned(),
+        "0/0/2/2".to_owned(),
+        "0/0/3/1".to_owned(),
+        "5/5/7/3".to_owned(),
+        "0/0/70000/1".to_owned(),
+        "0/0/65536/65536".to_owned(),
+        "1/1/1000000000/1000000000".to_owned(),
+        "99999/99999/99999/99999".to_owned(),
+        "0/0//".to_owned(),
+        "0/0/30/".to_owned(),
+        "0/0//30".to_owned(),
+        format!("0/0/{}/{}", max, max),
+        format!("{}/{}/1/1", max, max),
+        format!("{}/0/{}/1", max, max),
+    ];
+    let long_indentation = "|".repeat(70_000);
+    let long_text = "104,".repeat(70_000);
+    let medium_text = "104,".repeat(300);
+    let simple_bodies: Vec<(&str, Vec<String>)> = vec![
+        (
+            "table",
+            vec![
+                "0;0;1".to_owned(),
+                "0;0;104,105;106".to_owned(),
+                "1;1;104".to_owned(),
+                "2;3;104;105;106;107;108".to_owned(),
+                format!("{};1;104;105", max),
+                format!("1;1;{};104;105;106;107", long_text),
+            ],
+        ),
+        (
+            "text",
+            vec![
+                "104,105".to_owned(),
+                "zd104,105".to_owned(),
+                "z".to_owned(),
+                String::new(),
+                format!("z{}", medium_text),
+            ],
+        ),
+        (
+            "ribbon",
+            vec![
+                "104,105".to_owned(),
+                "x104,105".to_owned(),
+                format!("x{}", medium_text),
+            ],
+        ),
+        (
+            "nested_list",
+            vec![
+                "104".to_owned(),
+                "||104;|104;x104,105".to_owned(),
+                format!("{}104;104,105,106", long_indentation),
+                format!("104;{}", long_text),
+            ],
+        ),
+    ];
+    let states = [
+        String::new(),
+        "f,d,h,o,e,on,r,b,ind,bar,c,nm,ph,err,ab,la,hu,hd,he,bv,lmin,lmax".to_owned(),
+        format!(
+            "nb={m},sel={m},hb={m},bx={m},fr={m},hl={m},above={m},below={m},tot={m},off={m},cur={m},hov={m},lw={m}",
+            m = max
+        ),
+        "nb=3,sel=1,hb=2,bx=1,fr=1,hl=1,above=5,below=7,tot=100,off=50,cur=2,hov=1,lw=3,f,ind,bar,b,c"
+            .to_owned(),
+        "tot=1000000,off=999999,bar,f,above=1,below=1".to_owned(),
+        "lw=1000000000,bx=1000000000,fr=1000000000,nb=1000000000".to_owned(),
+    ];
+    let widget_fields = [
+        String::new(),
+        "104,105".to_owned(),
+        "104,105;106,107;108".to_owned(),
+        "104,105;;;;".to_owned(),
+        "-;m104,105:106/1,2/3;d104;104,105,106,107".to_owned(),
+        format!("{};{};{}", medium_text, medium_text, medium_text),
+        "$$$0$72,105;72,105;72,105".to_owned(),
+    ];
+    let widgets = [
+        "button",
+        "dialog",
+        "dropdown",
+        "menu",
+        "scroll_indicator",
+        "side_menu",
+        "stepper",
+        "text_input",
+        "toggle",
+    ];
+    let mut payloads = vec![];
+    for coordinate in &coordinates {
+        for (name, bodies) in &simple_bodies {
+            for body in bodies {
+                if coordinate.is_empty() {
+                    payloads.push(format!("{};{}", name, body));
+                } else if *name == "table" {
+                    // the table's two counts follow its coordinates
+                    payloads.push(format!("{};{};{}", name, coordinate, body));
+                } else {
+                    payloads.push(format!("{};{};{}", name, coordinate, body));
+                }
+            }
+        }
+        if coordinate.is_empty() {
+            continue; // widgets must have coordinates
+        }
+        for name in widgets {
+            for state in &states {
+                for fields in &widget_fields {
+                    payloads.push(format!("{};{};{};{}", name, coordinate, state, fields));
+                }
+            }
+        }
+    }
+    payloads
+}
+
+#[test]
+fn hostile_ui_component_parameters_neither_panic_nor_overgrow() {
+    let payloads = ui_component_stress_payloads();
+    let mut failures = vec![];
+    for (rows, cols) in [(1, 1), (3, 5), (24, 80)] {
+        for payload in &payloads {
+            let started = std::time::Instant::now();
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut grid = plugin_grid(rows, cols);
+                feed_bytes(&mut grid, format!("\x1bPz{}\x1b\\", payload).as_bytes());
+                (grid.viewport.len(), grid.lines_above.len())
+            }));
+            let summary = payload.chars().take(70).collect::<String>();
+            match outcome {
+                Err(_) => failures.push(format!("{}x{} panicked: {}", rows, cols, summary)),
+                Ok((viewport_rows, _)) if viewport_rows > rows => failures.push(format!(
+                    "{}x{} grew the viewport to {}: {}",
+                    rows, cols, viewport_rows, summary
+                )),
+                Ok(_) if started.elapsed() > std::time::Duration::from_secs(3) => {
+                    failures.push(format!(
+                        "{}x{} took {:?}: {}",
+                        rows,
+                        cols,
+                        started.elapsed(),
+                        summary
+                    ))
+                },
+                Ok(_) => {},
+            }
+        }
+    }
+    failures.dedup();
+    assert!(
+        failures.is_empty(),
+        "{} failures, first ones:\n{}",
+        failures.len(),
+        failures
+            .iter()
+            .take(40)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+fn render_in_a_plugin_grid(payload: &str) -> Grid {
+    let mut grid = plugin_grid(10, 40);
+    feed_bytes(&mut grid, format!("\x1bPz{}\x1b\\", payload).as_bytes());
+    assert!(grid.viewport.len() <= 10, "{}", payload);
+    assert!(
+        grid.viewport.iter().all(|row| row.width() <= 40),
+        "{}",
+        payload
+    );
+    grid
+}
+
+#[test]
+fn a_table_without_columns_is_rejected() {
+    // used to divide by zero
+    for payload in ["table;0;0;1", "table;0/0/10/10;0;0;1"] {
+        let grid = render_in_a_plugin_grid(payload);
+        assert!(viewport_texts(&grid).iter().all(|row| row.is_empty()));
+    }
+}
+
+#[test]
+fn a_component_wider_than_a_u16_cannot_panic_in_format() {
+    // used to panic in format!("{:width$}")
+    render_in_a_plugin_grid("text;0/0/70000/1;z");
+    render_in_a_plugin_grid(&format!(
+        "nested_list;{}104;104,105,106",
+        "|".repeat(70_000)
+    ));
+    render_in_a_plugin_grid(&format!("nested_list;{};104,105", "104,".repeat(70_000)));
+}
+
+fn render_quickly_in_a_plugin_grid(payload: &str) -> Grid {
+    let started = std::time::Instant::now();
+    let grid = render_in_a_plugin_grid(payload);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(3),
+        "took {:?}",
+        started.elapsed()
+    );
+    grid
+}
+
+#[test]
+fn a_huge_indentation_is_parsed_quickly() {
+    // the pipes used to be removed one at a time, which moves the rest of the string each time
+    let payload = format!("nested_list;{}104,105", "|".repeat(1_500_000));
+    render_quickly_in_a_plugin_grid(&payload);
+}
+
+#[test]
+fn components_without_a_size_are_not_padded_past_the_pane() {
+    // the size of these comes from their widest item or their number of items: with a wide item
+    // and a lot of others it is their product that gets written (gigabytes for an input of
+    // some hundred kilobytes)
+    let wide_item = "98,".repeat(20_000);
+    let many_items = vec!["97"; 30_000].join(";");
+    for payload in [
+        format!("nested_list;{};{}", wide_item, many_items),
+        format!("nested_list;0/0//;{};{}", wide_item, many_items),
+        format!("table;1;1;{};{}", wide_item, many_items),
+        format!("table;0/0//;1;1;{};{}", wide_item, many_items),
+        format!("table;0/0//;1;1;{};{}", many_items, wide_item),
+        format!("side_menu;0/0//;;{};{}", wide_item, many_items),
+        format!("menu;0/0//;;{};{}", wide_item, many_items),
+        format!("dialog;0/0//;;{};{}", wide_item, many_items),
+        format!("dialog;0/0//;;{}", ";".repeat(300_000)),
+    ] {
+        render_quickly_in_a_plugin_grid(&payload);
+    }
+}
+
+#[test]
+fn a_dialog_is_not_drawn_where_the_pane_has_no_room_for_it() {
+    // the smallest dialog is 8 columns by 4 rows
+    for (rows, columns) in [(3, 40), (10, 7), (1, 1)] {
+        let mut grid = plugin_grid(rows, columns);
+        feed_bytes(&mut grid, b"\x1bPzdialog;0/0//;;104\x1b\\");
+        assert!(viewport_texts(&grid).iter().all(|row| row.is_empty()));
+    }
+    // while it is drawn where there is room, whatever its size (40 columns by 5 rows by default)
+    let grid = render_in_a_plugin_grid("dialog;0/0//;;104");
+    assert!(viewport_texts(&grid)[0].starts_with('╭'));
+}
+
+#[test]
+fn components_are_limited_to_the_pane() {
+    // these used to allocate and loop for a billion rows
+    for payload in [
+        "dialog;0/0/1000000000/1000000000;;",
+        "dialog;1/1/1000000000/1000000000;;104",
+        "menu;0/0/1000000000/1000000000;b,lw=1000000000;104",
+    ] {
+        render_in_a_plugin_grid(payload);
+    }
+    // while a component that fits the pane is not moved
+    let grid = render_in_a_plugin_grid("text;3/2/20/1;104,105");
+    assert!(viewport_texts(&grid)[2].starts_with("   hi"));
+}
+
+#[test]
+fn deleting_a_full_ascii_row_moves_each_element_once() {
+    use super::{reset_row_edit_elements_moved, row_edit_elements_moved};
+    for width in [80usize, 200] {
+        let mut grid = create_grid_with_size_and_raw(2, width, &vec![b'x'; width]);
+        reset_row_edit_elements_moved();
+        // The raw fill leaves the cursor at the end of the row. CSI P
+        // deletes at the cursor, so move home first.
+        feed_bytes(&mut grid, format!("\x1b[H\x1b[{width}P").as_bytes());
+        let moved = row_edit_elements_moved();
+        assert!(moved <= 3 * width, "width {width} moved {moved} elements");
+        let lines = viewport_texts(&grid);
+        let text = lines[0].trim_end();
+        assert!(text.is_empty(), "{text:?}");
+    }
+}
+
+#[test]
+fn plugin_dot_highlight_maps_offsets_in_one_pass() {
+    use super::{highlight_offset_visits, reset_highlight_offset_visits};
+    let width = 200usize;
+    let mut grid = create_grid_with_size_and_raw(2, width, &vec![b'a'; width]);
+    grid.set_plugin_regex_highlights(
+        1,
+        vec![RegexHighlight {
+            pattern: ".".into(),
+            style: HighlightStyle::Emphasis0,
+            layer: HighlightLayer::Hint,
+            context: BTreeMap::new(),
+            on_hover: false,
+            bold: false,
+            italic: false,
+            underline: false,
+            tooltip_text: None,
+        }],
+        &Style::default(),
+    );
+    reset_highlight_offset_visits();
+    let _ = grid.render(0, 0, &Style::default());
+    let visits = highlight_offset_visits();
+    assert!(
+        visits <= 4 * width,
+        "offset mapping visited {visits} characters"
+    );
+    assert!(grid.plugin_highlight_at(&Position::new(0, 0)).is_some());
+    assert!(grid
+        .plugin_highlight_at(&Position::new(0, width as u16 - 1))
+        .is_some());
+}
+
+#[test]
+fn newlines_with_a_kitty_placement_do_not_rescan_history() {
+    use super::{kitty_canonical_scan_rows, reset_kitty_canonical_scan_rows};
+    let (mut grid, _store) = new_kitty_grid(8, 20);
+    let mut vte_parser = vt_parser::Parser::new();
+    let mut interceptor = KittyApcInterceptor::new();
+    feed_kitty_bytes(
+        &mut grid,
+        &mut vte_parser,
+        &mut interceptor,
+        &kitty_apc("a=T,f=24,s=2,v=2,i=1,C=1", &rgb_raster(2, 2)),
+    );
+    assert_eq!(grid.kitty_placement_count(), 1);
+    for _ in 0..40 {
+        feed_bytes(&mut grid, b"line\r\n");
+    }
+    let before = grid.kitty_placements()[0].display_rect.y;
+    reset_kitty_canonical_scan_rows();
+    for _ in 0..30 {
+        feed_bytes(&mut grid, b"more\r\n");
+    }
+    let scanned = kitty_canonical_scan_rows();
+    assert!(
+        scanned <= 8 + 20,
+        "canonical-start scan visited {scanned} rows"
+    );
+    let after = grid.kitty_placements()[0].display_rect.y;
+    assert!(after <= before);
+}
+
+fn query_kitty_keyboard_flags(grid: &mut Grid) -> u32 {
+    grid.pending_messages_to_pty.clear();
+    feed_bytes(grid, b"\x1b[?u");
+    let reply = grid
+        .pending_messages_to_pty
+        .pop()
+        .expect("kitty keyboard query reply");
+    let reply = String::from_utf8(reply).expect("utf-8 kitty keyboard reply");
+    reply
+        .strip_prefix("\x1b[?")
+        .and_then(|reply| reply.strip_suffix('u'))
+        .expect("kitty keyboard query reply")
+        .parse()
+        .expect("numeric kitty keyboard flags")
+}
+
+#[test]
+fn kitty_keyboard_push_and_pop_restores_nested_state() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+    assert!(grid.supports_kitty_keyboard_protocol());
+
+    feed_bytes(&mut grid, b"\x1b[>0u");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+    assert!(!grid.supports_kitty_keyboard_protocol());
+
+    feed_bytes(&mut grid, b"\x1b[<u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+    assert_eq!(query_kitty_keyboard_flags(&mut grid), 1);
+}
+
+#[test]
+fn kitty_keyboard_pop_honors_its_count() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[=1u");
+    feed_bytes(&mut grid, b"\x1b[>0u");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+
+    feed_bytes(&mut grid, b"\x1b[<2u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+
+    feed_bytes(&mut grid, b"\x1b[<5u");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+}
+
+#[test]
+fn kitty_keyboard_set_supports_add_and_remove_modes() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[=1u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+
+    feed_bytes(&mut grid, b"\x1b[=1;3u");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+
+    feed_bytes(&mut grid, b"\x1b[=1u");
+    feed_bytes(&mut grid, b"\x1b[=0;2u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+
+    feed_bytes(&mut grid, b"\x1b[=2;2u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+}
+
+#[test]
+fn unsupported_kitty_keyboard_flags_do_not_enable_disambiguation() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[>2u");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+    assert!(!grid.supports_kitty_keyboard_protocol());
+    assert_eq!(query_kitty_keyboard_flags(&mut grid), 0);
+
+    feed_bytes(&mut grid, b"\x1b[=4u");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+}
+
+#[test]
+fn kitty_keyboard_state_is_separate_on_the_alternate_screen() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"main");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+
+    feed_bytes(&mut grid, b"\x1b[?1049h");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+
+    feed_bytes(&mut grid, b"\x1b[?1049l");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+    assert_eq!(viewport_texts(&grid)[0], "main");
+}
+
+#[test]
+fn repeated_alternate_screen_entry_keeps_the_saved_main_screen() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"main");
+    feed_bytes(&mut grid, b"\x1b[?1049h");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    feed_bytes(&mut grid, b"alt");
+
+    // A second enter must not replace the saved main-screen snapshot with the
+    // alternate-screen state.
+    feed_bytes(&mut grid, b"\x1b[?1049h");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+
+    feed_bytes(&mut grid, b"\x1b[?1049l");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+    assert_eq!(viewport_texts(&grid)[0], "main");
+}
+
+#[test]
+fn repeated_alternate_screen_cycles_do_not_accumulate_keyboard_stack() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    for _ in 0..10 {
+        feed_bytes(&mut grid, b"\x1b[?1049h");
+        feed_bytes(&mut grid, b"\x1b[>1u");
+        feed_bytes(&mut grid, b"\x1b[?1049l");
+    }
+    assert_eq!(grid.kitty_keyboard_state.stack.len(), 1);
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+}
+
+#[test]
+fn kitty_keyboard_stack_is_bounded() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    for _ in 0..super::KITTY_KEYBOARD_MAX_STACK_DEPTH + 10 {
+        feed_bytes(&mut grid, b"\x1b[>1u");
+    }
+    assert_eq!(
+        grid.kitty_keyboard_state.stack.len(),
+        super::KITTY_KEYBOARD_MAX_STACK_DEPTH
+    );
+}
+
+#[test]
+fn reset_terminal_state_clears_the_kitty_keyboard_stack() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    feed_bytes(&mut grid, b"\x1b[>0u");
+
+    grid.reset_terminal_state();
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+    assert!(!grid.supports_kitty_keyboard_protocol());
+
+    feed_bytes(&mut grid, b"\x1b[<u");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+}
+
+#[test]
+fn reset_input_modes_preserves_scrollback_and_viewport() {
+    use super::{MouseMode, MouseTracking};
+
+    let mut grid = create_grid_with_size_and_raw(2, 5, b"one\r\ntwo\r\nthree\r\nfour");
+    let scrollback_before = scrollback_texts(&grid);
+    let viewport_before = viewport_texts(&grid);
+    assert!(!scrollback_before.is_empty());
+
+    feed_bytes(
+        &mut grid,
+        b"\x1b[?1000h\x1b[?1006h\x1b[?1004h\x1b[?2004h\x1b[>1u\x1b[?1h\x1b[20h",
+    );
+    assert_ne!(grid.mouse_tracking, MouseTracking::Off);
+    assert!(matches!(grid.mouse_mode, MouseMode::Sgr));
+    assert!(grid.focus_event_tracking);
+    assert!(grid.bracketed_paste_mode);
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+    assert!(grid.cursor_key_mode);
+    assert!(grid.new_line_mode);
+
+    grid.reset_input_modes();
+
+    assert_eq!(grid.mouse_tracking, MouseTracking::Off);
+    assert!(matches!(grid.mouse_mode, MouseMode::NoEncoding));
+    assert!(!grid.focus_event_tracking);
+    assert!(!grid.bracketed_paste_mode);
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+    assert!(!grid.cursor_key_mode);
+    assert!(!grid.new_line_mode);
+    assert_eq!(scrollback_texts(&grid), scrollback_before);
+    assert_eq!(viewport_texts(&grid), viewport_before);
+}
+
+#[test]
+fn reset_input_modes_clears_saved_alternate_screen_keyboard_state() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"main");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    feed_bytes(&mut grid, b"\x1b[?1049h");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+
+    grid.reset_input_modes();
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+
+    feed_bytes(&mut grid, b"\x1b[?1049l");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+    assert_eq!(viewport_texts(&grid)[0], "main");
+}
+
+#[test]
+fn origin_mode_transitions_home_the_cursor() {
+    let mut grid = create_grid_with_size_and_raw(10, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[3;7r");
+    feed_bytes(&mut grid, b"\x1b[5;10H");
+
+    feed_bytes(&mut grid, b"\x1b[?6h");
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((0, 2))
+    );
+
+    feed_bytes(&mut grid, b"\x1b[4;5H");
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((4, 5))
+    );
+
+    feed_bytes(&mut grid, b"\x1b[?6l");
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((0, 0))
+    );
+}
+
+#[test]
+fn origin_mode_transitions_clear_pending_wrap() {
+    let mut grid = create_grid_with_size_and_raw(5, 5, b"abcde");
+    assert_eq!(grid.cursor.x, 5);
+
+    feed_bytes(&mut grid, b"\x1b[?6h");
+    assert_eq!(grid.cursor.x, 0);
+}
+
+#[test]
+fn resetting_scroll_margins_homes_the_cursor() {
+    let mut grid = create_grid_with_size_and_raw(10, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[3;7r");
+    feed_bytes(&mut grid, b"\x1b[8;12H");
+
+    feed_bytes(&mut grid, b"\x1b[r");
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((0, 0))
+    );
+}
+
+#[test]
+fn terminal_pixel_queries_use_the_pane_text_area() {
+    let mut grid = create_grid_with_size_and_raw(5, 7, b"");
+    *grid.character_cell_size.borrow_mut() = Some(SizeInPixels {
+        height: 20,
+        width: 10,
+    });
+
+    feed_bytes(&mut grid, b"\x1b[14t");
+    assert_eq!(
+        grid.pending_messages_to_pty.pop(),
+        Some(b"\x1b[4;100;70t".to_vec()),
+        "14t reports the pane text area, not the outer window"
+    );
+    feed_bytes(&mut grid, b"\x1b[16t");
+    assert_eq!(
+        grid.pending_messages_to_pty.pop(),
+        Some(b"\x1b[6;20;10t".to_vec())
+    );
+    feed_bytes(&mut grid, b"\x1b[18t");
+    assert_eq!(
+        grid.pending_messages_to_pty.pop(),
+        Some(b"\x1b[8;5;7t".to_vec())
+    );
+    assert!(
+        grid.pending_forwarded_queries.is_empty(),
+        "pane-local pixel and character queries must not go to the host"
+    );
+}
+
+#[test]
+fn text_area_pixel_query_is_unanswered_without_cell_metrics() {
+    let mut grid = create_grid_with_size_and_raw(5, 7, b"");
+    feed_bytes(&mut grid, b"\x1b[14t");
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "a full-window pixel reply must not be substituted for an unknown pane size"
+    );
+    assert!(grid.pending_forwarded_queries.is_empty());
+
+    feed_bytes(&mut grid, b"\x1b[16t");
+    assert!(grid.pending_messages_to_pty.is_empty());
+    assert!(matches!(
+        grid.pending_forwarded_queries.as_slice(),
+        [crate::host_query::HostQuery::CharacterCellPixelSize]
+    ));
 }

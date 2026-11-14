@@ -1,14 +1,97 @@
 use crate::ipc::{
-    ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
+    ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext, IpcStream,
     ServerToClientMsg,
 };
 use crate::pane_size::Size;
 use interprocess::local_socket::{prelude::*, ListenerOptions};
 
-use std::io::Write;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::io::{Read, Write};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::Arc;
 
 static IPC_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+struct FlushFailureStream {
+    flushes: Arc<AtomicUsize>,
+}
+
+impl Read for FlushFailureStream {
+    fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("read not supported"))
+    }
+}
+
+impl Write for FlushFailureStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.flushes.fetch_add(1, Ordering::SeqCst);
+        Err(std::io::Error::other("flush failed"))
+    }
+}
+
+impl IpcStream for FlushFailureStream {
+    fn try_clone_stream(&self) -> std::io::Result<Box<dyn IpcStream>> {
+        Err(std::io::Error::other("clone not supported"))
+    }
+    fn set_read_timeout(&self, _timeout: Option<std::time::Duration>) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn send_reports_flush_failure() {
+    let flushes = Arc::new(AtomicUsize::new(0));
+    let mut sender =
+        IpcSenderWithContext::<ClientToServerMsg>::from_boxed(Box::new(FlushFailureStream {
+            flushes: Arc::clone(&flushes),
+        }));
+
+    assert!(
+        sender
+            .send_client_msg(ClientToServerMsg::ConnStatus)
+            .is_err(),
+        "a failed flush must not be reported as a successful send"
+    );
+    drop(sender);
+    assert_eq!(
+        flushes.load(Ordering::SeqCst),
+        1,
+        "dropping a failed sender must not retry the flush"
+    );
+}
+
+#[test]
+fn oversized_advertised_frames_are_rejected_before_allocation() {
+    // The unread payload would otherwise be parsed as the next frames, so
+    // the stream is treated as disconnected rather than skipped over.
+    let advertised_len = (crate::ipc::MAX_FRAME_BYTES + 1) as u32;
+    let mut bytes = advertised_len.to_le_bytes().to_vec();
+    // Bytes that a reader attempting the allocation-and-read would consume.
+    bytes.extend_from_slice(&[0u8; 64]);
+    let mut frame = std::io::Cursor::new(bytes);
+
+    assert!(matches!(
+        crate::ipc::read_protobuf_message::<crate::ipc::ProtoClientToServerMsg>(&mut frame),
+        Err(IpcReceiveError::Disconnected)
+    ));
+    // Without the limit check the reader would allocate the advertised
+    // buffer and read (part of) the payload before failing with the same
+    // error, so the error alone cannot show the limit was applied. The
+    // reader must have stopped right after the length prefix.
+    assert_eq!(
+        frame.position(),
+        4,
+        "the oversized payload must not be read"
+    );
+}
+
+#[test]
+fn outgoing_frames_enforce_the_same_size_limit() {
+    assert!(crate::ipc::validate_frame_length(crate::ipc::MAX_FRAME_BYTES).is_ok());
+    assert!(crate::ipc::validate_frame_length(crate::ipc::MAX_FRAME_BYTES + 1).is_err());
+}
 
 // --- Cross-platform IPC helpers ---
 // On Unix: use filesystem-based sockets (TempDir + PathBuf + GenericFilePath)
@@ -164,7 +247,8 @@ fn bidirectional_communication_via_fd_duplication() {
         let stream = listener.incoming().next().unwrap().expect("accept failed");
         let mut sender: IpcSenderWithContext<ServerToClientMsg> = IpcSenderWithContext::new(stream);
 
-        let mut receiver: IpcReceiverWithContext<ClientToServerMsg> = sender.get_receiver();
+        let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
+            sender.get_receiver().expect("clone receiver");
         sender
             .send_server_msg(ServerToClientMsg::Connected)
             .expect("send failed");
@@ -181,7 +265,8 @@ fn bidirectional_communication_via_fd_duplication() {
     let stream = connect_stream(&name);
     let mut sender: IpcSenderWithContext<ClientToServerMsg> = IpcSenderWithContext::new(stream);
 
-    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+        sender.get_receiver().expect("clone receiver");
 
     let msg = receiver.recv_server_msg();
     assert!(msg.is_some(), "client should receive server message");
@@ -407,7 +492,8 @@ fn session_probe_accepts_responding_socket() {
         let stream = listener.incoming().next().unwrap().expect("accept failed");
         let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
             IpcReceiverWithContext::new(stream);
-        let mut sender: IpcSenderWithContext<ServerToClientMsg> = receiver.get_sender();
+        let mut sender: IpcSenderWithContext<ServerToClientMsg> =
+            receiver.get_sender().expect("clone sender");
 
         let msg = receiver.recv_client_msg();
         assert!(matches!(msg, Some((ClientToServerMsg::ConnStatus, _))));
@@ -422,7 +508,8 @@ fn session_probe_accepts_responding_socket() {
     sender
         .send_client_msg(ClientToServerMsg::ConnStatus)
         .expect("send failed");
-    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+        sender.get_receiver().expect("clone receiver");
 
     let result = receiver.recv_server_msg();
     assert!(

@@ -100,7 +100,10 @@ fn populate_tabs_in_tab_line(
         let left_fits = size_by_adding_left <= cols;
         let right_fits = size_by_adding_right <= cols;
         if (total_left <= total_right || !right_fits) && left_fits {
-            let tab = tabs_before_active.pop().unwrap();
+            // left_fits is false when last() was None (left == usize::MAX); still use if-let.
+            let Some(tab) = tabs_before_active.pop() else {
+                break;
+            };
             middle_size += tab.len;
             total_left += tab.len;
             tabs_to_render.insert(0, tab);
@@ -313,12 +316,19 @@ pub fn tab_line(
     Option<(usize, usize)>,
     Option<(usize, usize)>,
 ) {
+    if all_tabs.is_empty() {
+        return (vec![], None, None, None);
+    }
+    let active_tab_index = active_tab_index.min(all_tabs.len().saturating_sub(1));
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
     let active_tab = if !tabs_after_active.is_empty() {
         tabs_after_active.remove(0)
     } else {
-        tabs_before_active.pop().unwrap()
+        // SAFETY: Guaranteed by the empty early-return above: at least one tab exists.
+        tabs_before_active
+            .pop()
+            .expect("all_tabs non-empty after early return")
     };
     let (mut prefix, mut breadcrumb_range) = match hide_session_name {
         true => tab_line_prefix(None, palette, cols, dimmed, &[], false),

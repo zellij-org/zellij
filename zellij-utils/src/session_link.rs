@@ -24,7 +24,7 @@ pub struct SessionLink {
 
 impl SessionLink {
     pub fn open(session_name: &str) -> Result<Self, String> {
-        Self::open_path(&crate::consts::session_socket_path(session_name))
+        Self::open_path(&crate::consts::session_socket_path(session_name)?)
     }
     pub fn open_path(socket_path: &Path) -> Result<Self, String> {
         #[cfg(windows)]
@@ -37,7 +37,8 @@ impl SessionLink {
         let receiver: IpcReceiverWithContext<ServerToClientMsg> =
             IpcReceiverWithContext::new(reply_stream);
         #[cfg(not(windows))]
-        let receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+        let receiver: IpcReceiverWithContext<ServerToClientMsg> =
+            sender.get_receiver().map_err(|e| e.to_string())?;
         Ok(SessionLink { sender, receiver })
     }
     pub fn send(&mut self, msg: ClientToServerMsg) -> Result<(), String> {
@@ -88,7 +89,7 @@ pub fn push_session_attention(
     wait_for_reply: bool,
 ) -> Result<(), String> {
     push_session_attention_to(
-        &crate::consts::session_socket_path(target_session),
+        &crate::consts::session_socket_path(target_session)?,
         own_session,
         attention,
         wait_for_reply,
@@ -163,9 +164,20 @@ pub fn send_actions_to_session(session_name: &str, actions: Vec<Action>) -> Resu
         loop {
             match link.recv(PEER_ACTION_TIMEOUT)? {
                 ServerToClientMsg::UnblockInputThread => break,
-                ServerToClientMsg::Exit { .. } | ServerToClientMsg::LogError { .. } => {
+                ServerToClientMsg::Exit { exit_reason } => {
                     let _ = link.send(ClientToServerMsg::ClientExited);
-                    return Err(format!("The session {} refused the request", session_name));
+                    return Err(format!(
+                        "The session {} refused the request: {}",
+                        session_name, exit_reason
+                    ));
+                },
+                ServerToClientMsg::LogError { lines } => {
+                    let _ = link.send(ClientToServerMsg::ClientExited);
+                    return Err(format!(
+                        "The session {} refused the request: {}",
+                        session_name,
+                        lines.join("\n")
+                    ));
                 },
                 _ => {},
             }
@@ -278,7 +290,14 @@ fn remote_action_worker(
 }
 
 fn session_socket_exists(session_name: &str) -> bool {
-    crate::consts::session_socket_path(session_name).exists()
+    match crate::consts::session_socket_path(session_name) {
+        Ok(path) => path.exists(),
+        // A database error is not proof the socket is gone.
+        Err(error) => {
+            log::error!("Failed to resolve session {:?}: {}", session_name, error);
+            true
+        },
+    }
 }
 
 #[cfg(test)]

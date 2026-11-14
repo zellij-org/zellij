@@ -138,7 +138,7 @@ fn unterminated_osc_within_single_chunk_is_buffered() {
 #[test]
 fn forwarding_window_accumulates_and_barrier_closes() {
     let mut parser = StdinAnsiParser::new();
-    parser.open_forward(42);
+    parser.open_forward(42, b"");
     // Feed an OSC 11 reply, then the Primary-DA barrier. Use color
     // bytes that do NOT contain `c` so the barrier-absence assertion
     // below can use a simple byte search.
@@ -174,10 +174,11 @@ fn forwarding_window_accumulates_and_barrier_closes() {
 #[test]
 fn unsolicited_osc_between_forwarded_query_and_barrier() {
     // Scenario: host emits a stray OSC 10 between the app's OSC 11 query
-    // and the barrier. Both replies should end up in the forwarded
-    // buffer, and the barrier closes the window.
+    // and the barrier. Only the OSC 11 that matches the issued query is
+    // captured into the forwarded buffer (#5467); OSC 10 still classifies
+    // for Zellij's own cache.
     let mut parser = StdinAnsiParser::new();
-    parser.open_forward(7);
+    parser.open_forward(7, b"\x1b]11;?\x1b\\");
     let mut chunk = Vec::new();
     chunk.extend_from_slice(b"\x1b]11;rgb:1111/1111/1111\x1b\\");
     chunk.extend_from_slice(b"\x1b]10;rgb:2222/2222/2222\x1b\\");
@@ -186,9 +187,40 @@ fn unsolicited_osc_between_forwarded_query_and_barrier() {
     assert_eq!(out.replies.len(), 2);
     let (token, reply_bytes) = out.completed_forward.unwrap();
     assert_eq!(token, 7);
-    // Both OSCs present.
     assert!(reply_bytes.windows(4).any(|w| w == b"]11;"));
-    assert!(reply_bytes.windows(4).any(|w| w == b"]10;"));
+    assert!(
+        !reply_bytes.windows(4).any(|w| w == b"]10;"),
+        "unrelated OSC 10 must not be delivered to the OSC 11 querier: {:?}",
+        reply_bytes
+    );
+}
+
+#[test]
+fn forwarded_osc11_slot_ignores_startup_palette_burst() {
+    // Headline #5467 witness: an OSC 11 forward open during the client's
+    // 256× OSC 4 startup burst must capture only the background reply.
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(3, b"\x1b]11;?\x07");
+    let mut chunk = Vec::new();
+    for index in 0..256u16 {
+        chunk.extend_from_slice(format!("\x1b]4;{index};rgb:0000/0000/0000\x1b\\").as_bytes());
+    }
+    chunk.extend_from_slice(b"\x1b]10;rgb:aaaa/aaaa/aaaa\x1b\\");
+    chunk.extend_from_slice(b"\x1b]11;rgb:bbbb/bbbb/bbbb\x1b\\");
+    chunk.extend_from_slice(b"\x1b[?65;1c");
+    let out = parser.feed(&chunk);
+    let (token, reply_bytes) = out.completed_forward.expect("barrier should close");
+    assert_eq!(token, 3);
+    assert!(reply_bytes.windows(4).any(|w| w == b"]11;"));
+    assert!(
+        !reply_bytes.windows(3).any(|w| w == b"]4;"),
+        "palette burst must not land in the OSC 11 slot: {} bytes",
+        reply_bytes.len()
+    );
+    assert!(
+        !reply_bytes.windows(4).any(|w| w == b"]10;"),
+        "foreground reply must not land in the OSC 11 slot"
+    );
 }
 
 #[test]
@@ -204,7 +236,7 @@ fn double_dispatch_without_active_forward_still_emits_reply() {
 #[test]
 fn timeout_flushes_accumulated_bytes() {
     let mut parser = StdinAnsiParser::new();
-    parser.open_forward(99);
+    parser.open_forward(99, b"");
     let out = parser.feed(b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\");
     assert!(out.completed_forward.is_none(), "no barrier yet");
     assert!(parser.active_forward_token() == Some(99));
@@ -219,7 +251,7 @@ fn timeout_flushes_accumulated_bytes() {
 #[test]
 fn stale_token_timeout_does_nothing() {
     let mut parser = StdinAnsiParser::new();
-    parser.open_forward(1);
+    parser.open_forward(1, b"");
     // Ask to timeout a different token — nothing happens.
     assert!(parser.close_forward_on_timeout(999).is_none());
     assert_eq!(parser.active_forward_token(), Some(1));
@@ -275,6 +307,48 @@ fn fragmented_csi_report_does_not_leak() {
         );
         assert_eq!(r1.replies.len() + r2.replies.len(), 1);
     }
+}
+
+#[test]
+fn a_long_osc_fed_one_byte_at_a_time_is_one_reply() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(7, b"");
+    let mut osc = b"\x1b]11;".to_vec();
+    osc.extend(std::iter::repeat(b'x').take(8 * 1024));
+    osc.extend_from_slice(b"\x1b\\");
+    let mut residue = 0usize;
+    for byte in &osc {
+        let out = parser.feed(&[*byte]);
+        residue += out.residue.len();
+        assert!(out.completed_forward.is_none());
+    }
+    assert_eq!(
+        residue, 0,
+        "a fragmented OSC must not leak while it is open"
+    );
+    let out = parser.feed(b"\x1b[c");
+    assert!(out.residue.is_empty());
+    let (token, reply) = out.completed_forward.expect("the barrier closes one reply");
+    assert_eq!(token, 7);
+    assert_eq!(reply, osc);
+}
+
+#[test]
+fn a_long_apc_fed_one_byte_at_a_time_is_one_reply() {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    let mut apc = b"\x1b_G".to_vec();
+    apc.extend(std::iter::repeat(b'q').take(8 * 1024));
+    apc.extend_from_slice(b"i=31;OK\x1b\\");
+    let mut residue = 0usize;
+    let mut replies = 0usize;
+    for byte in &apc {
+        let out = parser.feed(&[*byte]);
+        residue += out.residue.len();
+        replies += out.replies.len();
+    }
+    assert_eq!(residue, 0);
+    assert_eq!(replies, 1);
 }
 
 #[test]
@@ -380,7 +454,7 @@ fn osc_99_routes_into_desktop_notifications() {
 #[test]
 fn osc_99_does_not_leak_into_an_open_forwarding_window() {
     let mut parser = StdinAnsiParser::new();
-    parser.open_forward(7);
+    parser.open_forward(7, b"");
     let mut chunk = Vec::new();
     chunk.extend_from_slice(b"\x1b]99;i=p1.myid;\x1b\\");
     chunk.extend_from_slice(b"\x1b]11;rgb:1111/1111/1111\x1b\\");
@@ -499,7 +573,7 @@ fn double_dispatch_matrix_with_forward_active() {
     ];
     for (bytes, is_expected_variant, label) in cases {
         let mut parser = StdinAnsiParser::new();
-        parser.open_forward(11);
+        parser.open_forward(11, b"");
         let out = parser.feed(bytes);
         assert_eq!(
             out.replies.len(),
@@ -544,7 +618,7 @@ fn primary_da_barrier_accepts_extended_forms() {
         b"\x1b[>0;276;0c".as_ref(),
     ] {
         let mut parser = StdinAnsiParser::new();
-        parser.open_forward(5);
+        parser.open_forward(5, b"");
         let mut chunk = Vec::new();
         chunk.extend_from_slice(b"\x1b]11;rgb:aaaa/bbbb/cccc\x1b\\");
         chunk.extend_from_slice(barrier);
@@ -575,8 +649,8 @@ fn open_forward_debug_asserts_on_reentry() {
     // be impossible given `forward_in_flight` serialization, but the
     // parser asserts it anyway so regressions surface in CI.
     let mut parser = StdinAnsiParser::new();
-    parser.open_forward(1);
-    parser.open_forward(2); // panics via debug_assert!
+    parser.open_forward(1, b"");
+    parser.open_forward(2, b""); // panics via debug_assert!
 }
 
 // =====================================================================
@@ -598,7 +672,7 @@ fn paused_runtime() -> tokio::runtime::Runtime {
 fn timer_fires_after_deadline_and_closes_slot() {
     let rt = paused_runtime();
     let parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
-    parser.lock().unwrap().open_forward(7);
+    parser.lock().unwrap().open_forward(7, b"");
 
     let captured: Arc<Mutex<Option<(u32, Vec<u8>)>>> = Arc::new(Mutex::new(None));
     let captured_clone = captured.clone();
@@ -641,7 +715,7 @@ fn timer_fires_after_deadline_and_closes_slot() {
 fn timer_is_noop_when_barrier_already_closed_the_slot() {
     let rt = paused_runtime();
     let parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
-    parser.lock().unwrap().open_forward(11);
+    parser.lock().unwrap().open_forward(11, b"");
 
     let fired: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let fired_clone = fired.clone();
@@ -689,7 +763,7 @@ fn timer_is_noop_when_slot_holds_a_different_token() {
     // callback doesn't fire.
     let rt = paused_runtime();
     let parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
-    parser.lock().unwrap().open_forward(1);
+    parser.lock().unwrap().open_forward(1, b"");
 
     let fired: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     let fired_clone = fired.clone();
@@ -711,7 +785,7 @@ fn timer_is_noop_when_slot_holds_a_different_token() {
         let mut chunk = Vec::new();
         chunk.extend_from_slice(b"\x1b[c");
         let _ = p.feed(&chunk); // close via barrier
-        p.open_forward(2);
+        p.open_forward(2, b"");
     }
 
     rt.block_on(async {
@@ -738,7 +812,7 @@ fn timer_preserves_accumulated_reply_bytes_on_timeout() {
     // pane sees *something* — empty is fine, partial is better.
     let rt = paused_runtime();
     let parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
-    parser.lock().unwrap().open_forward(22);
+    parser.lock().unwrap().open_forward(22, b"");
 
     // Simulate a single OSC 11 reply arriving before the host goes
     // silent.
@@ -884,7 +958,7 @@ fn kitty_kbd_event_does_not_wedge_subsequent_forward_reply() {
         let _ = parser.feed(kbd);
 
         // Forward dispatched — slot opens for token=42.
-        parser.open_forward(42);
+        parser.open_forward(42, b"");
 
         // Host's reply arrives in two chunks (matches captured wire:
         // OSC 11 reply 25B, then DA1 barrier 10B).
@@ -928,6 +1002,25 @@ fn assert_held_across_idle(parser: &mut StdinAnsiParser) {
         PendingPartial::ReplyInProgress,
         "the partial must still be held after a lone-esc finalize"
     );
+}
+
+#[test]
+fn one_osc_4_reply_can_carry_every_requested_register() {
+    let mut p = StdinAnsiParser::new();
+    let fed = p.feed(b"\x1b]4;1;rgb:1111/0000/0000;2;rgb:0000/2222/0000\x1b\\");
+    assert!(fed.residue.is_empty());
+    match &fed.replies[..] {
+        [HostReply::ColorRegisters(regs)] => {
+            assert_eq!(
+                regs,
+                &[
+                    (1, "rgb:1111/0000/0000".to_string()),
+                    (2, "rgb:0000/2222/0000".to_string()),
+                ]
+            );
+        },
+        other => panic!("expected one batched palette reply, got {other:?}"),
+    }
 }
 
 #[test]
@@ -1240,7 +1333,7 @@ fn a_fast_flushed_introducer_does_not_complete_a_reply_in_the_classifier() {
 fn startup_replies_arriving_while_a_pane_query_is_forwarded_stay_with_zellij() {
     let mut p = StdinAnsiParser::new();
     p.open_own_query_batch();
-    p.open_forward(7);
+    p.open_forward(7, b"");
 
     let startup = p.feed(
         b"\x1b[?997;1n\x1b[4;600;800t\x1b[6;25;12t\x1b]11;rgb:1111/1313/1313\x1b\\\x1b]10;rgb:ffff/ffff/ffff\x1b\\\x1b[?2026;2$y\x1b[?62;22c",
@@ -1269,7 +1362,7 @@ fn startup_replies_arriving_while_a_pane_query_is_forwarded_stay_with_zellij() {
 fn resize_pixel_requery_replies_are_not_handed_to_a_forwarding_pane() {
     let mut p = StdinAnsiParser::new();
     p.open_own_query_batch();
-    p.open_forward(3);
+    p.open_forward(3, b"");
     let first = p.feed(b"\x1b[4;600;800t\x1b[6;25;12t\x1b[?62;22c");
     assert!(first.completed_forward.is_none());
     let second = p.feed(b"\x1b[6;25;12t\x1b[?62;22c");
@@ -1282,9 +1375,9 @@ fn resize_pixel_requery_replies_are_not_handed_to_a_forwarding_pane() {
 #[test]
 fn a_late_reply_for_an_abandoned_forward_is_dropped_not_given_to_the_next_pane() {
     let mut p = StdinAnsiParser::new();
-    p.open_forward(1);
+    p.open_forward(1, b"");
     assert_eq!(p.close_forward_on_timeout(1), Some((1, Vec::new())));
-    p.open_forward(2);
+    p.open_forward(2, b"");
 
     let late = p.feed(b"\x1b]11;rgb:1111/1313/1313\x1b\\\x1b[?62;22c");
     assert!(late.residue.is_empty());
@@ -1304,7 +1397,7 @@ fn a_late_reply_for_an_abandoned_forward_is_dropped_not_given_to_the_next_pane()
 #[test]
 fn a_host_theme_notification_is_not_given_to_the_forwarding_pane() {
     let mut p = StdinAnsiParser::new();
-    p.open_forward(5);
+    p.open_forward(5, b"");
     let out = p.feed(b"\x1b[?997;2n\x1b]11;rgb:1111/1313/1313\x1b\\\x1b[?62;22c");
     assert!(out
         .replies
@@ -1464,6 +1557,30 @@ fn bracketed_paste_preserves_embedded_escape_content() {
     assert!(
         out.residue.windows(6).any(|w| w == b"\x1b]0;hi"),
         "the embedded OSC bytes must survive in residue"
+    );
+    assert_eq!(
+        out.paste_spans,
+        vec![0..out.residue.len()],
+        "the whole paste region must be marked so keyboard parsing skips it"
+    );
+}
+
+#[test]
+fn fragmented_paste_marks_each_chunk_as_paste() {
+    let mut p = StdinAnsiParser::new();
+    let r1 = p.feed(b"\x1b[200~body");
+    assert_eq!(r1.residue, b"\x1b[200~body");
+    assert_eq!(r1.paste_spans, vec![0..r1.residue.len()]);
+
+    let r2 = p.feed(b"-more\x1b[201~");
+    assert_eq!(r2.residue, b"-more\x1b[201~");
+    assert_eq!(r2.paste_spans, vec![0..r2.residue.len()]);
+
+    let r3 = p.feed(b"x");
+    assert_eq!(r3.residue, b"x");
+    assert!(
+        r3.paste_spans.is_empty(),
+        "bytes after the paste end marker are ordinary input"
     );
 }
 
@@ -2011,7 +2128,7 @@ fn a_reply_arriving_before_the_keypress_wins() {
 fn clipboard_and_barrier_forwards_are_independent() {
     let mut parser = StdinAnsiParser::new();
     parser.open_clipboard_forward(1);
-    parser.open_forward(2);
+    parser.open_forward(2, b"");
     let out = parser.feed(b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\\x1b[?62;52c");
     assert_eq!(
         out.completed_forward,
@@ -2025,7 +2142,7 @@ fn clipboard_and_barrier_forwards_are_independent() {
 fn clipboard_reply_is_not_accumulated_into_a_barrier_slot() {
     let mut parser = StdinAnsiParser::new();
     parser.open_clipboard_forward(1);
-    parser.open_forward(2);
+    parser.open_forward(2, b"");
     let out = parser.feed(b"\x1b]52;c;aGk=\x1b\\");
     assert_eq!(
         out.completed_clipboard_forward,
@@ -2150,7 +2267,7 @@ fn grapheme_cluster_mode_reply_never_reaches_keyboard_input() {
 #[test]
 fn grapheme_cluster_mode_reply_in_a_forwarded_pane_batch_is_forwarded() {
     let mut parser = StdinAnsiParser::new();
-    parser.open_forward(9);
+    parser.open_forward(9, b"");
     let out = parser.feed(b"\x1b[?2027;1$y\x1b[?62;22c");
     assert!(out.residue.is_empty());
     assert!(
@@ -2163,7 +2280,7 @@ fn grapheme_cluster_mode_reply_in_a_forwarded_pane_batch_is_forwarded() {
 #[test]
 fn grapheme_cluster_mode_replies_are_split_between_zellij_and_a_forwarding_pane() {
     let mut parser = startup_parser();
-    parser.open_forward(4);
+    parser.open_forward(4, b"");
     let own = parser.feed(b"\x1b[?2027;2$y\x1b[?62;22c");
     assert_eq!(grapheme_cluster_replies(&own.replies), vec![2]);
     assert!(own.completed_forward.is_none());
@@ -2178,7 +2295,7 @@ fn grapheme_cluster_mode_replies_are_split_between_zellij_and_a_forwarding_pane(
 #[test]
 fn grapheme_cluster_mode_is_not_settled_by_a_pane_barrier() {
     let mut parser = StdinAnsiParser::new();
-    parser.open_forward(3);
+    parser.open_forward(3, b"");
     parser.open_own_query_batch();
     parser.expect_grapheme_cluster_mode_reply();
     let pane = parser.feed(b"\x1b[?62;22c");
@@ -2186,4 +2303,248 @@ fn grapheme_cluster_mode_is_not_settled_by_a_pane_barrier() {
     assert_eq!(pane.completed_forward, Some((3, Vec::new())));
     let own = parser.feed(b"\x1b[?62;22c");
     assert_eq!(grapheme_cluster_replies(&own.replies), vec![0]);
+}
+
+#[test]
+fn feed_partitions_conserve_all_outputs() {
+    // For short corpora, every two-way partition must emit the
+    // same replies, residue, forwards and notifications as a single
+    // feed. The parser's pending-partial machinery exists precisely so
+    // a chunk boundary inside any sequence is invisible.
+    use crate::stdin_ansi_parser::{ParseOutput, StdinAnsiParser};
+
+    let corpora: Vec<Vec<u8>> = vec![
+        // plain keys + an arrow key + an OSC 11 reply + DA barrier
+        [
+            b"abc\x1b[A".to_vec(),
+            b"\x1b]11;rgb:aa/bb/cc\x1b\\\x1b[?65;1c".to_vec(),
+        ]
+        .concat(),
+        // paste start/content/end plus trailing key
+        b"\x1b[200~hello world\x1b[201~x".to_vec(),
+        // invalid UTF-8 interleaved with keys
+        b"a\xFF\xFEz\x1b[C".to_vec(),
+        // unterminated OSC then a key
+        b"\x1b]8;;https://example".to_vec(),
+        // two replies back to back
+        b"\x1b]10;rgb:11/22/33\x1b\\\x1b]11;rgb:44/55/66\x07k".to_vec(),
+    ];
+
+    fn drain(parser: &mut StdinAnsiParser, bytes: &[u8]) -> ParseOutput {
+        parser.feed(bytes)
+    }
+    fn accumulated(mut a: ParseOutput, mut b: ParseOutput) -> (String, Vec<u8>) {
+        // Order-preserving accumulation of every produced channel:
+        // concatenate the Vec outputs and keep the first completed
+        // forward/clipboard in encounter order.
+        a.replies.extend(b.replies);
+        a.residue.extend_from_slice(&b.residue);
+        a.desktop_notifications.extend(b.desktop_notifications);
+        a.nested_frames.extend(b.nested_frames);
+        let completed_forward = a
+            .completed_forward
+            .take()
+            .or_else(|| b.completed_forward.take());
+        let completed_clipboard = a
+            .completed_clipboard_forward
+            .take()
+            .or_else(|| b.completed_clipboard_forward.take());
+        (
+            format!(
+                "{:?}|{:?}|{:?}|{:?}|{:?}",
+                a.replies,
+                a.desktop_notifications,
+                a.nested_frames,
+                completed_forward,
+                completed_clipboard,
+            ),
+            a.residue,
+        )
+    }
+
+    for (corpus_index, corpus) in corpora.iter().enumerate() {
+        let mut whole = StdinAnsiParser::new();
+        whole.open_forward(1, b"");
+        let whole_out = drain(&mut whole, corpus);
+
+        for split in 0..=corpus.len() {
+            let mut parser = StdinAnsiParser::new();
+            parser.open_forward(1, b"");
+            let first = drain(&mut parser, &corpus[..split]);
+            let second = drain(&mut parser, &corpus[split..]);
+            let (split_meta, split_residue) = accumulated(first, second);
+            let (whole_meta, whole_residue) =
+                accumulated(whole_out.clone(), ParseOutput::default());
+            assert_eq!(
+                split_residue, whole_residue,
+                "corpus {corpus_index} split at {split}: residue diverged"
+            );
+            assert_eq!(
+                split_meta, whole_meta,
+                "corpus {corpus_index} split at {split}: replies/forwards/notifications diverged"
+            );
+        }
+    }
+}
+
+const PALETTE_QUERY_1_AND_2: &[u8] = b"\x1b]4;1;?;2;?\x1b\\";
+const FG_AND_PALETTE_QUERY: &[u8] = b"\x1b]10;?\x1b\\\x1b]4;1;?;2;?\x1b\\";
+const PRIMARY_DA_REPLY: &[u8] = b"\x1b[?6c";
+
+fn reserialized_osc(payload: &str) -> Vec<u8> {
+    let mut bytes = b"\x1b]".to_vec();
+    bytes.extend_from_slice(payload.as_bytes());
+    bytes.extend_from_slice(b"\x1b\\");
+    bytes
+}
+
+fn forward_chunks(query: &[u8], chunks: &[&[u8]]) -> Vec<u8> {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(7, query);
+    let mut completed = None;
+    for chunk in chunks {
+        if let Some((token, bytes)) = parser.feed(chunk).completed_forward {
+            assert_eq!(token, 7);
+            assert!(completed.is_none(), "primary DA closed the slot twice");
+            completed = Some(bytes);
+        }
+    }
+    completed.expect("primary DA should close the forward")
+}
+
+#[test]
+fn split_osc4_replies_accumulate_for_bel_and_st() {
+    let first = b"\x1b]4;1;rgb:1111/0000/0000\x07";
+    let noise = b"\x1b]11;rgb:abcd/abcd/abcd\x1b\\zz";
+    let second = b"\x1b]4;2;rgb:0000/2222/0000\x1b\\";
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(7, PALETTE_QUERY_1_AND_2);
+    let opened = parser.feed(first);
+    assert!(opened.completed_forward.is_none());
+    assert!(opened.residue.is_empty());
+    let stray = parser.feed(noise);
+    assert_eq!(stray.residue, b"zz");
+    assert!(parser.feed(second).residue.is_empty());
+    let done = parser.feed(PRIMARY_DA_REPLY);
+    let (token, bytes) = done.completed_forward.expect("barrier");
+    assert_eq!(token, 7);
+    let mut expected = reserialized_osc("4;1;rgb:1111/0000/0000");
+    expected.extend(reserialized_osc("4;2;rgb:0000/2222/0000"));
+    assert_eq!(bytes, expected);
+    assert!(!bytes.windows(4).any(|w| w == b"]11;"));
+    assert!(!bytes.windows(2).any(|w| w == b"zz"));
+}
+
+#[test]
+fn combined_osc4_reply_matches_once() {
+    let combined = b"\x1b]4;1;rgb:1111/0000/0000;2;rgb:0000/2222/0000\x1b\\";
+    let repeat = b"\x1b]4;1;rgb:1111/0000/0000;2;rgb:0000/2222/0000\x07";
+    let bytes = forward_chunks(b"\x1b]4;1;?;2;?\x07", &[combined, repeat, PRIMARY_DA_REPLY]);
+    assert_eq!(
+        bytes,
+        reserialized_osc("4;1;rgb:1111/0000/0000;2;rgb:0000/2222/0000")
+    );
+}
+
+#[test]
+fn split_palette_replies_survive_arbitrary_slices() {
+    let mut wire = b"\x1b]4;1;rgb:1111/0000/0000\x07".to_vec();
+    let boundary = wire.len();
+    wire.extend_from_slice(b"\x1b]4;2;rgb:0000/2222/0000\x1b\\");
+    wire.extend_from_slice(PRIMARY_DA_REPLY);
+    let mut expected = reserialized_osc("4;1;rgb:1111/0000/0000");
+    expected.extend(reserialized_osc("4;2;rgb:0000/2222/0000"));
+
+    assert_eq!(
+        forward_chunks(
+            PALETTE_QUERY_1_AND_2,
+            &[&wire[..boundary], &wire[boundary..]],
+        ),
+        expected,
+        "a slice boundary between the two OSC 4 replies drops a register"
+    );
+    for split in 0..=wire.len() {
+        assert_eq!(
+            forward_chunks(PALETTE_QUERY_1_AND_2, &[&wire[..split], &wire[split..]]),
+            expected,
+            "split at {split}"
+        );
+    }
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(7, PALETTE_QUERY_1_AND_2);
+    let mut completed = None;
+    for byte in wire.chunks(1) {
+        if let Some((token, bytes)) = parser.feed(byte).completed_forward {
+            assert_eq!(token, 7);
+            completed = Some(bytes);
+        }
+    }
+    assert_eq!(completed.expect("byte-wise feed"), expected);
+}
+
+#[test]
+fn duplicate_palette_register_does_not_cover_a_different_index() {
+    let bytes = forward_chunks(
+        PALETTE_QUERY_1_AND_2,
+        &[
+            b"\x1b]4;1;rgb:1111/0000/0000\x1b\\",
+            b"\x1b]4;1;rgb:ffff/1111/1111\x07",
+            b"\x1b]4;2;rgb:0000/2222/0000\x1b\\",
+            PRIMARY_DA_REPLY,
+        ],
+    );
+    let mut expected = reserialized_osc("4;1;rgb:1111/0000/0000");
+    expected.extend(reserialized_osc("4;2;rgb:0000/2222/0000"));
+    assert_eq!(bytes, expected);
+    assert_eq!(bytes.windows(4).filter(|w| *w == b"]4;1").count(), 1);
+}
+
+#[test]
+fn unrequested_palette_register_is_not_forwarded() {
+    let bytes = forward_chunks(
+        PALETTE_QUERY_1_AND_2,
+        &[
+            b"\x1b]4;99;rgb:9999/9999/9999\x1b\\",
+            b"\x1b]4;1;rgb:dead/0000/0000;99;rgb:9999/9999/9999\x07",
+            b"\x1b]4;1;rgb:1111/0000/0000\x1b\\",
+            PRIMARY_DA_REPLY,
+        ],
+    );
+    assert_eq!(bytes, reserialized_osc("4;1;rgb:1111/0000/0000"));
+    assert!(!bytes.windows(3).any(|w| w == b"99;"));
+    assert!(!bytes.windows(4).any(|w| w == b"dead"));
+}
+
+#[test]
+fn compound_foreground_and_split_palette_replies_are_forwarded() {
+    let bytes = forward_chunks(
+        FG_AND_PALETTE_QUERY,
+        &[
+            b"\x1b]10;rgb:eeee/eeee/eeee\x1b\\",
+            b"\x1b]4;1;rgb:1111/0000/0000\x07",
+            b"\x1b]4;2;rgb:0000/2222/0000\x1b\\",
+            PRIMARY_DA_REPLY,
+        ],
+    );
+    let mut expected = reserialized_osc("10;rgb:eeee/eeee/eeee");
+    expected.extend(reserialized_osc("4;1;rgb:1111/0000/0000"));
+    expected.extend(reserialized_osc("4;2;rgb:0000/2222/0000"));
+    assert_eq!(bytes, expected);
+}
+
+#[test]
+fn split_palette_around_foreground_is_forwarded_in_arrival_order() {
+    let bytes = forward_chunks(
+        FG_AND_PALETTE_QUERY,
+        &[
+            b"\x1b]4;2;rgb:0000/2222/0000\x1b\\",
+            b"\x1b]10;rgb:eeee/eeee/eeee\x07",
+            b"\x1b]4;1;rgb:1111/0000/0000\x07",
+            PRIMARY_DA_REPLY,
+        ],
+    );
+    let mut expected = reserialized_osc("4;2;rgb:0000/2222/0000");
+    expected.extend(reserialized_osc("10;rgb:eeee/eeee/eeee"));
+    expected.extend(reserialized_osc("4;1;rgb:1111/0000/0000"));
+    assert_eq!(bytes, expected);
 }

@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 979
+assertion_line: 1058
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -502,58 +502,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'H',
-                ),
-                key_modifiers: {},
-            }: [
-                Resize {
-                    resize: Decrease,
-                    direction: Some(
-                        Left,
-                    ),
-                },
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'J',
-                ),
-                key_modifiers: {},
-            }: [
-                Resize {
-                    resize: Decrease,
-                    direction: Some(
-                        Down,
-                    ),
-                },
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'K',
-                ),
-                key_modifiers: {},
-            }: [
-                Resize {
-                    resize: Decrease,
-                    direction: Some(
-                        Up,
-                    ),
-                },
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'L',
-                ),
-                key_modifiers: {},
-            }: [
-                Resize {
-                    resize: Decrease,
-                    direction: Some(
-                        Right,
-                    ),
-                },
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     '[',
                 ),
                 key_modifiers: {
@@ -645,6 +593,19 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'H',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize {
+                    resize: Decrease,
+                    direction: Some(
+                        Left,
+                    ),
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'i',
                 ),
                 key_modifiers: {
@@ -682,6 +643,19 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'J',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize {
+                    resize: Decrease,
+                    direction: Some(
+                        Down,
+                    ),
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'k',
                 ),
                 key_modifiers: {},
@@ -707,6 +681,19 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'K',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize {
+                    resize: Decrease,
+                    direction: Some(
+                        Up,
+                    ),
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'l',
                 ),
                 key_modifiers: {},
@@ -728,6 +715,19 @@ Config {
             }: [
                 MoveFocusOrTab {
                     direction: Right,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'L',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize {
+                    resize: Decrease,
+                    direction: Some(
+                        Right,
+                    ),
                 },
             ],
             KeyWithModifier {

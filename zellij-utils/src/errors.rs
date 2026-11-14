@@ -214,6 +214,7 @@ impl Display for ContextType {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ScreenContext {
     HandlePtyBytes,
+    ApplyScrolledPtyQuantum,
     PluginBytes,
     Render,
     RenderToClients,
@@ -301,6 +302,7 @@ pub enum ScreenContext {
     SetFixedWidth,
     ClosePane,
     HoldPane,
+    TerminalClosed,
     UpdatePaneName,
     UndoRenamePane,
     NewTab,
@@ -525,6 +527,7 @@ pub enum ScreenContext {
     MovePaneWithPaneIdCli,
     MovePaneBackwardsWithPaneId,
     ClearScreenWithPaneId,
+    ResetPaneInputModes,
     EditScrollbackWithPaneId,
     ToggleFullscreenWithPaneId,
     ToggleNoUiFullscreenWithPaneId,
@@ -544,6 +547,7 @@ pub enum ScreenContext {
     MoveTabWithTabId,
     MoveTabToPosition,
     UpdateBackgroundPluginSubscriptions,
+    ReportModeInfoToPlugin,
     ClearHintTextCache,
     BroadcastModeUpdate,
     SetSoftKeyboard,
@@ -559,6 +563,7 @@ pub enum ScreenContext {
     MuteSession,
     AttentionCommandPaneStarted,
     SetAttentionConfig,
+    SettlePendingPluginActivation,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -574,6 +579,7 @@ pub enum PtyContext {
     OverrideLayout,
     ClosePane,
     ClosePaneThatWasNotCreated,
+    ClearPaneProcessIdentity,
     CloseTab,
     ReRunCommandInPane,
     DropToShellInPane,
@@ -944,7 +950,7 @@ mod not_wasm {
     /// Custom panic handler/hook. Prints the [`ErrorContext`].
     pub fn handle_panic<T>(info: &PanicHookInfo<'_>, sender: Option<&SenderWithContext<T>>)
     where
-        T: ErrorInstruction + Clone,
+        T: ErrorInstruction,
     {
         use std::{process, thread};
         let thread = thread::current();

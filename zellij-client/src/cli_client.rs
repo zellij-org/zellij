@@ -17,6 +17,13 @@ use zellij_utils::{
     prompt::{self, ChoiceItem, PromptElement},
 };
 
+fn existing_session_socket(session_name: &str) -> std::result::Result<PathBuf, String> {
+    match zellij_utils::sessions::resolve_session_socket_path(session_name)? {
+        Some(path) => Ok(path),
+        None => Ok(zellij_utils::consts::ZELLIJ_SOCK_DIR.join(session_name)),
+    }
+}
+
 pub fn start_cli_client(
     mut os_input: Box<dyn ClientOsApi>,
     session_name: &str,
@@ -24,10 +31,32 @@ pub fn start_cli_client(
 ) -> i32 {
     let zellij_ipc_pipe: PathBuf = {
         let sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-        fs::create_dir_all(&sock_dir).unwrap();
-        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
-        zellij_utils::sessions::resolve_session_socket_path(session_name)
-            .unwrap_or_else(|| sock_dir.join(session_name))
+        if let Err(e) = fs::create_dir_all(&sock_dir) {
+            eprintln!(
+                "Failed to create socket directory {}: {}",
+                sock_dir.display(),
+                e
+            );
+            return 1;
+        }
+        if let Err(e) = zellij_utils::shared::set_permissions(&sock_dir, 0o700) {
+            eprintln!(
+                "Failed to set permissions on socket directory {}: {}",
+                sock_dir.display(),
+                e
+            );
+            return 1;
+        }
+        match existing_session_socket(session_name) {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!(
+                    "Failed to read the session index for {:?}: {}. Not connecting.",
+                    session_name, error
+                );
+                return 1;
+            },
+        }
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
@@ -230,7 +259,11 @@ enum PipeEvent {
     Payload(Option<String>),
 }
 
-const STREAM_BATCH_BYTES: usize = 256 * 1024;
+// The plugin host accepts at most 256 KiB in one stdin frame, and that frame
+// is the JSON encoding of a protobuf byte array. Each payload byte can become
+// four JSON characters ("255,"), so batching near the host cap would exceed
+// it. Keep the raw batch well below the cap.
+const STREAM_BATCH_BYTES: usize = 32 * 1024;
 
 pub(crate) fn next_payload(
     queued: &mut VecDeque<Option<String>>,
@@ -426,10 +459,32 @@ pub fn start_prompt_client(
     };
     let zellij_ipc_pipe: PathBuf = {
         let sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-        fs::create_dir_all(&sock_dir).unwrap();
-        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
-        zellij_utils::sessions::resolve_session_socket_path(session_name)
-            .unwrap_or_else(|| sock_dir.join(session_name))
+        if let Err(e) = fs::create_dir_all(&sock_dir) {
+            eprintln!(
+                "Failed to create socket directory {}: {}",
+                sock_dir.display(),
+                e
+            );
+            return prompt::EXIT_ERROR;
+        }
+        if let Err(e) = zellij_utils::shared::set_permissions(&sock_dir, 0o700) {
+            eprintln!(
+                "Failed to set permissions on socket directory {}: {}",
+                sock_dir.display(),
+                e
+            );
+            return prompt::EXIT_ERROR;
+        }
+        match existing_session_socket(session_name) {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!(
+                    "Failed to read the session index for {:?}: {}. Not connecting.",
+                    session_name, error
+                );
+                return prompt::EXIT_ERROR;
+            },
+        }
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
@@ -755,13 +810,10 @@ fn individual_messages_client(
     action: Action,
     pane_id: Option<u32>,
 ) -> Option<i32> {
-    let is_blocking = matches!(
-        &action,
-        Action::NewBlockingPane {
-            unblock_condition: Some(_),
-            ..
-        }
-    );
+    // Plain `--blocking` has `unblock_condition: None` but still waits for the
+    // accepted target pane/run. Unrelated pane closes used to broadcast
+    // `UnblockInputThread` to every client; those must not satisfy this waiter.
+    let is_blocking = matches!(&action, Action::NewBlockingPane { .. });
     let msg = ClientToServerMsg::Action {
         action,
         terminal_id: pane_id,
@@ -810,13 +862,35 @@ pub fn start_subscribe_client(
     os_input: Box<dyn ClientOsApi>,
     session_name: &str,
     subscribe_cli: SubscribeCli,
-) {
+) -> i32 {
     let zellij_ipc_pipe: PathBuf = {
         let sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-        fs::create_dir_all(&sock_dir).unwrap();
-        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
-        zellij_utils::sessions::resolve_session_socket_path(session_name)
-            .unwrap_or_else(|| sock_dir.join(session_name))
+        if let Err(e) = fs::create_dir_all(&sock_dir) {
+            eprintln!(
+                "Failed to create socket directory {}: {}",
+                sock_dir.display(),
+                e
+            );
+            return 1;
+        }
+        if let Err(e) = zellij_utils::shared::set_permissions(&sock_dir, 0o700) {
+            eprintln!(
+                "Failed to set permissions on socket directory {}: {}",
+                sock_dir.display(),
+                e
+            );
+            return 1;
+        }
+        match existing_session_socket(session_name) {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!(
+                    "Failed to read the session index for {:?}: {}. Not connecting.",
+                    session_name, error
+                );
+                return 1;
+            },
+        }
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
@@ -898,20 +972,41 @@ pub fn start_subscribe_client(
                     },
                 }
                 if remaining_panes.is_empty() {
-                    break;
+                    os_input.send_to_server(ClientToServerMsg::ClientExited);
+                    return 0;
                 }
             },
-            Some((ServerToClientMsg::Exit { .. }, _)) => break,
+            Some((ServerToClientMsg::Exit { exit_reason }, _)) => {
+                os_input.send_to_server(ClientToServerMsg::ClientExited);
+                return match exit_reason {
+                    ExitReason::Normal | ExitReason::NormalDetached => 0,
+                    ExitReason::CustomExitStatus(status) => status,
+                    // The server reports Disconnect whenever it drops a
+                    // client; its Display text is advice for interactive
+                    // terminals, not for a subscriber.
+                    ExitReason::Disconnect => {
+                        eprintln!("subscription ended: the session disconnected this client");
+                        1
+                    },
+                    other => {
+                        eprintln!("{}", other);
+                        1
+                    },
+                };
+            },
             Some((ServerToClientMsg::LogError { lines }, _)) => {
                 for line in lines {
                     eprintln!("{}", line);
                 }
-                process::exit(2);
+                os_input.send_to_server(ClientToServerMsg::ClientExited);
+                return 2;
             },
-            None => break,
+            None => {
+                eprintln!("subscribe connection closed unexpectedly");
+                os_input.send_to_server(ClientToServerMsg::ClientExited);
+                return 1;
+            },
             _ => {},
         }
     }
-
-    os_input.send_to_server(ClientToServerMsg::ClientExited);
 }

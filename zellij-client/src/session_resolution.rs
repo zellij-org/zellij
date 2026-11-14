@@ -14,6 +14,14 @@ use zellij_utils::sessions::{
 
 use crate::ClientInfo;
 
+fn session_probe_failure(error: &std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::TimedOut || error.get_ref().is_none() {
+        session_listing_error_message(error.kind())
+    } else {
+        format!("Failed to resolve the session: {error}")
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stream {
     Out,
@@ -184,12 +192,9 @@ pub fn attach_by_name(
 ) -> Result<ClientInfo, ResolutionFailure> {
     match &session_name {
         Some(session) if create => match session_exists(session) {
-            Ok(true) => Ok(ClientInfo::Attach(session_name.unwrap(), config_options)),
-            Ok(false) => Ok(ClientInfo::New(session_name.unwrap(), None, None, None)),
-            Err(kind) => Err(ResolutionFailure::to_stderr(
-                session_listing_error_message(kind),
-                1,
-            )),
+            Ok(true) => Ok(ClientInfo::Attach(session.clone(), config_options)),
+            Ok(false) => Ok(ClientInfo::New(session.clone(), None, None, None)),
+            Err(error) => Err(ResolutionFailure::to_stderr(session_probe_failure(&error), 1)),
         },
         Some(prefix) => match match_session_name(prefix) {
             Ok(SessionNameMatch::UniquePrefix(s)) | Ok(SessionNameMatch::Exact(s)) => {
@@ -207,15 +212,20 @@ pub fn attach_by_name(
                 format!("No session with the name '{}' found!", prefix),
                 1,
             )),
-            Err(kind) => Err(ResolutionFailure::to_stderr(
-                session_listing_error_message(kind),
-                1,
-            )),
+            Err(error) => Err(ResolutionFailure::to_stderr(session_probe_failure(&error), 1)),
         },
         None => match get_active_session() {
             ActiveSession::None if create => create_new_client(),
             ActiveSession::None => Err(ResolutionFailure::to_stderr(
                 "No active zellij sessions found.",
+                1,
+            )),
+            ActiveSession::Unresponsive(names) => Err(ResolutionFailure::to_stderr(
+                format!(
+                    "Found session socket(s) that did not respond in time; \
+                     cannot claim there is no active session: {}",
+                    names.join(", ")
+                ),
                 1,
             )),
             ActiveSession::One(session_name) => {
@@ -246,10 +256,18 @@ pub fn resolve_attach(
     let client = if let Some(index) = args.index {
         attach_with_session_index(config_options.clone(), index, create)?
     } else {
-        let session_exists = session_name
-            .as_ref()
-            .and_then(|s| session_exists(&s).ok())
-            .unwrap_or(false);
+        let session_exists = match session_name.as_ref() {
+            Some(session_name) => match session_exists(session_name) {
+                Ok(exists) => exists,
+                Err(error) => {
+                    return Err(ResolutionFailure::to_stderr(
+                        session_probe_failure(&error),
+                        1,
+                    ));
+                },
+            },
+            None => false,
+        };
         let resurrection_layout = match session_name
             .as_ref()
             .filter(|_| !session_exists)
@@ -271,8 +289,8 @@ pub fn resolve_attach(
                     session_name.clone(),
                     // The layout cache is keyed by session id (== name for legacy sessions).
                     session_layout_cache_file_name(
-                        &zellij_utils::sessions::resolve_session_id(session_name)
-                            .unwrap_or_else(|| session_name.to_string()),
+                        &zellij_utils::sessions::session_folder_id(session_name)
+                            .map_err(|error| ResolutionFailure::to_stderr(error, 2))?,
                     ),
                     args.force_run_commands,
                     new_session_cwd,
@@ -309,14 +327,22 @@ pub fn resolve_watch(
                 format!("No session with the name '{}' found!", prefix),
                 1,
             )),
-            Err(kind) => Err(ResolutionFailure::to_stderr(
-                session_listing_error_message(kind),
+            Err(error) => Err(ResolutionFailure::to_stderr(
+                session_probe_failure(&error),
                 1,
             )),
         },
         None => match get_active_session() {
             ActiveSession::None => Err(ResolutionFailure::to_stderr(
                 "No active zellij sessions found.",
+                1,
+            )),
+            ActiveSession::Unresponsive(names) => Err(ResolutionFailure::to_stderr(
+                format!(
+                    "Found session socket(s) that did not respond in time; \
+                     cannot claim there is no active session: {}",
+                    names.join(", ")
+                ),
                 1,
             )),
             ActiveSession::One(name) => Ok(ClientInfo::Watch(name, config_options)),

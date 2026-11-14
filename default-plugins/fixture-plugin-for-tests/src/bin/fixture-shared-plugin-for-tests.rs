@@ -19,6 +19,11 @@ struct State {
 #[cfg(target_family = "wasm")]
 register_shared_plugin!(State);
 
+#[cfg(not(target_family = "wasm"))]
+fn main() {
+    eprintln!("fixture-shared-plugin-for-tests runs as a wasm plugin, not as a host binary");
+}
+
 #[allow(dead_code)]
 fn render_line(
     state: &State,

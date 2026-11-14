@@ -62,6 +62,11 @@ impl KittyApcInterceptor {
     pub fn is_ground(&self) -> bool {
         self.state == State::Ground
     }
+    /// Bytes and capacity currently held for a capture in progress.
+    #[cfg(test)]
+    pub(crate) fn buffered_len_and_capacity(&self) -> (usize, usize) {
+        (self.buffer.len(), self.buffer.capacity())
+    }
     pub fn reset(&mut self) {
         self.state = State::Ground;
         self.buffer.clear();

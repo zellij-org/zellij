@@ -17,6 +17,16 @@ pub struct NestedReannounce {
 }
 
 impl NestedReannounce {
+    #[cfg(test)]
+    pub(crate) fn for_tests() -> Self {
+        NestedReannounce {
+            scheduler: Arc::new(Mutex::new(ReannounceScheduler::new(Instant::now()))),
+            wakeup: Arc::new(Condvar::new()),
+            stop: Arc::new(AtomicBool::new(false)),
+            thread: Arc::new(Mutex::new(None)),
+        }
+    }
+
     pub fn spawn(os_input: Box<dyn ClientOsApi>, session_name: String) -> Self {
         let handle = NestedReannounce {
             scheduler: Arc::new(Mutex::new(ReannounceScheduler::new(Instant::now()))),
@@ -72,7 +82,7 @@ impl NestedReannounce {
         let first_contact = self
             .scheduler
             .lock()
-            .unwrap()
+            .unwrap_or_else(|p| p.into_inner())
             .note_host_contact(Instant::now());
         if first_contact {
             self.wakeup.notify_all();

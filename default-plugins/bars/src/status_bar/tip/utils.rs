@@ -11,12 +11,16 @@ use super::data::TIPS;
 macro_rules! get_name_and_caching {
     ($cache:expr) => {{
         let name = get_random_tip_name();
-        $cache.caching(name.clone()).unwrap();
+        // Tip-cache flush is best-effort; IO/serialize failure must not panic the status bar.
+        let _ = $cache.caching(name.clone());
         return name;
     }};
     ($cache:expr, $from:expr) => {{
-        let name = $from.choose(&mut rand::rng()).unwrap().to_string();
-        $cache.caching(name.clone()).unwrap();
+        let Some(name) = $from.choose(&mut rand::rng()).map(|n| n.to_string()) else {
+            return String::from("quicknav");
+        };
+        // Tip-cache flush is best-effort; IO/serialize failure must not panic the status bar.
+        let _ = $cache.caching(name.clone());
         return name;
     }};
 }
@@ -24,13 +28,19 @@ macro_rules! get_name_and_caching {
 macro_rules! populate_cache {
     ($cache:expr) => {{
         for tip_name in TIPS.keys() {
-            $cache.caching(tip_name.clone()).unwrap();
+            // Tip-cache flush is best-effort; IO/serialize failure must not panic the status bar.
+            let _ = $cache.caching(tip_name.clone());
         }
     }};
 }
 
 pub fn get_random_tip_name() -> String {
-    TIPS.keys().choose(&mut rand::rng()).unwrap().to_string()
+    // TIPS is a non-empty lazy_static map registered at compile time.
+    TIPS.keys()
+        .choose(&mut rand::rng())
+        .copied()
+        .unwrap_or("quicknav")
+        .to_string()
 }
 
 pub fn get_cached_tip_name() -> String {
@@ -42,7 +52,8 @@ pub fn get_cached_tip_name() -> String {
     let zellij_version = get_zellij_version();
     if zellij_version.ne(local_cache.get_version()) {
         local_cache.set_version(zellij_version);
-        local_cache.clear().unwrap();
+        // Clear is best-effort; an unwritable cache must not panic tip selection.
+        let _ = local_cache.clear();
     }
 
     if local_cache.is_empty() {
@@ -72,7 +83,8 @@ pub fn get_cached_tip_name() -> String {
         if !diff.is_empty() {
             get_name_and_caching!(local_cache, diff);
         } else {
-            local_cache.clear().unwrap();
+            // Clear is best-effort; an unwritable cache must not panic tip selection.
+            let _ = local_cache.clear();
             get_name_and_caching!(local_cache);
         }
     } else {

@@ -1,8 +1,10 @@
-use super::parser::{DecodedImage, KittyCommand, KittyError, KittyErrorCode};
+use super::parser::{
+    DecodedImage, KittyCommand, KittyError, KittyErrorCode, MAX_DECODED_BYTES, MAX_DIMENSION,
+};
 use super::store::{InternalImageId, KittyImageStore, ScaledImageKey};
 use crate::panes::sixel::PixelRect;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 use zellij_utils::pane_size::SizeInPixels;
 
@@ -73,6 +75,10 @@ impl KittyReplyData {
     }
 }
 
+/// Placement records kept for one pane. Separate from the image-byte quota:
+/// many displays can share one raster. Rendering walks at most this many.
+const MAX_KITTY_PLACEMENTS: usize = 1024;
+
 #[derive(Debug, Clone)]
 pub struct KittyGrid {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
@@ -80,6 +86,9 @@ pub struct KittyGrid {
     image_ids: HashMap<u32, InternalImageId>,
     image_numbers: HashMap<u32, Vec<u32>>,
     placements: Vec<KittyPlacement>,
+    /// Set after the first refusal at `MAX_KITTY_PLACEMENTS`. Further
+    /// refusals stay quiet until the count drops below the cap.
+    placement_cap_logged: bool,
     next_synthetic_image_id: u32,
     front_drops: u64,
     merged_rows: u64,
@@ -87,6 +96,24 @@ pub struct KittyGrid {
     commands_handled: u64,
     previous_cell_size: Option<SizeInPixels>,
     rows_below_the_viewport: Option<KittyRowsBelowTheViewport>,
+    /// Absolute wrapped-row index of each canonical line, top to bottom.
+    /// A stored value `S` is current-document row `S - canonical_front_offset`.
+    /// Front retirement increments the offset and drops entries that left
+    /// the document. It does not shift or renumber the rest.
+    /// Rebuilt only when `canonical_starts_valid` is false.
+    canonical_starts: VecDeque<usize>,
+    canonical_front_offset: usize,
+    canonical_starts_valid: bool,
+    /// Entries copied out of `canonical_starts`. Reanchor reads the deque
+    /// in place, so this stays zero on the scroll path.
+    #[cfg(test)]
+    index_entries_copied: u64,
+    /// Offsets rewritten in place. Front retirement does not do this.
+    #[cfg(test)]
+    index_offsets_renumbered: u64,
+    /// Canonical starts dropped because their row left the front.
+    #[cfg(test)]
+    index_front_pops: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -129,6 +156,7 @@ impl KittyGrid {
             image_ids: HashMap::new(),
             image_numbers: HashMap::new(),
             placements: Vec::new(),
+            placement_cap_logged: false,
             next_synthetic_image_id: u32::MAX,
             front_drops: 0,
             merged_rows: 0,
@@ -136,7 +164,80 @@ impl KittyGrid {
             commands_handled: 0,
             previous_cell_size,
             rows_below_the_viewport: None,
+            canonical_starts: VecDeque::new(),
+            canonical_front_offset: 0,
+            canonical_starts_valid: false,
+            #[cfg(test)]
+            index_entries_copied: 0,
+            #[cfg(test)]
+            index_offsets_renumbered: 0,
+            #[cfg(test)]
+            index_front_pops: 0,
         }
+    }
+    pub fn invalidate_canonical_starts(&mut self) {
+        self.canonical_starts_valid = false;
+        self.canonical_starts.clear();
+        self.canonical_front_offset = 0;
+    }
+    pub fn canonical_starts_valid(&self) -> bool {
+        self.canonical_starts_valid
+    }
+    /// `starts` are current-document indexes. A full rebuild has no
+    /// retired prefix, so the front offset goes back to zero.
+    pub fn set_canonical_starts(&mut self, starts: Vec<usize>) {
+        self.canonical_starts = VecDeque::from(starts);
+        self.canonical_front_offset = 0;
+        self.canonical_starts_valid = true;
+    }
+    /// Absolute starts and the offset that turns them into current rows.
+    pub fn canonical_index(&self) -> (&VecDeque<usize>, usize) {
+        (&self.canonical_starts, self.canonical_front_offset)
+    }
+    pub fn canonical_start_count(&self) -> usize {
+        self.canonical_starts.len()
+    }
+    /// One wrapped row left the front of the buffer.
+    pub fn note_front_row_removed(&mut self, was_canonical: bool) {
+        if !self.canonical_starts_valid {
+            return;
+        }
+        let removed_at = self.canonical_front_offset;
+        if was_canonical && self.canonical_starts.front().copied() == Some(removed_at) {
+            self.canonical_starts.pop_front();
+            #[cfg(test)]
+            {
+                self.index_front_pops = self.index_front_pops.saturating_add(1);
+            }
+        }
+        self.canonical_front_offset = self.canonical_front_offset.saturating_add(1);
+    }
+    /// A canonical row was appended at the current-document `wrapped_index`.
+    pub fn note_canonical_row_appended(&mut self, wrapped_index: usize) {
+        if self.canonical_starts_valid {
+            self.canonical_starts
+                .push_back(wrapped_index.saturating_add(self.canonical_front_offset));
+        }
+    }
+    #[cfg(test)]
+    pub fn index_entries_copied(&self) -> u64 {
+        self.index_entries_copied
+    }
+    #[cfg(test)]
+    pub fn index_offsets_renumbered(&self) -> u64 {
+        self.index_offsets_renumbered
+    }
+    #[cfg(test)]
+    pub fn index_front_pops(&self) -> u64 {
+        self.index_front_pops
+    }
+    /// Current-document index of each canonical line.
+    #[cfg(test)]
+    pub fn canonical_starts_current(&self) -> Vec<usize> {
+        self.canonical_starts
+            .iter()
+            .map(|start| start.saturating_sub(self.canonical_front_offset))
+            .collect()
     }
     pub fn note_command_handled(&mut self) {
         self.commands_handled += 1;
@@ -170,6 +271,8 @@ impl KittyGrid {
             }
         }
         self.placements = kept;
+        drop(store);
+        self.prune_stale_image_references();
     }
     pub fn placement_count(&self) -> usize {
         self.placements.len()
@@ -241,7 +344,20 @@ impl KittyGrid {
         }
         self.image_ids.insert(pane_image_id, internal);
         self.kitty_image_store.borrow_mut().touch(internal);
+        self.prune_stale_image_references();
         Ok(pane_image_id)
+    }
+    fn prune_stale_image_references(&mut self) {
+        {
+            let store = self.kitty_image_store.borrow();
+            self.image_ids
+                .retain(|_, internal_id| store.get(*internal_id).is_some());
+        }
+        let image_ids = &self.image_ids;
+        self.image_numbers.retain(|_, pane_image_ids| {
+            pane_image_ids.retain(|pane_image_id| image_ids.contains_key(pane_image_id));
+            !pane_image_ids.is_empty()
+        });
     }
     pub fn resolve_display_target(
         &self,
@@ -304,6 +420,7 @@ impl KittyGrid {
         let off_x = std::cmp::min(command.cell_offset_x as usize, cell.width - 1);
         let off_y = std::cmp::min(command.cell_offset_y as usize, cell.height - 1);
         let ceil_div = |a: usize, b: usize| (a + b - 1) / b;
+        let too_large = || einval(command, "scaled image too large");
         let (dst_w, dst_h, cols, rows, is_scaled) =
             match (command.columns as usize, command.rows as usize) {
                 (0, 0) => (
@@ -314,7 +431,7 @@ impl KittyGrid {
                     false,
                 ),
                 (c, 0) => {
-                    let dst_w = c * cell.width;
+                    let dst_w = c.checked_mul(cell.width).ok_or_else(too_large)?;
                     let dst_h = std::cmp::max(
                         ((dst_w as f64) * (source_h as f64) / (source_w as f64)).round() as usize,
                         1,
@@ -325,7 +442,7 @@ impl KittyGrid {
                     (dst_w, dst_h, c, rows, true)
                 },
                 (0, r) => {
-                    let dst_h = r * cell.height;
+                    let dst_h = r.checked_mul(cell.height).ok_or_else(too_large)?;
                     let dst_w = std::cmp::max(
                         ((dst_h as f64) * (source_w as f64) / (source_h as f64)).round() as usize,
                         1,
@@ -334,8 +451,26 @@ impl KittyGrid {
                     let cols = std::cmp::max((width_px / cell.width as f64).ceil() as usize, 1);
                     (dst_w, dst_h, cols, r, true)
                 },
-                (c, r) => (c * cell.width, r * cell.height, c, r, true),
+                (c, r) => (
+                    c.checked_mul(cell.width).ok_or_else(too_large)?,
+                    r.checked_mul(cell.height).ok_or_else(too_large)?,
+                    c,
+                    r,
+                    true,
+                ),
             };
+        if is_scaled && !scaled_size_is_allowed(dst_w, dst_h) {
+            return Err(too_large());
+        }
+        // Placement id 0 means "assign a new id" (Kitty), not "replace the
+        // previous anonymous placement". Each such display is its own record.
+        // Image id 0 cannot carry a client placement id, so it is also new.
+        let placement_id = if pane_image_id != 0 {
+            command.placement_id.unwrap_or(0)
+        } else {
+            0
+        };
+        self.refuse_placement_over_cap(command, pane_image_id, placement_id)?;
         let dest_cells = (cols as u16, rows as u16);
         let source_rect = PixelRect {
             x: source_x,
@@ -348,55 +483,90 @@ impl KittyGrid {
                 source: source_rect,
                 size: (dst_w, dst_h),
             };
-            let fits = dst_w
-                .checked_mul(dst_h)
-                .and_then(|pixels| pixels.checked_mul(4))
-                .map(|bytes| {
-                    self.kitty_image_store.borrow_mut().reserve_scaled_variant(
-                        internal,
-                        variant_key,
-                        bytes,
-                    )
-                })
-                .unwrap_or(false);
-            if !fits {
+            // Same source rectangle and destination pixel size: keep the
+            // stored raster. A different size or crop is scaled once below.
+            // At most `MAX_SCALED_VARIANTS_PER_IMAGE` variants are kept per
+            // image; a new one drops the least-recently-used other variant
+            // and its cached encoding. The byte quota can drop one sooner.
+            if self
+                .kitty_image_store
+                .borrow()
+                .scale_was_refused(internal, variant_key)
+            {
+                self.kitty_image_store
+                    .borrow_mut()
+                    .touch_scaled_variant(internal, variant_key);
                 return Err(einval(command, "placement too large"));
             }
-            let scaled_bytes = {
-                let store = self.kitty_image_store.borrow();
-                let image = store
-                    .get(internal)
-                    .ok_or_else(|| enoent(command, "unknown image id"))?;
-                let cropped = crop_rgba(
-                    &image.rgba,
-                    image_width,
-                    image_height,
-                    source_x,
-                    source_y,
-                    source_w,
-                    source_h,
+            let expected_len = dst_w
+                .checked_mul(dst_h)
+                .and_then(|pixels| pixels.checked_mul(4));
+            let already_scaled = expected_len.is_some_and(|expected_len| {
+                self.kitty_image_store
+                    .borrow()
+                    .scaled_variant(internal, variant_key)
+                    .is_some_and(|bytes| bytes.len() == expected_len)
+            });
+            if already_scaled {
+                self.kitty_image_store
+                    .borrow_mut()
+                    .touch_scaled_variant(internal, variant_key);
+            } else if !self
+                .kitty_image_store
+                .borrow()
+                .scaled_bytes_are_retainable(internal, dst_w, dst_h)
+            {
+                // The raster would not survive next to the other variants this
+                // image is allowed to keep. Refuse before allocating it.
+                self.kitty_image_store
+                    .borrow_mut()
+                    .remember_refused_scale(internal, variant_key);
+                return Err(einval(command, "placement too large"));
+            } else {
+                let fits = expected_len
+                    .map(|bytes| {
+                        self.kitty_image_store.borrow_mut().reserve_scaled_variant(
+                            internal,
+                            variant_key,
+                            bytes,
+                        )
+                    })
+                    .unwrap_or(false);
+                if !fits {
+                    return Err(einval(command, "placement too large"));
+                }
+                let scaled_bytes = {
+                    let store = self.kitty_image_store.borrow();
+                    let image = store
+                        .get(internal)
+                        .ok_or_else(|| enoent(command, "unknown image id"))?;
+                    let cropped = crop_rgba(
+                        &image.rgba,
+                        image_width,
+                        image_height,
+                        source_x,
+                        source_y,
+                        source_w,
+                        source_h,
+                    );
+                    scale_rgba(&cropped, source_w, source_h, dst_w, dst_h)
+                };
+                #[cfg(test)]
+                if !scaled_bytes.is_empty() {
+                    self.kitty_image_store.borrow().note_scale(internal);
+                }
+                self.kitty_image_store.borrow_mut().add_scaled_variant(
+                    internal,
+                    variant_key,
+                    scaled_bytes,
                 );
-                scale_rgba(&cropped, source_w, source_h, dst_w, dst_h)
-            };
-            self.kitty_image_store.borrow_mut().add_scaled_variant(
-                internal,
-                ScaledImageKey {
-                    source: source_rect,
-                    size: (dst_w, dst_h),
-                },
-                scaled_bytes,
-            );
+            }
         }
         let display_rect = PixelRect {
             x: cursor_px.0 + off_x,
             y: (cursor_px.1 + off_y) as isize,
             width: dst_w,
             height: dst_h,
-        };
-        let placement_id = if pane_image_id != 0 {
-            command.placement_id.unwrap_or(0)
-        } else {
-            0
         };
         let mut reused_uid: Option<u64> = None;
         if pane_image_id != 0 && placement_id != 0 {
@@ -438,6 +608,33 @@ impl KittyGrid {
             .borrow_mut()
             .add_placement_ref(internal);
         Ok(dest_cells)
+    }
+    /// A new placement past the cap is not stored. Replacing an existing
+    /// non-zero placement id does not grow the list, so it is still admitted.
+    fn refuse_placement_over_cap(
+        &mut self,
+        command: &KittyCommand,
+        pane_image_id: u32,
+        placement_id: u32,
+    ) -> Result<(), KittyError> {
+        let replaces_existing = pane_image_id != 0
+            && placement_id != 0
+            && self.placements.iter().any(|placement| {
+                placement.image_id == pane_image_id && placement.placement_id == placement_id
+            });
+        if self.placements.len() < MAX_KITTY_PLACEMENTS {
+            self.placement_cap_logged = false;
+        }
+        if replaces_existing || self.placements.len() < MAX_KITTY_PLACEMENTS {
+            return Ok(());
+        }
+        if !self.placement_cap_logged {
+            self.placement_cap_logged = true;
+            log::warn!(
+                "Rejecting a Kitty placement: a pane already holds {MAX_KITTY_PLACEMENTS} placements"
+            );
+        }
+        Err(einval(command, "too many placements"))
     }
     pub fn delete(
         &mut self,
@@ -593,14 +790,16 @@ impl KittyGrid {
         if uppercase {
             match lower {
                 'i' | 'n' => {
-                    let target = target_image_id.unwrap();
-                    let no_surviving = !self
-                        .placements
-                        .iter()
-                        .any(|placement| placement.image_id == target);
-                    if no_surviving {
-                        if let Some(internal) = self.image_ids.get(&target).copied() {
-                            self.kitty_image_store.borrow_mut().free(internal);
+                    // SAFETY: 'i'|'n' arms set target_image_id to Some (or early-return)
+                    if let Some(target) = target_image_id {
+                        let no_surviving = !self
+                            .placements
+                            .iter()
+                            .any(|placement| placement.image_id == target);
+                        if no_surviving {
+                            if let Some(internal) = self.image_ids.get(&target).copied() {
+                                self.kitty_image_store.borrow_mut().free(internal);
+                            }
                         }
                     }
                 },
@@ -695,7 +894,9 @@ impl KittyGrid {
                 }
             }
             self.placements = kept;
+            drop(store);
         }
+        self.prune_stale_image_references();
     }
     pub fn merge_rows_into_line_start(&mut self, line_start_row: usize, merged_row_count: usize) {
         if merged_row_count == 0 {
@@ -773,6 +974,7 @@ impl KittyGrid {
         }
     }
     pub fn insert_canonical_anchor_line_at_front(&mut self) {
+        self.invalidate_canonical_starts();
         for placement in self.placements.iter_mut() {
             placement.vertical_anchor.canonical_line += 1;
         }
@@ -857,6 +1059,8 @@ impl KittyGrid {
             }
         }
         self.placements = kept;
+        drop(store);
+        self.prune_stale_image_references();
     }
     pub fn character_cell_size_possibly_changed(&mut self) {
         if let (Some(previous_cell_size), Some(character_cell_size)) =
@@ -888,7 +1092,47 @@ impl KittyGrid {
                             .push((placement.internal_id, placement.scaled_image().unwrap()));
                     }
                 }
+                // A new cell size can push a scaled placement past the target
+                // size limits; the oversized raster cannot be built, so the
+                // placement is dropped rather than cached as an empty image.
+                let mut store = self.kitty_image_store.borrow_mut();
+                self.placements.retain(|placement| {
+                    let oversized = placement.scaled_px.is_some_and(|(width, height)| {
+                        !scaled_size_is_allowed(width, height)
+                            || !store.scaled_bytes_are_retainable(
+                                placement.internal_id,
+                                width,
+                                height,
+                            )
+                    });
+                    if oversized {
+                        store.free(placement.internal_id);
+                    }
+                    !oversized
+                });
+                drop(store);
+                regenerations.retain(|(internal, key)| {
+                    scaled_size_is_allowed(key.size.0, key.size.1)
+                        && self
+                            .kitty_image_store
+                            .borrow()
+                            .scaled_bytes_are_retainable(*internal, key.size.0, key.size.1)
+                });
                 for (internal, key) in regenerations {
+                    let expected_len = key
+                        .size
+                        .0
+                        .checked_mul(key.size.1)
+                        .and_then(|pixels| pixels.checked_mul(4));
+                    let already_scaled = expected_len.is_some_and(|expected_len| {
+                        self.kitty_image_store
+                            .borrow()
+                            .scaled_variant(internal, key)
+                            .is_some_and(|bytes| bytes.len() == expected_len)
+                    });
+                    if already_scaled {
+                        continue;
+                    }
                     let source_rect = key.source;
                     let scaled_bytes = {
                         let store = self.kitty_image_store.borrow();
@@ -914,7 +1158,9 @@ impl KittyGrid {
                             None => None,
                         }
                     };
-                    if let Some(scaled_bytes) = scaled_bytes {
+                    if let Some(scaled_bytes) = scaled_bytes.filter(|bytes| !bytes.is_empty()) {
+                        #[cfg(test)]
+                        self.kitty_image_store.borrow().note_scale(internal);
                         self.kitty_image_store.borrow_mut().add_scaled_variant(
                             internal,
                             key,
@@ -925,12 +1171,15 @@ impl KittyGrid {
             }
         }
         self.previous_cell_size = *self.character_cell_size.borrow();
+        self.prune_stale_image_references();
     }
     pub fn clear_all_placements(&mut self) {
         let mut store = self.kitty_image_store.borrow_mut();
         for placement in self.placements.drain(..) {
             store.free(placement.internal_id);
         }
+        drop(store);
+        self.prune_stale_image_references();
     }
     pub fn clear_visible_placements(&mut self, scrollback_size_in_lines: usize) {
         let cell_size = { *self.character_cell_size.borrow() };
@@ -955,6 +1204,8 @@ impl KittyGrid {
             }
         }
         self.placements = kept;
+        drop(store);
+        self.prune_stale_image_references();
     }
     pub fn image_cell_coordinates_in_viewport(
         &self,
@@ -965,6 +1216,7 @@ impl KittyGrid {
             Some(character_cell_size) => self
                 .placements
                 .iter()
+                .take(MAX_KITTY_PLACEMENTS)
                 .map(|placement| {
                     let pixel_rect = &placement.display_rect;
                     let scrollback_size_in_pixels = scrollback_height * character_cell_size.height;
@@ -1035,7 +1287,7 @@ impl KittyGrid {
     ) -> Vec<KittyImageChunk> {
         let mut changed_kitty_image_chunks = vec![];
         if let Some(character_cell_size) = { *self.character_cell_size.borrow() } {
-            for placement in &self.placements {
+            for placement in self.placements.iter().take(MAX_KITTY_PLACEMENTS) {
                 let image_pixel_rect = &placement.display_rect;
                 for (line_index, line_count) in &changed_rects {
                     let changed_rect_pixel_height = line_count * character_cell_size.height;
@@ -1085,6 +1337,9 @@ impl KittyGrid {
                             as usize,
                         image_pixel_rect.height,
                     );
+                    if source_px_height == 0 {
+                        continue;
+                    }
 
                     if (image_top_edge >= changed_rect_top_edge
                         && image_top_edge <= changed_rect_bottom_edge)
@@ -1136,9 +1391,23 @@ pub fn crop_rgba(
     out
 }
 
+// the same limits that apply to a decoded image: MAX_DIMENSION per side and
+// MAX_DECODED_BYTES of RGBA in total
+fn scaled_size_is_allowed(dst_w: usize, dst_h: usize) -> bool {
+    dst_w <= MAX_DIMENSION as usize
+        && dst_h <= MAX_DIMENSION as usize
+        && dst_w
+            .checked_mul(dst_h)
+            .and_then(|pixels| pixels.checked_mul(4))
+            .is_some_and(|bytes| bytes <= MAX_DECODED_BYTES)
+}
+
 pub fn scale_rgba(src: &[u8], src_w: usize, src_h: usize, dst_w: usize, dst_h: usize) -> Vec<u8> {
+    if !scaled_size_is_allowed(dst_w, dst_h) || src_w == 0 || src_h == 0 {
+        return Vec::new();
+    }
     let mut out = Vec::with_capacity(dst_w * dst_h * 4);
-    if src_w == 0 || src_h == 0 || dst_w == 0 || dst_h == 0 {
+    if dst_w == 0 || dst_h == 0 {
         return out;
     }
     for dy in 0..dst_h {

@@ -15,7 +15,9 @@ pub mod vt_parser;
 pub mod attention;
 pub mod background_jobs;
 mod desktop_app;
+mod diagnostics;
 pub use desktop_app::{set_app_starter, AppStarter};
+mod connection_admission;
 mod global_async_runtime;
 mod logging_pipe;
 mod mobile_web;
@@ -25,6 +27,7 @@ mod pane_groups;
 pub mod pane_mirror;
 mod plugins;
 mod pty;
+mod pty_ingress;
 mod pty_writer;
 mod route;
 mod screen;
@@ -39,8 +42,8 @@ mod ui;
 
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
-use pty_writer::{pty_writer_main, PtyWriteInstruction};
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use pty_writer::{pty_writer_main, AdmittedWrite, PtyWriteInstruction};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::{
     net::{IpAddr, Ipv4Addr},
     path::{Path, PathBuf},
@@ -103,8 +106,7 @@ use zellij_utils::{
         theme::{Theme, Themes},
     },
     ipc::{
-        ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiveError, IpcReceiverWithContext,
-        ServerToClientMsg,
+        ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
     },
     shared::web_server_base_url,
 };
@@ -119,8 +121,12 @@ const ACCEPT_ERROR_BACKOFF: std::time::Duration = std::time::Duration::from_mill
 const PRE_HANDSHAKE_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 const UNREADABLE_FIRST_MESSAGE_ERROR: &str = "This session could not read the request. It may be running a different version of Zellij that does not support it.";
 
+/// The server thread is the sole receiver. Same-thread sends must not block
+/// on this mailbox; see `owner_followups` in `start_server_impl`.
+pub(crate) const SERVER_INSTRUCTION_CHANNEL_CAPACITY: usize = 50;
+
 /// Instructions related to server-side application
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ServerInstruction {
     FirstClientConnected(
         CliAssets,
@@ -128,7 +134,7 @@ pub enum ServerInstruction {
         ClientId,
     ),
     Render(Option<HashMap<ClientId, RenderPayload>>),
-    UnblockInputThread,
+    UnblockInputThread(Option<ClientId>),
     ClientExit(ClientId, Option<NotificationEnd>),
     RemoveClient(ClientId),
     Error(String),
@@ -260,7 +266,7 @@ impl From<&ServerInstruction> for ServerContext {
         match *server_instruction {
             ServerInstruction::FirstClientConnected(..) => ServerContext::NewClient,
             ServerInstruction::Render(..) => ServerContext::Render,
-            ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
+            ServerInstruction::UnblockInputThread(..) => ServerContext::UnblockInputThread,
             ServerInstruction::ClientExit(..) => ServerContext::ClientExit,
             ServerInstruction::RemoveClient(..) => ServerContext::RemoveClient,
             ServerInstruction::Error(_) => ServerContext::Error,
@@ -1105,27 +1111,41 @@ pub(crate) struct SessionMetaData {
 }
 
 impl SessionMetaData {
-    fn send_terminal_settings_if_changed(&mut self, client_id: ClientId, config: &Config) {
+    fn terminal_settings_instruction(
+        &mut self,
+        client_id: ClientId,
+        config: &Config,
+    ) -> Option<ServerInstruction> {
         let settings = TerminalSettings::from_config(config);
         if self.sent_terminal_settings.get(&client_id) == Some(&settings) {
-            return;
+            return None;
         }
         self.sent_terminal_settings
             .insert(client_id, settings.clone());
-        let _ = self
-            .senders
-            .send_to_server(ServerInstruction::TerminalSettingsChanged(
-                client_id,
-                Box::new(settings),
-            ));
+        // Queued for the server thread. Sending it on the bounded mailbox
+        // from this thread deadlocks once the mailbox is full: this loop is
+        // the only receiver.
+        Some(ServerInstruction::TerminalSettingsChanged(
+            client_id,
+            Box::new(settings),
+        ))
     }
-    fn send_saved_terminal_settings(&mut self, client_ids: &[ClientId]) {
+    fn send_saved_terminal_settings(
+        &mut self,
+        client_ids: &[ClientId],
+        owner_followups: &mut VecDeque<ServerInstruction>,
+    ) {
         let saved_config = self.session_configuration.saved_config.clone();
         for client_id in client_ids {
-            self.send_terminal_settings_if_changed(*client_id, &saved_config);
+            if let Some(instruction) = self.terminal_settings_instruction(*client_id, &saved_config)
+            {
+                owner_followups.push_back(instruction);
+            }
         }
     }
     fn forget_window_client(&mut self, client_id: ClientId) {
+        self.current_input_modes.remove(&client_id);
+        self.remove_key_passthrough_client(client_id);
         self.sent_terminal_settings.remove(&client_id);
         self.font_families.remove(&client_id);
     }
@@ -1190,9 +1210,7 @@ impl SessionMetaData {
                         &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
                     );
                     let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Write(
-                        frame,
-                        terminal_id,
-                        None,
+                        AdmittedWrite::new(frame, terminal_id, None, None),
                     ));
                 }
             }
@@ -1232,11 +1250,14 @@ impl SessionMetaData {
         &mut self,
         config_changes: Vec<(ClientId, Config)>,
         config_was_written_to_disk: bool,
+        owner_followups: &mut VecDeque<ServerInstruction>,
     ) {
         let mut new_plugin_config = None;
         let mut converted_keybinds: Vec<(Arc<Keybinds>, SharedKeybinds)> = vec![];
         for (client_id, new_config) in config_changes {
-            self.send_terminal_settings_if_changed(client_id, &new_config);
+            if let Some(instruction) = self.terminal_settings_instruction(client_id, &new_config) {
+                owner_followups.push_back(instruction);
+            }
             self.follow_keybinds_dir(&new_config);
             self.sync_pane_env(new_config.env.inner());
             let pane_env = self.applied_env.pane_env();
@@ -1283,91 +1304,83 @@ impl SessionMetaData {
                     shared_keybinds
                 },
             };
-            self.senders
+            let _ = self
+                .senders
                 .send_to_screen(ScreenInstruction::UpdateContextMenuConfig(
                     client_id,
                     new_config.context_menu.clone(),
-                ))
-                .unwrap();
-            self.senders
+                ));
+            let _ = self
+                .senders
                 .send_to_screen(ScreenInstruction::UpdateMousebinds(
                     client_id,
                     new_config.mousebinds.clone(),
-                ))
-                .unwrap();
-            self.senders
-                .send_to_screen(ScreenInstruction::Reconfigure {
-                    client_id,
-                    keybinds: shared_keybinds.clone(),
-                    default_mode: new_config
-                        .options
-                        .default_mode
-                        .unwrap_or_else(Default::default),
-                    theme: new_config
-                        .theme_config(new_config.options.theme.as_ref())
-                        .unwrap_or_else(Styling::default),
-                    host_theme_dark,
-                    host_theme_light,
-                    explicit_theme_hue: new_config.options.explicit_theme_hue,
-                    simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
-                    default_shell: new_config
-                        .options
-                        .default_shell
-                        .or_else(|| env_value(&pane_env, "SHELL").map(PathBuf::from)),
-                    pane_frame_style,
-                    copy_command: new_config.options.copy_command,
-                    copy_to_clipboard: new_config.options.copy_clipboard,
-                    copy_on_select: new_config.options.copy_on_select.unwrap_or(true),
-                    auto_layout: new_config.options.auto_layout.unwrap_or(true),
-                    rounded_corners: new_config.ui.pane_frames.rounded_corners,
-                    hide_session_name: new_config.ui.pane_frames.hide_session_name,
-                    border_style: new_config.ui.pane_frames.resolved_border_style(),
-                    floating_border_style: new_config
-                        .ui
-                        .pane_frames
-                        .resolved_floating_border_style(),
-                    stacked_resize: new_config.options.stacked_resize.unwrap_or(true),
-                    stacked_pane_list: new_config.options.stacked_pane_list.unwrap_or(true),
-                    default_editor: new_config.options.scrollback_editor.clone().or_else(|| {
-                        env_value(&pane_env, "EDITOR")
-                            .or_else(|| env_value(&pane_env, "VISUAL"))
-                            .map(PathBuf::from)
-                    }),
-                    advanced_mouse_actions: new_config
-                        .options
-                        .advanced_mouse_actions
-                        .unwrap_or(true),
-                    mouse_scroll_resize: new_config.options.mouse_scroll_resize.unwrap_or(true),
-                    scroll_mode_sync: new_config.options.scroll_mode_sync.unwrap_or(true),
-                    mouse_hover_effects: new_config.options.mouse_hover_effects.unwrap_or(true),
-                    mouse_hover_tips: new_config.options.mouse_hover_tips.unwrap_or(true),
-                    visual_bell: new_config.options.visual_bell.unwrap_or(true),
-                    focus_follows_mouse: new_config.options.focus_follows_mouse.unwrap_or(false),
-                    mouse_click_through: new_config.options.mouse_click_through.unwrap_or(false),
-                    context_menu_enabled: new_config.options.context_menu_enabled.unwrap_or(true),
-                    osc133_command_selection: new_config
-                        .options
-                        .osc133_command_selection
-                        .unwrap_or(true),
-                    dangerously_enable_paste_buffer_read: new_config
-                        .options
-                        .dangerously_enable_paste_buffer_read
-                        .unwrap_or(false),
-                    word_separators: new_config
-                        .options
-                        .word_separators
-                        .clone()
-                        .unwrap_or_else(|| DEFAULT_WORD_SEPARATORS.to_owned()),
-                    host_notification_protocol: new_config
-                        .options
-                        .host_notification_protocol
-                        .unwrap_or_default(),
-                    nested_session_handling: new_config
-                        .options
-                        .nested_session_handling
-                        .unwrap_or_default(),
-                })
-                .unwrap();
+                ));
+            let _ = self.senders.send_to_screen(ScreenInstruction::Reconfigure {
+                client_id,
+                keybinds: shared_keybinds.clone(),
+                default_mode: new_config
+                    .options
+                    .default_mode
+                    .unwrap_or_else(Default::default),
+                theme: new_config
+                    .theme_config(new_config.options.theme.as_ref())
+                    .unwrap_or_else(Styling::default),
+                host_theme_dark,
+                host_theme_light,
+                explicit_theme_hue: new_config.options.explicit_theme_hue,
+                simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
+                default_shell: new_config
+                    .options
+                    .default_shell
+                    .or_else(|| env_value(&pane_env, "SHELL").map(PathBuf::from)),
+                pane_frame_style,
+                copy_command: new_config.options.copy_command,
+                copy_to_clipboard: new_config.options.copy_clipboard,
+                copy_on_select: new_config.options.copy_on_select.unwrap_or(true),
+                auto_layout: new_config.options.auto_layout.unwrap_or(true),
+                rounded_corners: new_config.ui.pane_frames.rounded_corners,
+                hide_session_name: new_config.ui.pane_frames.hide_session_name,
+                border_style: new_config.ui.pane_frames.resolved_border_style(),
+                floating_border_style: new_config.ui.pane_frames.resolved_floating_border_style(),
+                stacked_resize: new_config.options.stacked_resize.unwrap_or(true),
+                stacked_pane_list: new_config.options.stacked_pane_list.unwrap_or(true),
+                default_editor: new_config.options.scrollback_editor.clone().or_else(|| {
+                    env_value(&pane_env, "EDITOR")
+                        .or_else(|| env_value(&pane_env, "VISUAL"))
+                        .map(PathBuf::from)
+                }),
+                advanced_mouse_actions: new_config.options.advanced_mouse_actions.unwrap_or(true),
+                mouse_scroll_resize: new_config.options.mouse_scroll_resize.unwrap_or(true),
+                scroll_mode_sync: new_config.options.scroll_mode_sync.unwrap_or(true),
+                mouse_hover_effects: new_config.options.mouse_hover_effects.unwrap_or(true),
+                mouse_hover_tips: new_config.options.mouse_hover_tips.unwrap_or(true),
+                visual_bell: new_config.options.visual_bell.unwrap_or(true),
+                focus_follows_mouse: new_config.options.focus_follows_mouse.unwrap_or(false),
+                mouse_click_through: new_config.options.mouse_click_through.unwrap_or(false),
+                context_menu_enabled: new_config.options.context_menu_enabled.unwrap_or(true),
+                osc133_command_selection: new_config
+                    .options
+                    .osc133_command_selection
+                    .unwrap_or(true),
+                dangerously_enable_paste_buffer_read: new_config
+                    .options
+                    .dangerously_enable_paste_buffer_read
+                    .unwrap_or(false),
+                word_separators: new_config
+                    .options
+                    .word_separators
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_WORD_SEPARATORS.to_owned()),
+                host_notification_protocol: new_config
+                    .options
+                    .host_notification_protocol
+                    .unwrap_or_default(),
+                nested_session_handling: new_config
+                    .options
+                    .nested_session_handling
+                    .unwrap_or_default(),
+            });
             let _ = self
                 .senders
                 .send_to_screen(ScreenInstruction::SetSwapLayoutNotification(
@@ -1423,41 +1436,35 @@ impl SessionMetaData {
                 ));
             if base_mode_changed {
                 self.current_input_modes.insert(client_id, base_mode);
-                self.senders
-                    .send_to_screen(ScreenInstruction::ChangeMode(
-                        base_mode,
-                        Some(base_mode),
-                        client_id,
-                        None,
-                    ))
-                    .unwrap();
+                let _ = self.senders.send_to_screen(ScreenInstruction::ChangeMode(
+                    base_mode,
+                    Some(base_mode),
+                    client_id,
+                    None,
+                ));
             }
-            self.senders
-                .send_to_plugin(PluginInstruction::Reconfigure {
-                    client_id,
-                    keybinds: Some(shared_keybinds),
-                    default_mode: new_config.options.default_mode,
-                    default_shell: self.default_shell.clone(),
-                    layout_dir: new_config.options.layout_dir,
-                    was_written_to_disk: config_was_written_to_disk,
-                })
-                .unwrap();
-            self.senders
-                .send_to_pty(PtyInstruction::Reconfigure {
-                    client_id,
-                    default_editor: new_config.options.scrollback_editor,
-                    post_command_discovery_hook: new_config.options.post_command_discovery_hook,
-                    pane_env: pane_env.clone(),
-                })
-                .unwrap();
+            let _ = self.senders.send_to_plugin(PluginInstruction::Reconfigure {
+                client_id,
+                keybinds: Some(shared_keybinds),
+                default_mode: new_config.options.default_mode,
+                default_shell: self.default_shell.clone(),
+                layout_dir: new_config.options.layout_dir,
+                was_written_to_disk: config_was_written_to_disk,
+            });
+            let _ = self.senders.send_to_pty(PtyInstruction::Reconfigure {
+                client_id,
+                default_editor: new_config.options.scrollback_editor,
+                post_command_discovery_hook: new_config.options.post_command_discovery_hook,
+                pane_env: pane_env.clone(),
+            });
         }
 
         // Detect and notify plugins of configuration changes
         if config_was_written_to_disk {
             if let Some(new_plugins) = new_plugin_config {
-                self.senders
-                    .send_to_plugin(PluginInstruction::DetectPluginConfigChanges(new_plugins))
-                    .unwrap();
+                let _ = self
+                    .senders
+                    .send_to_plugin(PluginInstruction::DetectPluginConfigChanges(new_plugins));
             }
         }
     }
@@ -1508,10 +1515,17 @@ fn remove_client_and_flush_forwards(
 ) {
     let _ = os_input.remove_client(client_id);
     let stuck_tokens = session_state.write().unwrap().remove_client(client_id);
-    if let Ok(mut session) = session_data.try_write() {
-        if let Some(session) = session.as_mut() {
-            session.forget_window_client(client_id);
-        }
+    match session_data.write() {
+        Ok(mut session) => {
+            if let Some(session) = session.as_mut() {
+                session.forget_window_client(client_id);
+            }
+        },
+        Err(error) => log::error!(
+            "Failed to clean up disconnected client {}: session lock poisoned: {}",
+            client_id,
+            error
+        ),
     }
     if stuck_tokens.is_empty() {
         return;
@@ -1541,7 +1555,8 @@ macro_rules! remove_client {
 
 macro_rules! remove_watcher {
     ($client_id:expr, $os_input:expr, $session_state:expr) => {
-        $os_input.remove_client($client_id).unwrap();
+        let _ = $os_input.remove_client($client_id);
+        // SAFETY: lock poison implies prior panic
         $session_state.write().unwrap().remove_watcher($client_id);
     };
 }
@@ -1719,6 +1734,13 @@ impl SessionState {
     pub fn is_watcher(&self, client_id: &ClientId) -> bool {
         self.watchers.get(client_id).is_some()
     }
+    /// Connected non-watcher client. Watchers are not included: the route
+    /// thread drops their input before the action arm, so they are not
+    /// action targets. Membership in `clients` is the incarnation check;
+    /// removed ids leave the map and are not reused while monotonic ids remain.
+    pub fn connected_client(&self, id: ClientId) -> bool {
+        self.clients.contains_key(&id)
+    }
     pub fn remove_watcher(&mut self, client_id: ClientId) {
         self.watchers.remove(&client_id);
     }
@@ -1727,6 +1749,26 @@ impl SessionState {
     }
     pub fn get_last_active_client(&self) -> Option<ClientId> {
         self.last_active_client
+    }
+    /// Client a CLI action should run as.
+    ///
+    /// An explicit id is used only when [`Self::connected_client`] is true.
+    /// Last-active is read only when no explicit id was given, so a later
+    /// `set_last_active_client` cannot redirect a target already chosen.
+    /// `None` means the explicit id is not connected; the caller must skip
+    /// the action rather than run it as someone else.
+    pub fn resolve_cli_action_client(
+        &self,
+        explicit_client_id: Option<ClientId>,
+        connection_client_id: ClientId,
+    ) -> Option<ClientId> {
+        match explicit_client_id {
+            Some(id) => self.connected_client(id).then_some(id),
+            None => Some(
+                self.get_last_active_client()
+                    .unwrap_or(connection_client_id),
+            ),
+        }
     }
     pub fn clear_last_active_client(&mut self, client_id: ClientId) {
         if self.last_active_client == Some(client_id) {
@@ -1739,17 +1781,29 @@ impl SessionState {
     pub fn clear_forward_in_flight(&mut self, token: u32) {
         self.forwards_in_flight.remove(&token);
     }
-    /// Client to route a host-query forward to. Prefers whichever
-    /// client most recently interacted with the session; falls back
-    /// to any currently-connected non-watcher client. Returns `None`
-    /// only when no regular client is connected.
+    /// Client to route a host-query forward to.
+    ///
+    /// Last-active is used only when that client is an attached host:
+    /// present in `clients` with size data, and not a pipe. Otherwise
+    /// the first client with the same eligibility. Watchers are not in
+    /// `clients`. Returns `None` when no attached host is connected.
     pub fn pick_forward_target(&self) -> Option<ClientId> {
+        let pipe_ids: HashSet<ClientId> = self.pipes.values().copied().collect();
+        let eligible = |client_id: ClientId| {
+            self.clients
+                .get(&client_id)
+                .is_some_and(|data| data.is_some())
+                && !pipe_ids.contains(&client_id)
+        };
         if let Some(candidate) = self.last_active_client {
-            if self.clients.contains_key(&candidate) {
+            if eligible(candidate) {
                 return Some(candidate);
             }
         }
-        self.clients.keys().copied().next()
+        self.clients
+            .keys()
+            .copied()
+            .find(|&client_id| eligible(client_id))
     }
 }
 
@@ -1895,28 +1949,173 @@ mod session_state_tests {
         s
     }
 
+    fn attach_host(session: &mut SessionState, id: ClientId) {
+        session.set_client_data(id, Size { rows: 24, cols: 80 }, false);
+    }
+
     #[test]
     fn pick_forward_target_prefers_last_active_when_still_connected() {
         let mut s = SessionState::new();
-        s.clients.insert(1, None);
-        s.clients.insert(2, None);
+        attach_host(&mut s, 1);
+        attach_host(&mut s, 2);
         s.set_last_active_client(2);
         assert_eq!(s.pick_forward_target(), Some(2));
+    }
+
+    /// #5546: freed numeric IDs must not be reused while later IDs are still
+    /// available — otherwise a delayed RemoveClient can evict a replacement.
+    #[test]
+    fn new_client_does_not_reuse_a_freed_id_while_monotonic_ids_remain() {
+        let mut s = SessionState::new();
+        let first = s.new_client();
+        let second = s.new_client();
+        assert_eq!(first, 1);
+        assert_eq!(second, 2);
+        s.remove_client(first);
+        let third = s.new_client();
+        assert_eq!(
+            third, 3,
+            "must not reuse id 1 while next_client_id can still advance"
+        );
+        assert!(!s.clients.contains_key(&first));
+        assert!(s.clients.contains_key(&second));
+        assert!(s.clients.contains_key(&third));
+    }
+
+    fn two_clients_last_active_a() -> (SessionState, ClientId, ClientId) {
+        let mut session_state = SessionState::new();
+        let client_a = session_state.new_client();
+        let client_b = session_state.new_client();
+        session_state.set_last_active_client(client_a);
+        (session_state, client_a, client_b)
+    }
+
+    #[test]
+    fn cli_action_explicit_client_beats_last_active() {
+        let (session_state, client_a, client_b) = two_clients_last_active_a();
+        assert_eq!(session_state.get_last_active_client(), Some(client_a));
+        assert_eq!(
+            session_state.resolve_cli_action_client(Some(client_b), 99),
+            Some(client_b)
+        );
+    }
+
+    #[test]
+    fn cli_action_explicit_client_ignores_last_active_updated_before_resolve() {
+        let (mut session_state, client_a, client_b) = two_clients_last_active_a();
+        session_state.set_last_active_client(client_b);
+        // Focus moves back to A before the one resolve call. Last-active is
+        // read only when the explicit id is absent, so B stays the target.
+        session_state.set_last_active_client(client_a);
+        assert_eq!(
+            session_state.resolve_cli_action_client(Some(client_b), 99),
+            Some(client_b)
+        );
+    }
+
+    #[test]
+    fn cli_action_explicit_client_removed_is_rejected() {
+        let (mut session_state, client_a, client_b) = two_clients_last_active_a();
+        session_state.remove_client(client_b);
+        assert_eq!(session_state.get_last_active_client(), Some(client_a));
+        assert_eq!(
+            session_state.resolve_cli_action_client(Some(client_b), 99),
+            None,
+            "a removed id must not fall back to last-active or the CLI connection"
+        );
+    }
+
+    #[test]
+    fn cli_action_without_explicit_client_uses_last_active() {
+        let (session_state, client_a, _client_b) = two_clients_last_active_a();
+        assert_eq!(
+            session_state.resolve_cli_action_client(None, 99),
+            Some(client_a)
+        );
+    }
+
+    #[test]
+    fn cli_action_without_explicit_or_last_active_uses_connection_client() {
+        let mut session_state = SessionState::new();
+        let connection_client_id = session_state.new_client();
+        assert_eq!(session_state.get_last_active_client(), None);
+        assert_eq!(
+            session_state.resolve_cli_action_client(None, connection_client_id),
+            Some(connection_client_id)
+        );
+    }
+
+    #[test]
+    fn cli_action_explicit_watcher_is_rejected() {
+        // Watchers are not action clients. `route_thread_main` returns before
+        // the Action arm for a watcher connection ("Ignore all input from
+        // watcher clients"), so an explicit watcher id is not "connected".
+        let (mut session_state, client_a, watcher_id) = two_clients_last_active_a();
+        session_state.convert_client_to_watcher(watcher_id, false);
+        assert!(session_state.is_watcher(&watcher_id));
+        assert!(!session_state.connected_client(watcher_id));
+        assert_eq!(session_state.get_last_active_client(), Some(client_a));
+        assert_eq!(
+            session_state.resolve_cli_action_client(Some(watcher_id), 99),
+            None
+        );
     }
 
     #[test]
     fn pick_forward_target_falls_back_when_last_active_disconnected() {
         let mut s = SessionState::new();
-        s.clients.insert(1, None);
-        s.clients.insert(2, None);
+        attach_host(&mut s, 1);
+        attach_host(&mut s, 2);
         // Client 3 was last active but has since disconnected — not in
-        // `clients` map anymore. Must fall through to any connected
-        // client rather than returning None.
+        // `clients` anymore. Must fall through to an attached host
+        // rather than returning None.
         s.last_active_client = Some(3);
         let picked = s
             .pick_forward_target()
-            .expect("some client still connected");
+            .expect("some attached host still connected");
         assert!(picked == 1 || picked == 2);
+    }
+
+    #[test]
+    fn pick_forward_target_none_when_only_a_pipe_client_is_connected() {
+        let mut s = SessionState::new();
+        attach_host(&mut s, 1);
+        s.associate_pipe_with_client("pipe".to_owned(), 1);
+        s.set_last_active_client(1);
+        assert_eq!(s.pick_forward_target(), None);
+    }
+
+    #[test]
+    fn pick_forward_target_skips_a_last_active_pipe_for_an_attached_host() {
+        let mut s = SessionState::new();
+        attach_host(&mut s, 1);
+        s.associate_pipe_with_client("pipe".to_owned(), 1);
+        attach_host(&mut s, 2);
+        s.set_last_active_client(1);
+        assert_eq!(s.pick_forward_target(), Some(2));
+    }
+
+    #[test]
+    fn pick_forward_target_none_when_no_client_is_attached() {
+        let mut s = SessionState::new();
+        s.clients.insert(1, None);
+        s.clients.insert(2, None);
+        s.set_last_active_client(1);
+        assert_eq!(s.attached_client_count(), 0);
+        assert_eq!(s.pick_forward_target(), None);
+    }
+
+    #[test]
+    fn pick_forward_target_does_not_select_a_watcher() {
+        let mut s = SessionState::new();
+        let watcher = s.new_client();
+        s.convert_client_to_watcher(watcher, false);
+        s.set_last_active_client(watcher);
+        assert!(s.is_watcher(&watcher));
+        assert_eq!(s.pick_forward_target(), None);
+
+        attach_host(&mut s, 2);
+        assert_eq!(s.pick_forward_target(), Some(2));
     }
 
     #[test]
@@ -2927,6 +3126,7 @@ theme \"first\"
             .unwrap()
             .session_configuration
             .reconfigure_runtime_config(&client_id, config.to_owned());
+        let mut followups = VecDeque::new();
         apply_runtime_change(
             config_before,
             new_config,
@@ -2934,7 +3134,16 @@ theme \"first\"
             changed,
             session_data,
             client_id,
+            &mut followups,
         );
+        // These tests are not the server loop. The production loop drains
+        // `followups` locally; here the channel is unbounded, so forwarding
+        // still lets the assertions observe TerminalSettingsChanged.
+        if let Some(session) = session_data.read().unwrap().as_ref() {
+            for instruction in followups {
+                let _ = session.senders.send_to_server(instruction);
+            }
+        }
     }
 
     #[test]
@@ -3293,7 +3502,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         let current_umask = umask(Mode::all());
         umask(current_umask);
         daemonize::Daemonize::new()
-            .working_directory(std::env::current_dir().unwrap())
+            .working_directory(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
             .umask(current_umask.bits() as u32)
             .start()
             .expect("could not daemonize the server process");
@@ -3321,16 +3530,32 @@ fn handle_new_connection(
     session_state: Arc<RwLock<SessionState>>,
     os_input: Box<dyn ServerOsApi>,
     to_server: SenderWithContext<ServerInstruction>,
-    stream: interprocess::local_socket::Stream,
+    mut stream: interprocess::local_socket::Stream,
+    permit: connection_admission::PreHandshakePermit,
     #[cfg(windows)] reply_stream: interprocess::local_socket::Stream,
 ) -> Result<()> {
-    let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
-        IpcReceiverWithContext::new(stream);
+    use interprocess::local_socket::traits::Stream as _;
 
-    let _ = receiver.set_read_timeout(Some(PRE_HANDSHAKE_READ_TIMEOUT));
-    let first_instruction = match receiver.try_recv_client_msg() {
-        Ok((instruction, _err_ctx)) => instruction,
-        Err(IpcReceiveError::Undecodable) => {
+    let _ = stream.set_recv_timeout(Some(PRE_HANDSHAKE_READ_TIMEOUT));
+    let first_frame = match connection_admission::read_capped_frame(
+        &mut stream,
+        connection_admission::HANDSHAKE_FRAME_BYTES,
+    ) {
+        Ok(frame) => frame,
+        Err(connection_admission::CappedFrameError::Oversized { claimed }) => {
+            log::warn!(
+                "Rejecting connection: handshake claims {claimed} bytes (cap {})",
+                connection_admission::HANDSHAKE_FRAME_BYTES
+            );
+            return Ok(());
+        },
+        Err(connection_admission::CappedFrameError::Disconnected) => return Ok(()),
+    };
+    let receiver: IpcReceiverWithContext<ClientToServerMsg> = IpcReceiverWithContext::new(stream);
+    let _ = receiver.set_read_timeout(None);
+    let first_instruction = match zellij_utils::ipc::decode_client_to_server_frame(&first_frame) {
+        Ok(instruction) => instruction,
+        Err(_) => {
             answer_before_registration(
                 &receiver,
                 #[cfg(windows)]
@@ -3341,9 +3566,10 @@ fn handle_new_connection(
             );
             return Ok(());
         },
-        Err(IpcReceiveError::Disconnected) => return Ok(()),
     };
-    let _ = receiver.set_read_timeout(None);
+    // The first client message is decoded. Dropping the permit here frees the
+    // pre-handshake slot; later frames on this socket keep the generic cap.
+    permit.release_after_first_message();
 
     match first_instruction {
         ClientToServerMsg::ConnStatus => {
@@ -3360,6 +3586,7 @@ fn handle_new_connection(
         } => {
             let senders = session_data
                 .read()
+                // SAFETY: lock poison implies prior panic
                 .unwrap()
                 .as_ref()
                 .map(|s| s.senders.clone());
@@ -3383,6 +3610,7 @@ fn handle_new_connection(
         } => {
             let senders = session_data
                 .read()
+                // SAFETY: lock poison implies prior panic
                 .unwrap()
                 .as_ref()
                 .map(|s| s.senders.clone());
@@ -3458,7 +3686,9 @@ fn answer_before_registration(
         zellij_utils::ipc::IpcSenderWithContext::<ServerToClientMsg>::new(reply_stream)
     };
     #[cfg(not(windows))]
-    let mut sender = receiver.get_sender::<ServerToClientMsg>();
+    let Ok(mut sender) = receiver.get_sender::<ServerToClientMsg>() else {
+        return;
+    };
     let _ = sender.send_server_msg(message);
 }
 
@@ -3496,86 +3726,18 @@ fn handle_client_connection(
 }
 
 /// Proof that this server owns the session socket. Only the owner may delete the socket file.
-#[cfg(unix)]
-struct SocketOwnership {
-    lock: nix::fcntl::Flock<std::fs::File>,
-    lock_path: PathBuf,
+/// Reuses the shared [`zellij_utils::session_socket_claim::SessionSocketClaim`] so client creation
+/// and server bind contend for the same lock.
+type SocketOwnership = zellij_utils::session_socket_claim::SessionSocketClaim;
+
+trait SocketOwnershipExt {
+    fn acquire(socket_path: &Path) -> std::io::Result<SocketOwnership>;
 }
 
-#[cfg(unix)]
-impl SocketOwnership {
-    // Binding a Unix socket requires deleting any leftover socket file first, so without a lock a
-    // second server could delete the socket of a live one. The OS releases the lock if we crash.
-    fn acquire(socket_path: &Path) -> std::io::Result<Self> {
-        use nix::fcntl::{Flock, FlockArg};
-        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-        let lock_path = Self::lock_path(socket_path)?;
-        loop {
-            let file = std::fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .mode(0o600)
-                .open(&lock_path)?;
-            let lock = Flock::lock(file, FlockArg::LockExclusiveNonblock).map_err(
-                |(_, errno)| match errno {
-                    nix::errno::Errno::EWOULDBLOCK => std::io::Error::new(
-                        std::io::ErrorKind::AddrInUse,
-                        format!(
-                            "another server is already running on {}",
-                            socket_path.display()
-                        ),
-                    ),
-                    errno => std::io::Error::from(errno),
-                },
-            )?;
-            // An exiting owner may have deleted the lock file between our open and lock. Retry,
-            // otherwise two servers could each hold a lock on a different file.
-            let held = lock.metadata()?;
-            match std::fs::metadata(&lock_path) {
-                Ok(current) if current.dev() == held.dev() && current.ino() == held.ino() => {
-                    return Ok(SocketOwnership { lock, lock_path });
-                },
-                _ => continue,
-            }
-        }
+impl SocketOwnershipExt for SocketOwnership {
+    fn acquire(socket_path: &Path) -> std::io::Result<SocketOwnership> {
+        SocketOwnership::try_acquire(socket_path)
     }
-
-    // The lock file is deleted while the lock is still held, so no new server can lock it in
-    // between.
-    fn release(self) {
-        drop(std::fs::remove_file(&self.lock_path));
-        drop(self.lock);
-    }
-
-    fn lock_path(socket_path: &Path) -> std::io::Result<PathBuf> {
-        let file_name = socket_path.file_name().ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!(
-                    "session socket path {} has no file name",
-                    socket_path.display()
-                ),
-            )
-        })?;
-        let mut lock_name = std::ffi::OsString::from(".");
-        lock_name.push(file_name);
-        lock_name.push(".lock");
-        Ok(socket_path.with_file_name(lock_name))
-    }
-}
-
-#[cfg(not(unix))]
-struct SocketOwnership;
-
-#[cfg(not(unix))]
-impl SocketOwnership {
-    // Windows refuses to create a second pipe with the same name and writes the marker file only
-    // after a successful bind, so no lock is needed.
-    fn acquire(_socket_path: &Path) -> std::io::Result<Self> {
-        Ok(SocketOwnership)
-    }
-
-    fn release(self) {}
 }
 
 /// The server's socket path. Only a server that bound the socket may remove it on exit: a server
@@ -3601,7 +3763,7 @@ impl ServerSocket {
     fn bind(&self) -> std::io::Result<interprocess::local_socket::Listener> {
         let path = self.path();
         let ownership = SocketOwnership::acquire(&path)?;
-        drop(std::fs::remove_file(&path));
+        ownership.reclaim_stale_socket(&path)?;
         let listener = zellij_utils::consts::ipc_bind(&path)?;
         *self.ownership.lock().unwrap() = Some(ownership);
         Ok(listener)
@@ -3768,11 +3930,211 @@ mod server_socket_tests {
     }
 }
 
+/// Attach a client that sent `FirstClientConnected` after the session already
+/// exists. Does not call `init_session` and does not touch the server mailbox.
+fn attach_duplicate_first_client(
+    session_data: &Arc<RwLock<Option<SessionMetaData>>>,
+    session_state: &Arc<RwLock<SessionState>>,
+    os_input: &mut Box<dyn ServerOsApi>,
+    client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
+    last_detached_at_ms: Option<u64>,
+    last_host_program_status: &Option<zellij_utils::attention::HostProgramStatus>,
+    owner_followups: &mut VecDeque<ServerInstruction>,
+    cli_assets: CliAssets,
+    is_web_client: bool,
+    client_id: ClientId,
+) {
+    log::warn!(
+        "Client {} sent FirstClientConnected to an already-initialized session; treating as attach",
+        client_id
+    );
+    attach_client(
+        session_data,
+        session_state,
+        os_input,
+        client_histories,
+        last_detached_at_ms,
+        last_host_program_status,
+        owner_followups,
+        cli_assets,
+        None,
+        None,
+        is_web_client,
+        client_id,
+    );
+}
+
+fn attach_client(
+    session_data: &Arc<RwLock<Option<SessionMetaData>>>,
+    session_state: &Arc<RwLock<SessionState>>,
+    os_input: &mut Box<dyn ServerOsApi>,
+    client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
+    last_detached_at_ms: Option<u64>,
+    last_host_program_status: &Option<zellij_utils::attention::HostProgramStatus>,
+    owner_followups: &mut VecDeque<ServerInstruction>,
+    cli_assets: CliAssets,
+    tab_position_to_focus: Option<usize>,
+    pane_id_to_focus: Option<(u32, bool)>,
+    is_web_client: bool,
+    client_id: ClientId,
+) {
+    // SAFETY: lock poison implies prior panic
+    let mut rlock = session_data.write().unwrap();
+    let Some(session) = rlock.as_mut() else {
+        drop(rlock);
+        log::error!(
+            "Client {} tried to attach before the session finished starting",
+            client_id
+        );
+        let _ = os_input.send_to_client(
+            client_id,
+            ServerToClientMsg::Exit {
+                exit_reason: ExitReason::Error(
+                    "The session is not ready yet, please try attaching again.".to_owned(),
+                ),
+            },
+        );
+        remove_client_and_flush_forwards(client_id, os_input, session_state, session_data);
+        return;
+    };
+    let config = session.session_configuration.saved_config.clone();
+    let host_terminal_env = cli_assets.host_terminal_env.clone();
+    let is_a_reattach = !session_state
+        .read()
+        // SAFETY: lock poison implies prior panic
+        .unwrap()
+        .other_clients_are_attached(client_id);
+    report_attached_client_history(
+        client_histories,
+        &session.senders,
+        client_id,
+        cli_assets.switch_context.as_ref(),
+        is_a_reattach && pane_id_to_focus.is_none(),
+        last_detached_at_ms,
+    );
+    if cli_assets
+        .switch_context
+        .as_ref()
+        .map(|context| context.disconnect_others)
+        .unwrap_or(false)
+    {
+        owner_followups.push_back(ServerInstruction::DisconnectAllClientsExcept(
+            client_id,
+            ExitReason::KickedByHost,
+        ));
+    }
+    let runtime_config_options = match cli_assets.configuration_options {
+        Some(configuration_options) => config.options.merge(configuration_options),
+        None => config.options.clone(),
+    };
+
+    let client_attributes = ClientAttributes {
+        size: cli_assets.terminal_window_size,
+        style: Style {
+            colors: config
+                .theme_config(runtime_config_options.theme.as_ref())
+                .unwrap_or_else(Styling::default),
+            rounded_corners: config.ui.pane_frames.rounded_corners,
+            hide_session_name: config.ui.pane_frames.hide_session_name,
+            border_style: config.ui.pane_frames.resolved_border_style(),
+            floating_border_style: config.ui.pane_frames.resolved_floating_border_style(),
+        },
+    };
+
+    let mut runtime_configuration = config.clone();
+    runtime_configuration.options = runtime_config_options.clone();
+    session
+        .session_configuration
+        .set_client_runtime_configuration(client_id, runtime_configuration);
+
+    let default_input_mode = session
+        .session_configuration
+        .get_client_default_input_mode(&client_id);
+    session
+        .current_input_modes
+        .insert(client_id, default_input_mode);
+
+    // SAFETY: lock poison implies prior panic
+    session_state.write().unwrap().set_client_data(
+        client_id,
+        client_attributes.size,
+        is_web_client,
+    );
+
+    let _ = session
+        .senders
+        .send_to_screen(ScreenInstruction::SetClientHostTerminalEnv(
+            client_id,
+            host_terminal_env,
+        ));
+    let _ = session.senders.send_to_screen(ScreenInstruction::AddClient(
+        client_id,
+        is_web_client,
+        client_attributes.size,
+        tab_position_to_focus,
+        pane_id_to_focus,
+    ));
+    let _ = session
+        .senders
+        .send_to_plugin(PluginInstruction::AddClient(client_id));
+    let client_configuration = session
+        .session_configuration
+        .get_client_configuration(&client_id);
+    if let Some(instruction) =
+        session.terminal_settings_instruction(client_id, &client_configuration)
+    {
+        owner_followups.push_back(instruction);
+    }
+    if client_configuration.has_command_line_keybinds() {
+        session.propagate_configuration_changes(
+            vec![(client_id, client_configuration)],
+            false,
+            owner_followups,
+        );
+    }
+    let default_mode = default_input_mode;
+    // ModeUpdate broadcast is handled by the screen thread via
+    // change_mode() -> update_input_modes()
+    let _ = session
+        .senders
+        .send_to_screen(ScreenInstruction::ChangeMode(
+            default_mode,
+            Some(default_mode),
+            client_id,
+            None,
+        ));
+    if last_host_program_status.is_some() {
+        let _ = os_input.send_to_client(
+            client_id,
+            ServerToClientMsg::HostProgramStatus {
+                status: last_host_program_status.clone(),
+            },
+        );
+    }
+}
+
+/// Drop the server mailbox, then join session workers.
+///
+/// Workers can block in `send_to_server` on this bounded mailbox. The
+/// receiver has to be gone before `SessionMetaData::drop` joins them, and
+/// the session write lock cannot be held across that join.
+fn retire_session_workers<R>(server_receiver: R, session_data: &RwLock<Option<SessionMetaData>>) {
+    drop(server_receiver);
+    let session = {
+        let mut session_data = session_data.write().unwrap();
+        let session = session_data.take();
+        drop(session_data);
+        session
+    };
+    drop(session);
+}
+
 pub fn start_server_impl(
     mut os_input: Box<dyn ServerOsApi>,
     socket_path: PathBuf,
     install_panic_hook: bool,
 ) {
+    diagnostics::start_screen_operation_reporter();
     envs::set_zellij("0".to_string());
 
     // The socket/pipe filename is the stable session id, decoupled from the
@@ -3785,9 +4147,12 @@ pub fn start_server_impl(
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_default();
     let session_was_resurrected = !session_id.is_empty()
-        && zellij_utils::consts::session_layout_cache_file_name(&session_id).exists();
+        && zellij_utils::consts::session_layout_cache_file_name(&session_id)
+            .try_exists()
+            .unwrap_or(true);
 
-    let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
+    let (to_server, server_receiver): ChannelWithContext<ServerInstruction> =
+        channels::bounded(SERVER_INSTRUCTION_CHANNEL_CAPACITY);
     let to_server = SenderWithContext::new(to_server);
     let session_data: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
     let session_state = Arc::new(RwLock::new(SessionState::new()));
@@ -3818,6 +4183,7 @@ pub fn start_server_impl(
             let to_server = to_server.clone();
             let socket_path = socket_path.clone();
             let server_socket = server_socket.clone();
+            let admission = connection_admission::PreHandshakeLimiter::production();
             move || {
                 let listener = match server_socket.bind() {
                     Ok(listener) => listener,
@@ -3845,35 +4211,58 @@ pub fn start_server_impl(
                     let session_data = session_data.clone();
                     let session_state = session_state.clone();
                     let to_server = to_server.clone();
-                    let spawn_result = thread::Builder::new()
-                        .name("server_router".to_string())
-                        .spawn(move || {
+                    match admission.spawn_router(
+                        || thread::Builder::new().name("server_router".to_string()),
+                        move |permit| {
                             handle_new_connection(
                                 session_data,
                                 session_state,
                                 os_input,
                                 to_server,
                                 stream,
+                                permit,
                                 #[cfg(windows)]
                                 reply_stream,
                             )
-                            .fatal()
-                        });
-                    if let Err(err) = spawn_result {
-                        log::error!("Failed to spawn router thread: {:?}", err);
+                            .fatal();
+                        },
+                    ) {
+                        Ok(()) => {},
+                        Err(connection_admission::RouterSpawnError::CeilingReached) => {
+                            log::warn!(
+                                "Refusing connection: {} pre-handshake routers already in flight",
+                                admission.in_flight()
+                            );
+                        },
+                        Err(connection_admission::RouterSpawnError::Spawn(err)) => {
+                            log::error!("Failed to spawn router thread: {:?}", err);
+                        },
                     }
                 };
 
                 // On Windows, named pipes are half-duplex, so a connection has a separate reply
-                // pipe for server→client messages. Its two pipes are accepted separately and
-                // paired by the client process that connected them.
+                // pipe. The two pipes are accepted separately and paired by client process.
+                // Admission still runs once per paired connection.
                 #[cfg(windows)]
                 {
-                    let reply_listener =
-                        zellij_utils::consts::ipc_bind_reply(&socket_path).unwrap();
-                    for (stream, reply_stream) in
-                        zellij_utils::pipe_pairs::accept_pairs(listener, reply_listener)
-                    {
+                    let reply_listener = match zellij_utils::consts::ipc_bind_reply(&socket_path) {
+                        Ok(listener) => listener,
+                        Err(err) => {
+                            let message = format!(
+                                "Failed to bind the session reply socket {}: {}",
+                                socket_path.display(),
+                                err
+                            );
+                            log::error!("{}", message);
+                            let _ = to_server.send(ServerInstruction::Error(message));
+                            return;
+                        },
+                    };
+                    for (stream, reply_stream) in zellij_utils::pipe_pairs::accept_pairs(
+                        listener,
+                        reply_listener,
+                        connection_admission::PRE_HANDSHAKE_CONNECTION_CEILING,
+                    ) {
                         route(stream, reply_stream);
                     }
                 }
@@ -3899,6 +4288,10 @@ pub fn start_server_impl(
     let mut client_histories: HashMap<ClientId, zellij_utils::session_history::SessionHistory> =
         HashMap::new();
     let mut last_detached_at_ms: Option<u64> = None;
+    // Instructions this thread would otherwise send to its own mailbox.
+    // Drained before the next recv so a full mailbox cannot deadlock the
+    // only receiver.
+    let mut owner_followups: VecDeque<ServerInstruction> = VecDeque::new();
     loop {
         let attached_client_count = session_state.read().unwrap().attached_client_count();
         if attached_client_count != last_attached_client_count {
@@ -3914,10 +4307,34 @@ pub fn start_server_impl(
                 );
             }
         }
-        let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
+        let (instruction, mut err_ctx) = if let Some(instruction) = owner_followups.pop_front() {
+            (instruction, zellij_utils::errors::ErrorContext::default())
+        } else {
+            match server_receiver.recv() {
+                Ok(msg) => msg,
+                Err(_) => break,
+            }
+        };
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
             ServerInstruction::FirstClientConnected(cli_assets, is_web_client, client_id) => {
+                // A concurrent creator may lose the socket claim yet still send FirstClientConnected.
+                // Never re-initialise an already running session — attach instead.
+                if session_data.read().unwrap().is_some() {
+                    attach_duplicate_first_client(
+                        &session_data,
+                        &session_state,
+                        &mut os_input,
+                        &mut client_histories,
+                        last_detached_at_ms,
+                        &last_host_program_status,
+                        &mut owner_followups,
+                        cli_assets,
+                        is_web_client,
+                        client_id,
+                    );
+                    continue;
+                }
                 let is_resumed_session = match &cli_assets.layout {
                     Some(LayoutInfo::File(path, _)) => Path::new(path)
                         .starts_with(&*zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR),
@@ -3982,6 +4399,10 @@ pub fn start_server_impl(
                 };
 
                 info!("FirstClientConnected: initializing session");
+                // A recycled id (astronomically unlikely) or a leftover fence
+                // from a force-delete must not block the new session's first
+                // metadata publication.
+                zellij_utils::sessions::clear_session_deletion_fence(&session_id);
                 let mut session = init_session(
                     os_input.clone(),
                     to_server.clone(),
@@ -4015,7 +4436,11 @@ pub fn start_server_impl(
                 let client_configuration = session
                     .session_configuration
                     .get_client_configuration(&client_id);
-                session.send_terminal_settings_if_changed(client_id, &client_configuration);
+                if let Some(instruction) =
+                    session.terminal_settings_instruction(client_id, &client_configuration)
+                {
+                    owner_followups.push_back(instruction);
+                }
                 let default_input_mode = session
                     .session_configuration
                     .get_client_default_input_mode(&client_id);
@@ -4023,24 +4448,28 @@ pub fn start_server_impl(
                     .current_input_modes
                     .insert(client_id, default_input_mode);
 
+                // SAFETY: lock poison implies prior panic
                 *session_data.write().unwrap() = Some(session);
+                // SAFETY: lock poison implies prior panic
                 session_state.write().unwrap().set_client_data(
                     client_id,
                     client_attributes.size,
                     is_web_client,
                 );
 
-                session_data
+                // SAFETY: session was just initialized above
+                let session_senders = session_data
                     .read()
+                    // SAFETY: lock poison implies prior panic
                     .unwrap()
                     .as_ref()
-                    .unwrap()
+                    .expect("session just initialized")
                     .senders
-                    .send_to_screen(ScreenInstruction::RecomputeTabSize(
-                        client_id,
-                        client_attributes.size,
-                    ))
-                    .unwrap();
+                    .clone();
+                let _ = session_senders.send_to_screen(ScreenInstruction::RecomputeTabSize(
+                    client_id,
+                    client_attributes.size,
+                ));
 
                 let default_shell = runtime_config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
@@ -4064,26 +4493,19 @@ pub fn start_server_impl(
                     } else {
                         None
                     };
-                    session_data
-                        .read()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::NewTab(
-                            cwd.clone(),
-                            default_shell.clone(),
-                            tab_layout,
-                            floating_panes_layout,
-                            tab_name,
-                            swap_layouts,
-                            initial_panes,
-                            false, // block_on_first_terminal
-                            should_focus_tab,
-                            (client_id, is_web_client),
-                            None,
-                        ))
-                        .unwrap()
+                    let _ = session_senders.send_to_screen(ScreenInstruction::NewTab(
+                        cwd.clone(),
+                        default_shell.clone(),
+                        tab_layout,
+                        floating_panes_layout,
+                        tab_name,
+                        swap_layouts,
+                        initial_panes,
+                        false, // block_on_first_terminal
+                        should_focus_tab,
+                        (client_id, is_web_client),
+                        None,
+                    ));
                 };
 
                 let mut onboarding_pane = if is_resumed_session {
@@ -4139,8 +4561,10 @@ pub fn start_server_impl(
                     );
                 }
                 {
+                    // SAFETY: lock poison implies prior panic
                     let rlock = session_data.read().unwrap();
-                    let session_data = rlock.as_ref().unwrap();
+                    // SAFETY: session was just initialized above
+                    let session_data = rlock.as_ref().expect("session just initialized");
                     let _ = session_data.senders.send_to_background_jobs(
                         BackgroundJob::SessionSuggestions(SessionSuggestionsJob::Configure {
                             config: config.session_suggestions.clone(),
@@ -4170,17 +4594,12 @@ pub fn start_server_impl(
                         false,
                         None,
                     );
-                    session_data
+                    let _ = session_data
                         .senders
-                        .send_to_plugin(PluginInstruction::AddClient(client_id))
-                        .unwrap();
-                    session_data
-                        .senders
-                        .send_to_screen(ScreenInstruction::SetClientHostTerminalEnv(
-                            client_id,
-                            host_terminal_env,
-                        ))
-                        .unwrap();
+                        .send_to_plugin(PluginInstruction::AddClient(client_id));
+                    let _ = session_data.senders.send_to_screen(
+                        ScreenInstruction::SetClientHostTerminalEnv(client_id, host_terminal_env),
+                    );
                 }
             },
             ServerInstruction::AttachClient(
@@ -4190,141 +4609,20 @@ pub fn start_server_impl(
                 is_web_client,
                 client_id,
             ) => {
-                let mut rlock = session_data.write().unwrap();
-                let Some(session_data) = rlock.as_mut() else {
-                    drop(rlock);
-                    log::error!(
-                        "Client {} tried to attach before the session finished starting",
-                        client_id
-                    );
-                    let _ = os_input.send_to_client(
-                        client_id,
-                        ServerToClientMsg::Exit {
-                            exit_reason: ExitReason::Error(
-                                "The session is not ready yet, please try attaching again."
-                                    .to_owned(),
-                            ),
-                        },
-                    );
-                    remove_client!(client_id, os_input, session_state, session_data);
-                    continue;
-                };
-                let config = session_data.session_configuration.saved_config.clone();
-                let host_terminal_env = cli_assets.host_terminal_env.clone();
-                let is_a_reattach = !session_state
-                    .read()
-                    .unwrap()
-                    .other_clients_are_attached(client_id);
-                report_attached_client_history(
+                attach_client(
+                    &session_data,
+                    &session_state,
+                    &mut os_input,
                     &mut client_histories,
-                    &session_data.senders,
-                    client_id,
-                    cli_assets.switch_context.as_ref(),
-                    is_a_reattach && pane_id_to_focus.is_none(),
                     last_detached_at_ms,
-                );
-                if cli_assets
-                    .switch_context
-                    .as_ref()
-                    .map(|c| c.disconnect_others)
-                    .unwrap_or(false)
-                {
-                    let _ = to_server.send(ServerInstruction::DisconnectAllClientsExcept(
-                        client_id,
-                        ExitReason::KickedByHost,
-                    ));
-                }
-                let runtime_config_options = match cli_assets.configuration_options {
-                    Some(configuration_options) => config.options.merge(configuration_options),
-                    None => config.options.clone(),
-                };
-
-                let client_attributes = ClientAttributes {
-                    size: cli_assets.terminal_window_size,
-                    style: Style {
-                        colors: config
-                            .theme_config(runtime_config_options.theme.as_ref())
-                            .unwrap_or_else(Styling::default),
-                        rounded_corners: config.ui.pane_frames.rounded_corners,
-                        hide_session_name: config.ui.pane_frames.hide_session_name,
-                        border_style: config.ui.pane_frames.resolved_border_style(),
-                        floating_border_style: config
-                            .ui
-                            .pane_frames
-                            .resolved_floating_border_style(),
-                    },
-                };
-
-                let mut runtime_configuration = config.clone();
-                runtime_configuration.options = runtime_config_options.clone();
-                session_data
-                    .session_configuration
-                    .set_client_runtime_configuration(client_id, runtime_configuration);
-
-                let default_input_mode = session_data
-                    .session_configuration
-                    .get_client_default_input_mode(&client_id);
-                session_data
-                    .current_input_modes
-                    .insert(client_id, default_input_mode);
-
-                session_state.write().unwrap().set_client_data(
-                    client_id,
-                    client_attributes.size,
+                    &last_host_program_status,
+                    &mut owner_followups,
+                    cli_assets,
+                    tab_position_to_focus,
+                    pane_id_to_focus,
                     is_web_client,
+                    client_id,
                 );
-
-                session_data
-                    .senders
-                    .send_to_screen(ScreenInstruction::SetClientHostTerminalEnv(
-                        client_id,
-                        host_terminal_env,
-                    ))
-                    .unwrap();
-                session_data
-                    .senders
-                    .send_to_screen(ScreenInstruction::AddClient(
-                        client_id,
-                        is_web_client,
-                        client_attributes.size,
-                        tab_position_to_focus,
-                        pane_id_to_focus,
-                    ))
-                    .unwrap();
-                session_data
-                    .senders
-                    .send_to_plugin(PluginInstruction::AddClient(client_id))
-                    .unwrap();
-                let client_configuration = session_data
-                    .session_configuration
-                    .get_client_configuration(&client_id);
-                session_data.send_terminal_settings_if_changed(client_id, &client_configuration);
-                if client_configuration.has_command_line_keybinds() {
-                    session_data.propagate_configuration_changes(
-                        vec![(client_id, client_configuration)],
-                        false,
-                    );
-                }
-                let default_mode = default_input_mode;
-                // ModeUpdate broadcast is handled by the screen thread via
-                // change_mode() -> update_input_modes()
-                session_data
-                    .senders
-                    .send_to_screen(ScreenInstruction::ChangeMode(
-                        default_mode,
-                        Some(default_mode),
-                        client_id,
-                        None,
-                    ))
-                    .unwrap();
-                if last_host_program_status.is_some() {
-                    let _ = os_input.send_to_client(
-                        client_id,
-                        ServerToClientMsg::HostProgramStatus {
-                            status: last_host_program_status.clone(),
-                        },
-                    );
-                }
             },
             ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client) => {
                 // the client_id was inserted into clients upon ipc tunnel initialization
@@ -4333,28 +4631,26 @@ pub fn start_server_impl(
                 // Convert to watcher in SessionState (needed for input filtering in route.rs)
                 session_state
                     .write()
+                    // SAFETY: lock poison implies prior panic
                     .unwrap()
                     .convert_client_to_watcher(client_id, is_web_client);
 
                 // Also notify Screen to add this as a watcher client (for rendering) with the terminal size
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_screen(ScreenInstruction::AddWatcherClient(
-                        client_id,
-                        terminal_size,
-                    ))
-                    .unwrap();
+                // SAFETY: lock poison implies prior panic
                 if let Some(session_data) = session_data.write().unwrap().as_mut() {
-                    session_data.send_saved_terminal_settings(&[client_id]);
+                    let _ =
+                        session_data
+                            .senders
+                            .send_to_screen(ScreenInstruction::AddWatcherClient(
+                                client_id,
+                                terminal_size,
+                            ));
+                    session_data.send_saved_terminal_settings(&[client_id], &mut owner_followups);
                 }
             },
-            ServerInstruction::UnblockInputThread => {
-                let client_ids = session_state.read().unwrap().client_ids();
-                for client_id in client_ids {
+            ServerInstruction::UnblockInputThread(only_client) => {
+                let connected = session_state.read().unwrap().client_ids();
+                for client_id in unblock_input_recipients(&connected, only_client) {
                     send_to_client!(
                         client_id,
                         os_input,
@@ -4431,6 +4727,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::ClientExit(client_id, completion_tx) => {
+                let completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 client_histories.remove(&client_id);
                 let _ = os_input.send_to_client(
                     client_id,
@@ -4452,7 +4749,7 @@ pub fn start_server_impl(
                             .send_to_screen(ScreenInstruction::RemoveWatcherClient(client_id));
                     }
 
-                    os_input.remove_client(client_id).unwrap();
+                    let _ = os_input.remove_client(client_id);
                 } else {
                     if let Some(session_data) = session_data.write().unwrap().as_mut() {
                         session_data.remove_key_passthrough_client(client_id);
@@ -4469,10 +4766,14 @@ pub fn start_server_impl(
                             .senders
                             .send_to_plugin(PluginInstruction::RemoveClient(client_id));
                     }
+                    // SAFETY: lock poison implies prior panic
                     if !session_state.read().unwrap().active_clients_are_connected() {
-                        *session_data.write().unwrap() = None;
+                        // Workers are joined once, after this loop drops the
+                        // server receiver. Joining here would block on a full
+                        // mailbox that this thread is still responsible for.
                         let client_ids_to_cleanup: Vec<ClientId> = session_state
                             .read()
+                            // SAFETY: lock poison implies prior panic
                             .unwrap()
                             .clients
                             .keys()
@@ -4513,7 +4814,7 @@ pub fn start_server_impl(
                             .send_to_screen(ScreenInstruction::RemoveWatcherClient(client_id));
                     }
 
-                    os_input.remove_client(client_id).unwrap();
+                    let _ = os_input.remove_client(client_id);
                 } else {
                     if let Some(session_data) = session_data.write().unwrap().as_mut() {
                         session_data.remove_key_passthrough_client(client_id);
@@ -4556,6 +4857,7 @@ pub fn start_server_impl(
             ServerInstruction::DisconnectAllClientsExcept(client_id, exit_reason) => {
                 let client_ids: Vec<ClientId> = session_state
                     .read()
+                    // SAFETY: lock poison implies prior panic
                     .unwrap()
                     .client_ids()
                     .iter()
@@ -4576,6 +4878,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::DetachSession(client_ids, completion_tx) => {
+                let completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 for client_id in &client_ids {
                     if let Some(session_data) = session_data.write().unwrap().as_mut() {
                         session_data.remove_key_passthrough_client(*client_id);
@@ -4631,6 +4934,7 @@ pub fn start_server_impl(
                     // Also disconnect all watchers
                     let watcher_ids: Vec<ClientId> = session_state
                         .read()
+                        // SAFETY: lock poison implies prior panic
                         .unwrap()
                         .watchers
                         .keys()
@@ -4670,6 +4974,7 @@ pub fn start_server_impl(
                 _completion_tx, // the action ends here, dropping this will release anything waiting
                                 // for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 send_to_client!(
                     client_id,
                     os_input,
@@ -4686,6 +4991,7 @@ pub fn start_server_impl(
                 _completion_tx, // the action ends here, dropping this will release anything waiting
                                 // for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 send_to_client!(
                     client_id,
                     os_input,
@@ -4697,10 +5003,19 @@ pub fn start_server_impl(
                 );
             },
             ServerInstruction::SessionRenamed(new_name) => {
-                if let Err(e) =
-                    server_socket.rename(zellij_utils::consts::session_socket_path(&new_name))
-                {
-                    log::error!("Failed to rename ipc socket: {:?}", e);
+                match zellij_utils::consts::session_socket_path(&new_name) {
+                    Ok(path) => {
+                        if let Err(e) = server_socket.rename(path) {
+                            log::error!("Failed to rename ipc socket: {:?}", e);
+                        }
+                    },
+                    Err(error) => {
+                        log::error!(
+                            "Failed to resolve the renamed session {:?}: {}. The socket was not renamed.",
+                            new_name,
+                            error
+                        );
+                    },
                 }
                 rename_in_client_histories(&mut client_histories, &own_session_name, &new_name);
                 own_session_name = new_name;
@@ -4717,10 +5032,12 @@ pub fn start_server_impl(
                 client_id,
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let switching_away = connect_to_session.name.is_some()
                     && connect_to_session.name.as_deref() != Some(own_session_name.as_str());
                 let command_was_run = session_data
                     .read()
+                    // SAFETY: lock poison implies prior panic
                     .unwrap()
                     .as_ref()
                     .map(|s| {
@@ -4730,12 +5047,13 @@ pub fn start_server_impl(
                     .unwrap_or(true);
                 let other_clients_attached = session_state
                     .read()
+                    // SAFETY: lock poison implies prior panic
                     .unwrap()
                     .other_clients_are_attached(client_id);
-                let _ = to_server.send(ServerInstruction::SwitchSession(
+                owner_followups.push_back(ServerInstruction::SwitchSession(
                     connect_to_session,
                     client_id,
-                    completion_tx,
+                    completion_tx.take(),
                 ));
                 if switching_away
                     && !command_was_run
@@ -4743,10 +5061,11 @@ pub fn start_server_impl(
                     && !session_was_resurrected
                 {
                     delete_session_on_exit = true;
-                    let _ = to_server.send(ServerInstruction::KillSession);
+                    owner_followups.push_back(ServerInstruction::KillSession);
                 }
             },
             ServerInstruction::HistoryMove(history_move, client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let live_sessions = session_data
                     .read()
                     .unwrap()
@@ -4761,10 +5080,10 @@ pub fn start_server_impl(
                     client_id,
                 ) {
                     Ok(connect_to_session) => {
-                        let _ = to_server.send(ServerInstruction::SwitchSession(
+                        owner_followups.push_back(ServerInstruction::SwitchSession(
                             connect_to_session,
                             client_id,
-                            completion_tx,
+                            completion_tx.take(),
                         ));
                     },
                     Err(history) => {
@@ -4781,6 +5100,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::SwitchSession(mut connect_to_session, client_id, completion_tx) => {
+                let completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if connect_to_session.name.as_deref() == Some(own_session_name.as_str()) {
                     log::error!("Cannot attach to same session");
                 } else {
@@ -4792,13 +5112,18 @@ pub fn start_server_impl(
                     );
                     let layout_dir = session_data
                         .read()
+                        // SAFETY: lock poison implies prior panic
                         .unwrap()
                         .as_ref()
-                        .unwrap()
-                        .session_configuration
-                        .get_client_configuration(&client_id)
-                        .options
-                        .layout_dir
+                        .map(|session_data| {
+                            session_data
+                                .session_configuration
+                                .get_client_configuration(&client_id)
+                                .options
+                                .layout_dir
+                                .clone()
+                        })
+                        .flatten()
                         .or_else(|| default_layout_dir());
                     if let Some(layout_dir) = layout_dir {
                         connect_to_session.apply_layout_dir(&layout_dir);
@@ -4814,59 +5139,51 @@ pub fn start_server_impl(
                     remove_client!(client_id, os_input, session_state, session_data);
                     drop(completion_tx); // do not deadlock with route thread
 
+                    // SAFETY: lock poison implies prior panic
                     if let Some(session_data) = session_data.write().unwrap().as_mut() {
                         session_data.session_configuration.remove_client(&client_id);
+                        let _ = session_data
+                            .senders
+                            .send_to_screen(ScreenInstruction::RemoveClient(client_id));
+                        let _ = session_data
+                            .senders
+                            .send_to_plugin(PluginInstruction::RemoveClient(client_id));
                     }
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                        .unwrap();
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
-                        .unwrap();
                 }
             },
             ServerInstruction::AssociatePipeWithClient { pipe_id, client_id } => {
                 session_state
                     .write()
+                    // SAFETY: lock poison implies prior panic
                     .unwrap()
                     .associate_pipe_with_client(pipe_id, client_id);
             },
             ServerInstruction::ChangeMode(client_id, input_mode, completion) => {
+                let mut completion = crate::route::RecordedCompletion::new(completion);
+                // SAFETY: lock poison implies prior panic
                 let mut session_data = session_data.write().unwrap();
-                let session_data = session_data.as_mut().unwrap();
-                let base_mode = session_data
-                    .session_configuration
-                    .get_client_default_input_mode(&client_id);
-                session_data
-                    .current_input_modes
-                    .insert(client_id, input_mode);
-                session_data
-                    .senders
-                    .send_to_screen(ScreenInstruction::ChangeMode(
-                        input_mode,
-                        Some(base_mode),
-                        client_id,
-                        completion,
-                    ))
-                    .unwrap();
+                if let Some(session_data) = session_data.as_mut() {
+                    let base_mode = session_data
+                        .session_configuration
+                        .get_client_default_input_mode(&client_id);
+                    session_data
+                        .current_input_modes
+                        .insert(client_id, input_mode);
+                    let _ = session_data
+                        .senders
+                        .send_to_screen(ScreenInstruction::ChangeMode(
+                            input_mode,
+                            Some(base_mode),
+                            client_id,
+                            completion.take(),
+                        ));
+                }
             },
             ServerInstruction::ChangeModeForAllClients(input_mode) => {
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .change_mode_for_all_clients(input_mode);
+                // SAFETY: lock poison implies prior panic
+                if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                    session_data.change_mode_for_all_clients(input_mode);
+                }
             },
             ServerInstruction::Reconfigure {
                 client_id,
@@ -4874,13 +5191,14 @@ pub fn start_server_impl(
                 write_config_to_disk,
             } => {
                 let config_before = client_configuration(&session_data, client_id);
-                let (new_config, runtime_config_changed) = session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .session_configuration
-                    .reconfigure_runtime_config(&client_id, config);
+                // SAFETY: lock poison implies prior panic
+                let (new_config, runtime_config_changed) =
+                    match session_data.write().unwrap().as_mut() {
+                        Some(session_data) => session_data
+                            .session_configuration
+                            .reconfigure_runtime_config(&client_id, config),
+                        None => continue,
+                    };
                 apply_runtime_change(
                     config_before,
                     new_config,
@@ -4888,13 +5206,14 @@ pub fn start_server_impl(
                     runtime_config_changed,
                     &session_data,
                     client_id,
+                    &mut owner_followups,
                 );
             },
             ServerInstruction::ConfigWrittenToDisk(new_config) => {
-                apply_new_saved_config(new_config, &session_data);
+                apply_new_saved_config(new_config, &session_data, &mut owner_followups);
                 let watcher_ids = session_state.read().unwrap().watcher_client_ids();
                 if let Some(session_data) = session_data.write().unwrap().as_mut() {
-                    session_data.send_saved_terminal_settings(&watcher_ids);
+                    session_data.send_saved_terminal_settings(&watcher_ids, &mut owner_followups);
                 }
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
@@ -4964,6 +5283,7 @@ pub fn start_server_impl(
             } => {
                 let snapshot = session_data
                     .read()
+                    // SAFETY: lock poison implies prior panic
                     .unwrap()
                     .as_ref()
                     .map(|session_data| session_data.config_snapshot_for(client_id));
@@ -4972,33 +5292,43 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::RevertConfig { client_id, key } => {
-                let reverted_config = session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .session_configuration
-                    .revert_runtime_config(&client_id, key);
-                propagate_runtime_config_change(reverted_config, &session_data, client_id);
+                // SAFETY: lock poison implies prior panic
+                let reverted_config = match session_data.write().unwrap().as_mut() {
+                    Some(session_data) => session_data
+                        .session_configuration
+                        .revert_runtime_config(&client_id, key),
+                    None => continue,
+                };
+                propagate_runtime_config_change(
+                    reverted_config,
+                    &session_data,
+                    client_id,
+                    &mut owner_followups,
+                );
             },
             ServerInstruction::UnsetConfigSetting { client_id, key } => {
-                let unset_config = session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .session_configuration
-                    .unset_runtime_config_setting(&client_id, key);
-                propagate_runtime_config_change(unset_config, &session_data, client_id);
+                // SAFETY: lock poison implies prior panic
+                let unset_config = match session_data.write().unwrap().as_mut() {
+                    Some(session_data) => session_data
+                        .session_configuration
+                        .unset_runtime_config_setting(&client_id, key),
+                    None => continue,
+                };
+                propagate_runtime_config_change(
+                    unset_config,
+                    &session_data,
+                    client_id,
+                    &mut owner_followups,
+                );
             },
             ServerInstruction::SaveConfig { client_id } => {
-                save_client_config_to_disk(&session_data, client_id, false);
+                save_client_config_to_disk(&session_data, client_id, false, &mut owner_followups);
             },
             ServerInstruction::OverwriteConfigFile { client_id } => {
-                save_client_config_to_disk(&session_data, client_id, true);
+                save_client_config_to_disk(&session_data, client_id, true, &mut owner_followups);
             },
             ServerInstruction::ReloadConfigFile { client_id: _ } => {
-                reload_config_file(&session_data);
+                reload_config_file(&session_data, &mut owner_followups);
             },
             ServerInstruction::SaveKeybindsAsPreset {
                 client_id,
@@ -5007,6 +5337,7 @@ pub fn start_server_impl(
             } => {
                 let result = session_data
                     .read()
+                    // SAFETY: lock poison implies prior panic
                     .unwrap()
                     .as_ref()
                     .map(|session_data| {
@@ -5027,6 +5358,7 @@ pub fn start_server_impl(
             } => {
                 let result = session_data
                     .read()
+                    // SAFETY: lock poison implies prior panic
                     .unwrap()
                     .as_ref()
                     .map(|session_data| {
@@ -5046,6 +5378,7 @@ pub fn start_server_impl(
             } => {
                 let written = session_data
                     .read()
+                    // SAFETY: lock poison implies prior panic
                     .unwrap()
                     .as_ref()
                     .map(|session_data| {
@@ -5066,7 +5399,11 @@ pub fn start_server_impl(
                                     .saved_config_with_theme(&name, Some(theme))
                             });
                         if let Some(new_saved_config) = new_saved_config {
-                            apply_new_saved_config(new_saved_config, &session_data);
+                            apply_new_saved_config(
+                                new_saved_config,
+                                &session_data,
+                                &mut owner_followups,
+                            );
                         }
                         Ok(path.display().to_string())
                     },
@@ -5081,6 +5418,7 @@ pub fn start_server_impl(
             } => {
                 let deleted = session_data
                     .read()
+                    // SAFETY: lock poison implies prior panic
                     .unwrap()
                     .as_ref()
                     .map(|session_data| {
@@ -5098,7 +5436,11 @@ pub fn start_server_impl(
                                     .saved_config_with_theme(&name, replacement)
                             });
                         if let Some(new_saved_config) = new_saved_config {
-                            apply_new_saved_config(new_saved_config, &session_data);
+                            apply_new_saved_config(
+                                new_saved_config,
+                                &session_data,
+                                &mut owner_followups,
+                            );
                         }
                         Ok(path.display().to_string())
                     },
@@ -5113,13 +5455,16 @@ pub fn start_server_impl(
                 write_config_to_disk,
             } => {
                 let config_before = client_configuration(&session_data, client_id);
-                let (new_config, runtime_config_changed) = session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .session_configuration
-                    .rebind_keys(&client_id, keys_to_rebind, keys_to_unbind);
+                // SAFETY: lock poison implies prior panic
+                let (new_config, runtime_config_changed) =
+                    match session_data.write().unwrap().as_mut() {
+                        Some(session_data) => session_data.session_configuration.rebind_keys(
+                            &client_id,
+                            keys_to_rebind,
+                            keys_to_unbind,
+                        ),
+                        None => continue,
+                    };
                 apply_runtime_change(
                     config_before,
                     new_config,
@@ -5127,17 +5472,19 @@ pub fn start_server_impl(
                     runtime_config_changed,
                     &session_data,
                     client_id,
+                    &mut owner_followups,
                 );
             },
             ServerInstruction::ReplaceConfigBlocks { client_id, config } => {
                 let config_before = client_configuration(&session_data, client_id);
-                let (new_config, runtime_config_changed) = session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .session_configuration
-                    .replace_config_blocks(&client_id, &config);
+                // SAFETY: lock poison implies prior panic
+                let (new_config, runtime_config_changed) =
+                    match session_data.write().unwrap().as_mut() {
+                        Some(session_data) => session_data
+                            .session_configuration
+                            .replace_config_blocks(&client_id, &config),
+                        None => continue,
+                    };
                 apply_runtime_change(
                     config_before,
                     new_config,
@@ -5145,6 +5492,7 @@ pub fn start_server_impl(
                     runtime_config_changed,
                     &session_data,
                     client_id,
+                    &mut owner_followups,
                 );
             },
             ServerInstruction::ResetMousebinds {
@@ -5153,13 +5501,14 @@ pub fn start_server_impl(
                 write_config_to_disk,
             } => {
                 let config_before = client_configuration(&session_data, client_id);
-                let (new_config, runtime_config_changed) = session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .session_configuration
-                    .reset_mousebinds(&client_id, triggers);
+                // SAFETY: lock poison implies prior panic
+                let (new_config, runtime_config_changed) =
+                    match session_data.write().unwrap().as_mut() {
+                        Some(session_data) => session_data
+                            .session_configuration
+                            .reset_mousebinds(&client_id, triggers),
+                        None => continue,
+                    };
                 apply_runtime_change(
                     config_before,
                     new_config,
@@ -5167,6 +5516,7 @@ pub fn start_server_impl(
                     runtime_config_changed,
                     &session_data,
                     client_id,
+                    &mut owner_followups,
                 );
             },
             ServerInstruction::ResetKeys {
@@ -5175,13 +5525,14 @@ pub fn start_server_impl(
                 write_config_to_disk,
             } => {
                 let config_before = client_configuration(&session_data, client_id);
-                let (new_config, runtime_config_changed) = session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .session_configuration
-                    .reset_keys(&client_id, keys);
+                // SAFETY: lock poison implies prior panic
+                let (new_config, runtime_config_changed) =
+                    match session_data.write().unwrap().as_mut() {
+                        Some(session_data) => session_data
+                            .session_configuration
+                            .reset_keys(&client_id, keys),
+                        None => continue,
+                    };
                 apply_runtime_change(
                     config_before,
                     new_config,
@@ -5189,6 +5540,7 @@ pub fn start_server_impl(
                     runtime_config_changed,
                     &session_data,
                     client_id,
+                    &mut owner_followups,
                 );
             },
             ServerInstruction::StartWebServer(client_id) => {
@@ -5213,14 +5565,12 @@ pub fn start_server_impl(
                         .and_then(|mut s| s.as_mut().map(|s| s.web_sharing.set_sharing()))
                         .unwrap_or(false);
                     if successfully_changed {
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::SessionSharingStatusChange(true))
-                            .unwrap();
+                        // SAFETY: lock poison implies prior panic
+                        if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                            let _ = session_data.senders.send_to_screen(
+                                ScreenInstruction::SessionSharingStatusChange(true),
+                            );
+                        }
                     }
                 } else {
                     log::error!("Cannot share session: this instance of Zellij was compiled without web_server_capability");
@@ -5237,6 +5587,7 @@ pub fn start_server_impl(
                         // disconnect existing web clients
                         let web_client_ids: Vec<ClientId> = session_state
                             .read()
+                            // SAFETY: lock poison implies prior panic
                             .unwrap()
                             .web_client_ids()
                             .iter()
@@ -5253,6 +5604,7 @@ pub fn start_server_impl(
                         }
                         let web_watcher_client_ids: Vec<ClientId> = session_state
                             .read()
+                            // SAFETY: lock poison implies prior panic
                             .unwrap()
                             .web_watcher_client_ids()
                             .iter()
@@ -5268,14 +5620,12 @@ pub fn start_server_impl(
                             remove_watcher!(client_id, os_input, session_state);
                         }
 
-                        session_data
-                            .write()
-                            .unwrap()
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::SessionSharingStatusChange(false))
-                            .unwrap();
+                        // SAFETY: lock poison implies prior panic
+                        if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                            let _ = session_data.senders.send_to_screen(
+                                ScreenInstruction::SessionSharingStatusChange(false),
+                            );
+                        }
                     }
                 } else {
                     // TODO: test this
@@ -5283,44 +5633,36 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::WebServerStarted(base_url) => {
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_plugin(PluginInstruction::WebServerStarted(base_url))
-                    .unwrap();
+                // SAFETY: lock poison implies prior panic
+                if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                    let _ = session_data
+                        .senders
+                        .send_to_plugin(PluginInstruction::WebServerStarted(base_url));
+                }
             },
             ServerInstruction::FailedToStartWebServer(error) => {
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_plugin(PluginInstruction::FailedToStartWebServer(error))
-                    .unwrap();
+                // SAFETY: lock poison implies prior panic
+                if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                    let _ = session_data
+                        .senders
+                        .send_to_plugin(PluginInstruction::FailedToStartWebServer(error));
+                }
             },
             ServerInstruction::ClearMouseHelpText(client_id) => {
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_screen(ScreenInstruction::ClearMouseHelpText(client_id))
-                    .unwrap();
+                // SAFETY: lock poison implies prior panic
+                if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                    let _ = session_data
+                        .senders
+                        .send_to_screen(ScreenInstruction::ClearMouseHelpText(client_id));
+                }
             },
             ServerInstruction::ClearCommandOutputFlash(pane_id) => {
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_screen(ScreenInstruction::ClearCommandOutputFlash(pane_id))
-                    .unwrap();
+                // SAFETY: lock poison implies prior panic
+                if let Some(session_data) = session_data.write().unwrap().as_ref() {
+                    let _ = session_data
+                        .senders
+                        .send_to_screen(ScreenInstruction::ClearCommandOutputFlash(pane_id));
+                }
             },
             ServerInstruction::ForwardQueryToHost(token, query_bytes, resolve_async) => {
                 // Pick a regular (non-watcher) client to carry the
@@ -5417,7 +5759,12 @@ pub fn start_server_impl(
                                             &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
                                         );
                                         let _ = session_data.senders.send_to_pty_writer(
-                                            PtyWriteInstruction::Write(frame, terminal_id, None),
+                                            PtyWriteInstruction::Write(AdmittedWrite::new(
+                                                frame,
+                                                terminal_id,
+                                                None,
+                                                None,
+                                            )),
                                         );
                                     }
                                 }
@@ -5437,7 +5784,12 @@ pub fn start_server_impl(
                                         },
                                     );
                                     let _ = session_data.senders.send_to_pty_writer(
-                                        PtyWriteInstruction::Write(frame, terminal_id, None),
+                                        PtyWriteInstruction::Write(AdmittedWrite::new(
+                                            frame,
+                                            terminal_id,
+                                            None,
+                                            None,
+                                        )),
                                     );
                                 }
                             }
@@ -5474,26 +5826,48 @@ pub fn start_server_impl(
         }
     }
 
-    // Drop cached session data before exit.
-    *session_data.write().unwrap() = None;
+    // Drop the mailbox before joining workers. This is the only join.
+    retire_session_workers(server_receiver, &session_data);
 
     server_socket.remove_on_exit();
     if delete_session_on_exit {
-        delete_unused_session_after_exit(&session_id, &own_session_name);
+        delete_unused_session_after_exit(&session_id);
     }
 }
 
 // The session-info cache folder is named by session id; the session index row by name.
-fn delete_unused_session_after_exit(session_id: &str, session_name: &str) {
+fn delete_unused_session_after_exit(session_id: &str) {
     if session_id.is_empty() {
         return;
     }
-    if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
-        let _ = index.delete(session_name);
+    // Hold the socket claim across the death check, lifetime read, and fenced
+    // removal. The index row is removed only after this session's cache is gone.
+    let index = zellij_utils::session_index::SessionIndex::open_default();
+    if let Err(error) = &index {
+        log::error!(
+            "Failed to open the session index while deleting {}: {}",
+            session_id,
+            error
+        );
     }
-    let _ = std::fs::remove_dir_all(zellij_utils::consts::session_info_folder_for_session(
+    match zellij_utils::sessions::remove_fenced_dead_session_cache_and_index(
+        &zellij_utils::consts::ZELLIJ_SOCK_DIR,
+        &zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR,
+        index.as_ref().ok(),
         session_id,
-    ));
+    ) {
+        Ok(
+            zellij_utils::sessions::SessionCacheRemoval::Removed
+            | zellij_utils::sessions::SessionCacheRemoval::NotFound,
+        ) => {},
+        Err(error) => {
+            log::error!(
+                "Failed to delete session cache for {} on exit: {}",
+                session_id,
+                error
+            );
+        },
+    }
 }
 
 fn init_session(
@@ -5574,22 +5948,30 @@ fn init_session(
     let default_keybinds: SharedKeybinds = Arc::new(config.keybinds.to_keybinds_vec());
     let live_view_captures = crate::pane_mirror::SharedLiveViewCaptures::default();
     let applied_env = AppliedEnv::at_startup(config.env.inner());
+    let pty_ingress = Arc::new(pty_ingress::PtyIngressBudget::new());
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
         .spawn({
             let layout = layout.clone();
+            let mut pty_bus = Bus::new(
+                vec![pty_receiver],
+                Some(&to_screen_bounded),
+                // Child-exit callbacks send ClearPaneProcessIdentity back onto
+                // this bus. The channel is unbounded, so the self-send queues
+                // instead of deadlocking the pty thread.
+                Some(&to_pty),
+                Some(&to_plugin),
+                Some(&to_server),
+                Some(&to_pty_writer),
+                Some(&to_background_jobs),
+                Some(os_input.clone()),
+            );
+            pty_bus
+                .senders
+                .set_pty_write_budget(Arc::clone(&pty_ingress));
             let pty = Pty::new(
-                Bus::new(
-                    vec![pty_receiver],
-                    Some(&to_screen_bounded),
-                    None,
-                    Some(&to_plugin),
-                    Some(&to_server),
-                    Some(&to_pty_writer),
-                    Some(&to_background_jobs),
-                    Some(os_input.clone()),
-                ),
+                pty_bus,
                 cli_assets.is_debug,
                 config_options.scrollback_editor.clone(),
                 config_options.post_command_discovery_hook.clone(),
@@ -5599,12 +5981,13 @@ fn init_session(
             let session_id = session_id.clone();
             move || pty_thread_main(pty, layout.clone(), session_id).fatal()
         })
-        .unwrap();
+        // infallible: thread spawn only fails under OS resource exhaustion
+        .expect("failed to spawn pty thread");
 
     let screen_thread = thread::Builder::new()
         .name("screen".to_string())
         .spawn({
-            let screen_bus = Bus::new(
+            let mut screen_bus = Bus::new(
                 vec![screen_receiver, bounded_screen_receiver],
                 Some(&to_screen), // there are certain occasions (eg. caching) where the screen
                 // needs to send messages to itself
@@ -5616,6 +5999,9 @@ fn init_session(
                 Some(os_input.clone()),
             )
             .with_priority(screen_priority_receiver, &to_screen_priority);
+            screen_bus
+                .senders
+                .set_pty_write_budget(Arc::clone(&pty_ingress));
             let max_panes = cli_assets.max_panes;
 
             let client_attributes_clone = client_attributes.clone();
@@ -5640,7 +6026,8 @@ fn init_session(
                 .fatal();
             }
         })
-        .unwrap();
+        // infallible: thread spawn only fails under OS resource exhaustion
+        .expect("failed to spawn screen thread");
 
     let zellij_cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let session_env_vars: std::collections::BTreeMap<String, String> = std::env::vars().collect();
@@ -5650,7 +6037,7 @@ fn init_session(
     let plugin_thread = thread::Builder::new()
         .name("wasm".to_string())
         .spawn({
-            let plugin_bus = Bus::new(
+            let mut plugin_bus = Bus::new(
                 vec![plugin_receiver],
                 Some(&to_screen_bounded),
                 Some(&to_pty),
@@ -5660,6 +6047,9 @@ fn init_session(
                 Some(&to_background_jobs),
                 None,
             );
+            plugin_bus
+                .senders
+                .set_pty_write_budget(Arc::clone(&pty_ingress));
             let engine = get_engine();
 
             let layout = layout.clone();
@@ -5692,12 +6082,13 @@ fn init_session(
                 .fatal()
             }
         })
-        .unwrap();
+        // infallible: thread spawn only fails under OS resource exhaustion
+        .expect("failed to spawn wasm/plugin thread");
 
     let pty_writer_thread = thread::Builder::new()
         .name("pty_writer".to_string())
         .spawn({
-            let pty_writer_bus = Bus::new(
+            let mut pty_writer_bus = Bus::new(
                 vec![pty_writer_receiver],
                 Some(&to_screen),
                 Some(&to_pty),
@@ -5707,16 +6098,20 @@ fn init_session(
                 Some(&to_background_jobs),
                 Some(os_input.clone()),
             );
+            pty_writer_bus
+                .senders
+                .set_pty_write_budget(Arc::clone(&pty_ingress));
             || pty_writer_main(pty_writer_bus).fatal()
         })
-        .unwrap();
+        // infallible: thread spawn only fails under OS resource exhaustion
+        .expect("failed to spawn pty_writer thread");
 
     let live_sessions = crate::attention::peers::LiveSessions::default();
     let background_jobs_thread = thread::Builder::new()
         .name("background_jobs".to_string())
         .spawn({
             let live_sessions = live_sessions.clone();
-            let background_jobs_bus = Bus::new(
+            let mut background_jobs_bus = Bus::new(
                 vec![background_jobs_receiver],
                 Some(&to_screen),
                 Some(&to_pty),
@@ -5726,6 +6121,9 @@ fn init_session(
                 None,
                 Some(os_input.clone()),
             );
+            background_jobs_bus
+                .senders
+                .set_pty_write_budget(Arc::clone(&pty_ingress));
             let web_server_base_url = web_server_base_url(
                 web_server_ip,
                 web_server_port,
@@ -5746,7 +6144,8 @@ fn init_session(
                 .fatal()
             }
         })
-        .unwrap();
+        // infallible: thread spawn only fails under OS resource exhaustion
+        .expect("failed to spawn background_jobs thread");
     let mut keybinds_dir_watcher = None;
     if let Some(config_file_path) = cli_assets.config_file_path.clone() {
         let layout_dir = config_options
@@ -5793,7 +6192,10 @@ fn init_session(
             to_screen_priority: Some(to_screen_priority),
             to_pty: Some(to_pty),
             to_plugin: Some(to_plugin),
-            to_pty_writer: Some(to_pty_writer),
+            to_pty_writer: Some(crate::thread_bus::PtyWriteSender::new(
+                to_pty_writer,
+                Some(pty_ingress),
+            )),
             to_background_jobs: Some(to_background_jobs),
             to_server: Some(to_server),
             should_silently_fail: false,
@@ -6079,19 +6481,23 @@ fn report_changes_in_layout_dir(
 fn apply_new_saved_config(
     new_saved_config: Config,
     session_data: &Arc<RwLock<Option<SessionMetaData>>>,
+    owner_followups: &mut VecDeque<ServerInstruction>,
 ) -> bool {
+    // SAFETY: lock poison implies prior panic
+    let mut session_data = session_data.write().unwrap();
+    let Some(session_data) = session_data.as_mut() else {
+        return false;
+    };
     let (changes, dropped_changes) = session_data
-        .write()
-        .unwrap()
-        .as_mut()
-        .unwrap()
         .session_configuration
         .change_saved_config(new_saved_config);
     let propagated_changes = !changes.is_empty();
     let config_was_written_to_disk = true;
-    let mut session_data = session_data.write().unwrap();
-    let session_data = session_data.as_mut().unwrap();
-    session_data.propagate_configuration_changes(changes, config_was_written_to_disk);
+    session_data.propagate_configuration_changes(
+        changes,
+        config_was_written_to_disk,
+        owner_followups,
+    );
     for (client_id, dropped_settings) in dropped_changes {
         let _ = session_data
             .senders
@@ -6107,18 +6513,18 @@ fn propagate_runtime_config_change(
     new_config: Option<Config>,
     session_data: &Arc<RwLock<Option<SessionMetaData>>>,
     client_id: ClientId,
+    owner_followups: &mut VecDeque<ServerInstruction>,
 ) {
     if let Some(new_config) = new_config {
         let config_was_written_to_disk = false;
-        session_data
-            .write()
-            .unwrap()
-            .as_mut()
-            .unwrap()
-            .propagate_configuration_changes(
+        // SAFETY: lock poison implies prior panic
+        if let Some(session_data) = session_data.write().unwrap().as_mut() {
+            session_data.propagate_configuration_changes(
                 vec![(client_id, new_config)],
                 config_was_written_to_disk,
+                owner_followups,
             );
+        }
     }
 }
 
@@ -6137,6 +6543,7 @@ fn client_configuration(
 ) -> Config {
     session_data
         .read()
+        // SAFETY: lock poison implies prior panic
         .unwrap()
         .as_ref()
         .map(|session_data| {
@@ -6180,9 +6587,21 @@ fn history_move_switch(
             client_histories.insert(client_id, history.clone());
             return Err(history);
         };
-        let is_live = live_sessions
-            .is_live(&target)
-            .unwrap_or_else(|| zellij_utils::consts::session_socket_path(&target).exists());
+        let is_live = match live_sessions.is_live(&target) {
+            Some(is_live) => is_live,
+            None => match zellij_utils::consts::session_socket_path(&target) {
+                Ok(path) => path.exists(),
+                Err(error) => {
+                    log::error!(
+                        "Failed to resolve session {:?}: {}. Not treating it as a missing socket.",
+                        target,
+                        error
+                    );
+                    client_histories.insert(client_id, history.clone());
+                    return Err(history);
+                },
+            },
+        };
         if is_live {
             history.apply(history_move, own_session_name);
             return Ok(ConnectToSession {
@@ -6301,12 +6720,18 @@ fn apply_runtime_change(
     runtime_config_changed: bool,
     session_data: &Arc<RwLock<Option<SessionMetaData>>>,
     client_id: ClientId,
+    owner_followups: &mut VecDeque<ServerInstruction>,
 ) {
     let Some(new_config) = new_config else {
         return;
     };
     if runtime_config_changed {
-        propagate_runtime_config_change(Some(new_config.clone()), session_data, client_id);
+        propagate_runtime_config_change(
+            Some(new_config.clone()),
+            session_data,
+            client_id,
+            owner_followups,
+        );
     }
     if write_config_to_disk {
         let overwrite = true;
@@ -6316,6 +6741,7 @@ fn apply_runtime_change(
             Some(config_before),
             new_config,
             overwrite,
+            owner_followups,
         );
     }
 }
@@ -6324,9 +6750,11 @@ fn save_client_config_to_disk(
     session_data: &Arc<RwLock<Option<SessionMetaData>>>,
     client_id: ClientId,
     overwrite: bool,
+    owner_followups: &mut VecDeque<ServerInstruction>,
 ) {
     let client_config = session_data
         .read()
+        // SAFETY: lock poison implies prior panic
         .unwrap()
         .as_ref()
         .map(|session_data| {
@@ -6335,7 +6763,14 @@ fn save_client_config_to_disk(
                 .client_config_to_save(&client_id)
         })
         .unwrap_or_default();
-    write_config_change(session_data, client_id, None, client_config, overwrite);
+    write_config_change(
+        session_data,
+        client_id,
+        None,
+        client_config,
+        overwrite,
+        owner_followups,
+    );
 }
 
 fn write_config_change(
@@ -6344,6 +6779,7 @@ fn write_config_change(
     base: Option<Config>,
     target: Config,
     overwrite: bool,
+    owner_followups: &mut VecDeque<ServerInstruction>,
 ) {
     let outcome = {
         let session_data = session_data.read().unwrap();
@@ -6385,7 +6821,8 @@ fn write_config_change(
             if let Some(session_data) = session_data.write().unwrap().as_mut() {
                 session_data.config_file.contents_when_read = file_contents;
             }
-            let propagated_changes = apply_new_saved_config(saved_config, session_data);
+            let propagated_changes =
+                apply_new_saved_config(saved_config, session_data, owner_followups);
             if !propagated_changes {
                 send_to_plugin_thread(session_data, PluginInstruction::ConfigWasWrittenToDisk);
             }
@@ -6445,7 +6882,10 @@ fn load_saved_config_from_disk(
     }
 }
 
-fn reload_config_file(session_data: &Arc<RwLock<Option<SessionMetaData>>>) {
+fn reload_config_file(
+    session_data: &Arc<RwLock<Option<SessionMetaData>>>,
+    owner_followups: &mut VecDeque<ServerInstruction>,
+) {
     let (contents, reloaded) = match load_saved_config_from_disk(session_data) {
         Ok(loaded) => loaded,
         Err(file_path) => {
@@ -6459,7 +6899,7 @@ fn reload_config_file(session_data: &Arc<RwLock<Option<SessionMetaData>>>) {
     if let Some(session_data) = session_data.write().unwrap().as_mut() {
         session_data.config_file.contents_when_read = contents;
     }
-    let propagated_changes = apply_new_saved_config(reloaded, session_data);
+    let propagated_changes = apply_new_saved_config(reloaded, session_data, owner_followups);
     if !propagated_changes {
         send_to_plugin_thread(session_data, PluginInstruction::ConfigWasWrittenToDisk);
     }
@@ -6467,7 +6907,9 @@ fn reload_config_file(session_data: &Arc<RwLock<Option<SessionMetaData>>>) {
 
 pub fn get_engine() -> Engine {
     log::info!("Loading plugins using Wasmi interpreter");
-    Engine::default()
+    let mut config = wasmi::Config::default();
+    config.consume_fuel(true);
+    Engine::new(&config)
 }
 
 // TODO: move elsewhere
@@ -6660,5 +7102,393 @@ mod setup_screen_session_tests {
         assert!(!session_may_show_setup(false, true, false, false));
         assert!(!session_may_show_setup(false, false, true, false));
         assert!(!session_may_show_setup(false, false, false, true));
+    }
+}
+
+/// Who should receive `UnblockInputThread`.
+/// `None` keeps the historical broadcast. A reload names its requester, or
+/// names nobody and completes `completion_tx` instead of waking every client.
+pub(crate) fn unblock_input_recipients(
+    connected_clients: &[ClientId],
+    only_client: Option<ClientId>,
+) -> Vec<ClientId> {
+    match only_client {
+        Some(client_id) => connected_clients
+            .iter()
+            .copied()
+            .filter(|id| *id == client_id)
+            .collect(),
+        None => connected_clients.to_vec(),
+    }
+}
+
+#[cfg(test)]
+mod server_mailbox_tests {
+    use super::{
+        attach_duplicate_first_client, unblock_input_recipients, ClientId, SessionMetaData,
+        SessionState, SERVER_INSTRUCTION_CHANNEL_CAPACITY,
+    };
+    use crate::os_input_output::{AsyncReader, PaneEnv, ServerOsApi};
+    use crate::plugins::PluginInstruction;
+    use crate::screen::ScreenInstruction;
+    use crate::thread_bus::ThreadSenders;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::sync::{Arc, Barrier, RwLock};
+    use std::time::{Duration, Instant};
+    use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
+    use zellij_utils::data::{Palette, WebSharing};
+    use zellij_utils::errors::prelude::*;
+    use zellij_utils::input::cli_assets::CliAssets;
+    use zellij_utils::input::command::{RunCommand, TerminalAction};
+    use zellij_utils::ipc::{ClientToServerMsg, IpcReceiverWithContext, ServerToClientMsg};
+    use zellij_utils::pane_size::Size;
+    use zellij_utils::{channels::TrySendError, errors::ErrorContext};
+
+    #[derive(Clone, Default)]
+    struct IdleOs;
+
+    impl ServerOsApi for IdleOs {
+        fn set_terminal_size_using_terminal_id(
+            &self,
+            _: u32,
+            _: u16,
+            _: u16,
+            _: Option<u16>,
+            _: Option<u16>,
+        ) -> Result<()> {
+            Ok(())
+        }
+        fn spawn_terminal(
+            &self,
+            _: TerminalAction,
+            _: Box<dyn Fn(crate::panes::PaneId, Option<i32>, RunCommand) + Send>,
+            _: Option<PathBuf>,
+            _: &PaneEnv,
+        ) -> Result<(
+            u32,
+            Box<dyn AsyncReader>,
+            Option<u32>,
+            Option<crate::os_input_output::ChildPidFd>,
+        )> {
+            unimplemented!()
+        }
+        fn write_to_tty_stdin(&self, _: u32, buf: &[u8]) -> Result<usize> {
+            Ok(buf.len())
+        }
+        fn tcdrain(&self, _: u32) -> Result<()> {
+            Ok(())
+        }
+        fn kill(&self, _: u32) -> Result<()> {
+            Ok(())
+        }
+        fn force_kill(&self, _: u32) -> Result<()> {
+            Ok(())
+        }
+        fn send_sigint(&self, _: u32) -> Result<()> {
+            Ok(())
+        }
+        fn box_clone(&self) -> Box<dyn ServerOsApi> {
+            Box::new(self.clone())
+        }
+        fn send_to_client(&self, _: ClientId, _: ServerToClientMsg) -> Result<()> {
+            Ok(())
+        }
+        fn register_client(
+            &mut self,
+            _: ClientId,
+            _: &IpcReceiverWithContext<ClientToServerMsg>,
+        ) -> Result<()> {
+            Ok(())
+        }
+        fn register_client_with_reply(
+            &mut self,
+            _: ClientId,
+            _: interprocess::local_socket::Stream,
+        ) -> Result<()> {
+            Ok(())
+        }
+        fn remove_client(&mut self, _: ClientId) -> Result<()> {
+            Ok(())
+        }
+        fn load_palette(&self) -> Palette {
+            unimplemented!()
+        }
+        fn get_cwd(&self, _: u32) -> Option<PathBuf> {
+            None
+        }
+        fn write_to_file(&mut self, _: String, _: Option<String>) -> Result<()> {
+            Ok(())
+        }
+        fn re_run_command_in_terminal(
+            &self,
+            _: u32,
+            _: RunCommand,
+            _: Box<dyn Fn(crate::panes::PaneId, Option<i32>, RunCommand) + Send>,
+            _: &PaneEnv,
+        ) -> Result<(
+            Box<dyn AsyncReader>,
+            Option<u32>,
+            Option<crate::os_input_output::ChildPidFd>,
+        )> {
+            unimplemented!()
+        }
+        fn clear_terminal_id(&self, _: u32) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    fn session_holding(identity: Arc<std::sync::atomic::AtomicBool>) -> SessionMetaData {
+        let (to_screen, _screen_rx): ChannelWithContext<ScreenInstruction> = channels::unbounded();
+        let (to_plugin, _plugin_rx): ChannelWithContext<PluginInstruction> = channels::unbounded();
+        SessionMetaData {
+            senders: ThreadSenders {
+                to_screen: Some(SenderWithContext::new(to_screen)),
+                to_plugin: Some(SenderWithContext::new(to_plugin)),
+                should_silently_fail: true,
+                ..Default::default()
+            },
+            default_shell: None,
+            current_input_modes: HashMap::from([(1, zellij_utils::data::InputMode::Normal)]),
+            session_configuration: Default::default(),
+            key_passthrough_clients: HashMap::new(),
+            popup_clients: Default::default(),
+            modal_popup_clients: Default::default(),
+            live_view_captures: Default::default(),
+            terminal_command_submitted: identity,
+            web_sharing: WebSharing::Off,
+            screen_thread: None,
+            pty_thread: None,
+            plugin_thread: None,
+            pty_writer_thread: None,
+            background_jobs_thread: None,
+            config_file_path: None,
+            config_file: Default::default(),
+            applied_env: Default::default(),
+            sent_terminal_settings: HashMap::new(),
+            font_families: HashMap::new(),
+            live_sessions: Default::default(),
+        }
+    }
+
+    #[test]
+    fn a_reload_unblock_for_client_b_does_not_enqueue_client_a() {
+        let connected = [1, 2];
+        let recipients = unblock_input_recipients(&connected, Some(2));
+        assert_eq!(recipients, vec![2]);
+        assert!(
+            !recipients.contains(&1),
+            "client A's waiter must not see client B's reload"
+        );
+        assert!(unblock_input_recipients(&connected, None).len() == connected.len());
+    }
+
+    #[test]
+    fn production_server_mailbox_stays_bounded_at_50() {
+        assert_eq!(SERVER_INSTRUCTION_CHANNEL_CAPACITY, 50);
+        let (sender, _receiver) = channels::bounded::<u8>(SERVER_INSTRUCTION_CHANNEL_CAPACITY);
+        for i in 0..SERVER_INSTRUCTION_CHANNEL_CAPACITY {
+            sender.try_send(i as u8).expect("capacity should accept 50");
+        }
+        assert!(
+            sender.try_send(0).is_err(),
+            "production mailbox must stay bounded"
+        );
+    }
+
+    #[test]
+    fn duplicate_first_client_attaches_without_blocking_a_full_mailbox() {
+        let capacity = 2;
+        let (sender, receiver): ChannelWithContext<super::ServerInstruction> =
+            channels::bounded(capacity);
+        let to_server = SenderWithContext::new(sender.clone());
+        to_server
+            .send(super::ServerInstruction::UnblockInputThread(None))
+            .unwrap();
+        to_server
+            .send(super::ServerInstruction::TerminalCommandSubmitted)
+            .unwrap();
+        match sender.try_send((
+            super::ServerInstruction::ConnStatus(1),
+            ErrorContext::default(),
+        )) {
+            Err(TrySendError::Full(_)) => {},
+            Ok(_) => panic!("test mailbox was not full"),
+            Err(TrySendError::Disconnected(_)) => panic!("test mailbox disconnected"),
+        }
+
+        let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> =
+            channels::unbounded();
+        let identity = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let mut session = session_holding(Arc::clone(&identity));
+        session.senders.to_screen = Some(SenderWithContext::new(to_screen));
+        session.senders.should_silently_fail = false;
+        let session_data = Arc::new(RwLock::new(Some(session)));
+        let session_state = Arc::new(RwLock::new(SessionState::new()));
+        session_state
+            .write()
+            .unwrap()
+            .set_client_data(1, Size { rows: 24, cols: 80 }, false);
+        let mut os_input: Box<dyn ServerOsApi> = Box::new(IdleOs);
+        let mut histories = HashMap::new();
+        let mut followups = std::collections::VecDeque::new();
+        let newcomer = 7;
+        let session_for_thread = Arc::clone(&session_data);
+        let state_for_thread = Arc::clone(&session_state);
+
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            attach_duplicate_first_client(
+                &session_for_thread,
+                &state_for_thread,
+                &mut os_input,
+                &mut histories,
+                None,
+                &None,
+                &mut followups,
+                CliAssets {
+                    terminal_window_size: Size {
+                        rows: 40,
+                        cols: 120,
+                    },
+                    ..CliAssets::default()
+                },
+                false,
+                newcomer,
+            );
+            let only_owner_local_settings = followups.iter().all(|instruction| {
+                matches!(
+                    instruction,
+                    super::ServerInstruction::TerminalSettingsChanged(..)
+                )
+            });
+            let _ = done_tx.send(only_owner_local_settings);
+        });
+        let only_owner_local_settings = done_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("duplicate FirstClientConnected blocked on a full mailbox");
+        assert!(
+            only_owner_local_settings,
+            "duplicate attach queued server work instead of owner-local settings"
+        );
+
+        let session = session_data.read().unwrap();
+        let session = session.as_ref().expect("session was cleared");
+        assert!(
+            Arc::ptr_eq(&session.terminal_command_submitted, &identity),
+            "duplicate FirstClientConnected re-initialized the session"
+        );
+        assert_eq!(
+            session.current_input_modes.get(&1),
+            Some(&zellij_utils::data::InputMode::Normal)
+        );
+        assert!(
+            session.current_input_modes.contains_key(&newcomer),
+            "newcomer was not attached"
+        );
+
+        let mut saw_add_client = false;
+        while let Ok((instruction, _)) = screen_receiver.try_recv() {
+            if let ScreenInstruction::AddClient(client_id, false, size, None, None) = instruction {
+                if client_id == newcomer {
+                    assert_eq!(
+                        size,
+                        Size {
+                            rows: 40,
+                            cols: 120
+                        }
+                    );
+                    saw_add_client = true;
+                }
+            }
+        }
+        assert!(
+            saw_add_client,
+            "newcomer did not go through the shared attach path"
+        );
+        assert_eq!(session_state.read().unwrap().attached_client_count(), 2);
+
+        let (instruction, _) = receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("full mailbox could not be drained after attach");
+        assert!(matches!(
+            instruction,
+            super::ServerInstruction::UnblockInputThread(None)
+        ));
+    }
+
+    #[test]
+    fn shutdown_drops_the_server_mailbox_before_retire_session_workers_join() {
+        let (sender, receiver) = channels::bounded::<u8>(1);
+        sender
+            .send(0)
+            .expect("capacity 1 should accept the first message");
+
+        let gate = Arc::new(Barrier::new(2));
+        let worker_gate = Arc::clone(&gate);
+        let (result_tx, result_rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            worker_gate.wait();
+            let result = sender.send_timeout(1, Duration::from_secs(2));
+            let _ = result_tx.send(result);
+            // Keep the join in progress long enough that holding the session
+            // write lock across it misses the lock deadline below.
+            std::thread::sleep(Duration::from_millis(500));
+        });
+
+        let mut session = session_holding(Arc::new(std::sync::atomic::AtomicBool::new(true)));
+        session.screen_thread = Some(worker);
+        let session_data = Arc::new(RwLock::new(Some(session)));
+
+        gate.wait();
+        std::thread::sleep(Duration::from_millis(50));
+
+        let session_for_lock = Arc::clone(&session_data);
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let started = Instant::now();
+            loop {
+                if let Ok(guard) = session_for_lock.try_write() {
+                    if guard.is_none() {
+                        let _ = locked_tx.send(started.elapsed());
+                        return;
+                    }
+                }
+                if started.elapsed() > Duration::from_millis(300) {
+                    let _ = locked_tx.send(started.elapsed());
+                    return;
+                }
+                std::thread::yield_now();
+            }
+        });
+
+        let started = Instant::now();
+        super::retire_session_workers(receiver, &session_data);
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < Duration::from_millis(1500),
+            "retire_session_workers blocked on the worker send: {elapsed:?}"
+        );
+
+        let lock_wait = locked_rx
+            .recv_timeout(Duration::from_millis(500))
+            .expect("session write lock was not acquired while workers were joining");
+        assert!(
+            lock_wait < Duration::from_millis(300),
+            "session write lock was held across the worker join: {lock_wait:?}"
+        );
+
+        let send_result = result_rx
+            .recv_timeout(Duration::from_millis(100))
+            .expect("worker did not finish send_timeout");
+        match send_result {
+            Ok(()) => panic!("worker send succeeded; the server receiver was still alive"),
+            Err(err) if err.is_disconnected() => {},
+            Err(err) if err.is_timeout() => {
+                panic!("worker send timed out; the server receiver was still alive")
+            },
+            Err(err) => panic!("unexpected worker send error: {err:?}"),
+        }
+        assert!(session_data.read().unwrap().is_none());
     }
 }

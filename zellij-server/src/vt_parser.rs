@@ -2,10 +2,42 @@ use std::str;
 
 const PARAMETER_LIMIT: usize = 32;
 const COLLECT_LIMIT: usize = 2;
-const OSC_FIELD_LIMIT: usize = 16;
-const OSC_BYTE_LIMIT: usize = 100 * 1024 * 1024;
+pub(crate) const OSC_FIELD_LIMIT: usize = 16;
+/// A hostile OSC can contain millions of semicolons. Handlers only need a
+/// prefix of its fields, so cap the collected slice instead of allocating one
+/// entry per separator in a multi-megabyte payload.
+const MAX_OSC_FIELDS: usize = 4096;
+/// Longest OSC payload assembled. Large enough for an OSC 52 clipboard
+/// copy of roughly 3 MiB of text; longer sequences are discarded.
+const MAX_OSC_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
+/// OSC buffers that grew past this are released rather than kept for reuse.
+const RETAINED_OSC_CAPACITY: usize = 64 * 1024;
 const FAST_SGR_LIMIT: usize = 31;
 const ESC: u8 = 0x1b;
+
+/// Split an OSC payload into fields. The common case fits the fixed array and
+/// does not allocate; only a payload past the historical limit collects.
+pub(crate) fn with_osc_fields<R>(payload: &[u8], f: impl FnOnce(&[&[u8]]) -> R) -> R {
+    let mut fields: [&[u8]; OSC_FIELD_LIMIT] = [&[]; OSC_FIELD_LIMIT];
+    let mut count = 0;
+    let mut rest = payload.split(|&byte| byte == b';');
+    for slot in fields.iter_mut() {
+        let Some(field) = rest.next() else {
+            break;
+        };
+        *slot = field;
+        count += 1;
+    }
+    if rest.next().is_some() {
+        let all_fields: Vec<&[u8]> = payload
+            .split(|&byte| byte == b';')
+            .take(MAX_OSC_FIELDS)
+            .collect();
+        f(&all_fields)
+    } else {
+        f(&fields[..count])
+    }
+}
 
 pub struct Sequence<'a> {
     parameters: &'a Parameters,
@@ -80,7 +112,38 @@ pub trait Handler {
 
     fn osc_end(&mut self, _fields: &[&[u8]], _ended_by_bell: bool) {}
 
+    /// Called with the raw OSC payload. The default preserves the historical
+    /// field limit; handlers that need every field (for example a batched
+    /// palette query) can override this.
+    fn osc_end_raw(&mut self, payload: &[u8], ended_by_bell: bool) {
+        let mut fields: [&[u8]; OSC_FIELD_LIMIT] = [&[]; OSC_FIELD_LIMIT];
+        let mut count = 0;
+        for (slot, field) in fields.iter_mut().zip(payload.split(|&byte| byte == b';')) {
+            *slot = field;
+            count += 1;
+        }
+        self.osc_end(&fields[..count], ended_by_bell);
+    }
+
     fn paused(&self) -> bool {
+        false
+    }
+
+    /// Called once at the start of a synchronous `feed`. Handlers with
+    /// turn-scoped semantic budgets reset them here.
+    fn begin_turn(&mut self) {}
+
+    /// Make one bounded step toward clearing the condition reported by
+    /// `paused`. Return true when progress was made. `feed` calls this
+    /// synchronously; `feed_until_paused` leaves the decision to the caller.
+    fn resume_paused(&mut self) -> bool {
+        false
+    }
+
+    /// When parsing with `feed_until_paused`, return true to leave `bytes`
+    /// unconsumed. The handler has an open host-query batch and this escape
+    /// must wait until that batch's reply has been written.
+    fn defer_pending_escape(&mut self, _bytes: &[u8]) -> bool {
         false
     }
 }
@@ -264,6 +327,40 @@ impl Parser {
         Self::default()
     }
 
+    /// Return to ground without dispatching an open OSC, DCS, or CSI.
+    /// A retained prefix that ended inside a control string must not be
+    /// completed by the bytes that follow a gap.
+    pub fn discard_unfinished(&mut self) {
+        self.state = State::Ground;
+        self.parameters.reset();
+        self.number = 0;
+        self.collected_count = 0;
+        self.overflowed = false;
+        self.reset_osc();
+        self.carry_len = 0;
+    }
+
+    /// Whether a control string that can carry an inline image is currently
+    /// open. Parking a scrolled pane is unsafe across such strings because
+    /// the image is inserted only when the string ends.
+    pub fn in_image_capable_string(&self) -> bool {
+        matches!(
+            self.state,
+            State::DcsEntry
+                | State::DcsParam
+                | State::DcsIntermediate
+                | State::DcsPassthrough
+                | State::DcsIgnore
+        ) || (matches!(self.state, State::OscString) && self.osc.starts_with(b"1337;"))
+    }
+
+    /// Whether the stream is between complete sequences, including any
+    /// retained escape prefix. Parking around a fragmented sequence would
+    /// make the discontinuity depend on which caller happened to supply it.
+    pub fn is_ground(&self) -> bool {
+        matches!(self.state, State::Ground) && self.carry_len == 0
+    }
+
     #[cfg(test)]
     pub(crate) fn without_shortcuts() -> Self {
         Parser {
@@ -273,7 +370,24 @@ impl Parser {
     }
 
     pub fn feed<H: Handler>(&mut self, handler: &mut H, bytes: &[u8]) {
-        self.run(handler, bytes, false);
+        handler.begin_turn();
+        let mut at = 0;
+        loop {
+            let before = at;
+            at += self.feed_until_paused(handler, &bytes[at..]);
+            if handler.paused() {
+                if handler.resume_paused() {
+                    continue;
+                }
+                break;
+            }
+            if at >= bytes.len() {
+                break;
+            }
+            if at == before && !handler.resume_paused() {
+                break;
+            }
+        }
     }
 
     pub fn feed_until_paused<H: Handler>(&mut self, handler: &mut H, bytes: &[u8]) -> usize {
@@ -288,7 +402,7 @@ impl Parser {
         };
         while at < bytes.len() && !(stop && handler.paused()) {
             let rest = &bytes[at..];
-            at += match self.state {
+            let consumed = match self.state {
                 State::Ground => self.ground(handler, rest, scan, stop),
                 State::CsiEntry | State::CsiParam if scan => self.csi_numbers(handler, rest),
                 _ => {
@@ -296,6 +410,10 @@ impl Parser {
                     1
                 },
             };
+            if consumed == 0 {
+                break;
+            }
+            at += consumed;
         }
         at
     }
@@ -368,17 +486,25 @@ impl Parser {
         let text_end = memchr::memchr(ESC, bytes).unwrap_or(bytes.len());
         let mut remaining = &bytes[..text_end];
         if scan && remaining.is_ascii() {
-            dispatch_ascii(handler, unsafe { str::from_utf8_unchecked(remaining) });
-            remaining = &[];
+            if let Ok(text) = str::from_utf8(remaining) {
+                dispatch_ascii(handler, text);
+                remaining = &[];
+            }
         }
         while !remaining.is_empty() {
-            let failure = str::from_utf8(remaining).err();
-            let valid_len = failure.map_or(remaining.len(), |failure| failure.valid_up_to());
-            dispatch_text(
-                handler,
-                unsafe { str::from_utf8_unchecked(&remaining[..valid_len]) },
-                scan,
-            );
+            let (valid_len, failure) = match str::from_utf8(remaining) {
+                Ok(text) => {
+                    dispatch_text(handler, text, scan);
+                    (remaining.len(), None)
+                },
+                Err(failure) => {
+                    let valid_len = failure.valid_up_to();
+                    if let Ok(text) = str::from_utf8(&remaining[..valid_len]) {
+                        dispatch_text(handler, text, scan);
+                    }
+                    (valid_len, Some(failure))
+                },
+            };
             let broken = &remaining[valid_len..];
             remaining = match failure.and_then(|failure| failure.error_len()) {
                 Some(broken_len) => {
@@ -416,6 +542,9 @@ impl Parser {
         scan: bool,
         stop: bool,
     ) -> usize {
+        if stop && handler.defer_pending_escape(bytes) {
+            return 0;
+        }
         if scan && !(stop && handler.paused()) {
             if let Some(length) = fast_sgr_length(bytes) {
                 handler.sgr(&bytes[2..2 + length]);
@@ -510,22 +639,39 @@ impl Parser {
     }
 
     fn osc_start(&mut self) {
-        self.osc.clear();
-        self.osc_overflowed = false;
+        self.reset_osc();
         self.state = State::OscString;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn osc_capacity(&self) -> usize {
+        self.osc.capacity()
+    }
+
+    fn reset_osc(&mut self) {
+        if self.osc.capacity() > RETAINED_OSC_CAPACITY {
+            self.osc = Vec::new();
+        } else {
+            self.osc.clear();
+        }
+        self.osc_overflowed = false;
+    }
+
+    /// The numeric command of the OSC being assembled (the `52` of
+    /// `OSC 52 ; c ; ...`), if its first field is a short run of digits.
+    fn osc_number(&self) -> Option<&str> {
+        let first = self.osc.split(|&byte| byte == b';').next()?;
+        if first.is_empty() || first.len() > 5 || !first.iter().all(u8::is_ascii_digit) {
+            return None;
+        }
+        str::from_utf8(first).ok()
     }
 
     fn osc_finish<H: Handler>(&self, handler: &mut H, ended_by_bell: bool) {
         if self.osc_overflowed {
             return;
         }
-        let mut fields: [&[u8]; OSC_FIELD_LIMIT] = [&[]; OSC_FIELD_LIMIT];
-        let mut count = 0;
-        for (slot, field) in fields.iter_mut().zip(self.osc.split(|&byte| byte == b';')) {
-            *slot = field;
-            count += 1;
-        }
-        handler.osc_end(&fields[..count], ended_by_bell);
+        handler.osc_end_raw(&self.osc, ended_by_bell);
     }
 
     #[inline(always)]
@@ -670,25 +816,45 @@ impl Parser {
     fn osc_byte<H: Handler>(&mut self, handler: &mut H, byte: u8) {
         match byte {
             0x07 => {
-                self.osc_finish(handler, true);
+                if !self.osc_overflowed {
+                    self.osc_finish(handler, true);
+                }
+                self.reset_osc();
                 self.state = State::Ground;
             },
             0x18 | 0x1a => {
-                self.osc_finish(handler, false);
+                if !self.osc_overflowed {
+                    self.osc_finish(handler, false);
+                }
+                self.reset_osc();
                 handler.execute(byte);
                 self.state = State::Ground;
             },
             ESC => {
-                self.osc_finish(handler, false);
+                if !self.osc_overflowed {
+                    self.osc_finish(handler, false);
+                }
+                self.reset_osc();
                 self.enter_escape();
             },
             0x00..=0x1f => {},
-            _ if self.osc_overflowed => {},
-            _ if self.osc.len() >= OSC_BYTE_LIMIT => {
+            _ if self.osc.len() < MAX_OSC_PAYLOAD_BYTES => self.osc.push(byte),
+            _ => {
+                if !self.osc_overflowed {
+                    // once per dropped sequence, and never the payload
+                    match self.osc_number() {
+                        Some(number) => log::warn!(
+                            "discarding OSC {number} sequence: payload exceeds the \
+                             {MAX_OSC_PAYLOAD_BYTES} byte limit"
+                        ),
+                        None => log::warn!(
+                            "discarding OSC sequence: payload exceeds the \
+                             {MAX_OSC_PAYLOAD_BYTES} byte limit"
+                        ),
+                    }
+                }
                 self.osc_overflowed = true;
-                self.osc = Vec::new();
             },
-            _ => self.osc.push(byte),
         }
     }
 

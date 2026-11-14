@@ -1476,39 +1476,6 @@ fn stacked_marks_are_placed_one_above_the_other() {
     assert!(stacked.height > single.height);
 }
 
-#[cfg(unix)]
-#[test]
-fn a_font_file_this_user_can_write_is_read_rather_than_mapped() {
-    let file = tempfile::NamedTempFile::new().unwrap();
-    assert!(!super::files::safe_to_map(file.path()));
-    let mut permissions = std::fs::metadata(file.path()).unwrap().permissions();
-    permissions.set_readonly(true);
-    std::fs::set_permissions(file.path(), permissions).unwrap();
-    let running_as_root = unsafe { libc::geteuid() } == 0;
-    assert_eq!(super::files::safe_to_map(file.path()), !running_as_root);
-}
-
-#[cfg(windows)]
-#[test]
-fn only_the_system_fonts_are_mapped_on_windows() {
-    let system = std::env::var("SystemRoot").unwrap();
-    assert!(super::files::safe_to_map(
-        &std::path::Path::new(&system)
-            .join("Fonts")
-            .join("consola.ttf")
-    ));
-    let shouting = format!("{}\\FONTS\\CONSOLA.TTF", system.to_uppercase());
-    assert!(super::files::safe_to_map(std::path::Path::new(&shouting)));
-    let file = tempfile::NamedTempFile::new().unwrap();
-    assert!(!super::files::safe_to_map(file.path()));
-    let user_fonts = std::env::var("LOCALAPPDATA").unwrap() + "\\Microsoft\\Windows\\Fonts\\x.ttf";
-    assert!(!super::files::safe_to_map(std::path::Path::new(
-        &user_fonts
-    )));
-    let lookalike = format!("{}\\FontsExtra\\x.ttf", system);
-    assert!(!super::files::safe_to_map(std::path::Path::new(&lookalike)));
-}
-
 #[cfg(windows)]
 #[test]
 fn a_loaded_font_outside_the_system_fonts_can_still_be_replaced() {
@@ -1518,7 +1485,6 @@ fn a_loaded_font_outside_the_system_fonts_can_still_be_replaced() {
     std::fs::write(file.path(), b"a newer version").expect("the font file is not locked");
     assert_eq!(loaded, REGULAR);
 }
-
 #[test]
 fn a_font_file_is_loaded_once_per_process() {
     let mut file = tempfile::NamedTempFile::new().unwrap();

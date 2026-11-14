@@ -102,6 +102,7 @@ impl<'a> UiComponentParser<'a> {
         let mut component_coordinates = None;
         if let Some(coordinates) = params_iter.peek() {
             component_coordinates = self.parse_coordinates(coordinates)?;
+            component_coordinates = component_coordinates.map(|c| self.clamp_to_pane(c));
             if component_coordinates.is_some() {
                 let _ = params_iter.next(); // we just peeked, let's consume the coords now
             }
@@ -114,12 +115,15 @@ impl<'a> UiComponentParser<'a> {
                 return Err(anyhow!("a table must have at least one column"));
             }
             let stringified_params = parse_text_params(params_iter);
+            let (max_columns, max_rows) = self.room_for(&component_coordinates);
             let encoded_table = table(
                 columns,
                 rows,
                 stringified_params,
                 &self.style,
                 component_coordinates,
+                max_columns,
+                max_rows,
             );
             parse_vte_bytes!(self, encoded_table);
             Ok(())
@@ -137,9 +141,19 @@ impl<'a> UiComponentParser<'a> {
             parse_vte_bytes!(self, encoded_text);
             Ok(())
         } else if component_name == &"nested_list" {
-            let nested_list_items = parse_nested_list_items(params_iter);
-            let encoded_nested_list =
-                nested_list(nested_list_items, &self.style, component_coordinates);
+            let mut nested_list_items = parse_nested_list_items(params_iter);
+            for item in nested_list_items.iter_mut() {
+                // indenting by more than the width of the pane shows nothing more
+                item.indentation_level = std::cmp::min(item.indentation_level, self.grid.width);
+            }
+            let (max_columns, max_rows) = self.room_for(&component_coordinates);
+            let encoded_nested_list = nested_list(
+                nested_list_items,
+                &self.style,
+                component_coordinates,
+                max_columns,
+                max_rows,
+            );
             parse_vte_bytes!(self, encoded_nested_list);
             Ok(())
         } else if component_name == &"text" {
@@ -153,10 +167,14 @@ impl<'a> UiComponentParser<'a> {
         } else if let Some(render_widget) = widget_renderer(component_name.as_str()) {
             let coordinates = component_coordinates
                 .with_context(|| format!("{} must have coordinates", component_name))?;
-            let state = params_iter
+            let mut state = params_iter
                 .next()
                 .map(|raw_state| WidgetState::parse(raw_state))
                 .unwrap_or_default();
+            // sizes beyond the pane cannot be shown (and would be allocated and drawn)
+            state.limit("lw", self.grid.width);
+            state.limit("bx", self.grid.width);
+            state.limit("fr", self.grid.height);
             let fields: Vec<String> = params_iter.map(|field| field.clone()).collect();
             let encoded_widget = render_widget(&state, &fields, &self.style, &coordinates);
             parse_vte_bytes!(self, encoded_widget);
@@ -165,8 +183,37 @@ impl<'a> UiComponentParser<'a> {
             Err(anyhow!("Unknown component: {}", component_name))
         }
     }
+    /// The columns and rows a component may take up: what is left of the pane from its origin, or
+    /// the whole pane if it has no coordinates (and is drawn from the cursor)
+    fn room_for(&self, coordinates: &Option<Coordinates>) -> (usize, usize) {
+        coordinates
+            .as_ref()
+            .map(|c| (c.max_width, c.max_height))
+            .unwrap_or((self.grid.width, self.grid.height))
+    }
+    /// Coordinates come from the program drawing the component and can be anything: keep the
+    /// component inside the pane, so that it cannot ask for more rows or columns than the pane
+    /// has (and render, allocate and loop for each of them).
+    fn clamp_to_pane(&self, coordinates: Coordinates) -> Coordinates {
+        let (pane_columns, pane_rows) = (self.grid.width, self.grid.height);
+        let x = std::cmp::min(coordinates.x, pane_columns.saturating_sub(1));
+        let y = std::cmp::min(coordinates.y, pane_rows.saturating_sub(1));
+        Coordinates {
+            x,
+            y,
+            width: coordinates
+                .width
+                .map(|width| std::cmp::min(width, pane_columns - x)),
+            height: coordinates
+                .height
+                .map(|height| std::cmp::min(height, pane_rows - y)),
+            max_width: pane_columns - x,
+            max_height: pane_rows - y,
+        }
+    }
     fn parse_coordinates(&self, coordinates: &str) -> Result<Option<Coordinates>> {
         lazy_static! {
+            // SAFETY: fixed, compile-time-valid regex literal
             static ref RE: Regex = Regex::new(r"(\d*)/(\d*)/(\d*)/(\d*)").unwrap();
         }
         if let Some(captures) = RE.captures_iter(&coordinates).next() {
@@ -189,6 +236,8 @@ impl<'a> UiComponentParser<'a> {
                 y,
                 width,
                 height,
+                max_width: usize::MAX,
+                max_height: usize::MAX,
             }))
         } else {
             Ok(None)
@@ -223,25 +272,45 @@ fn parse_disabled(stringified: &mut String) -> bool {
 }
 
 fn parse_indices(stringified: &mut String) -> Vec<Vec<usize>> {
-    stringified
-        .chars()
-        .collect::<Vec<_>>()
-        .iter()
-        .rposition(|c| c == &'$')
-        .map(|last_position| stringified.drain(0..=last_position).collect::<String>())
-        .map(|indices_string| {
-            let mut all_indices = vec![];
-            let raw_indices_for_each_variant = indices_string.split('$');
-            for index_string in raw_indices_for_each_variant {
-                let indices_for_variant = index_string
-                    .split(',')
-                    .filter_map(|s| s.parse::<usize>().ok())
-                    .collect();
-                all_indices.push(indices_for_variant)
-            }
-            all_indices
-        })
-        .unwrap_or_default()
+    let Some(last_byte) = stringified.rfind('$') else {
+        return Vec::new();
+    };
+    let indices_string: String = stringified.drain(0..=last_byte).collect();
+    let mut all_indices = vec![];
+    for index_string in indices_string.split('$') {
+        let indices_for_variant = index_string
+            .split(',')
+            .filter_map(|s| s.parse::<usize>().ok())
+            .collect();
+        all_indices.push(indices_for_variant);
+    }
+    all_indices
+}
+
+#[cfg(test)]
+mod parse_indices_tests {
+    use super::parse_indices;
+
+    #[test]
+    fn parse_indices_uses_byte_offsets_around_unicode() {
+        // Char index of '$' is 2; its byte index is 5. Feeding the char
+        // index into String::drain would panic on a mid-character boundary.
+        let mut stringified = String::from("éé$rest");
+        let indices = parse_indices(&mut stringified);
+        // "éé$" splits into a non-numeric group and the empty group after `$`.
+        let expected: Vec<Vec<usize>> = vec![vec![], vec![]];
+        assert_eq!(indices, expected);
+        assert_eq!(stringified, "rest");
+    }
+
+    #[test]
+    fn parse_indices_keeps_numeric_groups() {
+        let mut stringified = String::from("0,2$1$hello");
+        let indices = parse_indices(&mut stringified);
+        let expected: Vec<Vec<usize>> = vec![vec![0, 2], vec![1], vec![]];
+        assert_eq!(indices, expected);
+        assert_eq!(stringified, "hello");
+    }
 }
 
 // A link is an index level whose first entry is LINK_MARK followed by the URL

@@ -1,4 +1,11 @@
+use crate::os_input_output::ClientOsApi;
 use crate::web_client::authentication::SessionTokenHash;
+use crate::web_client::client_channel::{
+    client_channel, CONTROL_CHANNEL_MAX_BYTES, CONTROL_CHANNEL_MAX_MESSAGES,
+    KEEPALIVE_CHANNEL_MAX_BYTES, KEEPALIVE_CHANNEL_MAX_MESSAGES, OUTPUT_CHANNEL_MAX_BYTES,
+    OUTPUT_CHANNEL_MAX_MESSAGES,
+};
+use crate::web_client::connection_manager::TerminalAttachOutcome;
 use crate::web_client::control_message::{
     TerminalMetricsPayload, WebClientToWebServerControlMessage,
     WebClientToWebServerControlMessagePayload,
@@ -7,14 +14,17 @@ use crate::web_client::message_handlers::{
     parse_stdin, render_to_client, send_control_messages_to_client, StdinSession,
 };
 use crate::web_client::server_listener::zellij_server_listener;
-use crate::web_client::types::{AppState, ControlParams, TerminalParams};
+use crate::web_client::types::{
+    AppState, ControlParams, TerminalParams, WEB_IPC_WRITE_BUDGET, WEB_SESSION_ATTACH_BUDGET,
+};
+use crate::web_client::utils::websocket_origin_is_allowed;
 
 use axum::{
     extract::{
         ws::{close_code, CloseFrame, Message, WebSocket, WebSocketUpgrade},
         Path as AxumPath, Query, State,
     },
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 use futures::StreamExt;
@@ -28,10 +38,159 @@ use zellij_utils::{
     input::mouse::MouseEvent,
     ipc::{ClientToServerMsg, PixelDimensions},
     pane_size::{Size, SizeInPixels},
+    web_authentication_tokens::session_allows_live_connection,
 };
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 const PONG_TIMEOUT: Duration = Duration::from_secs(45);
+
+/// Run a session write off the async worker. `true` only if the write
+/// returned success before the deadline. A blocked write is cancelled and
+/// is not reported as delivered.
+async fn deliver_from_async_task(
+    os_input: Box<dyn ClientOsApi>,
+    msg: ClientToServerMsg,
+    budget: Duration,
+) -> bool {
+    let cancel = os_input.clone();
+    let deadline = std::time::Instant::now() + budget;
+    let send =
+        tokio::task::spawn_blocking(move || os_input.try_send_to_server_until(msg, deadline));
+    match tokio::time::timeout(budget + Duration::from_millis(250), send).await {
+        Ok(Ok(Ok(()))) => true,
+        Ok(Ok(Err(error))) => {
+            log::warn!("web ipc write was not delivered: {error}");
+            false
+        },
+        Ok(Err(_)) => false,
+        Err(_) => {
+            cancel.cancel_session_ipc();
+            log::warn!("web ipc write blocked past its deadline and was not delivered");
+            false
+        },
+    }
+}
+
+/// Releases the client id if attachment does not succeed. Dropped while
+/// still armed when the wait times out, the listener gives up, or this task
+/// is cancelled because the websocket went away.
+struct AttachFailure {
+    armed: bool,
+    os_input: Box<dyn ClientOsApi>,
+    connection_table: Arc<std::sync::Mutex<crate::web_client::types::ConnectionTable>>,
+    web_client_id: String,
+}
+
+impl Drop for AttachFailure {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        self.os_input.cancel_session_ipc();
+        self.connection_table
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .remove_client(&self.web_client_id);
+    }
+}
+
+/// How long a connection that we decided to close (a client that does not
+/// keep up, one that was kicked, a control websocket superseded by a newer
+/// one) is given to complete the close handshake. A peer that ignores the
+/// Close frame, and keeps sending pongs so that it looks alive, is cut off
+/// when this runs out.
+#[cfg(not(test))]
+const CLOSE_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(test)]
+const CLOSE_HANDSHAKE_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// Tracks a connection that was told (through its cancellation token) to wind
+/// down and now has `CLOSE_HANDSHAKE_TIMEOUT` to do so.
+struct CloseGrace {
+    deadline: Option<Instant>,
+}
+
+impl CloseGrace {
+    fn new() -> Self {
+        CloseGrace { deadline: None }
+    }
+
+    fn started(&self) -> bool {
+        self.deadline.is_some()
+    }
+
+    fn start(&mut self) {
+        self.deadline = Some(Instant::now() + CLOSE_HANDSHAKE_TIMEOUT);
+    }
+
+    /// Completes once the grace period is over; never before it was started.
+    async fn expired(&self) {
+        match self.deadline {
+            Some(deadline) => tokio::time::sleep_until(deadline).await,
+            None => std::future::pending().await,
+        }
+    }
+}
+
+/// The largest message (and frame) a client may send us over a websocket.
+/// Keystrokes, mouse events and control messages are tiny; the biggest thing a
+/// person sends is a paste. Anything beyond this closes the connection instead
+/// of being buffered, where the library default would take up to 64 MiB.
+const MAX_INBOUND_WEBSOCKET_MESSAGE_BYTES: usize = 2 * 1024 * 1024;
+
+/// How often a live websocket checks that the session token it was opened with
+/// is still valid (not revoked and not expired). Kept apart from the ping
+/// interval so that a revoked token is noticed reasonably fast, but it is still
+/// a single indexed lookup per connection every few seconds, never per message.
+#[cfg(not(test))]
+const SESSION_RECHECK_INTERVAL: Duration = Duration::from_secs(15);
+#[cfg(test)]
+const SESSION_RECHECK_INTERVAL: Duration = Duration::from_millis(200);
+
+struct SessionWatch {
+    interval: Interval,
+    session_token_hash: String,
+}
+
+impl SessionWatch {
+    fn new(session_token_hash: String) -> Self {
+        let mut interval = tokio::time::interval_at(
+            Instant::now() + SESSION_RECHECK_INTERVAL,
+            SESSION_RECHECK_INTERVAL,
+        );
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        SessionWatch {
+            interval,
+            session_token_hash,
+        }
+    }
+
+    async fn tick(&mut self) {
+        self.interval.tick().await;
+    }
+
+    /// False only if the token is known to be revoked or expired. If the
+    /// database cannot be consulted we keep the connection and look again at
+    /// the next tick.
+    async fn is_still_valid(&self) -> bool {
+        let session_token_hash = self.session_token_hash.clone();
+        match tokio::task::spawn_blocking(move || {
+            session_allows_live_connection(&session_token_hash)
+        })
+        .await
+        {
+            Ok(Ok(valid)) => valid,
+            Ok(Err(e)) => {
+                log::warn!("Could not re-validate a web session: {}", e);
+                true
+            },
+            Err(e) => {
+                log::warn!("Could not re-validate a web session: {}", e);
+                true
+            },
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HeartbeatTick {
@@ -76,19 +235,27 @@ enum TerminalSocketEvent {
     Closed,
     FinalizeIdle,
     Heartbeat(HeartbeatTick),
+    SessionRecheck,
+    Cancelled,
+    CloseHandshakeTimedOut,
 }
 
 pub async fn ws_handler_control(
     ws: WebSocketUpgrade,
+    headers: HeaderMap,
     _path: Option<AxumPath<String>>,
     Query(params): Query<ControlParams>,
     State(state): State<AppState>,
     axum::Extension(session_token_hash): axum::Extension<SessionTokenHash>,
 ) -> Response {
+    if !websocket_origin_is_allowed(&headers, state.is_https) {
+        log::warn!("Control WebSocket: refusing upgrade from a foreign Origin");
+        return StatusCode::FORBIDDEN.into_response();
+    }
     if !state
         .connection_table
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .verify_client_ownership(&params.web_client_id, &session_token_hash.0)
     {
         log::error!(
@@ -97,41 +264,83 @@ pub async fn ws_handler_control(
         );
         return StatusCode::FORBIDDEN.into_response();
     }
-    ws.on_upgrade(move |socket| handle_ws_control(socket, params, state))
+    ws.max_message_size(MAX_INBOUND_WEBSOCKET_MESSAGE_BYTES)
+        .max_frame_size(MAX_INBOUND_WEBSOCKET_MESSAGE_BYTES)
+        .on_upgrade(move |socket| handle_ws_control(socket, params, state, session_token_hash))
 }
 
 pub async fn ws_handler_terminal(
     ws: WebSocketUpgrade,
+    headers: HeaderMap,
     session_name: Option<AxumPath<String>>,
     Query(params): Query<TerminalParams>,
     State(state): State<AppState>,
     axum::Extension(session_token_hash): axum::Extension<SessionTokenHash>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| {
-        handle_ws_terminal(socket, session_name, params, state, session_token_hash)
-    })
+) -> Response {
+    if !websocket_origin_is_allowed(&headers, state.is_https) {
+        log::warn!("Terminal WebSocket: refusing upgrade from a foreign Origin");
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    ws.max_message_size(MAX_INBOUND_WEBSOCKET_MESSAGE_BYTES)
+        .max_frame_size(MAX_INBOUND_WEBSOCKET_MESSAGE_BYTES)
+        .on_upgrade(move |socket| {
+            handle_ws_terminal(socket, session_name, params, state, session_token_hash)
+        })
 }
 
-async fn handle_ws_control(socket: WebSocket, params: ControlParams, state: AppState) {
+async fn handle_ws_control(
+    socket: WebSocket,
+    params: ControlParams,
+    state: AppState,
+    session_token_hash: SessionTokenHash,
+) {
     let web_client_id = params.web_client_id;
 
     let (control_socket_tx, mut control_socket_rx) = socket.split();
 
-    let (control_channel_tx, control_channel_rx) = tokio::sync::mpsc::unbounded_channel();
-    send_control_messages_to_client(control_channel_rx, control_socket_tx);
+    let (control_channel_tx, control_channel_rx) =
+        client_channel(CONTROL_CHANNEL_MAX_MESSAGES, CONTROL_CHANNEL_MAX_BYTES);
+    // Cancelled when the client is dropped (say, for not keeping up) or when a
+    // newer control websocket takes over this client id.
+    let cancellation_token = CancellationToken::new();
+    send_control_messages_to_client(
+        control_channel_rx,
+        control_socket_tx,
+        cancellation_token.clone(),
+    );
     let heartbeat_tx = control_channel_tx.clone();
 
-    state
+    let registered = state
         .connection_table
         .lock()
-        .unwrap()
-        .add_client_control_tx(&web_client_id, control_channel_tx);
+        .unwrap_or_else(|p| p.into_inner())
+        .add_client_control_tx(
+            &web_client_id,
+            control_channel_tx,
+            cancellation_token.clone(),
+        );
+    if !registered {
+        log::warn!(
+            "Control WebSocket for unknown web_client_id {}, closing it",
+            web_client_id
+        );
+        let _ = heartbeat_tx.try_send(Message::Close(Some(CloseFrame {
+            code: close_code::POLICY,
+            reason: "Unknown client".into(),
+        })));
+        return;
+    }
 
     let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
+    let mut session_watch = SessionWatch::new(session_token_hash.0);
+    let mut close_grace = CloseGrace::new();
 
-    let send_message_to_server = |deserialized_msg: WebClientToWebServerControlMessage| {
+    let prepare_server_message = |deserialized_msg: WebClientToWebServerControlMessage| {
         let (client_os_api, is_structured) = {
-            let connection_table = state.connection_table.lock().unwrap();
+            let connection_table = state
+                .connection_table
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
             (
                 connection_table
                     .get_client_os_api(&deserialized_msg.web_client_id)
@@ -141,39 +350,81 @@ async fn handle_ws_control(socket: WebSocket, params: ControlParams, state: AppS
         };
         let Some(client_connection) = client_os_api else {
             log::error!("Unknown web_client_id: {}", deserialized_msg.web_client_id);
-            return;
+            return None;
         };
-        let Some(client_msg) =
-            control_payload_to_server_msg(deserialized_msg.payload, is_structured)
-        else {
-            return;
-        };
-
-        let _ = client_connection.send_to_server(client_msg);
+        let client_msg = control_payload_to_server_msg(deserialized_msg.payload, is_structured)?;
+        Some((client_connection, client_msg))
     };
 
     loop {
         let msg = tokio::select! {
             msg = control_socket_rx.next() => match msg {
                 Some(Ok(msg)) => msg,
-                _ => break,
+                Some(Err(e)) => {
+                    // for instance a message over the size limit
+                    log::warn!(
+                        "Control WebSocket for web_client_id {} failed: {}",
+                        web_client_id,
+                        e
+                    );
+                    let _ = heartbeat_tx.try_send(Message::Close(Some(CloseFrame {
+                        code: close_code::SIZE,
+                        reason: "Invalid or oversized message".into(),
+                    })));
+                    break;
+                },
+                None => break,
             },
             tick = heartbeat.tick() => {
                 match tick {
                     HeartbeatTick::SendPing => {
-                        let _ = heartbeat_tx.send(Message::Ping(Default::default()));
+                        let _ = heartbeat_tx.try_send(Message::Ping(Default::default()));
                     },
                     HeartbeatTick::TimedOut => {
                         log::warn!(
                             "Control WebSocket for web_client_id {} timed out (no Pong received)",
                             web_client_id
                         );
-                        let _ = heartbeat_tx.send(Message::Close(Some(CloseFrame {
+                        let _ = heartbeat_tx.try_send(Message::Close(Some(CloseFrame {
                             code: close_code::NORMAL,
                             reason: "Connection timed out".into(),
                         })));
                         break;
                     },
+                }
+                continue;
+            },
+            _ = cancellation_token.cancelled(), if !close_grace.started() => {
+                let _ = heartbeat_tx.try_send(Message::Close(Some(CloseFrame {
+                    code: close_code::NORMAL,
+                    reason: "Connection closed".into(),
+                })));
+                close_grace.start();
+                continue;
+            },
+            _ = close_grace.expired() => {
+                log::info!(
+                    "Control WebSocket for web_client_id {} did not complete the close handshake, dropping it",
+                    web_client_id
+                );
+                break;
+            },
+            _ = session_watch.tick() => {
+                if !session_watch.is_still_valid().await {
+                    log::info!(
+                        "Control WebSocket for web_client_id {} closed: session token is no longer valid",
+                        web_client_id
+                    );
+                    let _ = heartbeat_tx.try_send(Message::Close(Some(CloseFrame {
+                        code: close_code::POLICY,
+                        reason: "Session expired or revoked".into(),
+                    })));
+                    state
+                        .connection_table
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .remove_client(&web_client_id);
+                    break;
                 }
                 continue;
             },
@@ -191,7 +442,16 @@ async fn handle_ws_control(socket: WebSocket, params: ControlParams, state: AppS
                             );
                             return;
                         }
-                        send_message_to_server(deserialized_msg);
+                        if let Some((client_connection, client_msg)) =
+                            prepare_server_message(deserialized_msg)
+                        {
+                            let _delivered = deliver_from_async_task(
+                                client_connection,
+                                client_msg,
+                                WEB_IPC_WRITE_BUDGET,
+                            )
+                            .await;
+                        }
                     },
                     Err(e) => {
                         log::error!("Failed to deserialize client msg: {:?}", e);
@@ -212,19 +472,13 @@ async fn handle_ws_control(socket: WebSocket, params: ControlParams, state: AppS
 }
 
 async fn handle_ws_terminal(
-    socket: WebSocket,
+    mut socket: WebSocket,
     session_name: Option<AxumPath<String>>,
     params: TerminalParams,
     state: AppState,
     session_token_hash: SessionTokenHash,
 ) {
-    let client_size = match (params.rows, params.cols) {
-        (Some(rows), Some(cols)) if rows > 0 && cols > 0 => Some(Size {
-            rows: rows as usize,
-            cols: cols as usize,
-        }),
-        _ => None,
-    };
+    let client_size = client_size_from_params(params.rows, params.cols);
     let client_pixel_dims = match (params.cell_width, params.cell_height) {
         (Some(width), Some(height)) if width > 0 && height > 0 => Some(SizeInPixels {
             width: width as usize,
@@ -239,7 +493,7 @@ async fn handle_ws_terminal(
     if !state
         .connection_table
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .verify_client_ownership(&web_client_id, &session_token_hash.0)
     {
         log::error!(
@@ -249,24 +503,48 @@ async fn handle_ws_terminal(
         return;
     }
 
-    let os_input = {
-        let mut connection_table = state.connection_table.lock().unwrap();
-        connection_table.declare_client_structured(&web_client_id, is_structured_client);
-        connection_table.get_client_os_api(&web_client_id).cloned()
-    };
-    let Some(os_input) = os_input else {
-        log::error!("Unknown web_client_id: {}", web_client_id);
-        return;
-    };
-
-    let (client_terminal_channel_tx, mut client_terminal_channel_rx) = socket.split();
-    let (stdout_channel_tx, stdout_channel_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (terminal_frame_tx, terminal_frame_rx) = tokio::sync::mpsc::unbounded_channel();
-    state
+    let (stdout_channel_tx, stdout_channel_rx) =
+        client_channel(OUTPUT_CHANNEL_MAX_MESSAGES, OUTPUT_CHANNEL_MAX_BYTES);
+    let (terminal_frame_tx, terminal_frame_rx) =
+        client_channel(KEEPALIVE_CHANNEL_MAX_MESSAGES, KEEPALIVE_CHANNEL_MAX_BYTES);
+    // One terminal websocket (and one session connection with the thread
+    // listening to it) per client id: claim the id before starting anything.
+    let attached = state
         .connection_table
         .lock()
-        .unwrap()
-        .add_client_terminal_tx(&web_client_id, stdout_channel_tx);
+        .unwrap_or_else(|p| p.into_inner())
+        .attach_terminal(&web_client_id, is_structured_client, stdout_channel_tx);
+    let os_input = match attached {
+        TerminalAttachOutcome::Attached(os_input) => os_input,
+        TerminalAttachOutcome::UnknownClient => {
+            log::error!("Unknown web_client_id: {}", web_client_id);
+            return;
+        },
+        TerminalAttachOutcome::AlreadyAttached => {
+            // The session connection of an id is bound to its first terminal
+            // websocket, and ends together with it, so a second one cannot
+            // take over. Refuse it, and drop the first (which may well be a
+            // half-dead connection the client is replacing) rather than wait
+            // for it to time out: the client starts over with a new id.
+            log::warn!(
+                "Terminal WebSocket for web_client_id {} that already has one, dropping both",
+                web_client_id
+            );
+            state
+                .connection_table
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .remove_client(&web_client_id);
+            let _ = socket
+                .send(Message::Close(Some(CloseFrame {
+                    code: close_code::POLICY,
+                    reason: "Client already connected".into(),
+                })))
+                .await;
+            return;
+        },
+    };
+    let (client_terminal_channel_tx, mut client_terminal_channel_rx) = socket.split();
 
     let (attachment_complete_tx, attachment_complete_rx) = tokio::sync::oneshot::channel();
 
@@ -274,7 +552,11 @@ async fn handle_ws_terminal(
         os_input.clone(),
         state.connection_table.clone(),
         session_name.map(|p| p.0),
-        state.config.lock().unwrap().clone(),
+        state
+            .config
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone(),
         state.config_options.clone(),
         state.config_file_path.clone(),
         web_client_id.clone(),
@@ -284,13 +566,21 @@ async fn handle_ws_terminal(
         client_pixel_dims,
         state.pending_welcome_sessions.clone(),
         is_structured_client,
+        WEB_SESSION_ATTACH_BUDGET,
     );
+
+    let mut attach_failure = AttachFailure {
+        armed: true,
+        os_input: os_input.clone(),
+        connection_table: state.connection_table.clone(),
+        web_client_id: web_client_id.clone(),
+    };
 
     let terminal_channel_cancellation_token = CancellationToken::new();
     let should_not_reconnect = state
         .connection_table
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .get_should_not_reconnect_flag(&web_client_id)
         .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
     render_to_client(
@@ -303,22 +593,31 @@ async fn handle_ws_terminal(
     state
         .connection_table
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .add_client_terminal_channel_cancellation_token(
             &web_client_id,
-            terminal_channel_cancellation_token,
+            terminal_channel_cancellation_token.clone(),
         );
 
     let explicitly_disable_kitty_keyboard_protocol = state
         .config
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .options
         .support_kitty_keyboard_protocol
         .map(|e| !e)
         .unwrap_or(false);
 
-    let _ = attachment_complete_rx.await;
+    match tokio::time::timeout(WEB_SESSION_ATTACH_BUDGET, attachment_complete_rx).await {
+        Ok(Ok(())) => {
+            attach_failure.armed = false;
+        },
+        Ok(Err(_)) | Err(_) => {
+            // Armed drop cancels the connect retry and releases the slot.
+            // A failed attach must not fall through into the heartbeat loop.
+            return;
+        },
+    }
 
     let mut mouse_old_event = MouseEvent::new();
     // Per-connection parser state. Hoisted so a CSI / Kitty sequence
@@ -326,6 +625,8 @@ async fn handle_ws_terminal(
     let mut stdin_session = StdinSession::new(explicitly_disable_kitty_keyboard_protocol);
     let finalize_idle = std::time::Duration::from_millis(50);
     let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
+    let mut session_watch = SessionWatch::new(session_token_hash.0.clone());
+    let mut close_grace = CloseGrace::new();
     loop {
         // When termwiz is holding ambiguous-but-complete events from
         // the previous frame, race the next frame against an idle
@@ -340,12 +641,20 @@ async fn handle_ws_terminal(
                 TerminalSocketEvent::FinalizeIdle
             },
             tick = heartbeat.tick() => TerminalSocketEvent::Heartbeat(tick),
+            _ = session_watch.tick() => TerminalSocketEvent::SessionRecheck,
+            // the client was dropped (it did not keep up, it was kicked, ...):
+            // its writer is sending the Close frame, give the peer a moment to
+            // answer and then stop reading from it whatever it does
+            _ = terminal_channel_cancellation_token.cancelled(), if !close_grace.started() => {
+                TerminalSocketEvent::Cancelled
+            },
+            _ = close_grace.expired() => TerminalSocketEvent::CloseHandshakeTimedOut,
         };
         let msg = match event {
             TerminalSocketEvent::Frame(m) => m,
             TerminalSocketEvent::Closed => break,
             TerminalSocketEvent::Heartbeat(HeartbeatTick::SendPing) => {
-                let _ = terminal_frame_tx.send(Message::Ping(Default::default()));
+                let _ = terminal_frame_tx.try_send(Message::Ping(Default::default()));
                 continue;
             },
             TerminalSocketEvent::Heartbeat(HeartbeatTick::TimedOut) => {
@@ -356,22 +665,62 @@ async fn handle_ws_terminal(
                 state
                     .connection_table
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|p| p.into_inner())
                     .remove_client(&web_client_id);
                 break;
+            },
+            TerminalSocketEvent::Cancelled => {
+                close_grace.start();
+                continue;
+            },
+            TerminalSocketEvent::CloseHandshakeTimedOut => {
+                log::info!(
+                    "Terminal WebSocket for web_client_id {} did not complete the close handshake, dropping it",
+                    web_client_id
+                );
+                break;
+            },
+            TerminalSocketEvent::SessionRecheck => {
+                if !session_watch.is_still_valid().await {
+                    log::info!(
+                        "Terminal WebSocket for web_client_id {} closed: session token is no longer valid",
+                        web_client_id
+                    );
+                    state
+                        .connection_table
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .remove_client(&web_client_id);
+                    break;
+                }
+                continue;
             },
             TerminalSocketEvent::FinalizeIdle => {
                 // Idle timeout fired with `pending_finalize` set:
                 // drain any ambiguous-but-complete events termwiz held
-                // back on the previous frame.
-                if let Some(client_connection) = state
+                // back on the previous frame. Drop the table lock before
+                // awaiting the blocking write.
+                let client_connection = state
                     .connection_table
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|p| p.into_inner())
                     .get_client_os_api(&web_client_id)
-                    .cloned()
-                {
-                    stdin_session.finalize(&*client_connection, &mut mouse_old_event);
+                    .cloned();
+                if let Some(client_connection) = client_connection {
+                    let mut mouse = mouse_old_event;
+                    let mut session = stdin_session;
+                    let joined = tokio::task::spawn_blocking(move || {
+                        session.finalize(&*client_connection, &mut mouse);
+                        (mouse, session)
+                    })
+                    .await;
+                    match joined {
+                        Ok(restored) => {
+                            mouse_old_event = restored.0;
+                            stdin_session = restored.1;
+                        },
+                        Err(_) => break,
+                    }
                 } else {
                     // No client to send drained events to — clear the
                     // flag so we don't busy-loop the idle timer.
@@ -385,37 +734,47 @@ async fn handle_ws_terminal(
                 let Some(client_connection) = state
                     .connection_table
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|p| p.into_inner())
                     .get_client_os_api(&web_client_id)
                     .cloned()
                 else {
                     log::error!("Unknown web_client_id: {}", web_client_id);
                     continue;
                 };
-                parse_stdin(
-                    &buf,
-                    client_connection.clone(),
+                let owned = buf.to_vec();
+                if !drive_stdin(
+                    owned,
+                    client_connection,
                     &mut mouse_old_event,
                     &mut stdin_session,
-                );
+                )
+                .await
+                {
+                    break;
+                }
             },
             Message::Text(msg) => {
                 let Some(client_connection) = state
                     .connection_table
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|p| p.into_inner())
                     .get_client_os_api(&web_client_id)
                     .cloned()
                 else {
                     log::error!("Unknown web_client_id: {}", web_client_id);
                     continue;
                 };
-                parse_stdin(
-                    msg.as_bytes(),
-                    client_connection.clone(),
+                let owned = msg.as_bytes().to_vec();
+                if !drive_stdin(
+                    owned,
+                    client_connection,
                     &mut mouse_old_event,
                     &mut stdin_session,
-                );
+                )
+                .await
+                {
+                    break;
+                }
             },
             Message::Pong(_) => {
                 heartbeat.pong_received();
@@ -424,7 +783,7 @@ async fn handle_ws_terminal(
                 state
                     .connection_table
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|p| p.into_inner())
                     .remove_client(&web_client_id);
                 break;
             },
@@ -434,7 +793,79 @@ async fn handle_ws_terminal(
             },
         }
     }
-    os_input.send_to_server(ClientToServerMsg::ClientExited);
+    state
+        .connection_table
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .remove_client(&web_client_id);
+    let _delivered = deliver_from_async_task(
+        os_input,
+        ClientToServerMsg::ClientExited,
+        WEB_IPC_WRITE_BUDGET,
+    )
+    .await;
+}
+
+/// Parse terminal input off the async worker. The write inside has its own
+/// deadline; this task only waits for that result.
+async fn drive_stdin(
+    buf: Vec<u8>,
+    client_connection: Box<dyn ClientOsApi>,
+    mouse_old_event: &mut MouseEvent,
+    stdin_session: &mut StdinSession,
+) -> bool {
+    let mut mouse = std::mem::replace(mouse_old_event, MouseEvent::new());
+    let mut session = std::mem::replace(stdin_session, StdinSession::new(false));
+    let joined = tokio::task::spawn_blocking(move || {
+        parse_stdin(&buf, client_connection, &mut mouse, &mut session);
+        (mouse, session)
+    })
+    .await;
+    match joined {
+        Ok((mouse, session)) => {
+            *mouse_old_event = mouse;
+            *stdin_session = session;
+            true
+        },
+        Err(_) => false,
+    }
+}
+
+/// The smallest and largest size a client may ask for. A real terminal never
+/// comes close to the upper bounds (a full screen window on an 8K display with
+/// a small font is some 1000 columns by 400 rows), but the size is passed on to
+/// the session, which sizes its screen and pane grids by it, and renders a
+/// full grid of cells for the client on every pass; at 10000x10000 that alone
+/// is over a gigabyte per render. So besides limiting each dimension, the
+/// total number of cells is limited (to 1 million, some 16 MB per render).
+const MIN_TERMINAL_DIMENSION: usize = 1;
+const MAX_TERMINAL_DIMENSION: usize = 2_000;
+const MAX_TERMINAL_CELLS: usize = 1_000_000;
+
+fn clamp_terminal_size(size: Size) -> Size {
+    let rows = size
+        .rows
+        .clamp(MIN_TERMINAL_DIMENSION, MAX_TERMINAL_DIMENSION);
+    let cols = size
+        .cols
+        .clamp(MIN_TERMINAL_DIMENSION, MAX_TERMINAL_DIMENSION);
+    // both are at most MAX_TERMINAL_DIMENSION, so this cannot overflow
+    let cols = if rows * cols > MAX_TERMINAL_CELLS {
+        (MAX_TERMINAL_CELLS / rows).max(MIN_TERMINAL_DIMENSION)
+    } else {
+        cols
+    };
+    Size { rows, cols }
+}
+
+fn client_size_from_params(rows: Option<u16>, cols: Option<u16>) -> Option<Size> {
+    match (rows, cols) {
+        (Some(rows), Some(cols)) if rows > 0 && cols > 0 => Some(clamp_terminal_size(Size {
+            rows: rows as usize,
+            cols: cols as usize,
+        })),
+        _ => None,
+    }
 }
 
 fn control_payload_to_server_msg(
@@ -450,7 +881,9 @@ fn control_payload_to_server_msg(
     }
     let client_msg = match payload {
         WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
-            ClientToServerMsg::TerminalResize { new_size: size }
+            ClientToServerMsg::TerminalResize {
+                new_size: clamp_terminal_size(size),
+            }
         },
         WebClientToWebServerControlMessagePayload::TerminalMetrics(metrics) => {
             terminal_metrics_to_ipc(metrics)
@@ -589,6 +1022,161 @@ fn terminal_metrics_to_ipc(metrics: TerminalMetricsPayload) -> ClientToServerMsg
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn async_delivery_does_not_report_a_blocked_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("blocked.sock");
+        use interprocess::local_socket::traits::Listener;
+        let listener = zellij_utils::consts::ipc_bind(&path).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let stream = listener.accept().expect("accept");
+            let _ = tx.send(stream);
+        });
+        let os_input = crate::os_input_output::get_client_os_input().unwrap();
+        os_input
+            .connect_to_server_until(&path, std::time::Instant::now() + Duration::from_secs(2))
+            .expect("connect");
+        let _server = rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("accepted socket");
+        let budget = Duration::from_millis(80);
+        let mut saw_failure = false;
+        let started = std::time::Instant::now();
+        for marker in 0..200u8 {
+            let msg = ClientToServerMsg::Action {
+                action: Action::Write {
+                    key_with_modifier: None,
+                    bytes: vec![marker; 64 * 1024],
+                    is_kitty_keyboard_protocol: false,
+                },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            };
+            let delivered = deliver_from_async_task(Box::new(os_input.clone()), msg, budget).await;
+            if !delivered {
+                saw_failure = true;
+                break;
+            }
+        }
+        assert!(
+            saw_failure,
+            "a full socket buffer still reported every write as delivered"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "async delivery waited on a blocked write"
+        );
+    }
+
+    #[test]
+    fn terminal_resize_is_clamped_to_sane_bounds() {
+        for (requested, expected) in [
+            (Size { rows: 24, cols: 80 }, Size { rows: 24, cols: 80 }),
+            (Size { rows: 0, cols: 0 }, Size { rows: 1, cols: 1 }),
+            // a big but real terminal is left alone
+            (
+                Size {
+                    rows: 400,
+                    cols: 1_000,
+                },
+                Size {
+                    rows: 400,
+                    cols: 1_000,
+                },
+            ),
+            (
+                Size {
+                    rows: usize::MAX,
+                    cols: 1,
+                },
+                Size {
+                    rows: 2_000,
+                    cols: 1,
+                },
+            ),
+            (
+                Size {
+                    rows: 1,
+                    cols: 2_001,
+                },
+                Size {
+                    rows: 1,
+                    cols: 2_000,
+                },
+            ),
+            // the area is limited too, not only each dimension
+            (
+                Size {
+                    rows: 10_000,
+                    cols: 10_000,
+                },
+                Size {
+                    rows: 2_000,
+                    cols: 500,
+                },
+            ),
+            (
+                Size {
+                    rows: 1_000,
+                    cols: 2_000,
+                },
+                Size {
+                    rows: 1_000,
+                    cols: 1_000,
+                },
+            ),
+        ] {
+            let msg = control_payload_to_server_msg(
+                WebClientToWebServerControlMessagePayload::TerminalResize(requested),
+                false,
+            );
+            match msg {
+                Some(ClientToServerMsg::TerminalResize { new_size }) => {
+                    assert_eq!(new_size, expected, "resize to {:?}", requested);
+                    assert!(new_size.rows * new_size.cols <= MAX_TERMINAL_CELLS);
+                },
+                other => panic!("expected a resize, got {:?}", other),
+            }
+        }
+    }
+
+    #[test]
+    fn no_accepted_terminal_size_exceeds_the_cell_budget() {
+        for rows in [1, 2, 499, 500, 501, 1_000, 1_999, 2_000, 2_001, 65_535] {
+            for cols in [1, 2, 499, 500, 501, 1_000, 1_999, 2_000, 2_001, 65_535] {
+                let size = clamp_terminal_size(Size { rows, cols });
+                assert!(size.rows >= 1 && size.cols >= 1);
+                assert!(
+                    size.rows * size.cols <= MAX_TERMINAL_CELLS,
+                    "{}x{} became {:?}",
+                    rows,
+                    cols,
+                    size
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn initial_size_from_the_query_is_clamped_and_needs_both_dimensions() {
+        assert_eq!(
+            client_size_from_params(Some(24), Some(80)),
+            Some(Size { rows: 24, cols: 80 })
+        );
+        assert_eq!(
+            client_size_from_params(Some(u16::MAX), Some(u16::MAX)),
+            Some(Size {
+                rows: 2_000,
+                cols: 500
+            })
+        );
+        assert_eq!(client_size_from_params(Some(0), Some(80)), None);
+        assert_eq!(client_size_from_params(Some(24), None), None);
+    }
 
     #[test]
     fn terminal_metrics_to_ipc_preserves_all_dimensions() {

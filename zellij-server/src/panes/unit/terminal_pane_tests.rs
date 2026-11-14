@@ -1,19 +1,133 @@
-use super::super::TerminalPane;
+use super::super::{TerminalPane, MAX_PENDING_PTY_BYTES};
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
-use crate::panes::LinkHandler;
+use crate::route::{ActionCompletionKind, NotificationEnd};
 use crate::tab::Pane;
 use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use tokio::sync::oneshot;
 use zellij_utils::{
-    data::{Palette, Style},
+    data::{Palette, Style, UnblockCondition},
+    input::command::RunCommand,
     pane_size::{Offset, PaneGeom, SizeInPixels},
     position::Position,
 };
 
 use std::fmt::Write;
+
+fn terminal_pane_with_size(rows: usize, cols: usize) -> TerminalPane {
+    terminal_pane_with_notification(rows, cols, None)
+}
+
+fn terminal_pane_with_notification(
+    rows: usize,
+    cols: usize,
+    notification_end: Option<NotificationEnd>,
+) -> TerminalPane {
+    let mut geom = PaneGeom::default();
+    geom.cols.set_inner(cols);
+    geom.rows.set_inner(rows);
+    TerminalPane::new(
+        1,
+        geom,
+        Style::default(),
+        0,
+        String::new(),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        None,
+        None,
+        false,
+        true,
+        true,
+        true,
+        false,
+        notification_end,
+    )
+}
+
+#[test]
+fn closing_a_pane_completes_a_plain_blocking_waiter_with_its_exit_status() {
+    let (completion_tx, mut completion_rx) = oneshot::channel();
+    let mut pane =
+        terminal_pane_with_notification(4, 20, Some(NotificationEnd::new(completion_tx)));
+
+    pane.update_exit_status(42);
+
+    let outcome = completion_rx
+        .try_recv()
+        .expect("closing the pane releases the blocking waiter");
+    assert_eq!(outcome.kind, ActionCompletionKind::Finished);
+    assert_eq!(outcome.exit_status, Some(42));
+    assert!(outcome.error_message.is_none());
+}
+
+#[test]
+fn dropping_a_pane_releases_a_plain_blocking_waiter() {
+    let (completion_tx, mut completion_rx) = oneshot::channel();
+    let pane = terminal_pane_with_notification(4, 20, Some(NotificationEnd::new(completion_tx)));
+
+    drop(pane);
+
+    let outcome = completion_rx
+        .try_recv()
+        .expect("dropping the pane releases the blocking waiter");
+    assert_eq!(outcome.kind, ActionCompletionKind::Finished);
+    assert_eq!(outcome.exit_status, None);
+    assert!(outcome.error_message.is_none());
+}
+
+#[test]
+fn a_met_unblock_condition_releases_the_waiter_when_the_pane_is_held() {
+    let (completion_tx, mut completion_rx) = oneshot::channel();
+    let mut pane = terminal_pane_with_notification(
+        4,
+        20,
+        Some(NotificationEnd::new_with_condition(
+            completion_tx,
+            UnblockCondition::OnAnyExit,
+        )),
+    );
+
+    pane.hold(Some(7), false, RunCommand::default());
+
+    let outcome = completion_rx
+        .try_recv()
+        .expect("a met unblock condition releases the blocking waiter");
+    assert_eq!(outcome.kind, ActionCompletionKind::Finished);
+    assert_eq!(outcome.exit_status, Some(7));
+}
+
+#[test]
+fn an_unmet_unblock_condition_keeps_the_waiter_until_the_pane_closes() {
+    let (completion_tx, mut completion_rx) = oneshot::channel();
+    let mut pane = terminal_pane_with_notification(
+        4,
+        20,
+        Some(NotificationEnd::new_with_condition(
+            completion_tx,
+            UnblockCondition::OnExitSuccess,
+        )),
+    );
+
+    pane.hold(Some(1), false, RunCommand::default());
+    assert!(
+        completion_rx.try_recv().is_err(),
+        "a failure does not satisfy OnExitSuccess"
+    );
+
+    drop(pane);
+    let outcome = completion_rx
+        .try_recv()
+        .expect("closing the pane releases the blocking waiter");
+    assert_eq!(outcome.kind, ActionCompletionKind::Finished);
+    assert_eq!(outcome.exit_status, Some(1));
+}
 
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
@@ -48,7 +162,6 @@ pub fn scrolling_inside_a_pane() {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -77,6 +190,288 @@ pub fn scrolling_inside_a_pane() {
 }
 
 #[test]
+fn maximum_rep_resumes_from_deferred_terminal_pane_work() {
+    let mut geom = PaneGeom::default();
+    geom.cols.set_inner(10);
+    geom.rows.set_inner(4);
+    let mut pane = TerminalPane::new(
+        1,
+        geom,
+        Style::default(),
+        0,
+        String::new(),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        None,
+        None,
+        false,
+        true,
+        true,
+        true,
+        false,
+        None,
+    );
+    pane.handle_pty_bytes(b"a\x1b[65535bZ".to_vec());
+    assert!(pane.grid.rep_pending());
+    assert!(pane.has_pending_pty_input());
+
+    let mut steps = 0;
+    while pane.has_deferred_pane_work() || pane.has_pending_pty_input() {
+        if pane.has_deferred_pane_work() {
+            pane.advance_deferred_pane_work();
+        } else {
+            pane.handle_pty_bytes(Vec::new());
+        }
+        steps += 1;
+        assert!(steps < 100_000, "REP deferred work did not settle");
+    }
+    assert!(steps > 1, "maximum REP must span multiple pane turns");
+    assert!(!pane.grid.rep_pending());
+    assert!(!pane.has_pending_pty_input());
+    assert!(
+        pane.grid
+            .lines_above
+            .iter()
+            .chain(pane.grid.viewport.iter())
+            .flat_map(|row| row.columns.iter())
+            .any(|cell| cell.character == 'Z'),
+        "bytes after REP must be applied after the repeat settles"
+    );
+}
+
+#[test]
+fn unfinished_rep_counts_as_pending_output_after_its_bytes_are_consumed() {
+    let mut pane = terminal_pane_with_size(4, 10);
+    pane.handle_pty_bytes_for_test(b"a\x1b[65535b".to_vec());
+    assert!(pane.grid.rep_pending());
+    assert!(
+        !pane.has_pending_pty_input(),
+        "the repeat sequence itself is fully consumed"
+    );
+    assert!(pane.has_pending_output());
+
+    while pane.grid.rep_pending() {
+        pane.advance_deferred_pane_work();
+    }
+    assert!(!pane.has_pending_output());
+}
+
+#[test]
+fn scrolled_rep_continues_on_the_live_model() {
+    let mut pane = terminal_pane_with_size(3, 2048);
+    for _ in 0..5 {
+        pane.handle_pty_bytes_for_test(vec![b'H'; 2048]);
+        pane.handle_pty_bytes_for_test(b"\r\n".to_vec());
+    }
+    assert!(pane.grid.lines_above.len() >= 2);
+    pane.scroll_up(2, 1);
+    assert!(pane.is_scrolled());
+
+    pane.handle_pty_bytes_for_test(b"\x1b[1;1HA\x1b[1025bZ".to_vec());
+    assert!(pane.grid.rep_pending());
+    let mut steps = 0;
+    while pane.has_deferred_pane_work() || pane.has_pending_pty_input() {
+        pane.advance_deferred_pane_work();
+        steps += 1;
+        assert!(steps < 10_000, "REP deferred work did not settle");
+    }
+    assert!(
+        pane.is_scrolled(),
+        "deferred REP should restore the held history view"
+    );
+
+    pane.clear_scroll();
+    let viewport = pane.grid.as_character_lines();
+    let first_row: String = viewport[0].iter().map(|cell| cell.character).collect();
+    let expected = format!("{}Z", "A".repeat(1026));
+    assert!(
+        first_row.starts_with(&expected),
+        "repeat resumed in history instead of the live model: {:?}",
+        &first_row[..first_row.len().min(40)]
+    );
+}
+
+#[test]
+fn rep_paused_output_is_bounded_and_dropped_oldest() {
+    let mut pane = terminal_pane_with_size(4, 10);
+    pane.handle_pty_bytes_for_test(b"a\x1b[65535b".to_vec());
+    assert!(pane.grid.rep_pending());
+
+    let chunk = vec![b'x'; MAX_PENDING_PTY_BYTES + 10_000];
+    pane.handle_pty_bytes_for_test(chunk);
+    pane.handle_pty_bytes_for_test(vec![b'y'; 10_000]);
+    let pending = pane.pending_pty_input.len() - pane.pending_pty_offset;
+    assert!(
+        pending <= MAX_PENDING_PTY_BYTES,
+        "pending bytes grew past the admission ceiling: {pending}"
+    );
+    assert!(pane.has_pending_output());
+}
+
+#[test]
+fn image_capable_chunks_do_not_park_scrolled_panes() {
+    let mut pane = terminal_pane_with_size(4, 20);
+    assert!(pane.input_is_parkable(b"plain text"));
+    assert!(!pane.input_is_parkable(b"\x1bPq#0;2;0;0;0"));
+    assert!(!pane.input_is_parkable(b"\x1b_Ga=t,f=24;AAAA\x1b\\"));
+    assert!(!pane.input_is_parkable(b"\x1b]1337;File=inline=1:AAAA\x07"));
+    pane.pending_pty_input = b"queued \x1b_Ga=t,f=24;AAAA\x1b\\".to_vec();
+    assert!(
+        !pane.input_is_parkable(b""),
+        "a queued image suffix must revoke parking"
+    );
+    pane.pending_pty_input.clear();
+    pane.pending_pty_input = b"queued \x1b".to_vec();
+    assert!(
+        !pane.input_is_parkable(b"Pq#0;2;0;0;0"),
+        "an introducer split across the queue boundary must revoke parking"
+    );
+    pane.pending_pty_input.clear();
+    pane.held_escape = true;
+    assert!(
+        !pane.input_is_parkable(b"text"),
+        "a retained escape prefix must revoke parking"
+    );
+}
+
+#[test]
+fn backlog_overflow_rejects_the_whole_queue_instead_of_splicing_a_suffix() {
+    for (prefix, suffix) in [
+        (b"\x1b]2;secret".as_slice(), b"VISIBLE\x07".as_slice()),
+        (b"\x1b[31".as_slice(), b"mVISIBLE".as_slice()),
+        (b"\x1bPq".as_slice(), b"#0;2;0;0;0".as_slice()),
+        (b"\x1b_Ga=t,f=24;".as_slice(), b"AAAA\x1b\\".as_slice()),
+        (b"\xe2\x82".as_slice(), b"\xac".as_slice()),
+    ] {
+        let mut pane = terminal_pane_with_size(4, 20);
+        pane.append_pending_pty_input(prefix);
+        let queued = pane.pending_pty_input.len();
+        pane.append_pending_pty_input(&vec![b'x'; MAX_PENDING_PTY_BYTES - queued + 1]);
+        assert!(!pane.has_pending_pty_input(), "queue survived overflow");
+        assert!(pane.vte_parser.is_ground(), "parser retained a prefix");
+        assert!(pane.output_truncated);
+        pane.handle_pty_bytes_for_test(suffix.to_vec());
+        assert!(
+            pane.grid.title.is_none(),
+            "suffix completed the discarded title sequence"
+        );
+    }
+}
+
+#[test]
+fn clear_scroll_moves_at_most_one_row_quantum() {
+    use crate::panes::grid::SCREEN_ROW_QUANTUM;
+
+    let mut pane = terminal_pane_with_size(4, 20);
+    for index in 0..(SCREEN_ROW_QUANTUM + 30) {
+        pane.handle_pty_bytes_for_test(format!("L{index}\r\n").into_bytes());
+    }
+    pane.scroll_up(SCREEN_ROW_QUANTUM + 10, 1);
+    let before = pane.grid.lines_below.len();
+    assert!(
+        before > SCREEN_ROW_QUANTUM,
+        "the fixture must sit further than one quantum from the bottom, below={before}"
+    );
+    pane.clear_scroll();
+    let moved = before - pane.grid.lines_below.len();
+    assert!(
+        !pane.grid.lines_below.is_empty(),
+        "one clear_scroll finished a {before}-row return"
+    );
+    assert!(
+        moved > 0 && moved <= SCREEN_ROW_QUANTUM,
+        "clear_scroll moved {moved} rows"
+    );
+    assert!(pane.viewport_goal_pending());
+    let mid = pane.grid.lines_below.len();
+    pane.advance_deferred_pane_work();
+    assert!(
+        pane.grid.lines_below.len() < mid,
+        "a later turn should continue the scroll to the bottom"
+    );
+}
+
+#[test]
+fn deep_scroll_defers_image_bytes_and_moves_one_quantum() {
+    use crate::panes::grid::SCREEN_ROW_QUANTUM;
+
+    let mut pane = terminal_pane_with_size(5, 20);
+    for index in 0..(SCREEN_ROW_QUANTUM + 40) {
+        pane.handle_pty_bytes_for_test(format!("row-{index}\r\n").into_bytes());
+    }
+    pane.scroll_up(SCREEN_ROW_QUANTUM + 20, 1);
+    let before = pane.grid.lines_below.len();
+    assert!(before > SCREEN_ROW_QUANTUM);
+    let bytes = b"\x1b_Ga=t,f=24;AAAA\x1b\\";
+    pane.handle_pty_bytes_for_test(bytes.to_vec());
+    let moved = before - pane.grid.lines_below.len();
+    assert!(
+        !pane.grid.lines_below.is_empty(),
+        "image input snapped the whole scrolled distance"
+    );
+    assert!(
+        moved <= SCREEN_ROW_QUANTUM,
+        "image input moved {moved} rows in one turn"
+    );
+    let queued = pane.pending_pty_input.len() - pane.pending_pty_offset;
+    assert_eq!(
+        queued,
+        bytes.len(),
+        "image bytes were parsed against a half-moved viewport"
+    );
+}
+
+#[test]
+fn scrolled_image_output_does_not_resume_in_history() {
+    let mut pane = terminal_pane_with_size(5, 20);
+    for _ in 0..30 {
+        pane.handle_pty_bytes_for_test(b"HHHHHHHHHHHHHHHHHHHH\r\n".to_vec());
+    }
+    assert!(pane.grid.lines_above.len() > 1);
+    pane.scroll_up(1, 1);
+    assert!(pane.is_scrolled());
+
+    let sixel = "\u{1b}Pq\n#0;2;0;0;0\n#1;2;100;100;0\n#2;2;0;100;0\n\
+                 #1~~@@vv@@~~@@~~$\n#2??}}GG}}??}}??-\n#1!14@\n\u{1b}\\";
+    pane.handle_pty_bytes_for_test(format!("{sixel}\r\nX").into_bytes());
+    pane.clear_scroll();
+
+    let viewport = pane.grid.as_character_lines();
+    let contains_x = viewport
+        .iter()
+        .any(|row| row.iter().any(|cell| cell.character == 'X'));
+    assert!(
+        contains_x,
+        "output after a scrolled image landed in history instead of the live model"
+    );
+}
+
+#[test]
+fn image_input_revokes_a_park_created_by_an_earlier_text_quantum() {
+    let mut pane = terminal_pane_with_size(5, 20);
+    for _ in 0..30 {
+        pane.handle_pty_bytes_for_test(b"HHHHHHHHHHHHHHHHHHHH\r\n".to_vec());
+    }
+    pane.scroll_up(2, 1);
+    assert!(pane.grid.park_at_live_bottom());
+
+    pane.with_live_terminal(b"\x1b_Ga=t,f=24;AAAA\x1b\\", |pane| {
+        assert!(
+            !pane.grid.is_live_bottom_parked(),
+            "image input must leave the parked historical projection"
+        );
+        assert!(!pane.grid.is_scrolled);
+    });
+    assert!(
+        !pane.grid.is_live_bottom_parked(),
+        "the historical view must be restored without a live-model park"
+    );
+}
+
+#[test]
 pub fn sixel_image_inside_terminal_pane() {
     let mut fake_win_size = PaneGeom::default();
     fake_win_size.cols.set_inner(121);
@@ -102,7 +497,6 @@ pub fn sixel_image_inside_terminal_pane() {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -156,7 +550,6 @@ pub fn partial_sixel_image_inside_terminal_pane() {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -204,7 +597,6 @@ pub fn overflowing_sixel_image_inside_terminal_pane() {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -251,7 +643,6 @@ pub fn scrolling_through_a_sixel_image() {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -309,7 +700,6 @@ pub fn multiple_sixel_images_in_pane() {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -365,7 +755,6 @@ pub fn resizing_pane_with_sixel_images() {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -424,7 +813,6 @@ pub fn changing_character_cell_size_with_sixel_images() {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size.clone(),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -488,7 +876,6 @@ pub fn keep_working_after_corrupted_sixel_image() {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -550,7 +937,6 @@ pub fn pane_with_frame_position_is_on_frame() {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -648,7 +1034,6 @@ pub fn pane_with_bottom_and_right_borders_position_is_on_frame() {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -729,7 +1114,6 @@ fn make_terminal_pane_for_bell() -> TerminalPane {
         Style::default(),
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -979,7 +1363,6 @@ pub fn frameless_pane_position_is_on_frame() {
         style,
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -1060,7 +1443,6 @@ fn create_guest_modal_pane() -> TerminalPane {
         Style::default(),
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -1195,6 +1577,75 @@ pub fn guest_modal_no_modal_passes_input_through() {
     ));
 }
 
+#[test]
+pub fn clearing_enhanced_keyboard_mode_restores_a_raw_interrupt_byte() {
+    use crate::tab::AdjustedInput;
+    use zellij_utils::data::{BareKey, KeyWithModifier};
+
+    let mut pane = terminal_pane_with_size(24, 80);
+    let ctrl_c = KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier();
+
+    pane.handle_pty_bytes(b"\x1b[>1u".to_vec());
+    let outcome = pane.adjust_input_to_terminal(&Some(ctrl_c.clone()), vec![3], false, Some(1));
+    match outcome {
+        Some(AdjustedInput::WriteBytesToTerminal(bytes)) => {
+            assert_eq!(bytes, b"\x1b[99;5u");
+        },
+        _ => panic!("expected Ctrl-C to be serialized for the kitty keyboard protocol"),
+    }
+
+    // A valid remove-mode request must restore the raw byte too.
+    pane.handle_pty_bytes(b"\x1b[=1;3u".to_vec());
+    let outcome = pane.adjust_input_to_terminal(&Some(ctrl_c.clone()), vec![3], false, Some(1));
+    match outcome {
+        Some(AdjustedInput::WriteBytesToTerminal(bytes)) => {
+            assert_eq!(bytes, vec![3]);
+        },
+        _ => panic!("expected remove-mode to disable the kitty keyboard protocol"),
+    }
+
+    // A full reset clears both the active flags and the saved stack.
+    pane.handle_pty_bytes(b"\x1b[=1u".to_vec());
+    pane.handle_pty_bytes(b"\x1b[>1u".to_vec());
+    pane.handle_pty_bytes(b"\x1bc".to_vec());
+    let outcome = pane.adjust_input_to_terminal(&Some(ctrl_c), vec![3], false, Some(1));
+    match outcome {
+        Some(AdjustedInput::WriteBytesToTerminal(bytes)) => {
+            assert_eq!(bytes, vec![3]);
+        },
+        _ => panic!("expected Ctrl-C to reach the terminal as a raw interrupt byte"),
+    }
+}
+
+#[test]
+pub fn resetting_input_modes_stops_mouse_and_kitty_encoding() {
+    use crate::tab::AdjustedInput;
+    use zellij_utils::data::{BareKey, KeyWithModifier};
+
+    let mut pane = terminal_pane_with_size(24, 80);
+    let ctrl_c = KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier();
+
+    pane.handle_pty_bytes(b"\x1b[?1000h\x1b[>1u".to_vec());
+    assert!(pane.terminal_emulator_wants_mouse());
+    let outcome = pane.adjust_input_to_terminal(&Some(ctrl_c.clone()), vec![3], false, Some(1));
+    match outcome {
+        Some(AdjustedInput::WriteBytesToTerminal(bytes)) => {
+            assert_eq!(bytes, b"\x1b[99;5u");
+        },
+        _ => panic!("expected Ctrl-C to be serialized for the kitty keyboard protocol"),
+    }
+
+    assert!(pane.reset_input_modes());
+    assert!(!pane.terminal_emulator_wants_mouse());
+    let outcome = pane.adjust_input_to_terminal(&Some(ctrl_c), vec![3], false, Some(1));
+    match outcome {
+        Some(AdjustedInput::WriteBytesToTerminal(bytes)) => {
+            assert_eq!(bytes, vec![3]);
+        },
+        _ => panic!("expected Ctrl-C to reach the terminal as a raw interrupt byte"),
+    }
+}
+
 fn mirror_source_pane(cols: usize, rows: usize) -> TerminalPane {
     let mut geom = PaneGeom::default();
     geom.cols.set_inner(cols);
@@ -1205,7 +1656,6 @@ fn mirror_source_pane(cols: usize, rows: usize) -> TerminalPane {
         Style::default(),
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         Rc::new(RefCell::new(SixelImageStore::default())),
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -1302,6 +1752,24 @@ fn chunk_width(chunk: &crate::output::CharacterChunk) -> usize {
 
 fn pinned(cols: usize, rows: usize) -> Option<zellij_utils::pane_size::Size> {
     Some(zellij_utils::pane_size::Size { cols, rows })
+}
+
+#[test]
+pub fn a_collapsed_stack_program_size_keeps_pty_nonzero() {
+    let mut pane = mirror_source_pane(20, 1);
+    assert_eq!((pane.program_columns(), pane.program_rows()), (20, 1));
+    pane.set_collapsed_stack_program_size(Some(zellij_utils::pane_size::Size {
+        cols: 18,
+        rows: 12,
+    }));
+    assert_eq!((pane.program_columns(), pane.program_rows()), (18, 12));
+    assert_eq!(
+        (pane.get_content_columns(), pane.get_content_rows()),
+        (20, 1),
+        "visual content stays the one-liner title row"
+    );
+    pane.set_collapsed_stack_program_size(None);
+    assert_eq!((pane.program_columns(), pane.program_rows()), (20, 1));
 }
 
 #[test]
@@ -1431,7 +1899,6 @@ fn pane_for_split_test() -> TerminalPane {
         Style::default(),
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         Rc::new(RefCell::new(SixelImageStore::default())),
         Rc::new(RefCell::new(KittyImageStore::default())),
@@ -1467,4 +1934,119 @@ fn output_split_at_any_byte_renders_the_same_as_output_in_one_piece() {
             split
         );
     }
+}
+
+#[test]
+fn pane_frame_color_override_reports_change_only_on_real_delta() {
+    let mut pane = pane_for_split_test();
+    assert!(pane.add_red_pane_frame_color_override(Some("err".into())));
+    // the same request applied again is a no-op and must not render
+    assert!(!pane.add_red_pane_frame_color_override(Some("err".into())));
+    assert!(pane.add_highlight_pane_frame_color_override(Some("hi".into()), None));
+    assert!(!pane.add_highlight_pane_frame_color_override(Some("hi".into()), None));
+    assert!(pane.clear_pane_frame_color_override(None));
+    // clearing an already-clear pane is also a no-op
+    assert!(!pane.clear_pane_frame_color_override(None));
+}
+
+#[test]
+fn truncation_is_reported_on_the_title_and_not_as_terminal_bytes() {
+    let mut pane = pane_for_split_test();
+    pane.pane_name = "shell".to_owned();
+    pane.note_output_truncated();
+    pane.note_output_truncated();
+    let title = pane.current_title();
+    assert_eq!(title.matches(" [output cut off]").count(), 1, "{title}");
+    assert!(title.starts_with("shell"), "{title}");
+    pane.grid.set_history_truncated_for_test(true);
+    let title = pane.current_title();
+    assert!(title.contains(" [history cut off]"), "{title}");
+    assert_eq!(title.matches(" [output cut off]").count(), 1, "{title}");
+}
+
+#[test]
+fn discarding_a_pre_open_gap_drops_held_escape_and_kitty_apc_state() {
+    let mut pane = pane_for_split_test();
+    pane.handle_pty_bytes(b"prefix\x1b".to_vec());
+    pane.discard_unfinished_input();
+    pane.handle_pty_bytes(b"]0;TITLE\x07VISIBLE".to_vec());
+    assert_eq!(pane.grid.title, None);
+    assert!(
+        pane.grid.dump_screen(false).contains("]0;TITLE"),
+        "the held escape completed an OSC across the gap"
+    );
+
+    pane.handle_pty_bytes(b"\x1b_G".to_vec());
+    assert!(!pane.kitty_interceptor.is_ground());
+    pane.pending_pty_input = b"prefix-leftover".to_vec();
+    pane.pending_pty_offset = 6;
+    pane.discard_unfinished_input();
+    assert!(
+        pane.kitty_interceptor.is_ground(),
+        "an unfinished kitty APC survived the gap"
+    );
+    assert!(pane.pending_pty_input.is_empty());
+    assert_eq!(pane.pending_pty_offset, 0);
+}
+
+#[test]
+fn resetting_the_grid_cancels_output_catchup() {
+    let mut pane = pane_for_split_test();
+    pane.output_catchup = Some(super::OutputCatchup {
+        anchor: pane.grid.viewport_anchor(),
+        phase: super::CatchupPhase::Draining,
+        restore_in_turn: false,
+    });
+    pane.pending_pty_input = b"stale input".to_vec();
+    pane.pending_pty_offset = 3;
+    assert!(pane.has_deferred_pane_work());
+    pane.clear_screen();
+    assert!(pane.output_catchup.is_none());
+    assert!(pane.pending_pty_input.is_empty());
+    assert_eq!(pane.pending_pty_offset, 0);
+    assert!(!pane.has_deferred_pane_work());
+}
+
+#[test]
+fn an_idle_catchup_at_a_deep_scroll_settles_after_backlog_rejection() {
+    let mut pane = terminal_pane_with_size(3, 20);
+    for _ in 0..100 {
+        pane.handle_pty_bytes_for_test(b"history\r\n".to_vec());
+    }
+    pane.scroll_up(80, 1);
+    assert!(pane.is_scrolled());
+    pane.grid.lock_renders();
+    pane.output_catchup = Some(super::OutputCatchup {
+        anchor: pane.grid.viewport_anchor(),
+        phase: super::CatchupPhase::ToBottom,
+        restore_in_turn: false,
+    });
+
+    pane.reject_unparsed_input();
+    let mut steps = 0;
+    while pane.output_catchup.is_some() {
+        pane.advance_deferred_pane_work();
+        steps += 1;
+        assert!(steps < 1_000, "catch-up did not settle after backlog loss");
+    }
+    assert!(!pane.has_deferred_pane_work());
+}
+
+#[test]
+fn resetting_the_grid_drops_output_buffered_behind_a_forward_pause() {
+    let mut pane = pane_for_split_test();
+    pane.arm_forward_pause();
+    pane.handle_pty_bytes(b"stale output from the old run".to_vec());
+    assert!(pane.is_forward_paused());
+    assert!(pane.has_pending_pty_input());
+
+    pane.reset_grid_state();
+    assert!(!pane.is_forward_paused());
+    assert!(!pane.has_pending_pty_input());
+    assert_eq!(pane.pending_bytes_appended(), 0);
+
+    pane.handle_pty_bytes(b"fresh output".to_vec());
+    let screen = pane.grid.dump_screen(false);
+    assert!(screen.contains("fresh output"), "{screen}");
+    assert!(!screen.contains("stale output"), "{screen}");
 }

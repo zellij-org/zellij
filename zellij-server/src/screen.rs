@@ -44,6 +44,7 @@ mod attention;
 mod hidden_bars;
 mod live_view;
 mod mirror;
+mod pending_pane_events;
 mod popups;
 
 use log::{debug, warn};
@@ -87,6 +88,7 @@ use zellij_utils::{
 };
 
 use crate::background_jobs::BackgroundJob;
+use crate::diagnostics;
 use crate::notifications::NotificationProtocol;
 use crate::os_input_output::ResizeCache;
 use crate::pane_groups::PaneGroups;
@@ -109,14 +111,17 @@ use crate::{
         DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset, PromptCaller,
     },
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
-    pty_writer::PtyWriteInstruction,
+    pty_writer::{AdmittedWrite, PtyWriteInstruction},
     tab::{GuestChoiceIndicator, Pane, PaneLocation, PaneNotCreatedReason, SuppressedPanes, Tab},
     thread_bus::Bus,
     ui::loading_indication::LoadingIndication,
     ClientId, ServerInstruction,
 };
 use zellij_utils::{
-    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style},
+    data::{
+        Event, InputMode, ModeInfo, Palette, PaletteColor, PluginActivationContext,
+        PluginCapabilities, Style,
+    },
     errors::{ContextType, ScreenContext},
     input::get_mode_info,
     ipc::{ClientAttributes, PixelDimensions},
@@ -365,10 +370,122 @@ pub struct TabOverrideResult {
     pub plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClosePaneSource {
+    External,
+    ChildExit,
+}
+
+/// What an off-screen session-rename probe found. The screen thread rechecks
+/// this against its caches at commit; it is not a second unlocked preflight.
+#[derive(Debug)]
+pub struct SessionRenameDiscovery {
+    pub resurrectable_sessions: BTreeMap<String, Duration>,
+    pub running_session_exists: std::result::Result<bool, String>,
+}
+
+/// One rename request's discovery, applied later on the screen thread.
+#[derive(Debug)]
+pub struct SessionRenameCommit {
+    pub name: String,
+    pub client_id: ClientId,
+    pub discovery: SessionRenameDiscovery,
+    pub popup_on_error: bool,
+    pub completion: Option<NotificationEnd>,
+}
+
+struct SessionRenameDiscoveryJob {
+    name: String,
+    current_session_name: String,
+    client_id: ClientId,
+    discovery: SessionRenameDiscoveryHook,
+    popup_on_error: bool,
+    completion: Option<NotificationEnd>,
+}
+
+#[derive(Clone)]
+enum SessionRenameDiscoveryHook {
+    /// [`discover_session_rename_conflicts`], which calls the real session scan.
+    Production,
+    #[cfg(test)]
+    Override(Arc<dyn Fn(&str, &str) -> SessionRenameDiscovery + Send + Sync>),
+}
+
+impl SessionRenameDiscoveryHook {
+    fn discover(&self, current_session_name: &str, new_name: &str) -> SessionRenameDiscovery {
+        match self {
+            SessionRenameDiscoveryHook::Production => {
+                discover_session_rename_conflicts(current_session_name, new_name)
+            },
+            #[cfg(test)]
+            SessionRenameDiscoveryHook::Override(discover) => {
+                discover(current_session_name, new_name)
+            },
+        }
+    }
+}
+
+fn session_probe_error_text(error: &std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::TimedOut || error.get_ref().is_none() {
+        format!(
+            "A session using this name exists but could not be confirmed responsive: {}",
+            error
+        )
+    } else {
+        format!(
+            "Could not check whether a session by this name exists: {}",
+            error
+        )
+    }
+}
+
+/// Peer scan and `session_exists` for a rename. Both can block on an
+/// unresponsive socket, so the screen thread must not call this inline.
+fn discover_session_rename_conflicts(
+    current_session_name: &str,
+    new_name: &str,
+) -> SessionRenameDiscovery {
+    let (_, resurrectable_sessions) = crate::background_jobs::scan_session_list_default_dirs(
+        current_session_name,
+        &[],
+        &BTreeMap::new(),
+    );
+    let running_session_exists = match zellij_utils::sessions::session_exists(new_name) {
+        Ok(exists) => Ok(exists),
+        Err(error) => Err(session_probe_error_text(&error)),
+    };
+    SessionRenameDiscovery {
+        resurrectable_sessions,
+        running_session_exists,
+    }
+}
+
 /// Instructions that can be sent to the [`Screen`].
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ScreenInstruction {
     PtyBytes(u32, VteBytes),
+    /// PTY output that belongs to one run of the pane's process.
+    /// Bytes whose generation is not the pane's current run are dropped.
+    PtyRunBytes(u32, u64, VteBytes),
+    /// The pty thread is about to read a new process for this terminal.
+    /// Output and a deferred exit from the previous run no longer apply.
+    TerminalRunStarted(u32, u64),
+    /// The reader for this run has delivered every byte it will deliver.
+    /// A deferred child exit for the same generation may now close or hold.
+    PtyRunDrained(u32, u64),
+    /// The child exited. Applied only after `PtyRunDrained` for the same
+    /// generation, so the last bytes are parsed before the pane closes.
+    /// `hold_command` selects hold instead of close.
+    ChildRunExited {
+        pane_id: PaneId,
+        exit_status: Option<i32>,
+        run_generation: u64,
+        hold_command: Option<RunCommand>,
+    },
+    /// Parse one quantum of scrolled PTY backlog for each pane that has one,
+    /// then return so other panes' instructions can run. Re-queued while any
+    /// backlog remains.
+    ApplyScrolledPtyQuantum,
     PluginBytes(Vec<PluginRenderAsset>),
     Render,
     RenderToClients,
@@ -503,9 +620,14 @@ pub enum ScreenInstruction {
         Option<ClientId>,
         Option<NotificationEnd>,
         Option<i32>,
+        ClosePaneSource,
+        Option<u64>,
     ), // i32 -> optional exit
     // status
-    HoldPane(PaneId, Option<i32>, RunCommand),
+    HoldPane(PaneId, Option<i32>, RunCommand, Option<u64>),
+    /// The PTY thread has closed this terminal: no pane will be created for
+    /// it, and events that still arrive for it are dropped.
+    TerminalClosed(u32),
     UpdatePaneName(Vec<u8>, ClientId, Option<NotificationEnd>),
     UndoRenamePane(ClientId, Option<NotificationEnd>),
     NewTab(
@@ -541,6 +663,7 @@ pub enum ScreenInstruction {
         Option<NotificationEnd>,        // regular completion signal
         Option<(u32, NotificationEnd)>, // blocking_terminal (terminal_id, completion_tx)
     ),
+    LayoutSpawnFailed(usize),
     SwitchTabNext(ClientId, Option<NotificationEnd>),
     SwitchTabPrev(ClientId, Option<NotificationEnd>),
     ToggleActiveSyncTab(ClientId, Option<NotificationEnd>),
@@ -611,6 +734,7 @@ pub enum ScreenInstruction {
     ForwardHostQuery {
         pane_id: PaneId,
         query: crate::host_query::HostQuery,
+        run_generation: Option<u64>,
     },
     NestedSessionMessageFromPane {
         pane_id: PaneId,
@@ -725,6 +849,7 @@ pub enum ScreenInstruction {
     ),
     OverrideLayoutComplete(
         Vec<TabOverrideResult>, // results for each tab
+        Vec<(usize, String)>,   // tabs that failed before reaching the screen
         bool,                   // retain_existing_terminal_panes
         bool,                   // retain_existing_plugin_panes
         ClientId,
@@ -783,7 +908,11 @@ pub enum ScreenInstruction {
         Option<bool>, // should focus plugin
         Option<ClientId>,
         Option<NotificationEnd>, // completion signal
+        Option<u64>,             // activation load token; None when there is no context
     ),
+    /// Drop one pending LaunchOrFocus activation without emitting PluginActivated.
+    /// Used when the load fails or is cancelled before AddPlugin.
+    SettlePendingPluginActivation(u64),
     UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
     StartPluginLoadingIndication(u32, LoadingIndication, Option<ClientId>), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
@@ -843,8 +972,17 @@ pub enum ScreenInstruction {
         ClientTabIndexOrPaneId,
         Option<NotificationEnd>, // completion signal
     ),
-    SerializeLayoutForResurrection,
+    SerializeLayoutForResurrection(
+        /// Set by the periodic scheduler before queueing; cleared when
+        /// the screen thread actually runs the pass. Lets at most one
+        /// pending serialization exist so ticks cannot pile up behind a
+        /// stalled screen thread.
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ),
     RenameSession(String, ClientId, Option<NotificationEnd>), // String -> new name
+    /// Off-screen discovery for one [`ScreenInstruction::RenameSession`] finished.
+    /// The screen thread rechecks the conflict and commits.
+    CommitSessionRename(Box<SessionRenameCommit>),
     UpdateSessionNameDraft(Vec<u8>, ClientId, Option<NotificationEnd>),
     UndoRenameSession(ClientId, Option<NotificationEnd>),
     ListClientsMetadata(Option<PathBuf>, ClientId, Option<NotificationEnd>), // Option<PathBuf> - default shell
@@ -904,8 +1042,9 @@ pub enum ScreenInstruction {
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
     EditScrollbackForPaneWithId(PaneId, Option<NotificationEnd>),
-    WriteToPaneId(Vec<u8>, PaneId, Option<NotificationEnd>),
+    WriteToPaneId(Vec<u8>, PaneId, Option<ClientId>, Option<NotificationEnd>),
     Paste(Vec<u8>, Option<PaneId>, ClientId, Option<NotificationEnd>),
+    ResetPaneInputModes(Option<PaneId>, ClientId, Option<NotificationEnd>),
     SetPaneColor(
         PaneId,
         Option<String>,
@@ -917,18 +1056,19 @@ pub enum ScreenInstruction {
         Vec<u8>,
         bool, // is_kitty_keyboard_protocol
         PaneId,
+        Option<ClientId>,
         Option<NotificationEnd>,
     ),
     CopyTextToClipboard(String, u32), // String - text to copy, u32 - plugin_id
     MovePaneWithPaneId(PaneId),
     MovePaneWithPaneIdInDirection(PaneId, Direction),
     ClearScreenForPaneId(PaneId),
-    ScrollUpInPaneId(PaneId),
-    ScrollDownInPaneId(PaneId),
+    ScrollUpInPaneId(ClientId, PaneId),
+    ScrollDownInPaneId(ClientId, PaneId),
     ScrollToTopInPaneId(PaneId),
     ScrollToBottomInPaneId(PaneId),
-    PageScrollUpInPaneId(PaneId),
-    PageScrollDownInPaneId(PaneId),
+    PageScrollUpInPaneId(ClientId, PaneId),
+    PageScrollDownInPaneId(ClientId, PaneId),
     TogglePaneIdFullscreen(PaneId),
     SetMobileRenderPreferences {
         client_id: ClientId,
@@ -977,7 +1117,7 @@ pub enum ScreenInstruction {
     SetMouseSelectionSupport(PaneId, bool),
     SetPaneCollapsed(PaneId, bool),
     InterceptKeyPresses(PluginId, ClientId),
-    ClearKeyPressesIntercepts(ClientId),
+    ClearKeyPressesIntercepts(PluginId, ClientId), // only drops an intercept owned by the plugin
     TogglePaneIdInGroup(PaneId, ClientId, Option<NotificationEnd>),
     StartRenamePaneWithPaneId(PaneId, ClientId),
     StartRenameTabWithTabId(usize, ClientId),
@@ -1186,17 +1326,19 @@ pub enum ScreenInstruction {
     SetLiveViewReleaseKey(Option<String>),
     DesktopNotificationResponse(Vec<u8>, ClientId),
     UpdateBackgroundPluginSubscriptions(PluginId, ClientId, HashSet<EventType>),
+    /// Deliver the current ModeInfo snapshot to one plugin after it subscribes.
+    ReportModeInfoToPlugin(PluginId, ClientId),
     ClearHintTextCache,
     BroadcastModeUpdate(ModeInfo, Option<ClientId>), // ModeInfo, optional specific client_id (None = all clients)
     // Pane-targeting CLI variants
-    ScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
-    ScrollDownWithPaneId(PaneId, Option<NotificationEnd>),
+    ScrollUpWithPaneId(ClientId, PaneId, Option<NotificationEnd>),
+    ScrollDownWithPaneId(ClientId, PaneId, Option<NotificationEnd>),
     ScrollToTopWithPaneId(PaneId, Option<NotificationEnd>),
     ScrollToBottomWithPaneId(PaneId, Option<NotificationEnd>),
-    PageScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
-    PageScrollDownWithPaneId(PaneId, Option<NotificationEnd>),
-    HalfPageScrollUpWithPaneId(PaneId, Option<NotificationEnd>),
-    HalfPageScrollDownWithPaneId(PaneId, Option<NotificationEnd>),
+    PageScrollUpWithPaneId(ClientId, PaneId, Option<NotificationEnd>),
+    PageScrollDownWithPaneId(ClientId, PaneId, Option<NotificationEnd>),
+    HalfPageScrollUpWithPaneId(ClientId, PaneId, Option<NotificationEnd>),
+    HalfPageScrollDownWithPaneId(ClientId, PaneId, Option<NotificationEnd>),
     ResizeWithPaneId(PaneId, ResizeStrategy, Option<NotificationEnd>),
     MovePaneWithPaneIdCli(PaneId, Option<Direction>, Option<NotificationEnd>),
     MovePaneBackwardsWithPaneId(PaneId, Option<NotificationEnd>),
@@ -1249,10 +1391,166 @@ pub enum ScreenInstruction {
     SetAttentionConfig(zellij_utils::input::attention::AttentionConfig),
 }
 
+/// One process invocation of a terminal pane.
+struct TerminalRun {
+    generation: u64,
+    /// The reader has sent `PtyRunDrained` for this generation.
+    drained: bool,
+    /// Child exit waiting until the reader drains, so the last bytes are
+    /// parsed before the pane closes or holds.
+    deferred_exit: Option<ScreenInstruction>,
+}
+
+/// Record `generation` as the terminal's current run when nothing is recorded.
+/// Returns false when a different run is current: the caller drops the bytes.
+fn run_generation_accepts(
+    runs: &mut HashMap<u32, TerminalRun>,
+    terminal_id: u32,
+    generation: u64,
+) -> bool {
+    match runs.get(&terminal_id) {
+        Some(run) if run.generation != generation => {
+            if generation > run.generation {
+                // The new process can produce output before the screen sees
+                // its `TerminalRunStarted`; accept it as the current run.
+                runs.insert(
+                    terminal_id,
+                    TerminalRun {
+                        generation,
+                        drained: false,
+                        deferred_exit: None,
+                    },
+                );
+                true
+            } else {
+                false
+            }
+        },
+        Some(_) => true,
+        None => {
+            runs.insert(
+                terminal_id,
+                TerminalRun {
+                    generation,
+                    drained: false,
+                    deferred_exit: None,
+                },
+            );
+            true
+        },
+    }
+}
+
+/// Whether a lifecycle instruction for `generation` still applies. An
+/// unknown run is accepted: a child can exit before the screen has seen its
+/// `TerminalRunStarted`, and that exit still has to settle the pane.
+fn run_generation_matches(
+    runs: &HashMap<u32, TerminalRun>,
+    terminal_id: u32,
+    generation: u64,
+) -> bool {
+    runs.get(&terminal_id)
+        .is_none_or(|run| run.generation == generation)
+}
+
+/// Hold a child exit until its run has drained. Returns the instruction when
+/// it should be applied now.
+fn stage_child_exit(
+    runs: &mut HashMap<u32, TerminalRun>,
+    terminal_id: u32,
+    generation: u64,
+    instruction: ScreenInstruction,
+) -> Option<ScreenInstruction> {
+    match runs.get(&terminal_id).map(|run| run.generation) {
+        Some(current) if current != generation => {
+            if generation > current {
+                // A restarted process can exit before its `TerminalRunStarted`.
+                // Remember the exit for the generation that is about to start.
+                runs.insert(
+                    terminal_id,
+                    TerminalRun {
+                        generation,
+                        drained: false,
+                        deferred_exit: Some(instruction),
+                    },
+                );
+            }
+            None
+        },
+        Some(_) => {
+            let run = runs.get_mut(&terminal_id).expect("run exists");
+            if run.drained {
+                Some(instruction)
+            } else {
+                run.deferred_exit = Some(instruction);
+                None
+            }
+        },
+        None => {
+            runs.insert(
+                terminal_id,
+                TerminalRun {
+                    generation,
+                    drained: false,
+                    deferred_exit: Some(instruction),
+                },
+            );
+            None
+        },
+    }
+}
+
+/// Mark the run drained and take a deferred exit, if this generation is current.
+fn stage_run_drained(
+    runs: &mut HashMap<u32, TerminalRun>,
+    terminal_id: u32,
+    generation: u64,
+) -> Option<ScreenInstruction> {
+    let run = runs.get_mut(&terminal_id)?;
+    if run.generation != generation {
+        return None;
+    }
+    run.drained = true;
+    run.deferred_exit.take()
+}
+
+/// A new process replaces the previous run. A deferred exit of the previous
+/// run is dropped: it must not close the process that just started.
+fn stage_run_started(runs: &mut HashMap<u32, TerminalRun>, terminal_id: u32, generation: u64) {
+    if let Some(run) = runs.get(&terminal_id) {
+        // A late start for an older run must not replace a newer run that
+        // already produced bytes or exited.
+        if run.generation >= generation {
+            return;
+        }
+    }
+    runs.insert(
+        terminal_id,
+        TerminalRun {
+            generation,
+            drained: false,
+            deferred_exit: None,
+        },
+    );
+}
+
 impl From<&ScreenInstruction> for ScreenContext {
     fn from(screen_instruction: &ScreenInstruction) -> Self {
         match *screen_instruction {
-            ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyBytes,
+            ScreenInstruction::PtyBytes(..)
+            | ScreenInstruction::PtyRunBytes(..)
+            | ScreenInstruction::TerminalRunStarted(..)
+            | ScreenInstruction::PtyRunDrained(..) => ScreenContext::HandlePtyBytes,
+            ScreenInstruction::ChildRunExited {
+                ref hold_command, ..
+            } => {
+                if hold_command.is_some() {
+                    ScreenContext::HoldPane
+                } else {
+                    ScreenContext::ClosePane
+                }
+            },
+            ScreenInstruction::ApplyScrolledPtyQuantum => ScreenContext::ApplyScrolledPtyQuantum,
             ScreenInstruction::PluginBytes(..) => ScreenContext::PluginBytes,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::RenderToClients => ScreenContext::RenderToClients,
@@ -1365,10 +1663,13 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ShowPluginCursor(..) => ScreenContext::ShowPluginCursor,
             ScreenInstruction::ClosePane(..) => ScreenContext::ClosePane,
             ScreenInstruction::HoldPane(..) => ScreenContext::HoldPane,
+            ScreenInstruction::TerminalClosed(..) => ScreenContext::TerminalClosed,
             ScreenInstruction::UpdatePaneName(..) => ScreenContext::UpdatePaneName,
             ScreenInstruction::UndoRenamePane(..) => ScreenContext::UndoRenamePane,
             ScreenInstruction::NewTab(..) => ScreenContext::NewTab,
-            ScreenInstruction::ApplyLayout(..) => ScreenContext::ApplyLayout,
+            ScreenInstruction::ApplyLayout(..) | ScreenInstruction::LayoutSpawnFailed(..) => {
+                ScreenContext::ApplyLayout
+            },
             ScreenInstruction::SwitchTabNext(..) => ScreenContext::SwitchTabNext,
             ScreenInstruction::SwitchTabPrev(..) => ScreenContext::SwitchTabPrev,
             ScreenInstruction::CloseTab(..) => ScreenContext::CloseTab,
@@ -1485,6 +1786,9 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::StartOrReloadPluginPane
             },
             ScreenInstruction::AddPlugin(..) => ScreenContext::AddPlugin,
+            ScreenInstruction::SettlePendingPluginActivation(..) => {
+                ScreenContext::SettlePendingPluginActivation
+            },
             ScreenInstruction::UpdatePluginLoadingStage(..) => {
                 ScreenContext::UpdatePluginLoadingStage
             },
@@ -1515,10 +1819,12 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateSessionInfos(..) => ScreenContext::UpdateSessionInfos,
             ScreenInstruction::ReplacePane(..) => ScreenContext::ReplacePane,
             ScreenInstruction::NewInPlacePluginPane(..) => ScreenContext::NewInPlacePluginPane,
-            ScreenInstruction::SerializeLayoutForResurrection => {
+            ScreenInstruction::SerializeLayoutForResurrection(..) => {
                 ScreenContext::SerializeLayoutForResurrection
             },
-            ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
+            ScreenInstruction::RenameSession(..) | ScreenInstruction::CommitSessionRename(..) => {
+                ScreenContext::RenameSession
+            },
             ScreenInstruction::UpdateSessionNameDraft(..) => ScreenContext::UpdateSessionNameDraft,
             ScreenInstruction::UndoRenameSession(..) => ScreenContext::UndoRenameSession,
             ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
@@ -1533,6 +1839,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::WriteToPaneId(..) => ScreenContext::WriteToPaneId,
             ScreenInstruction::Paste(..) => ScreenContext::Paste,
+            ScreenInstruction::ResetPaneInputModes(..) => ScreenContext::ResetPaneInputModes,
             ScreenInstruction::SetPaneColor(..) => ScreenContext::SetPaneColor,
             ScreenInstruction::WriteKeyToPaneId(..) => ScreenContext::WriteKeyToPaneId,
             ScreenInstruction::CopyTextToClipboard(..) => ScreenContext::CopyTextToClipboard,
@@ -1697,6 +2004,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateBackgroundPluginSubscriptions(..) => {
                 ScreenContext::UpdateBackgroundPluginSubscriptions
             },
+            ScreenInstruction::ReportModeInfoToPlugin(..) => ScreenContext::ReportModeInfoToPlugin,
             ScreenInstruction::ClearHintTextCache => ScreenContext::ClearHintTextCache,
             ScreenInstruction::BroadcastModeUpdate(..) => ScreenContext::BroadcastModeUpdate,
             // Pane-targeting CLI variants
@@ -2058,6 +2366,8 @@ pub(crate) struct Screen {
     tabs: BTreeMap<usize, Tab>,
     last_single_pane_tab_names: HashMap<usize, Option<String>>,
     pixel_dimensions: PixelDimensions,
+    client_pixel_dimensions: HashMap<ClientId, PixelDimensions>,
+    pixel_dimension_provider: Option<ClientId>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
     stacked_pane_list: Rc<RefCell<bool>>,
@@ -2070,6 +2380,13 @@ pub(crate) struct Screen {
     client_kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
     structured_render_clients: Rc<RefCell<HashMap<ClientId, StructuredClientState>>>,
     render_waits_for_ack: bool,
+    render_lock_wake_due: Option<Instant>,
+    /// `ApplyScrolledPtyQuantum` is already sitting on the screen channel.
+    scrolled_pty_continuation_queued: bool,
+    /// The process run each terminal is reading. Output and a child exit from
+    /// any other generation are dropped. The exit is held until that run's
+    /// reader reports it has delivered every byte.
+    terminal_runs: HashMap<u32, TerminalRun>,
     clipboard_paste_clients: HashMap<ClientId, Option<String>>,
     pending_client_vte_instructions: HashMap<ClientId, Vec<String>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
@@ -2080,6 +2397,8 @@ pub(crate) struct Screen {
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_ids: BTreeMap<ClientId, usize>,
     client_sizes: HashMap<ClientId, Size>,
+    /// Geometry used for detached scripted work after the last client leaves.
+    last_client_size: Option<Size>,
     global_last_active_tab_id: usize,
     tab_history: BTreeMap<ClientId, Vec<usize>>,
     pane_history: BTreeMap<ClientId, Vec<PaneId>>,
@@ -2098,6 +2417,8 @@ pub(crate) struct Screen {
     rename_pane_targets: HashMap<ClientId, PaneId>,
     rename_tab_targets: HashMap<ClientId, usize>,
     session_rename_drafts: HashMap<ClientId, String>,
+    session_rename_discovery: SessionRenameDiscoveryHook,
+    session_rename_worker: Option<std::sync::mpsc::SyncSender<SessionRenameDiscoveryJob>>,
     style: Style,
     pane_frame_style: PaneFrameStyle,
     auto_layout: bool,
@@ -2153,6 +2474,10 @@ pub(crate) struct Screen {
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
+    /// Activation context captured at LaunchOrFocusPlugin admission, keyed by the
+    /// load token that travels with that load until AddPlugin or settlement.
+    pending_plugin_activations: HashMap<u64, PluginActivationContext>,
+    next_plugin_activation_token: u64,
     last_reported_plugin_tab_indices: HashMap<PluginId, usize>,
     pub(crate) pending_session_card: Option<ClientId>,
     pub(crate) terminal_command_submitted: bool,
@@ -2166,6 +2491,10 @@ pub(crate) struct Screen {
     last_reported_client_visible_plugins: HashMap<ClientId, HashSet<PluginId>>,
     pending_selectable_panes: HashMap<PaneId, bool>,
     state_report_target: Option<(PluginId, ClientId)>,
+    /// A pane title changed since the last pane-state report. Reports are
+    /// coalesced to one per render so programs that alternate their title on
+    /// every output chunk cannot force a full pane-manifest build per chunk.
+    pane_state_report_pending: bool,
     next_forward_token: u32,
     pending_forwarded_queries: HashMap<u32, PendingForwardEntry>,
     forward_queue: VecDeque<PendingForward>,
@@ -2208,6 +2537,11 @@ pub(crate) struct Screen {
     last_mobile_state_sent: HashMap<ClientId, MobileStatePayload>,
     pane_output_activity: HashMap<PaneId, Instant>,
     pane_ids_never_created: BTreeSet<PaneId>,
+    /// Recently closed terminals without a pane, whose late output and
+    /// exit events must not be buffered for a pane that will never exist.
+    closed_terminal_ids: HashSet<u32>,
+    /// `closed_terminal_ids` in the order they were closed, oldest first.
+    closed_terminal_order: VecDeque<u32>,
     pane_not_created_reasons: HashMap<PaneId, PaneNotCreatedReason>,
     mobile_web_prefs: HashMap<ClientId, MobileWebPrefs>,
     client_host_focused: HashMap<ClientId, bool>,
@@ -2253,6 +2587,7 @@ struct PendingForward {
     token: u32,
     pane_id: PaneId,
     query: crate::host_query::HostQuery,
+    run_generation: Option<u64>,
 }
 
 /// A forward currently in flight (dispatched to the client, waiting
@@ -2264,6 +2599,7 @@ struct PendingForward {
 struct PendingForwardEntry {
     pane_id: PaneId,
     query: crate::host_query::HostQuery,
+    run_generation: Option<u64>,
 }
 
 /// Reserved sentinel token for Zellij's own startup batch of host
@@ -2290,6 +2626,23 @@ const STARTUP_SENTINEL_TOKEN: u32 = 0;
 /// client always replies first; only the old-client and
 /// network-pathological cases ever see this fire.
 const SERVER_FORWARD_TIMEOUT_MS: u64 = 1000;
+
+/// Focus-history depth retained per client. Ordered oldest→newest;
+/// entries beyond the cap evict the oldest.
+const MAX_PANE_HISTORY_ENTRIES: usize = 64;
+
+/// Tab focus-history depth retained per client, same recency
+/// semantics as `MAX_PANE_HISTORY_ENTRIES`.
+const MAX_TAB_HISTORY_ENTRIES: usize = 64;
+
+/// Only recent tab focus is meaningful; without a bound, repeated tab
+/// switching grows the history for the session's lifetime.
+fn cap_tab_history(history: &mut Vec<usize>) {
+    if history.len() > MAX_TAB_HISTORY_ENTRIES {
+        let overflow = history.len() - MAX_TAB_HISTORY_ENTRIES;
+        history.drain(..overflow);
+    }
+}
 
 const SERVER_CLIPBOARD_FORWARD_TIMEOUT_MS: u64 = 35_000;
 
@@ -2380,6 +2733,75 @@ mod typed_input_tests {
     }
 }
 
+#[cfg(test)]
+mod run_fence_tests {
+    use super::*;
+
+    fn child_close(terminal_id: u32) -> ScreenInstruction {
+        ScreenInstruction::ClosePane(
+            PaneId::Terminal(terminal_id),
+            None,
+            None,
+            Some(0),
+            ClosePaneSource::ChildExit,
+            Some(1),
+        )
+    }
+
+    #[test]
+    fn a_child_exit_waits_for_the_reader_to_drain() {
+        let mut runs = HashMap::new();
+        let held = stage_child_exit(&mut runs, 4, 1, child_close(4));
+        assert!(held.is_none());
+        assert!(stage_run_drained(&mut runs, 4, 1).is_some());
+    }
+
+    #[test]
+    fn an_exit_after_drain_is_applied_immediately() {
+        let mut runs = HashMap::new();
+        assert!(stage_run_drained(&mut runs, 4, 1).is_none());
+        // Drain of an unknown run does not invent one. The exit records it
+        // and, because nothing is drained yet, waits.
+        runs.insert(
+            4,
+            TerminalRun {
+                generation: 1,
+                drained: true,
+                deferred_exit: None,
+            },
+        );
+        assert!(stage_child_exit(&mut runs, 4, 1, child_close(4)).is_some());
+    }
+
+    #[test]
+    fn a_new_run_drops_the_previous_runs_exit_and_bytes() {
+        let mut runs = HashMap::new();
+        assert!(stage_child_exit(&mut runs, 4, 1, child_close(4)).is_none());
+        stage_run_started(&mut runs, 4, 2);
+        assert!(stage_run_drained(&mut runs, 4, 1).is_none());
+        assert!(stage_child_exit(&mut runs, 4, 1, child_close(4)).is_none());
+        assert!(!run_generation_accepts(&mut runs, 4, 1));
+        assert!(run_generation_accepts(&mut runs, 4, 2));
+    }
+
+    #[test]
+    fn announcing_the_same_run_again_keeps_a_waiting_exit() {
+        let mut runs = HashMap::new();
+        assert!(stage_child_exit(&mut runs, 4, 2, child_close(4)).is_none());
+        stage_run_started(&mut runs, 4, 2);
+        assert!(stage_run_drained(&mut runs, 4, 2).is_some());
+    }
+
+    #[test]
+    fn a_settlement_for_a_replaced_run_no_longer_matches() {
+        let mut runs = HashMap::new();
+        assert!(run_generation_matches(&runs, 4, 1));
+        stage_run_started(&mut runs, 4, 2);
+        assert!(!run_generation_matches(&runs, 4, 1));
+        assert!(run_generation_matches(&runs, 4, 2));
+    }
+}
+
 impl Screen {
     /// Creates and returns a new [`Screen`].
     pub fn new(
@@ -2435,6 +2857,8 @@ impl Screen {
             bus,
             max_panes,
             pixel_dimensions: Default::default(),
+            client_pixel_dimensions: HashMap::new(),
+            pixel_dimension_provider: None,
             character_cell_size: Rc::new(RefCell::new(None)),
             stacked_resize: Rc::new(RefCell::new(stacked_resize)),
             stacked_pane_list: Rc::new(RefCell::new(stacked_pane_list)),
@@ -2447,6 +2871,9 @@ impl Screen {
             client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
             structured_render_clients: Rc::new(RefCell::new(HashMap::new())),
             render_waits_for_ack: false,
+            render_lock_wake_due: None,
+            scrolled_pty_continuation_queued: false,
+            terminal_runs: HashMap::new(),
             clipboard_paste_clients: HashMap::new(),
             pending_client_vte_instructions: HashMap::new(),
             style: client_attributes.style,
@@ -2455,6 +2882,7 @@ impl Screen {
             recently_disconnected_clients: VecDeque::new(),
             active_tab_ids: BTreeMap::new(),
             client_sizes: HashMap::new(),
+            last_client_size: None,
             global_last_active_tab_id: 0,
             tabs: BTreeMap::new(),
             last_single_pane_tab_names: HashMap::new(),
@@ -2478,6 +2906,8 @@ impl Screen {
             rename_pane_targets: HashMap::new(),
             rename_tab_targets: HashMap::new(),
             session_rename_drafts: HashMap::new(),
+            session_rename_discovery: SessionRenameDiscoveryHook::Production,
+            session_rename_worker: None,
             default_mode_info: mode_info,
             pane_frame_style,
             auto_layout,
@@ -2529,6 +2959,8 @@ impl Screen {
             mirror_connector: Arc::new(zellij_utils::pane_mirror::LocalSocketConnector),
             live_views: Default::default(),
             background_plugin_subscriptions: HashMap::new(),
+            pending_plugin_activations: HashMap::new(),
+            next_plugin_activation_token: 0,
             last_reported_plugin_tab_indices: HashMap::new(),
             pending_session_card: None,
             terminal_command_submitted: false,
@@ -2542,6 +2974,7 @@ impl Screen {
             last_reported_client_visible_plugins: HashMap::new(),
             pending_selectable_panes: HashMap::new(),
             state_report_target: None,
+            pane_state_report_pending: false,
             next_forward_token: 1, // 0 is reserved as the startup sentinel
             pending_forwarded_queries: HashMap::new(),
             forward_queue: VecDeque::new(),
@@ -2584,6 +3017,8 @@ impl Screen {
             last_mobile_state_sent: HashMap::new(),
             pane_output_activity: HashMap::new(),
             pane_ids_never_created: BTreeSet::new(),
+            closed_terminal_ids: HashSet::new(),
+            closed_terminal_order: VecDeque::new(),
             pane_not_created_reasons: HashMap::new(),
             mobile_web_prefs: HashMap::new(),
             client_host_focused: HashMap::new(),
@@ -2814,6 +3249,7 @@ impl Screen {
                 let client_tab_history = self.tab_history.entry(client_id).or_insert_with(Vec::new);
                 client_tab_history.retain(|&e| e != new_tab_index);
                 client_tab_history.push(old_active_index);
+                cap_tab_history(client_tab_history);
             },
             None => {
                 self.active_tab_ids.insert(client_id, new_tab_index);
@@ -3132,6 +3568,7 @@ impl Screen {
     }
 
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
+        self.last_client_size = Some(size);
         self.client_sizes.insert(client_id, size);
     }
 
@@ -3143,7 +3580,8 @@ impl Screen {
                     .and_then(|client_id| self.client_sizes.get(&client_id).copied())
             })
             .or_else(|| self.client_sizes.values().next().copied())
-            .unwrap_or_default()
+            .or(self.last_client_size)
+            .unwrap_or(Size { rows: 24, cols: 80 })
     }
 
     fn size_of_tab_of_client(&self, client_id: ClientId) -> Size {
@@ -3469,29 +3907,86 @@ impl Screen {
         }
     }
 
-    pub fn update_pixel_dimensions(
-        &mut self,
-        client_id: ClientId,
-        pixel_dimensions: PixelDimensions,
-    ) -> bool {
-        let previous_character_cell_size = *self.character_cell_size.borrow();
-        self.pixel_dimensions.merge(pixel_dimensions);
-        if let Some(character_cell_size) = self.pixel_dimensions.character_cell_size {
-            *self.character_cell_size.borrow_mut() = Some(character_cell_size);
-        } else if let Some(text_area_size) = self.pixel_dimensions.text_area_size {
-            let Some(client_size) = self.client_sizes.get(&client_id).copied() else {
-                return false;
-            };
+    fn usable_pixel_size(size: Option<SizeInPixels>) -> Option<SizeInPixels> {
+        size.filter(|size| size.width > 0 && size.height > 0)
+    }
+    fn resolved_pixel_dimensions_for_client(&self, client_id: ClientId) -> Option<PixelDimensions> {
+        let reported = *self.client_pixel_dimensions.get(&client_id)?;
+        let text_area_size = Self::usable_pixel_size(reported.text_area_size);
+        let character_cell_size = if let Some(character_cell_size) =
+            Self::usable_pixel_size(reported.character_cell_size)
+        {
+            Some(character_cell_size)
+        } else {
+            let text_area_size = text_area_size?;
+            let client_size = self.client_sizes.get(&client_id).copied()?;
             if client_size.rows == 0 || client_size.cols == 0 {
-                return false;
+                return None;
             }
-            let character_cell_size = SizeInPixels {
+            Self::usable_pixel_size(Some(SizeInPixels {
                 height: text_area_size.height / client_size.rows,
                 width: text_area_size.width / client_size.cols,
-            };
+            }))
+        }?;
+        Some(PixelDimensions {
+            text_area_size,
+            character_cell_size: Some(character_cell_size),
+        })
+    }
+    /// Use one client's complete metrics as the provider rather than merging
+    /// fields from clients that may have different font sizes. Prefer the
+    /// client that just reported usable metrics, then keep the current
+    /// provider, then fall back to any other usable client.
+    fn select_pixel_dimension_provider(&mut self, preferred: Option<ClientId>) -> bool {
+        let previous_character_cell_size = *self.character_cell_size.borrow();
+        let selected_client = preferred
+            .filter(|client_id| {
+                self.resolved_pixel_dimensions_for_client(*client_id)
+                    .is_some()
+            })
+            .or_else(|| {
+                self.pixel_dimension_provider.filter(|client_id| {
+                    self.resolved_pixel_dimensions_for_client(*client_id)
+                        .is_some()
+                })
+            })
+            .or_else(|| {
+                self.client_pixel_dimensions
+                    .keys()
+                    .copied()
+                    .find(|client_id| {
+                        self.resolved_pixel_dimensions_for_client(*client_id)
+                            .is_some()
+                    })
+            });
+        if let Some(client_id) = selected_client {
+            if let Some(pixel_dimensions) = self.resolved_pixel_dimensions_for_client(client_id) {
+                self.pixel_dimensions = pixel_dimensions;
+            }
+        }
+        self.pixel_dimension_provider = selected_client;
+        if let Some(character_cell_size) = self.pixel_dimensions.character_cell_size {
             *self.character_cell_size.borrow_mut() = Some(character_cell_size);
         }
         *self.character_cell_size.borrow() != previous_character_cell_size
+    }
+    pub fn update_pixel_dimensions(
+        &mut self,
+        client_id: ClientId,
+        mut pixel_dimensions: PixelDimensions,
+    ) -> bool {
+        pixel_dimensions.character_cell_size =
+            Self::usable_pixel_size(pixel_dimensions.character_cell_size);
+        pixel_dimensions.text_area_size = Self::usable_pixel_size(pixel_dimensions.text_area_size);
+        let reported_usable_metrics = pixel_dimensions.character_cell_size.is_some()
+            || pixel_dimensions.text_area_size.is_some();
+        if let Some(existing) = self.client_pixel_dimensions.get_mut(&client_id) {
+            existing.merge(pixel_dimensions);
+        } else {
+            self.client_pixel_dimensions
+                .insert(client_id, pixel_dimensions);
+        }
+        self.select_pixel_dimension_provider(reported_usable_metrics.then_some(client_id))
     }
 
     pub fn resize_pty_all_panes(&mut self) -> Result<()> {
@@ -3797,7 +4292,33 @@ impl Screen {
         if std::mem::take(&mut self.render_waits_for_ack) {
             self.render_to_clients()?;
         }
+        self.schedule_render_lock_wake();
         Ok(())
+    }
+
+    fn schedule_render_lock_wake(&mut self) {
+        let now = Instant::now();
+        if self.render_lock_wake_due.is_some_and(|due| due <= now) {
+            self.render_lock_wake_due = None;
+        }
+        let Some(deadline) = self
+            .tabs
+            .values()
+            .filter_map(|tab| tab.next_render_lock_deadline())
+            .min()
+        else {
+            return;
+        };
+        if self.render_lock_wake_due.is_some_and(|due| due <= deadline) {
+            return;
+        }
+        self.render_lock_wake_due = Some(deadline);
+        let senders = self.bus.senders.clone();
+        let delay = deadline.saturating_duration_since(now) + Duration::from_millis(1);
+        crate::global_async_runtime::get_tokio_runtime().spawn(async move {
+            tokio::time::sleep(delay).await;
+            let _ = senders.send_to_screen(ScreenInstruction::RenderToClients);
+        });
     }
 
     fn every_client_awaits_a_frame_ack(&self) -> bool {
@@ -3917,10 +4438,19 @@ impl Screen {
     /// Queries are serialized globally: at most one is in flight to the
     /// client at a time; the rest wait in `forward_queue`. Returns the
     /// allocated token so callers (tests) can observe it if useful.
+    #[cfg(test)]
     pub fn forward_host_query(
         &mut self,
         pane_id: PaneId,
         query: crate::host_query::HostQuery,
+    ) -> u32 {
+        self.forward_host_query_with_generation(pane_id, query, None)
+    }
+    pub fn forward_host_query_with_generation(
+        &mut self,
+        pane_id: PaneId,
+        query: crate::host_query::HostQuery,
+        run_generation: Option<u64>,
     ) -> u32 {
         // ColorPaletteMode is answered locally — Zellij already knows
         // the host's mode from its own startup query and from
@@ -3928,15 +4458,28 @@ impl Screen {
         // machinery (no token, no in-flight slot, no host round-trip)
         // and write the reply straight to the originating pane's pty.
         if let crate::host_query::HostQuery::ColorPaletteMode = query {
-            self.answer_color_palette_mode_query_locally(pane_id);
+            self.answer_color_palette_mode_query_locally(pane_id, run_generation);
             return STARTUP_SENTINEL_TOKEN; // sentinel: no real forward happened
+        }
+        if query.is_noop() {
+            // Nothing to ask and nothing to wait for. Treat it as a local
+            // no-op rather than pausing the pane until the forward timeout.
+            let _ = self.resume_pane_after_forward(pane_id, Vec::new(), run_generation);
+            return STARTUP_SENTINEL_TOKEN;
         }
         if let crate::host_query::HostQuery::ClipboardContent { .. } = query {
             if !self.paste_buffer_read_enabled {
-                let _ = self.resume_pane_after_forward(pane_id, Vec::new());
+                let _ = self.resume_pane_after_forward(pane_id, Vec::new(), run_generation);
                 return STARTUP_SENTINEL_TOKEN;
             }
-            return self.enqueue_clipboard_forward(pane_id, query);
+            return self.enqueue_clipboard_forward(pane_id, query, run_generation);
+        }
+        if self.merge_queued_round_trip(pane_id, &query, run_generation) {
+            return self
+                .forward_queue
+                .back()
+                .map(|pending| pending.token)
+                .unwrap_or(STARTUP_SENTINEL_TOKEN);
         }
         let token = self.next_forward_token;
         // Skip over the reserved sentinel (0) on wrap; allocate a fresh
@@ -3950,9 +4493,70 @@ impl Screen {
                 token,
                 pane_id,
                 query,
+                run_generation,
             });
         } else {
-            self.dispatch_forward(token, pane_id, query);
+            self.dispatch_forward(token, pane_id, query, run_generation);
+        }
+        token
+    }
+
+    /// Fold a query into the tail of `forward_queue` when that tail is already
+    /// a same-pane query that can share its Primary-DA barrier.
+    ///
+    /// An in-flight query is left alone: its bytes are already on the wire.
+    /// A burst that arrives as separate instructions therefore becomes one
+    /// queued dispatch after the in-flight one, not one round trip per query.
+    fn merge_queued_round_trip(
+        &mut self,
+        pane_id: PaneId,
+        query: &crate::host_query::HostQuery,
+        run_generation: Option<u64>,
+    ) -> bool {
+        use crate::host_query::HostQuery;
+        if !query.shares_da_barrier() {
+            return false;
+        }
+        let Some(back) = self.forward_queue.back_mut() else {
+            return false;
+        };
+        if back.pane_id != pane_id
+            || back.run_generation != run_generation
+            || !back.query.shares_da_barrier()
+        {
+            return false;
+        }
+        let mut incoming = match query.clone() {
+            HostQuery::RoundTrip(parts) => parts,
+            other => vec![other],
+        };
+        let existing = std::mem::replace(&mut back.query, HostQuery::ColorPaletteMode);
+        back.query = HostQuery::RoundTrip(match existing {
+            HostQuery::RoundTrip(mut parts) => {
+                parts.append(&mut incoming);
+                parts
+            },
+            other => {
+                let mut parts = vec![other];
+                parts.append(&mut incoming);
+                parts
+            },
+        });
+        true
+    }
+
+    /// Register a query the pane has just been paused on. Output may have
+    /// piled up behind it while the instruction was queued, or while the
+    /// pane was being created, so the buffer limit is checked again.
+    pub fn handle_forward_host_query(
+        &mut self,
+        pane_id: PaneId,
+        query: crate::host_query::HostQuery,
+        run_generation: Option<u64>,
+    ) -> u32 {
+        let token = self.forward_host_query_with_generation(pane_id, query, run_generation);
+        if let PaneId::Terminal(pid) = pane_id {
+            self.enforce_forward_buffer_limit(pid);
         }
         token
     }
@@ -3961,6 +4565,7 @@ impl Screen {
         &mut self,
         pane_id: PaneId,
         query: crate::host_query::HostQuery,
+        run_generation: Option<u64>,
     ) -> u32 {
         let token = self.next_forward_token;
         self.next_forward_token = self.next_forward_token.wrapping_add(1);
@@ -3972,9 +4577,10 @@ impl Screen {
                 token,
                 pane_id,
                 query,
+                run_generation,
             });
         } else {
-            self.dispatch_clipboard_forward(token, pane_id, query);
+            self.dispatch_clipboard_forward(token, pane_id, query, run_generation);
         }
         token
     }
@@ -3984,10 +4590,17 @@ impl Screen {
         token: u32,
         pane_id: PaneId,
         query: crate::host_query::HostQuery,
+        run_generation: Option<u64>,
     ) {
         let query_bytes = query.to_query_bytes();
-        self.pending_clipboard_forwards
-            .insert(token, PendingForwardEntry { pane_id, query });
+        self.pending_clipboard_forwards.insert(
+            token,
+            PendingForwardEntry {
+                pane_id,
+                query,
+                run_generation,
+            },
+        );
         self.clipboard_forward_in_flight_token = Some(token);
         let _ = self
             .bus
@@ -4011,32 +4624,45 @@ impl Screen {
     }
 
     fn handle_clipboard_reply(&mut self, token: u32, reply_bytes: Vec<u8>) -> Result<()> {
-        if let Some(PendingForwardEntry { pane_id, query }) =
-            self.pending_clipboard_forwards.remove(&token)
+        let mut resume_result = Ok(());
+        if let Some(PendingForwardEntry {
+            pane_id,
+            query,
+            run_generation,
+        }) = self.pending_clipboard_forwards.remove(&token)
         {
             let payload = if reply_bytes.is_empty() {
                 query.empty_reply_bytes()
             } else {
                 reply_bytes
             };
-            self.resume_pane_after_forward(pane_id, payload)?;
+            resume_result = self.resume_pane_after_forward(pane_id, payload, run_generation);
         }
         self.clipboard_forward_in_flight_token = None;
         while let Some(next) = self.clipboard_forward_queue.pop_front() {
             if !self.pane_exists(&next.pane_id) {
                 continue;
             }
-            self.dispatch_clipboard_forward(next.token, next.pane_id, next.query);
+            self.dispatch_clipboard_forward(
+                next.token,
+                next.pane_id,
+                next.query,
+                next.run_generation,
+            );
             break;
         }
-        Ok(())
+        resume_result
     }
 
     fn pane_exists(&self, pane_id: &PaneId) -> bool {
         self.tabs.values().any(|tab| tab.has_pane_with_pid(pane_id))
     }
 
-    fn answer_color_palette_mode_query_locally(&mut self, pane_id: PaneId) {
+    fn answer_color_palette_mode_query_locally(
+        &mut self,
+        pane_id: PaneId,
+        run_generation: Option<u64>,
+    ) {
         if matches!(pane_id, PaneId::Plugin(_)) {
             return;
         }
@@ -4048,7 +4674,7 @@ impl Screen {
         // Route via Tab so the reply lands on the pane in the correct
         // stream position and any PTY input the app emitted while
         // waiting is replayed.
-        let _ = self.resume_pane_after_forward(pane_id, reply);
+        let _ = self.resume_pane_after_forward(pane_id, reply, run_generation);
     }
 
     fn effective_host_terminal_theme_mode(&self) -> HostTerminalThemeMode {
@@ -4071,10 +4697,17 @@ impl Screen {
         token: u32,
         pane_id: PaneId,
         query: crate::host_query::HostQuery,
+        run_generation: Option<u64>,
     ) {
         let query_bytes = query.to_query_bytes();
-        self.pending_forwarded_queries
-            .insert(token, PendingForwardEntry { pane_id, query });
+        self.pending_forwarded_queries.insert(
+            token,
+            PendingForwardEntry {
+                pane_id,
+                query,
+                run_generation,
+            },
+        );
         self.forward_in_flight_token = Some(token);
         let _ = self
             .bus
@@ -4111,6 +4744,15 @@ impl Screen {
         token: u32,
         reply_bytes: Vec<u8>,
     ) -> Result<()> {
+        self.handle_forwarded_reply_from_host_with(token, reply_bytes, true)
+    }
+
+    fn handle_forwarded_reply_from_host_with(
+        &mut self,
+        token: u32,
+        reply_bytes: Vec<u8>,
+        deliver: bool,
+    ) -> Result<()> {
         if self.clipboard_forward_in_flight_token == Some(token) {
             return self.handle_clipboard_reply(token, reply_bytes);
         }
@@ -4139,19 +4781,27 @@ impl Screen {
             );
             return Ok(());
         }
+        let mut resume_result = Ok(());
         if let Some(entry) = self.pending_forwarded_queries.remove(&token) {
-            let PendingForwardEntry { pane_id, query } = entry;
+            let PendingForwardEntry {
+                pane_id,
+                query,
+                run_generation,
+            } = entry;
             match pane_id {
                 PaneId::Terminal(_) => {
-                    let payload = if reply_bytes.is_empty() {
-                        self.synthesize_cached_reply(&query)
-                    } else {
-                        reply_bytes
-                    };
-                    // Route via Tab so the reply lands on the pane in
-                    // the correct stream position and any PTY input
-                    // the app emitted while waiting is replayed.
-                    self.resume_pane_after_forward(pane_id, payload)?;
+                    if deliver {
+                        let payload = if reply_bytes.is_empty() {
+                            self.synthesize_cached_reply(&query)
+                        } else {
+                            reply_bytes
+                        };
+                        // Route via Tab so the reply lands on the pane in
+                        // the correct stream position and any PTY input
+                        // the app emitted while waiting is replayed.
+                        resume_result =
+                            self.resume_pane_after_forward(pane_id, payload, run_generation);
+                    }
                 },
                 PaneId::Plugin(_) => {
                     // Plugin panes do not issue whitelisted host queries;
@@ -4167,9 +4817,171 @@ impl Screen {
         // Release the slot and dispatch the next queued forward, if any.
         self.forward_in_flight_token = None;
         if let Some(next) = self.forward_queue.pop_front() {
-            self.dispatch_forward(next.token, next.pane_id, next.query);
+            self.dispatch_forward(next.token, next.pane_id, next.query, next.run_generation);
         }
-        Ok(())
+        resume_result
+    }
+
+    /// Stop waiting for the host to answer the query `pane_id` is paused
+    /// on, exactly as if the server-side timeout had fired: the pane gets
+    /// the cache-synthesized (or empty) reply and processes the output it
+    /// buffered meanwhile. A reply that arrives later is dropped as stale
+    /// by the token guard. Returns `false` if no forward for the pane is
+    /// registered yet (its `ForwardHostQuery` is still in the queue).
+    pub fn stop_waiting_for_forward_reply(&mut self, pane_id: PaneId) -> Result<bool> {
+        self.stop_waiting_for_forward_reply_with(pane_id, true)
+    }
+
+    fn stop_waiting_for_forward_reply_with(
+        &mut self,
+        pane_id: PaneId,
+        deliver: bool,
+    ) -> Result<bool> {
+        let in_flight_token = self
+            .forward_in_flight_token
+            .into_iter()
+            .chain(self.clipboard_forward_in_flight_token)
+            .find(|token| {
+                [
+                    &self.pending_forwarded_queries,
+                    &self.pending_clipboard_forwards,
+                ]
+                .iter()
+                .any(|entries| entries.get(token).map(|e| e.pane_id) == Some(pane_id))
+            });
+        if let Some(token) = in_flight_token {
+            if self.clipboard_forward_in_flight_token == Some(token) {
+                // The client still has its window open for this query and
+                // would attribute the host's late answer to whichever
+                // clipboard query it opens next. Resume the pane but keep
+                // the slot until the client's reply or timeout for this
+                // token arrives; that reply then finds no entry and is
+                // dropped, and only then does the next query dispatch.
+                if let Some(entry) = self.pending_clipboard_forwards.remove(&token) {
+                    if deliver {
+                        self.resume_pane_after_forward(
+                            pane_id,
+                            entry.query.empty_reply_bytes(),
+                            entry.run_generation,
+                        )?;
+                    }
+                    return Ok(true);
+                }
+            }
+            self.handle_forwarded_reply_from_host_with(token, Vec::new(), deliver)?;
+            return Ok(true);
+        }
+        // The forward may still be queued behind another pane's.
+        if let Some(index) = self.forward_queue.iter().position(|f| f.pane_id == pane_id) {
+            if let Some(queued) = self.forward_queue.remove(index) {
+                if deliver {
+                    let payload = self.synthesize_cached_reply(&queued.query);
+                    self.resume_pane_after_forward(pane_id, payload, queued.run_generation)?;
+                }
+                return Ok(true);
+            }
+        }
+        if let Some(index) = self
+            .clipboard_forward_queue
+            .iter()
+            .position(|f| f.pane_id == pane_id)
+        {
+            if let Some(queued) = self.clipboard_forward_queue.remove(index) {
+                if deliver {
+                    self.resume_pane_after_forward(
+                        pane_id,
+                        queued.query.empty_reply_bytes(),
+                        queued.run_generation,
+                    )?;
+                }
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Settle any queued or in-flight host query for `pane_id` so a
+    /// replaced, closed, or reset pane cannot hold the global forward
+    /// slot until an unrelated reply or timeout arrives.
+    fn cancel_forward_for_pane(&mut self, pane_id: PaneId) {
+        loop {
+            match self.stop_waiting_for_forward_reply_with(pane_id, false) {
+                Ok(true) => continue,
+                Ok(false) => break,
+                Err(error) => {
+                    log::error!(
+                        "failed to settle a forwarded query for closed or replaced pane {:?}: \
+                         {error:#}",
+                        pane_id
+                    );
+                    break;
+                },
+            }
+        }
+    }
+
+    /// Settle a pane's forwarded query while keeping the pane usable.
+    fn settle_forward_for_pane(&mut self, pane_id: PaneId) {
+        loop {
+            match self.stop_waiting_for_forward_reply_with(pane_id, true) {
+                Ok(true) => continue,
+                Ok(false) => break,
+                Err(error) => {
+                    log::error!(
+                        "failed to settle a forwarded query for pane {:?}: {error:#}",
+                        pane_id
+                    );
+                    break;
+                },
+            }
+        }
+    }
+
+    /// Whether `pane_id` still has a query belonging to an older run. An
+    /// unstamped query is kept: it was emitted before the first run was
+    /// announced and belongs to that run.
+    fn forward_is_from_another_run(&self, pane_id: PaneId, generation: u64) -> bool {
+        let stale_entry = |entry: &PendingForwardEntry| {
+            entry.pane_id == pane_id && entry.run_generation != Some(generation)
+        };
+        let stale_queued = |pending: &PendingForward| {
+            pending.pane_id == pane_id && pending.run_generation != Some(generation)
+        };
+        self.pending_forwarded_queries
+            .values()
+            .any(|entry| stale_entry(entry))
+            || self
+                .pending_clipboard_forwards
+                .values()
+                .any(|entry| stale_entry(entry))
+            || self.forward_queue.iter().any(|entry| stale_queued(entry))
+            || self
+                .clipboard_forward_queue
+                .iter()
+                .any(|entry| stale_queued(entry))
+    }
+
+    /// A request that was issued before the first run was announced belongs
+    /// to that run. Stamp it so a later replacement can identify it as stale.
+    fn stamp_unstamped_forwards_for_pane(&mut self, pane_id: PaneId, generation: u64) {
+        for entry in self
+            .pending_forwarded_queries
+            .values_mut()
+            .chain(self.pending_clipboard_forwards.values_mut())
+        {
+            if entry.pane_id == pane_id && entry.run_generation.is_none() {
+                entry.run_generation = Some(generation);
+            }
+        }
+        for entry in self
+            .forward_queue
+            .iter_mut()
+            .chain(self.clipboard_forward_queue.iter_mut())
+        {
+            if entry.pane_id == pane_id && entry.run_generation.is_none() {
+                entry.run_generation = Some(generation);
+            }
+        }
     }
 
     /// Deliver a forwarded reply (or cache-fallback synthesis, or a
@@ -4181,6 +4993,7 @@ impl Screen {
         &mut self,
         pane_id: PaneId,
         reply_bytes: Vec<u8>,
+        run_generation: Option<u64>,
     ) -> Result<()> {
         let terminal_id = match pane_id {
             PaneId::Terminal(id) => id,
@@ -4191,28 +5004,43 @@ impl Screen {
                 return Ok(());
             },
         };
+        if let Some(generation) = run_generation {
+            if !run_generation_matches(&self.terminal_runs, terminal_id, generation) {
+                log::debug!(
+                    "Discarding forwarded reply for stale run {generation} in terminal {terminal_id}"
+                );
+                return Ok(());
+            }
+        }
         let mut found = false;
         for tab in self.tabs.values_mut() {
             if tab.has_pane_with_pid(&pane_id) {
-                tab.resume_pane_after_forward(terminal_id, reply_bytes.clone())
-                    .non_fatal();
+                tab.resume_pane_after_forward(terminal_id, reply_bytes.clone(), run_generation)
+                    .with_context(|| {
+                        format!("failed to resume pane {pane_id:?} after a forwarded reply")
+                    })?;
                 found = true;
                 break;
             }
         }
         if !found {
-            // No tab owns the pane — the pane was closed between the
-            // forward dispatch and the reply arrival. The terminal id
-            // is probably defunct; the write goes to the PTY writer
-            // anyway because an empty payload is the canonical "host
-            // declined" reply some apps rely on, and a non-empty
-            // payload may still be deliverable until the pty drains.
-            let _ = self
-                .bus
-                .senders
-                .send_to_pty_writer(PtyWriteInstruction::Write(reply_bytes, terminal_id, None));
+            // Unit tests construct a Screen without tabs to exercise the
+            // token machinery directly. Production forwarding always
+            // originates from a pane that belongs to a tab, so a missing
+            // pane means it was closed and the reply must be discarded.
+            #[cfg(test)]
+            if self.tabs.is_empty() {
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_pty_writer(PtyWriteInstruction::Write(
+                        AdmittedWrite::new(reply_bytes, terminal_id, None, None)
+                            .with_run_generation(run_generation),
+                    ));
+                return Ok(());
+            }
             log::debug!(
-                "ResumePaneAfterForward: pane {:?} not in any tab, fell back to direct PTY write",
+                "ResumePaneAfterForward: pane {:?} no longer exists; discarding reply",
                 pane_id
             );
         }
@@ -4437,13 +5265,14 @@ impl Screen {
         let _ = self
             .bus
             .senders
-            .send_to_pty_writer(PtyWriteInstruction::Write(
+            .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                 nested_session::encode_frame(&NestedSessionMessage::RequestGuestKeybinds {
                     request_id,
                 }),
                 terminal_id,
                 None,
-            ));
+                None,
+            )));
     }
 
     fn answer_keybinds_request(
@@ -4746,11 +5575,12 @@ impl Screen {
         let _ = self
             .bus
             .senders
-            .send_to_pty_writer(PtyWriteInstruction::Write(
+            .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                 nested_session::encode_frame(&announce_ack),
                 terminal_id,
                 None,
-            ));
+                None,
+            )));
         let _ = self
             .bus
             .senders
@@ -4821,13 +5651,14 @@ impl Screen {
             let _ = self
                 .bus
                 .senders
-                .send_to_pty_writer(PtyWriteInstruction::Write(
+                .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                     nested_session::encode_frame(&NestedSessionMessage::FocusGained {
                         from_direction: None,
                     }),
                     terminal_id,
                     None,
-                ));
+                    None,
+                )));
         }
     }
 
@@ -5440,7 +6271,12 @@ impl Screen {
             let _ = self
                 .bus
                 .senders
-                .send_to_pty_writer(PtyWriteInstruction::Write(frame.clone(), terminal_id, None));
+                .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+                    frame.clone(),
+                    terminal_id,
+                    None,
+                    None,
+                )));
         }
     }
 
@@ -5511,7 +6347,12 @@ impl Screen {
             let _ = self
                 .bus
                 .senders
-                .send_to_pty_writer(PtyWriteInstruction::Write(frame.clone(), terminal_id, None));
+                .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+                    frame.clone(),
+                    terminal_id,
+                    None,
+                    None,
+                )));
         }
     }
 
@@ -5605,11 +6446,12 @@ impl Screen {
             let _ = self
                 .bus
                 .senders
-                .send_to_pty_writer(PtyWriteInstruction::Write(
+                .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                     nested_session::encode_frame(&message),
                     terminal_id,
                     None,
-                ));
+                    None,
+                )));
         }
     }
 
@@ -5744,11 +6586,12 @@ impl Screen {
                     let _ = self
                         .bus
                         .senders
-                        .send_to_pty_writer(PtyWriteInstruction::Write(
+                        .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                             nested_session::encode_frame(&NestedSessionMessage::Ping),
                             terminal_id,
                             None,
-                        ));
+                            None,
+                        )));
                     log::debug!("pinged nested session guest in pane {:?}", pane_id);
                 }
             },
@@ -5809,17 +6652,41 @@ impl Screen {
                     Vec::new()
                 }
             },
-            HostQuery::PaletteRegister { index, terminator } => {
+            HostQuery::PaletteRegister {
+                indices,
+                terminator,
+            } => {
                 let codes = self.terminal_emulator_color_codes.borrow();
-                if let Some(color) = codes.get(&(*index as usize)) {
-                    let mut out = format!("\x1b]4;{};{}", index, color).into_bytes();
-                    out.extend_from_slice(terminator.as_bytes());
-                    out
-                } else {
-                    Vec::new()
+                let mut parts = Vec::new();
+                for index in indices {
+                    if let Some(color) = codes.get(&(*index as usize)) {
+                        parts.push(format!("{index};{color}"));
+                    }
                 }
+                // A partial answer would not match the registers the app
+                // asked for. Missing any cached color falls through to an
+                // empty reply, the same as a single missing register did.
+                if parts.len() != indices.len() || parts.is_empty() {
+                    return Vec::new();
+                }
+                let mut out = format!("\x1b]4;{}", parts.join(";")).into_bytes();
+                out.extend_from_slice(terminator.as_bytes());
+                out
             },
             HostQuery::ClipboardContent { .. } => query.empty_reply_bytes(),
+            HostQuery::RoundTrip(parts) => {
+                let mut out = Vec::new();
+                for part in parts {
+                    let reply = self.synthesize_cached_reply(part);
+                    if reply.is_empty() {
+                        // A missing part would slide the later replies onto
+                        // the wrong query. Decline the whole batch.
+                        return Vec::new();
+                    }
+                    out.extend(reply);
+                }
+                out
+            },
             // Should not reach here: ColorPaletteMode short-circuits in
             // `forward_host_query` before any cache-fallback path runs.
             HostQuery::ColorPaletteMode => match self.effective_host_terminal_theme_mode() {
@@ -5857,6 +6724,8 @@ impl Screen {
         // the render method for more details)
         let err_context = "failed to render screen";
 
+        self.flush_pending_pane_state_report().non_fatal();
+
         // Separate rendering for regular clients and watchers
         let has_regular_clients = self
             .connected_clients
@@ -5871,6 +6740,7 @@ impl Screen {
             return Ok(());
         }
         self.render_waits_for_ack = false;
+        self.schedule_render_lock_wake();
         let _row_shifts = RowShiftsWhileRendering::new(self.row_shifts_possible());
         self.sync_attention_visibility();
         self.sync_plugin_visibility();
@@ -6952,6 +7822,7 @@ impl Screen {
 
     pub fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to remove client {client_id}");
+        self.drop_plugin_activations_for_client(client_id);
         if !self.recently_disconnected_clients.contains(&client_id) {
             if self.recently_disconnected_clients.len() >= RECENTLY_DISCONNECTED_CLIENTS_LIMIT {
                 self.recently_disconnected_clients.pop_front();
@@ -7050,6 +7921,20 @@ impl Screen {
             self.push_sixel_host_support_to_tabs();
         }
         self.client_sizes.remove(&client_id);
+        if self.client_pixel_dimensions.remove(&client_id).is_some() {
+            let character_cell_size_changed = if self.client_pixel_dimensions.is_empty() {
+                let had_character_cell_size = self.character_cell_size.borrow().is_some();
+                self.pixel_dimensions = PixelDimensions::default();
+                self.pixel_dimension_provider = None;
+                *self.character_cell_size.borrow_mut() = None;
+                had_character_cell_size
+            } else {
+                self.select_pixel_dimension_provider(None)
+            };
+            if character_cell_size_changed {
+                self.resize_pty_all_panes().non_fatal();
+            }
+        }
         self.client_display_slots.borrow_mut().remove(&client_id);
         self.release_structured_render_state(client_id);
         self.pane_render_subscribers.remove(&client_id);
@@ -7067,6 +7952,25 @@ impl Screen {
         }
         self.mode_info.remove(&client_id);
         self.client_keybinds.remove(&client_id);
+        // Per-client view and interaction state must not outlive the
+        // connection, or client churn grows it for the session's lifetime.
+        // (last_reported_client_visible_plugins is deliberately kept: it
+        // is replaced on the next report, and comparing against it is how
+        // plugins learn that this client no longer sees them.)
+        self.pane_history.remove(&client_id);
+        self.pending_client_vte_instructions.remove(&client_id);
+        self.clipboard_paste_clients.remove(&client_id);
+        self.client_kitty_host_state.borrow_mut().remove(&client_id);
+        self.open_context_menus.remove(&client_id);
+        self.currently_marking_pane_group
+            .borrow_mut()
+            .remove(&client_id);
+        self.last_mobile_state_sent.remove(&client_id);
+        self.watcher_clients.remove(&client_id);
+        self.client_session_histories.remove(&client_id);
+        self.last_session_history_infos.remove(&client_id);
+        self.pending_session_card_away_since.remove(&client_id);
+        self.mode_hints_requested.remove(&client_id);
         self.held_keybinds_requests.remove(&client_id);
         self.pending_keybinds_requests.retain(|_, pending| {
             !matches!(pending.reply_to, KeybindsReplyTo::Host { client_id: host_client_id, .. } if host_client_id == client_id)
@@ -7252,6 +8156,12 @@ impl Screen {
         Ok(tab_infos_for_screen_state.values().cloned().collect())
     }
     fn generate_and_report_pane_state(&mut self) -> Result<PaneManifest> {
+        // A broadcast report reflects the current pane state, so it also
+        // satisfies a pending title-change report. Targeted reports only reach
+        // one plugin, so other plugins still need the coalesced broadcast.
+        if self.state_report_target.is_none() {
+            self.pane_state_report_pending = false;
+        }
         let mut pane_manifest = PaneManifest::default();
         for tab in self.tabs.values() {
             let mut pane_infos = tab.pane_infos();
@@ -7280,6 +8190,13 @@ impl Screen {
         Ok(pane_manifest)
     }
 
+    fn flush_pending_pane_state_report(&mut self) -> Result<()> {
+        if !self.pane_state_report_pending {
+            return Ok(());
+        }
+        self.generate_and_report_pane_state().map(|_| ())
+    }
+
     fn report_pane_and_tab_state_to_plugin(
         &mut self,
         plugin_id: PluginId,
@@ -7292,6 +8209,27 @@ impl Screen {
         pane_state?;
         tab_state?;
         Ok(())
+    }
+
+    pub(crate) fn report_mode_info_to_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let mut mode_info = self
+            .mode_info
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_else(|| self.default_mode_info.clone());
+        mode_info.remote_client = self.client_location(client_id);
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                Some(plugin_id),
+                Some(client_id),
+                Event::ModeUpdate(mode_info),
+            )]))
+            .context("failed to report mode info to plugin")
     }
 
     fn collect_pane_list(&self, show_all: bool) -> Result<ListPanesResponse> {
@@ -7728,16 +8666,143 @@ impl Screen {
         self.last_mobile_state_sent
             .retain(|client_id, _| connected.contains_key(client_id));
     }
-    fn dump_layout_to_hd(&mut self) -> Result<()> {
+    fn dump_layout_to_hd(&mut self) -> Result<bool> {
         let err_context = || format!("Failed to log and report session state");
-        let session_layout_metadata =
-            self.get_layout_metadata(Some(self.default_shell.clone()), None);
+        let Some(session_layout_metadata) =
+            self.publication_layout_metadata(Some(self.default_shell.clone()), None)
+        else {
+            return Ok(false);
+        };
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::LogLayoutToHd(session_layout_metadata))
             .with_context(err_context)?;
 
+        Ok(true)
+    }
+    fn handle_save_session(
+        &mut self,
+        client_id: ClientId,
+        completion_tx: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+        let result: Result<()> = (|| {
+            let err_context = || "Failed to save session";
+            let session_layout_metadata = if self.session_serialization {
+                self.publication_layout_metadata(Some(self.default_shell.clone()), None)
+            } else {
+                Some(SessionLayoutMetadata::new(self.default_layout.clone()))
+            };
+            let Some(session_layout_metadata) = session_layout_metadata else {
+                let instruction = ScreenInstruction::SaveSession(client_id, completion_tx.take());
+                if let Err((instruction, error)) =
+                    self.bus.senders.send_to_screen_recoverable(instruction)
+                {
+                    if let ScreenInstruction::SaveSession(_, Some(completion)) = instruction {
+                        *completion_tx = Some(completion);
+                    }
+                    return Err(error).with_context(err_context);
+                }
+                return Ok(());
+            };
+
+            self.update_active_pane_ids();
+            let pane_manifest = self.generate_and_report_pane_state()?;
+            let tab_infos = self.generate_and_report_tab_state()?;
+
+            #[cfg(not(test))]
+            let (available_layouts, _layout_errors) =
+                Layout::list_available_layouts(self.layout_dir.clone(), &self.default_layout_name);
+            #[cfg(test)]
+            let available_layouts = vec![];
+
+            let creation_time = {
+                // The socket is named by the stable session id, not the display name.
+                let sock_path = zellij_utils::consts::session_id_socket_path(&self.session_id);
+                std::fs::metadata(&sock_path)
+                    .ok()
+                    .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
+                    .and_then(|d| d.elapsed().ok())
+                    .map(|d| Duration::from_secs(d.as_secs()))
+                    .unwrap_or_default()
+            };
+            let session_info = SessionInfo {
+                name: self.session_name.clone(),
+                tabs: tab_infos,
+                panes: pane_manifest,
+                connected_clients: self.active_tab_ids.keys().len(),
+                is_current_session: true,
+                available_layouts,
+                web_clients_allowed: self.web_sharing.web_clients_allowed(),
+                web_client_count: self
+                    .connected_clients
+                    .borrow()
+                    .iter()
+                    .filter(|(_client_id, is_web_client)| **is_web_client)
+                    .count(),
+                plugins: Default::default(),
+                tab_history: self.tab_history.clone(),
+                pane_history: self
+                    .pane_history
+                    .iter()
+                    .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
+                    .collect(),
+                creation_time,
+                attention_muted: self.attention.session_is_muted(),
+            };
+
+            let instruction = PtyInstruction::SaveSessionToDisk {
+                session_name: self.session_name.clone(),
+                session_info,
+                session_layout_metadata,
+                completion_tx: completion_tx.take(),
+            };
+            if let Err((instruction, error)) = self.bus.senders.send_to_pty_recoverable(instruction)
+            {
+                if let PtyInstruction::SaveSessionToDisk {
+                    completion_tx: Some(completion),
+                    ..
+                } = instruction
+                {
+                    *completion_tx = Some(completion);
+                }
+                return Err(error).with_context(err_context);
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            log::error!("Failed to save session: {error:#}");
+            if let Some(completion) = completion_tx.as_mut() {
+                completion.set_exit_status(1);
+                completion.set_error_message(format!("{error:#}"));
+            }
+        }
         Ok(())
+    }
+    fn session_infos_changed(
+        old_infos: &BTreeMap<String, SessionInfo>,
+        new_infos: &BTreeMap<String, SessionInfo>,
+        old_resurrectable: &BTreeMap<String, Duration>,
+        new_resurrectable: &BTreeMap<String, Duration>,
+    ) -> bool {
+        old_infos.len() != new_infos.len()
+            || old_infos.iter().any(|(name, old)| {
+                new_infos.get(name).map_or(true, |new| {
+                    old.name != new.name
+                        || old.tabs != new.tabs
+                        || old.panes != new.panes
+                        || old.connected_clients != new.connected_clients
+                        || old.is_current_session != new.is_current_session
+                        || old.available_layouts != new.available_layouts
+                        || old.plugins != new.plugins
+                        || old.web_clients_allowed != new.web_clients_allowed
+                        || old.web_client_count != new.web_client_count
+                        || old.tab_history != new.tab_history
+                        || old.pane_history != new.pane_history
+                        || old.attention_muted != new.attention_muted
+                })
+            })
+            || !old_resurrectable.keys().eq(new_resurrectable.keys())
     }
     pub fn update_session_infos(
         &mut self,
@@ -7745,9 +8810,15 @@ impl Screen {
         resurrectable_sessions: BTreeMap<String, Duration>,
         requesting_plugin: Option<(u32, ClientId)>,
     ) -> Result<()> {
+        let session_infos_changed = Self::session_infos_changed(
+            &self.peer_sessions_cache,
+            &new_session_infos,
+            &self.resurrectable_sessions_cache,
+            &resurrectable_sessions,
+        );
         self.peer_sessions_cache = new_session_infos;
         self.resurrectable_sessions_cache = resurrectable_sessions;
-        if let Some((plugin_id, client_id)) = requesting_plugin {
+        if let Some((plugin_id, client_id)) = requesting_plugin.filter(|_| session_infos_changed) {
             self.bus
                 .senders
                 .send_to_plugin(PluginInstruction::Update(vec![(
@@ -8150,12 +9221,17 @@ impl Screen {
             }
             None
         } else {
-            self.session_rename_drafts.remove(&client_id)
+            self.session_rename_drafts.get(&client_id).cloned()
         };
-        let session_rename_error = match pending_session_rename {
-            Some(new_name) if new_name != self.session_name => self.rename_session(new_name)?.err(),
-            _ => None,
-        };
+        if let Some(new_name) = pending_session_rename {
+            if new_name != self.session_name {
+                self.begin_session_rename(new_name, client_id, true, None)?;
+            } else {
+                self.session_rename_drafts.remove(&client_id);
+            }
+        } else if new_mode != InputMode::RenameSession {
+            self.session_rename_drafts.remove(&client_id);
+        }
         let displayed_session_name = self.displayed_session_name(client_id);
         if mode_info.session_name.as_ref() != Some(&displayed_session_name) {
             mode_info.session_name = Some(displayed_session_name);
@@ -8199,10 +9275,6 @@ impl Screen {
 
         self.style = mode_info.style;
         self.propagate_mode_info(mode_info, client_id)?;
-        if let Some(error_text) = session_rename_error {
-            log::error!("{}", error_text);
-            self.show_session_rename_error(client_id, error_text);
-        }
         Ok(())
     }
 
@@ -8257,47 +9329,263 @@ impl Screen {
         Ok(())
     }
 
-    pub fn rename_session(&mut self, name: String) -> Result<std::result::Result<(), String>> {
+    fn begin_session_rename(
+        &mut self,
+        name: String,
+        client_id: ClientId,
+        popup_on_error: bool,
+        completion: Option<NotificationEnd>,
+    ) -> Result<()> {
         if let Err(error_text) = zellij_utils::sessions::validate_session_name(&name) {
-            return Ok(Err(error_text));
+            self.session_rename_drafts.remove(&client_id);
+            self.refresh_displayed_session_name(client_id).non_fatal();
+            self.report_session_rename_failure(client_id, popup_on_error, error_text.clone());
+            let mut completion = crate::route::RecordedCompletion::new(completion);
+            Self::record_session_rename_failure(&mut completion, &error_text);
+            return Ok(());
         }
-        let (_, resurrectable_sessions) = crate::background_jobs::scan_session_list_default_dirs(
-            &self.session_name,
-            &[],
-            &BTreeMap::new(),
+        let hook = self.session_rename_discovery.clone();
+        let current_session_name = self.session_name.clone();
+        let worker = match self.session_rename_worker() {
+            Ok(worker) => worker,
+            Err(error) => {
+                let error_text =
+                    format!("Could not check whether a session by this name exists: {error}");
+                self.report_session_rename_failure(client_id, popup_on_error, error_text.clone());
+                let mut completion = crate::route::RecordedCompletion::new(completion);
+                Self::record_session_rename_failure(&mut completion, &error_text);
+                return Ok(());
+            },
+        };
+        let job = SessionRenameDiscoveryJob {
+            name,
+            current_session_name,
+            client_id,
+            discovery: hook,
+            popup_on_error,
+            completion,
+        };
+        match worker.try_send(job) {
+            Ok(()) => {},
+            Err(std::sync::mpsc::TrySendError::Full(job)) => {
+                let error_text =
+                    "Could not rename the session: another rename is already being checked";
+                self.reject_session_rename_job(job, error_text);
+            },
+            Err(std::sync::mpsc::TrySendError::Disconnected(job)) => {
+                self.session_rename_worker = None;
+                let error_text =
+                    "Could not check whether a session by this name exists: discovery worker stopped";
+                self.reject_session_rename_job(job, error_text);
+            },
+        }
+        Ok(())
+    }
+
+    fn session_rename_worker(
+        &mut self,
+    ) -> Result<std::sync::mpsc::SyncSender<SessionRenameDiscoveryJob>> {
+        if let Some(worker) = self.session_rename_worker.as_ref() {
+            return Ok(worker.clone());
+        }
+        let (worker, jobs) = std::sync::mpsc::sync_channel::<SessionRenameDiscoveryJob>(1);
+        let senders = self.bus.senders.clone();
+        std::thread::Builder::new()
+            .name("session-rename-discovery".to_owned())
+            .spawn(move || {
+                while let Ok(job) = jobs.recv() {
+                    let discovery = job.discovery.discover(&job.current_session_name, &job.name);
+                    let commit = SessionRenameCommit {
+                        name: job.name,
+                        client_id: job.client_id,
+                        discovery,
+                        popup_on_error: job.popup_on_error,
+                        completion: job.completion,
+                    };
+                    if senders
+                        .send_to_screen(ScreenInstruction::CommitSessionRename(Box::new(commit)))
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            })
+            .with_context(|| "failed to start session-rename discovery worker")?;
+        self.session_rename_worker = Some(worker.clone());
+        Ok(worker)
+    }
+
+    fn reject_session_rename_job(&mut self, job: SessionRenameDiscoveryJob, error_text: &str) {
+        self.session_rename_drafts.remove(&job.client_id);
+        self.refresh_displayed_session_name(job.client_id)
+            .non_fatal();
+        self.report_session_rename_failure(
+            job.client_id,
+            job.popup_on_error,
+            error_text.to_owned(),
         );
-        let running_session_exists = zellij_utils::sessions::get_sessions()
-            .map(|sessions| sessions.iter().any(|(session, _)| session == &name))
-            .unwrap_or(false);
+        let mut completion = crate::route::RecordedCompletion::new(job.completion);
+        Self::record_session_rename_failure(&mut completion, error_text);
+    }
+
+    fn commit_session_rename(&mut self, commit: SessionRenameCommit) -> Result<()> {
+        let SessionRenameCommit {
+            name,
+            client_id,
+            discovery,
+            popup_on_error,
+            completion,
+        } = commit;
+        let mut completion = crate::route::RecordedCompletion::new(completion);
+        match self.apply_discovered_session_rename(name, discovery) {
+            Ok(Ok(())) => {
+                self.session_rename_drafts.remove(&client_id);
+            },
+            Ok(Err(error_text)) => {
+                self.session_rename_drafts.remove(&client_id);
+                self.refresh_displayed_session_name(client_id).non_fatal();
+                Self::record_session_rename_failure(&mut completion, &error_text);
+                self.report_session_rename_failure(client_id, popup_on_error, error_text);
+            },
+            Err(error) => {
+                self.session_rename_drafts.remove(&client_id);
+                self.refresh_displayed_session_name(client_id).non_fatal();
+                Self::record_session_rename_failure(&mut completion, &error.to_string());
+                return Err(error);
+            },
+        }
+        self.render(None)?;
+        Ok(())
+    }
+
+    fn record_session_rename_failure(
+        completion: &mut crate::route::RecordedCompletion,
+        error_text: &str,
+    ) {
+        if let Some(completion) = completion.as_mut() {
+            completion.set_exit_status(1);
+            completion.set_error_message(error_text.to_owned());
+        }
+    }
+
+    fn report_session_rename_failure(
+        &mut self,
+        client_id: ClientId,
+        popup_on_error: bool,
+        error_text: String,
+    ) {
+        log::error!("{}", error_text);
+        if popup_on_error {
+            self.show_session_rename_error(client_id, error_text);
+            return;
+        }
+        if let Some(os_input) = &mut self.bus.os_input {
+            let _ = os_input.send_to_client(
+                client_id,
+                ServerToClientMsg::LogError {
+                    lines: vec![error_text],
+                },
+            );
+        }
+    }
+
+    /// The off-screen probe can be stale, so read the index and the socket
+    /// path here too. The index transaction makes the final decision; this
+    /// check only gives the user an earlier, clearer error. A read error is a
+    /// failure. This does not call `session_exists`.
+    fn rename_target_is_taken(&self, name: &str) -> std::result::Result<bool, String> {
+        let indexed_id = zellij_utils::sessions::resolve_session_id(name)?;
+        if indexed_id.as_deref() == Some(self.session_id.as_str()) {
+            return Ok(false);
+        }
+        if indexed_id.is_some() {
+            return Ok(true);
+        }
+        let socket_path = zellij_utils::consts::session_socket_path_in(
+            &zellij_utils::consts::ZELLIJ_SOCK_DIR,
+            name,
+        );
+        if socket_path == zellij_utils::consts::session_id_socket_path(&self.session_id) {
+            return Ok(false);
+        }
+        match socket_path.try_exists() {
+            Ok(exists) => Ok(exists),
+            Err(error) => Err(format!(
+                "Could not check whether a session by this name exists: {error}"
+            )),
+        }
+    }
+
+    /// Conflict checks and the index write. Discovery already ran off this
+    /// thread; caches and the index are read again here so a session that
+    /// appeared while the probe was in flight is still rejected. This
+    /// function does not probe sockets.
+    fn apply_discovered_session_rename(
+        &mut self,
+        name: String,
+        discovery: SessionRenameDiscovery,
+    ) -> Result<std::result::Result<(), String>> {
+        let running_session_exists = match discovery.running_session_exists {
+            Ok(exists) => exists,
+            Err(message) => return Ok(Err(message)),
+        };
         if self.peer_sessions_cache.contains_key(&name) || running_session_exists {
             return Ok(Err("A session by this name already exists.".to_owned()));
         }
         if self.resurrectable_sessions_cache.contains_key(&name)
-            || resurrectable_sessions.contains_key(&name)
+            || discovery.resurrectable_sessions.contains_key(&name)
         {
             return Ok(Err(
                 "A resurrectable session by this name exists, cannot use this name.".to_owned(),
             ));
         }
+        match self.rename_target_is_taken(&name) {
+            Ok(true) => return Ok(Err("A session by this name already exists.".to_owned())),
+            Ok(false) => {},
+            Err(message) => return Ok(Err(message)),
+        }
         let err_context = || format!("Failed to rename session");
         let old_session_name = self.session_name.clone();
 
-        self.session_name = name.clone();
-        self.default_mode_info.session_name = Some(name.clone());
-        for (_client_id, mode_info) in self.mode_info.iter_mut() {
-            mode_info.session_name = Some(name.clone());
+        if let Err(error) = zellij_utils::sessions::rename_session(&self.session_id, &name) {
+            return Ok(Err(error));
         }
-        for (_, tab) in self.tabs.iter_mut() {
-            tab.rename_session(name.clone()).with_context(err_context)?;
+        let apply_rename = (|| -> Result<()> {
+            self.session_name = name.clone();
+            self.default_mode_info.session_name = Some(name.clone());
+            for (_client_id, mode_info) in self.mode_info.iter_mut() {
+                mode_info.session_name = Some(name.clone());
+            }
+            for (_, tab) in self.tabs.iter_mut() {
+                tab.rename_session(name.clone()).with_context(err_context)?;
+            }
+            let clients_with_drafts: Vec<ClientId> =
+                self.session_rename_drafts.keys().copied().collect();
+            for client_id in clients_with_drafts {
+                self.refresh_displayed_session_name(client_id)
+                    .with_context(err_context)?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = apply_rename {
+            self.session_name = old_session_name.clone();
+            self.default_mode_info.session_name = Some(old_session_name.clone());
+            for (_client_id, mode_info) in self.mode_info.iter_mut() {
+                mode_info.session_name = Some(old_session_name.clone());
+            }
+            for (_, tab) in self.tabs.iter_mut() {
+                let _ = tab.rename_session(old_session_name.clone());
+            }
+            if let Err(rollback_error) =
+                zellij_utils::sessions::rename_session(&self.session_id, &old_session_name)
+            {
+                log::error!(
+                    "Failed to roll back session index after a failed rename: {}",
+                    rollback_error
+                );
+            }
+            return Err(error);
         }
-        let clients_with_drafts: Vec<ClientId> =
-            self.session_rename_drafts.keys().copied().collect();
-        for client_id in clients_with_drafts {
-            self.refresh_displayed_session_name(client_id)
-                .with_context(err_context)?;
-        }
-
-        zellij_utils::sessions::rename_session(&self.session_id, &name);
 
         self.peer_sessions_cache.remove(&old_session_name);
         self.log_and_report_session_state()
@@ -8634,6 +9922,203 @@ impl Screen {
         self.render(None)
     }
 
+    fn store_pending_plugin_activation(&mut self, context: PluginActivationContext) -> u64 {
+        let token = self.next_plugin_activation_token;
+        self.next_plugin_activation_token = self.next_plugin_activation_token.wrapping_add(1);
+        self.pending_plugin_activations.insert(token, context);
+        token
+    }
+
+    fn settle_plugin_activation(&mut self, token: u64) {
+        self.pending_plugin_activations.remove(&token);
+    }
+
+    fn drop_plugin_activations_for_client(&mut self, client_id: ClientId) {
+        self.pending_plugin_activations
+            .retain(|_, context| context.source_client_id != client_id);
+    }
+
+    /// `Ok(Some(token))` starts a load. `Ok(None)` focused an existing plugin
+    /// (including id 0) or the focus failed. Failure does not record a pending load.
+    fn admit_plugin_focus(
+        &mut self,
+        focus_result: Result<Option<PluginId>>,
+        activation: PluginActivationContext,
+        completion_tx: &mut Option<NotificationEnd>,
+    ) -> Result<Option<u64>> {
+        match focus_result {
+            Ok(Some(plugin_id)) => {
+                self.send_plugin_activated(plugin_id, activation);
+                self.render(None)?;
+                self.log_and_report_session_state()?;
+                Ok(None)
+            },
+            Ok(None) => Ok(Some(self.store_pending_plugin_activation(activation))),
+            Err(error) => {
+                let error_message = format!("Failed to launch or focus plugin: {}", error);
+                Err::<(), _>(error).non_fatal();
+                mark_action_as_failed(completion_tx, &error_message);
+                if let Some(completion) = completion_tx.as_mut() {
+                    completion.clear_affected_pane_id();
+                }
+                self.render(None)?;
+                self.log_and_report_session_state()?;
+                Ok(None)
+            },
+        }
+    }
+
+    fn activate_plugin_for_load(&mut self, plugin_id: PluginId, token: Option<u64>) {
+        let Some(token) = token else {
+            return;
+        };
+        if let Some(context) = self.pending_plugin_activations.remove(&token) {
+            self.send_plugin_activated(plugin_id, context);
+        }
+    }
+
+    fn capture_plugin_activation_context(&self, client_id: ClientId) -> PluginActivationContext {
+        PluginActivationContext {
+            source_client_id: client_id,
+            source_pane_id: self.get_active_pane_id(&client_id).map(Into::into),
+            source_tab_id: self.active_tab_ids.get(&client_id).copied(),
+        }
+    }
+
+    fn send_plugin_activated(&self, plugin_id: PluginId, context: PluginActivationContext) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                Some(plugin_id),
+                Some(context.source_client_id),
+                Event::PluginActivated(context),
+            )]));
+    }
+
+    fn launch_or_focus_plugin(
+        &mut self,
+        run_plugin: RunPluginOrAlias,
+        should_float: bool,
+        move_to_focused_tab: bool,
+        should_open_in_place: bool,
+        close_replaced_pane: bool,
+        pane_id_to_replace: Option<PaneId>,
+        skip_cache: bool,
+        client_id: ClientId,
+        mut completion_tx: Option<NotificationEnd>,
+        explicit_tab_id: Option<usize>,
+    ) -> Result<()> {
+        match pane_id_to_replace {
+            Some(pane_id_to_replace) if should_open_in_place => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+                let resolved_tab_index =
+                    explicit_tab_id.or_else(|| self.active_tab_ids.values().next().copied());
+                match resolved_tab_index {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        self.bus.senders.send_to_pty(PtyInstruction::FillPluginCwd(
+                            Some(should_float),
+                            should_open_in_place,
+                            close_replaced_pane,
+                            None,
+                            run_plugin,
+                            tab_index,
+                            Some(pane_id_to_replace),
+                            client_id,
+                            size,
+                            skip_cache,
+                            None,
+                            None,
+                            None,
+                            completion_tx.take(),
+                            None,
+                        ))?;
+                    },
+                    None => {
+                        let message =
+                            "Could not find an active tab - is there at least 1 connected user?";
+                        log::error!("{message}");
+                        mark_action_as_failed(&mut completion_tx, message);
+                    },
+                }
+            },
+            _ => {
+                let client_id = if self.active_tab_ids.contains_key(&client_id) {
+                    Some(client_id)
+                } else {
+                    self.get_first_client_id()
+                };
+                let client_id_and_focused_tab = client_id.and_then(|client_id| {
+                    self.active_tab_ids
+                        .get(&client_id)
+                        .map(|tab_index| (*tab_index, client_id))
+                });
+                let resolved_tab_and_client = explicit_tab_id
+                    .and_then(|tid| client_id.map(|cid| (tid, cid)))
+                    .or(client_id_and_focused_tab);
+                match resolved_tab_and_client {
+                    Some((tab_index, client_id)) => {
+                        // Capture before focus moves so plugins see the triggering pane/tab.
+                        let activation = self.capture_plugin_activation_context(client_id);
+                        let focus_result = self.focus_plugin_pane(
+                            &run_plugin,
+                            should_float,
+                            move_to_focused_tab,
+                            should_open_in_place,
+                            client_id,
+                            &mut completion_tx,
+                        );
+                        if let Some(token) =
+                            self.admit_plugin_focus(focus_result, activation, &mut completion_tx)?
+                        {
+                            let floating_session_manager = (should_float
+                                && !should_open_in_place
+                                && popups::is_session_manager(&run_plugin))
+                            .then(|| self.get_active_tab(client_id).ok())
+                            .flatten()
+                            .map(popups::session_manager_coordinates);
+                            let (size, coordinates) = match floating_session_manager {
+                                Some((coordinates, content)) => (content, Some(coordinates)),
+                                None => (Size::default(), None),
+                            };
+                            if let Err(err) =
+                                self.bus.senders.send_to_pty(PtyInstruction::FillPluginCwd(
+                                    Some(should_float),
+                                    should_open_in_place,
+                                    close_replaced_pane,
+                                    None,
+                                    run_plugin,
+                                    tab_index,
+                                    None,
+                                    client_id,
+                                    size,
+                                    skip_cache,
+                                    None,
+                                    None,
+                                    coordinates,
+                                    completion_tx,
+                                    Some(token),
+                                ))
+                            {
+                                self.settle_plugin_activation(token);
+                                return Err(err);
+                            }
+                        }
+                    },
+                    None => {
+                        let mut completion_tx =
+                            crate::route::RecordedCompletion::new(completion_tx);
+                        let message = "No connected clients found - cannot load or focus plugin";
+                        log::error!("{message}");
+                        mark_action_as_failed(&mut completion_tx, message);
+                    },
+                }
+            },
+        }
+        Ok(())
+    }
+
     pub fn focus_plugin_pane(
         &mut self,
         run_plugin: &RunPluginOrAlias,
@@ -8642,14 +10127,14 @@ impl Screen {
         should_be_in_place: bool,
         client_id: ClientId,
         completion_tx: &mut Option<NotificationEnd>,
-    ) -> Result<bool> {
-        // true => found and focused, false => not
+    ) -> Result<Option<PluginId>> {
+        // Some(plugin_id) => found and focused, None => not found
         let err_context = || format!("failed to focus_plugin_pane");
         if let Some(plugin_id) = self.focus_popup_plugin_as_floating_pane(run_plugin, client_id) {
             if let Some(ref mut completion) = completion_tx {
                 completion.set_affected_pane_id(PaneId::Plugin(plugin_id));
             }
-            return Ok(true);
+            return Ok(Some(plugin_id));
         }
         let mut tab_index_and_plugin_pane_id = None;
         let mut plugin_pane_to_move_to_active_tab = None;
@@ -8674,6 +10159,10 @@ impl Screen {
         }
         if let Some(plugin_pane_to_move_to_active_tab) = plugin_pane_to_move_to_active_tab.take() {
             let pane_id = plugin_pane_to_move_to_active_tab.pid();
+            let focused_plugin_id = match pane_id {
+                PaneId::Plugin(plugin_id) => Some(plugin_id),
+                PaneId::Terminal(_) => None,
+            };
             let new_active_tab = self.get_active_tab_mut(client_id)?;
 
             if should_float {
@@ -8699,11 +10188,14 @@ impl Screen {
             if let Some(ref mut completion) = completion_tx {
                 completion.set_affected_pane_id(pane_id);
             }
-            return Ok(true);
+            return Ok(focused_plugin_id);
         }
         match tab_index_and_plugin_pane_id {
             Some((tab_index, plugin_pane_id)) => {
-                self.go_to_tab(tab_index + 1, client_id)?;
+                // tab_index is the stable tab id (BTreeMap key); go_to_tab expects 1-based position
+                if let Some(tab_position) = self.get_tab_position_by_id(tab_index) {
+                    self.go_to_tab(tab_position + 1, client_id)?;
+                }
                 self.tabs
                     .get_mut(&tab_index)
                     .with_context(err_context)?
@@ -8715,9 +10207,12 @@ impl Screen {
                 if let Some(ref mut completion) = completion_tx {
                     completion.set_affected_pane_id(plugin_pane_id);
                 }
-                Ok(true)
+                Ok(match plugin_pane_id {
+                    PaneId::Plugin(plugin_id) => Some(plugin_id),
+                    PaneId::Terminal(_) => None,
+                })
             },
-            None => Ok(false),
+            None => Ok(None),
         }
     }
 
@@ -8750,6 +10245,8 @@ impl Screen {
                     })
                     .with_context(err_context)
                     .non_fatal();
+                // go_to_tab cleared the bell of the pane focused before; this one is seen now
+                self.clear_bell_for_focused_pane(client_id);
             },
             None => {
                 log::error!("Could not find pane with id: {:?}", pane_id);
@@ -8760,21 +10257,27 @@ impl Screen {
     pub fn rerun_command_pane_with_id(
         &mut self,
         terminal_pane_id: u32,
-        completion_tx: Option<NotificationEnd>,
+        mut completion_tx: Option<NotificationEnd>,
     ) {
         let mut found = false;
         for tab in self.tabs.values_mut() {
             if tab.has_pane_with_pid(&PaneId::Terminal(terminal_pane_id)) {
-                tab.rerun_terminal_pane_with_id(terminal_pane_id, completion_tx);
+                tab.rerun_terminal_pane_with_id(terminal_pane_id, completion_tx.take());
                 found = true;
                 break;
             }
         }
         if !found {
-            log::error!(
+            let message = format!(
                 "Failed to find terminal pane with id: {} to run",
                 terminal_pane_id
             );
+            log::error!("{message}");
+            if let Some(mut completion) = completion_tx.take() {
+                completion.set_exit_status(1);
+                completion.set_error_message(message);
+                completion.complete_recorded();
+            }
         }
     }
     pub fn resize_pane_with_id(&mut self, resize: ResizeStrategy, pane_id: PaneId) {
@@ -9290,10 +10793,13 @@ impl Screen {
             reason.message()
         );
         reason.mark_completion(&mut completion);
+        // The failure is known here. Dropping the owner inside the close
+        // instruction would replace it with abandonment.
+        crate::route::settle(completion.take());
         self.remember_pane_never_created(pid);
         self.bus
             .senders
-            .send_to_pty(PtyInstruction::ClosePaneThatWasNotCreated(pid, completion))
+            .send_to_pty(PtyInstruction::ClosePaneThatWasNotCreated(pid, None))
             .non_fatal();
     }
     fn take_pane_not_created_reason(&mut self, pid: &PaneId) -> PaneNotCreatedReason {
@@ -9307,7 +10813,137 @@ impl Screen {
             .or(reason_from_tabs)
             .unwrap_or(PaneNotCreatedReason::Unknown)
     }
+    /// If terminal pane `pid` is paused on a host query with more output
+    /// buffered than it may hold, stop waiting for the reply, the same as
+    /// when the timeout fires. Does nothing while the pane's
+    /// `ForwardHostQuery` is still in the queue; it is checked again when
+    /// that forward is registered.
+    fn enforce_forward_buffer_limit(&mut self, pid: u32) {
+        let exceeded = self
+            .tabs
+            .values()
+            .any(|tab| tab.pending_pty_input_exceeds_forward_limit(pid));
+        if !exceeded {
+            return;
+        }
+        let stopped = self.stop_waiting_for_forward_reply(PaneId::Terminal(pid));
+        if matches!(stopped, Ok(true)) {
+            log::warn!(
+                "pane {} buffered more than {} bytes of output while waiting for a host \
+                 terminal reply; resuming without waiting for it",
+                pid,
+                crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED
+            );
+        }
+        stopped.map(|_| ()).non_fatal();
+    }
+    fn accept_run_bytes(
+        &mut self,
+        terminal_id: u32,
+        generation: u64,
+        bytes: VteBytes,
+    ) -> Result<Option<VteBytes>> {
+        if self.terminal_was_closed(&PaneId::Terminal(terminal_id)) {
+            return Ok(None);
+        }
+        if !run_generation_accepts(&mut self.terminal_runs, terminal_id, generation) {
+            return Ok(None);
+        }
+        self.apply_pty_bytes_with_generation(terminal_id, bytes, Some(generation))
+    }
+    fn note_terminal_run_started(&mut self, terminal_id: u32, generation: u64) {
+        if self.terminal_was_closed(&PaneId::Terminal(terminal_id)) {
+            return;
+        }
+        stage_run_started(&mut self.terminal_runs, terminal_id, generation);
+    }
+    fn note_pty_run_drained(&mut self, terminal_id: u32, generation: u64) {
+        if let Some(exit) = stage_run_drained(&mut self.terminal_runs, terminal_id, generation) {
+            if self.terminal_has_pending_vte(terminal_id) {
+                if let Some(run) = self.terminal_runs.get_mut(&terminal_id) {
+                    run.deferred_exit = Some(exit);
+                }
+            } else {
+                let _ = self.bus.senders.send_to_screen(exit);
+            }
+        }
+    }
+    fn terminal_has_pending_vte(&self, terminal_id: u32) -> bool {
+        self.tabs
+            .values()
+            .any(|tab| tab.has_pending_output(terminal_id))
+    }
+    fn release_settled_run_exits(&mut self) {
+        let ready: Vec<u32> = self
+            .terminal_runs
+            .iter()
+            .filter(|(_, run)| run.drained && run.deferred_exit.is_some())
+            .map(|(terminal_id, _)| *terminal_id)
+            .collect();
+        for terminal_id in ready {
+            if self.terminal_has_pending_vte(terminal_id) {
+                continue;
+            }
+            let exit = self
+                .terminal_runs
+                .get_mut(&terminal_id)
+                .and_then(|run| run.deferred_exit.take());
+            if let Some(exit) = exit {
+                let _ = self.bus.senders.send_to_screen(exit);
+            }
+        }
+    }
+    fn note_child_run_exited(
+        &mut self,
+        pane_id: PaneId,
+        exit_status: Option<i32>,
+        run_generation: u64,
+        hold_command: Option<RunCommand>,
+    ) {
+        if self.terminal_was_closed(&pane_id) {
+            return;
+        }
+        let instruction = match hold_command {
+            Some(command) => {
+                ScreenInstruction::HoldPane(pane_id, exit_status, command, Some(run_generation))
+            },
+            None => ScreenInstruction::ClosePane(
+                pane_id,
+                None,
+                None,
+                exit_status,
+                ClosePaneSource::ChildExit,
+                Some(run_generation),
+            ),
+        };
+        let PaneId::Terminal(terminal_id) = pane_id else {
+            let _ = self.bus.senders.send_to_screen(instruction);
+            return;
+        };
+        if let Some(instruction) = stage_child_exit(
+            &mut self.terminal_runs,
+            terminal_id,
+            run_generation,
+            instruction,
+        ) {
+            if self.terminal_has_pending_vte(terminal_id) {
+                if let Some(run) = self.terminal_runs.get_mut(&terminal_id) {
+                    run.deferred_exit = Some(instruction);
+                }
+            } else {
+                let _ = self.bus.senders.send_to_screen(instruction);
+            }
+        }
+    }
     fn apply_pty_bytes(&mut self, pid: u32, vte_bytes: VteBytes) -> Result<Option<VteBytes>> {
+        self.apply_pty_bytes_with_generation(pid, vte_bytes, None)
+    }
+    fn apply_pty_bytes_with_generation(
+        &mut self,
+        pid: u32,
+        vte_bytes: VteBytes,
+        run_generation: Option<u64>,
+    ) -> Result<Option<VteBytes>> {
         self.pane_output_activity
             .insert(PaneId::Terminal(pid), Instant::now());
         let mut vte_bytes = Some(vte_bytes);
@@ -9319,7 +10955,7 @@ impl Screen {
                     let title_before = tab
                         .get_pane_with_id(PaneId::Terminal(pid))
                         .map(|pane| pane.current_title());
-                    tab.handle_pty_bytes(pid, bytes)
+                    tab.handle_pty_bytes_with_generation(pid, bytes, run_generation)
                         .context("failed to process pty bytes")?;
                     let title_after = tab
                         .get_pane_with_id(PaneId::Terminal(pid))
@@ -9330,10 +10966,9 @@ impl Screen {
                 break;
             }
         }
+        self.enforce_forward_buffer_limit(pid);
         if title_changed {
-            self.generate_and_report_pane_state()
-                .map(|_| ())
-                .non_fatal();
+            self.pane_state_report_pending = true;
         }
         if vte_bytes.is_none() {
             self.attention_output(pid);
@@ -9344,33 +10979,60 @@ impl Screen {
             BackgroundJob::RenderToClients
         };
         let _ = self.bus.senders.send_to_background_jobs(render_request);
+        self.schedule_scrolled_pty_continuation();
         Ok(vte_bytes)
     }
+    /// One continuation instruction drains one quantum per pane, then yields
+    /// so input already queued for other panes is not stuck behind the rest
+    /// of this backlog.
+    fn schedule_scrolled_pty_continuation(&mut self) {
+        if self.scrolled_pty_continuation_queued {
+            return;
+        }
+        if !self.tabs.values().any(|tab| tab.has_deferred_screen_work()) {
+            return;
+        }
+        match self
+            .bus
+            .senders
+            .send_to_screen(ScreenInstruction::ApplyScrolledPtyQuantum)
+        {
+            Ok(()) => self.scrolled_pty_continuation_queued = true,
+            Err(error) => {
+                log::error!("failed to schedule scrolled pty continuation: {error}");
+            },
+        }
+    }
+}
+
+pub(crate) fn try_admit_uninstalled_terminal(terminal_id: u32) -> bool {
+    pending_pane_events::try_admit_uninstalled_terminal(terminal_id)
+}
+
+pub(crate) fn release_uninstalled_terminal(terminal_id: u32) {
+    pending_pane_events::release_uninstalled_terminal(terminal_id)
+}
+
+impl Screen {
     fn finish_pane_creation(
         &mut self,
         pid: PaneId,
         completion: &mut Option<NotificationEnd>,
-        pending_events_waiting_for_pane: &mut HashMap<PaneId, Vec<ScreenInstruction>>,
+        pending_events_waiting_for_pane: &mut pending_pane_events::PendingPaneEvents,
     ) {
+        // Admitted in spawn/reserve. Both installed and never-created terminal
+        // panes pass through here. Plugin panes are not in the set.
+        if let PaneId::Terminal(terminal_id) = pid {
+            release_uninstalled_terminal(terminal_id);
+        }
         if self.has_pane_with_pid(&pid) {
             self.pane_not_created_reasons.remove(&pid);
             for tab in self.tabs.values_mut() {
                 tab.take_pane_not_created_reason(&pid);
             }
-            if let Some(pending_events) = pending_events_waiting_for_pane.remove(&pid) {
-                for event in pending_events {
-                    match event {
-                        ScreenInstruction::PtyBytes(terminal_id, vte_bytes) => {
-                            self.apply_pty_bytes(terminal_id, vte_bytes).non_fatal();
-                        },
-                        event => {
-                            self.bus.senders.send_to_screen(event).non_fatal();
-                        },
-                    }
-                }
-            }
+            self.replay_pending_pane_events(pid, pending_events_waiting_for_pane);
         } else {
-            pending_events_waiting_for_pane.remove(&pid);
+            pending_events_waiting_for_pane.discard(pid);
             let reason = self.take_pane_not_created_reason(&pid);
             reason.mark_completion(completion);
             if reason == PaneNotCreatedReason::Unknown {
@@ -9386,6 +11048,60 @@ impl Screen {
             tab.clear_pane_not_created_reasons();
         }
     }
+    /// Replay what arrived for a pane (output, exit, hold) before it existed.
+    /// Every path that creates panes must do this for the panes it created.
+    fn replay_pending_pane_events(
+        &mut self,
+        pid: PaneId,
+        pending_events_waiting_for_pane: &mut pending_pane_events::PendingPaneEvents,
+    ) {
+        let replay = pending_events_waiting_for_pane.take_replay(pid);
+        let event_count = replay.events.len();
+        let mut recover_before = replay.recover_before.into_iter().peekable();
+        let truncated = replay.output_truncated;
+        for (index, event) in replay.events.into_iter().enumerate() {
+            while recover_before.peek() == Some(&index) {
+                self.discard_unfinished_pane_input(pid);
+                recover_before.next();
+            }
+            match event {
+                ScreenInstruction::PtyBytes(terminal_id, vte_bytes) => {
+                    self.apply_pty_bytes(terminal_id, vte_bytes).non_fatal();
+                },
+                ScreenInstruction::PtyRunBytes(terminal_id, generation, vte_bytes) => {
+                    self.accept_run_bytes(terminal_id, generation, vte_bytes)
+                        .non_fatal();
+                },
+                event => {
+                    self.bus.senders.send_to_screen(event).non_fatal();
+                },
+            }
+        }
+        // No bytes followed the last gap. Drop the prefix's open sequence so
+        // the pane's own later output does not finish it.
+        if recover_before.any(|boundary| boundary == event_count) {
+            self.discard_unfinished_pane_input(pid);
+        }
+        if truncated {
+            self.note_pane_output_truncated(pid);
+        }
+    }
+    fn discard_unfinished_pane_input(&mut self, pid: PaneId) {
+        for tab in self.tabs.values_mut() {
+            if let Some(pane) = tab.get_pane_with_id_mut(pid) {
+                pane.discard_unfinished_input();
+                return;
+            }
+        }
+    }
+    fn note_pane_output_truncated(&mut self, pid: PaneId) {
+        for tab in self.tabs.values_mut() {
+            if let Some(pane) = tab.get_pane_with_id_mut(pid) {
+                pane.note_output_truncated();
+                return;
+            }
+        }
+    }
     fn remember_pane_never_created(&mut self, pid: PaneId) {
         if let PaneId::Terminal(_) = pid {
             self.pane_ids_never_created.insert(pid);
@@ -9395,7 +11111,27 @@ impl Screen {
         }
     }
     fn pane_will_never_be_created(&self, pid: &PaneId) -> bool {
-        self.pane_ids_never_created.contains(pid)
+        self.pane_ids_never_created.contains(pid) || self.terminal_was_closed(pid)
+    }
+    fn remember_terminal_closed(&mut self, terminal_id: u32) {
+        if !self.closed_terminal_ids.insert(terminal_id) {
+            return;
+        }
+        self.closed_terminal_order.push_back(terminal_id);
+        while self.closed_terminal_order.len() > MAX_REMEMBERED_CLOSED_TERMINALS {
+            if let Some(oldest) = self.closed_terminal_order.pop_front() {
+                self.closed_terminal_ids.remove(&oldest);
+            }
+        }
+    }
+    fn terminal_was_closed(&self, pid: &PaneId) -> bool {
+        match pid {
+            PaneId::Terminal(terminal_id) => self.closed_terminal_ids.contains(terminal_id),
+            PaneId::Plugin(_) => false,
+        }
+    }
+    fn terminal_run_generation_matches(&self, terminal_id: u32, generation: u64) -> bool {
+        run_generation_matches(&self.terminal_runs, terminal_id, generation)
     }
     pub fn replace_pane_with_existing_pane(
         &mut self,
@@ -9719,7 +11455,12 @@ impl Screen {
             let _ = self
                 .bus
                 .senders
-                .send_to_pty_writer(PtyWriteInstruction::Write(bytes, terminal_id, None));
+                .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
+                    bytes,
+                    terminal_id,
+                    None,
+                    None,
+                )));
         }
 
         self.render(None)?;
@@ -10140,6 +11881,35 @@ impl Screen {
         }
         Ok(())
     }
+    fn serialize_snapshot_has_more(&self) -> bool {
+        if !self.serialize_pane_viewport {
+            return false;
+        }
+        self.tabs.values().any(|tab| {
+            tab.get_tiled_panes()
+                .any(|(_, pane)| pane.serialize_snapshot_has_more())
+                || tab
+                    .get_floating_panes()
+                    .any(|(_, pane)| pane.serialize_snapshot_has_more())
+                || tab
+                    .get_suppressed_panes()
+                    .any(|(_, (_, pane))| pane.serialize_snapshot_has_more())
+        })
+    }
+    /// One snapshot quantum. `None` means the pass is unfinished: the caller
+    /// requeues the same instruction and does not publish this metadata.
+    fn publication_layout_metadata(
+        &self,
+        default_shell: Option<PathBuf>,
+        tab_index: Option<usize>,
+    ) -> Option<SessionLayoutMetadata> {
+        let metadata = self.get_layout_metadata(default_shell, tab_index);
+        if self.serialize_snapshot_has_more() {
+            None
+        } else {
+            Some(metadata)
+        }
+    }
     fn get_layout_metadata(
         &self,
         default_shell: Option<PathBuf>,
@@ -10509,6 +12279,13 @@ impl Screen {
                 let history = self.pane_history.entry(client_id).or_insert_with(|| vec![]);
                 history.retain(|e| e != &active_pane_id);
                 history.push(active_pane_id.into());
+                // Focus history is only meaningful for recency; without
+                // a cap it accrues one entry per distinct focus for the
+                // session's lifetime.
+                if history.len() > MAX_PANE_HISTORY_ENTRIES {
+                    let overflow = history.len() - MAX_PANE_HISTORY_ENTRIES;
+                    history.drain(..overflow);
+                }
             }
         }
     }
@@ -10530,7 +12307,13 @@ impl Screen {
             .find(|id| !self.watcher_clients.contains_key(id))
             .copied();
 
+        // A pane listed more than once is one subscription: answering each
+        // occurrence would let a request multiply the snapshots it asks for.
+        let mut requested_pane_ids = HashSet::new();
         for pane_id in &pane_ids {
+            if !requested_pane_ids.insert(*pane_id) {
+                continue;
+            }
             let server_pane_id: PaneId = (*pane_id).into();
             let mut found = false;
 
@@ -10807,6 +12590,32 @@ fn find_already_running_panes(
 }
 
 const MAX_REMEMBERED_PANES_NEVER_CREATED: usize = 1024;
+/// Late events for a closed terminal arrive within moments of the close
+/// (output already queued, the child's exit), so only recent closes need
+/// to be remembered; terminal ids are never reused.
+const MAX_REMEMBERED_CLOSED_TERMINALS: usize = 1024;
+
+/// The plugin that receives each client's key presses, if any.
+#[derive(Debug, Default)]
+struct KeybindIntercepts {
+    owners: HashMap<ClientId, PluginId>,
+}
+
+impl KeybindIntercepts {
+    fn intercept(&mut self, client_id: ClientId, plugin_id: PluginId) {
+        self.owners.insert(client_id, plugin_id);
+    }
+    /// Drop the client's intercept if `plugin_id` holds it. Another plugin's intercept is left
+    /// alone, so unloading a plugin that never intercepted anything is harmless.
+    fn release(&mut self, plugin_id: PluginId, client_id: ClientId) {
+        if self.owners.get(&client_id) == Some(&plugin_id) {
+            self.owners.remove(&client_id);
+        }
+    }
+    fn owner(&self, client_id: ClientId) -> Option<PluginId> {
+        self.owners.get(&client_id).copied()
+    }
+}
 
 fn mark_action_as_failed(completion: &mut Option<NotificationEnd>, error_message: &str) {
     if let Some(completion) = completion.as_mut() {
@@ -10818,6 +12627,38 @@ fn mark_action_as_failed(completion: &mut Option<NotificationEnd>, error_message
 // The box is here in order to make the
 // NewClient enum smaller
 #[allow(clippy::boxed_local)]
+const MAX_PENDING_TAB_EVENTS: usize = 1024;
+
+/// The only way onto `pending_events_waiting_for_tab`. A full queue is not
+/// enqueued. A carried completion is failed before drop so `NotificationEnd`
+/// does not report success for work that never ran.
+fn push_pending_tab_event(queue: &mut Vec<ScreenInstruction>, mut event: ScreenInstruction) {
+    if queue.len() < MAX_PENDING_TAB_EVENTS {
+        queue.push(event);
+        return;
+    }
+    log::warn!("Dropping a tab-deferred screen instruction: queue is full");
+    if let Some(completion) = pending_tab_completion(&mut event) {
+        mark_action_as_failed(
+            completion,
+            "tab event was rejected because the pending queue is full",
+        );
+        // The failure is known. Dropping the instruction must not replace it
+        // with abandonment.
+        crate::route::settle(completion.take());
+    }
+}
+
+fn pending_tab_completion(event: &mut ScreenInstruction) -> Option<&mut Option<NotificationEnd>> {
+    match event {
+        ScreenInstruction::MoveTabLeft(_, completion)
+        | ScreenInstruction::MoveTabRight(_, completion)
+        | ScreenInstruction::MoveTabWithTabId(_, _, completion)
+        | ScreenInstruction::MoveTabToPosition(_, _, completion) => Some(completion),
+        _ => None,
+    }
+}
+
 pub(crate) fn screen_thread_main(
     bus: Bus<ScreenInstruction>,
     max_panes: Option<usize>,
@@ -11043,10 +12884,9 @@ pub(crate) fn screen_thread_main(
                                                                                // tab_index
     let mut pending_events_waiting_for_tab: Vec<ScreenInstruction> = vec![];
     let mut pending_events_waiting_for_client: Vec<ScreenInstruction> = vec![];
-    let mut pending_events_waiting_for_pane: HashMap<PaneId, Vec<ScreenInstruction>> =
-        HashMap::new();
+    let mut pending_events_waiting_for_pane = pending_pane_events::PendingPaneEvents::default();
     let mut plugin_loading_message_cache = HashMap::new();
-    let mut keybind_intercepts = HashMap::new();
+    let mut keybind_intercepts = KeybindIntercepts::default();
     loop {
         let (event, mut err_ctx) = screen
             .bus
@@ -11054,6 +12894,7 @@ pub(crate) fn screen_thread_main(
             .context("failed to receive event on channel")?;
         let screen_context: ScreenContext = (&event).into();
         err_ctx.add_call(ContextType::Screen(screen_context));
+        let _screen_operation = diagnostics::ScreenOperationGuard::new(screen_context);
         // here we start caching resizes, so that we'll send them in bulk at the end of each event
         // when this cache is Dropped, for more information, see the comments in PtyWriter
         let _resize_cache = ResizeCache::new(thread_senders.clone());
@@ -11069,11 +12910,60 @@ pub(crate) fn screen_thread_main(
                 if let Some(vte_bytes) = screen.apply_pty_bytes(pid, vte_bytes)? {
                     if !screen.pane_will_never_be_created(&PaneId::Terminal(pid)) {
                         pending_events_waiting_for_pane
-                            .entry(PaneId::Terminal(pid))
-                            .or_default()
-                            .push(ScreenInstruction::PtyBytes(pid, vte_bytes));
+                            .push_output(PaneId::Terminal(pid), vte_bytes);
                     }
                 }
+            },
+            ScreenInstruction::PtyRunBytes(pid, generation, vte_bytes) => {
+                if let Some(vte_bytes) = screen.accept_run_bytes(pid, generation, vte_bytes)? {
+                    if !screen.pane_will_never_be_created(&PaneId::Terminal(pid)) {
+                        pending_events_waiting_for_pane.push_run_output(
+                            PaneId::Terminal(pid),
+                            generation,
+                            vte_bytes,
+                        );
+                    }
+                }
+            },
+            ScreenInstruction::TerminalRunStarted(terminal_id, generation) => {
+                let had_previous_run = screen.terminal_runs.contains_key(&terminal_id);
+                screen.note_terminal_run_started(terminal_id, generation);
+                if screen.terminal_run_generation_matches(terminal_id, generation) {
+                    let pane_id = PaneId::Terminal(terminal_id);
+                    if !had_previous_run {
+                        screen.stamp_unstamped_forwards_for_pane(pane_id, generation);
+                    }
+                    if screen.forward_is_from_another_run(pane_id, generation) {
+                        screen.cancel_forward_for_pane(pane_id);
+                    }
+                }
+            },
+            ScreenInstruction::PtyRunDrained(terminal_id, generation) => {
+                screen.note_pty_run_drained(terminal_id, generation);
+            },
+            ScreenInstruction::ChildRunExited {
+                pane_id,
+                exit_status,
+                run_generation,
+                hold_command,
+            } => {
+                screen.note_child_run_exited(pane_id, exit_status, run_generation, hold_command);
+            },
+            ScreenInstruction::ApplyScrolledPtyQuantum => {
+                screen.scrolled_pty_continuation_queued = false;
+                for tab in screen.get_tabs_mut().values_mut() {
+                    if tab.has_pending_vte_bytes() {
+                        tab.apply_pending_vte_quanta()
+                            .context("failed to apply scrolled pty quanta")?;
+                    }
+                    tab.advance_deferred_pane_work();
+                }
+                screen.release_settled_run_exits();
+                screen.schedule_scrolled_pty_continuation();
+                let _ = screen
+                    .bus
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::RenderToClients);
             },
             ScreenInstruction::PluginBytes(mut plugin_render_assets) => {
                 for plugin_render_asset in plugin_render_assets.iter_mut() {
@@ -11123,9 +13013,10 @@ pub(crate) fn screen_thread_main(
                 new_pane_placement,
                 start_suppressed,
                 client_or_tab_index,
-                mut completion_tx,
+                completion_tx,
                 set_blocking,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 completion_tx.as_mut().map(|c| c.set_affected_pane_id(pid));
                 let attention_command = match (&invoked_with, &hold_for_command, pid) {
                     (Some(Run::Command(run_command)), None, PaneId::Terminal(terminal_id))
@@ -11136,11 +13027,16 @@ pub(crate) fn screen_thread_main(
                     _ => None,
                 };
 
-                let (blocking_notification, mut completion_tx) = if set_blocking {
-                    (completion_tx, None)
+                let (blocking_notification, completion_tx) = if set_blocking {
+                    (completion_tx.take(), None)
                 } else {
-                    (None, completion_tx)
+                    (None, completion_tx.take())
                 };
+                // The guard above published nothing. These owners still know
+                // the outcome, so dropping them must record it.
+                let mut blocking_notification =
+                    crate::route::RecordedCompletion::new(blocking_notification);
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
 
                 match client_or_tab_index {
                     ClientTabIndexOrPaneId::ClientId(client_id)
@@ -11221,7 +13117,7 @@ pub(crate) fn screen_thread_main(
                                 should_focus_pane,
                                 new_pane_placement,
                                 client_id,
-                                blocking_notification,
+                                blocking_notification.take(),
                             )?;
                             if let Some(hold_for_command) = hold_for_command {
                                 let is_first_run = true;
@@ -11231,7 +13127,7 @@ pub(crate) fn screen_thread_main(
                             log::error!("Tab index not found: {:?}", tab_index);
                             screen.close_pane_that_was_not_created(
                                 pid,
-                                blocking_notification,
+                                blocking_notification.take(),
                                 PaneNotCreatedReason::TabNotFound,
                             );
                         }
@@ -11299,7 +13195,7 @@ pub(crate) fn screen_thread_main(
                             );
                             screen.close_pane_that_was_not_created(
                                 pid,
-                                blocking_notification,
+                                blocking_notification.take(),
                                 PaneNotCreatedReason::TargetPaneNotFound,
                             );
                         }
@@ -11383,14 +13279,16 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
                     .toggle_pane_embed_or_floating(client_id), ?);
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
             },
             ScreenInstruction::ToggleFloatingPanes(client_id, default_shell, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
-                    .toggle_floating_panes(Some(client_id), default_shell, completion_tx), ?);
+                    .toggle_floating_panes(Some(client_id), default_shell, completion_tx.take()), ?);
                 screen.clear_bell_for_focused_pane(client_id);
                 screen.sync_scroll_mode_on_focus(client_id)?;
                 screen.log_and_report_session_state()?;
@@ -11402,7 +13300,8 @@ pub(crate) fn screen_thread_main(
                 tab_id,
                 completion,
             } => {
-                screen.show_floating_panes_in_tab(client_id, tab_id, completion)?;
+                let mut completion = crate::route::RecordedCompletion::new(completion);
+                screen.show_floating_panes_in_tab(client_id, tab_id, completion.take())?;
                 screen.sync_scroll_mode_on_focus(client_id)?;
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
@@ -11412,7 +13311,8 @@ pub(crate) fn screen_thread_main(
                 tab_id,
                 completion,
             } => {
-                screen.hide_floating_panes_in_tab(client_id, tab_id, completion)?;
+                let mut completion = crate::route::RecordedCompletion::new(completion);
+                screen.hide_floating_panes_in_tab(client_id, tab_id, completion.take())?;
                 screen.sync_scroll_mode_on_focus(client_id)?;
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
@@ -11422,7 +13322,8 @@ pub(crate) fn screen_thread_main(
                 tab_id,
                 completion,
             } => {
-                screen.are_floating_panes_visible_in_tab(client_id, tab_id, completion)?;
+                let mut completion = crate::route::RecordedCompletion::new(completion);
+                screen.are_floating_panes_visible_in_tab(client_id, tab_id, completion.take())?;
             },
             ScreenInstruction::KeyToPopup(
                 key_with_modifier,
@@ -11431,6 +13332,7 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 completion,
             ) => {
+                let mut completion = crate::route::RecordedCompletion::new(completion);
                 screen.record_client_input(client_id);
                 screen.release_live_view_if_unreachable(client_id);
                 if screen.send_key_to_popup(
@@ -11454,7 +13356,7 @@ pub(crate) fn screen_thread_main(
                             raw_bytes,
                             is_kitty_keyboard_protocol,
                             client_id,
-                            completion,
+                            completion.take(),
                         ));
                 }
             },
@@ -11463,17 +13365,17 @@ pub(crate) fn screen_thread_main(
                 raw_bytes,
                 is_kitty_keyboard_protocol,
                 client_id,
-                _completion_tx, // the action ends here, dropping this will release anything
-                                // waiting for it
+                completion,
             ) => {
+                let mut completion = crate::route::RecordedCompletion::new(completion);
                 screen.record_client_input(client_id);
-                if let Some(plugin_id) = keybind_intercepts.get(&client_id) {
+                if let Some(plugin_id) = keybind_intercepts.owner(client_id) {
                     if let Some(key_with_modifier) = key_with_modifier {
                         let _ = screen
                             .bus
                             .senders
                             .send_to_plugin(PluginInstruction::Update(vec![(
-                                Some(*plugin_id),
+                                Some(plugin_id),
                                 Some(client_id),
                                 Event::InterceptedKeyPress(key_with_modifier),
                             )]));
@@ -11560,8 +13462,19 @@ pub(crate) fn screen_thread_main(
                                                 client_id,
                                             ),
                                         };
-                                        if let Ok(true) = write_result {
-                                            state_changed = true;
+                                        match write_result {
+                                            Ok(true) => state_changed = true,
+                                            Ok(false) => {},
+                                            Err(error) => {
+                                                // The pty write's completion is empty, so a
+                                                // rejected admission is only visible on this
+                                                // CLI owner. The guard publishes that record.
+                                                mark_action_as_failed(
+                                                    &mut *completion,
+                                                    &format!("{error:#}"),
+                                                );
+                                                Err::<(), _>(error).non_fatal();
+                                            },
                                         }
                                     },
                                 }
@@ -11575,7 +13488,8 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::Resize(client_id, strategy, mut completion_tx) => {
+            ScreenInstruction::Resize(client_id, strategy, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let mut resize_result = Ok(());
                 active_tab_and_connected_client_id!(
                     screen,
@@ -11600,6 +13514,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::SwitchFocus(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let old_pane_id = screen.get_active_pane_id(&client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -11615,9 +13530,10 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::FocusNextPane(client_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if screen.get_first_client_id().is_none() {
                     log::error!("No connected clients to change focus for");
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message("No connected clients to change focus for".to_string());
                     }
@@ -11634,12 +13550,14 @@ pub(crate) fn screen_thread_main(
                     }
                     screen.sync_scroll_mode_on_focus(client_id)?;
                     screen.render(None)?;
+                    screen.log_and_report_session_state()?;
                 }
             },
             ScreenInstruction::FocusPreviousPane(client_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if screen.get_first_client_id().is_none() {
                     log::error!("No connected clients to change focus for");
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message("No connected clients to change focus for".to_string());
                     }
@@ -11660,6 +13578,7 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::FocusLastPane(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let old_pane_id = screen.get_active_pane_id(&client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -11675,9 +13594,10 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::MoveFocusLeft(client_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if screen.get_first_client_id().is_none() {
                     log::error!("No connected clients to move focus for");
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message("No connected clients to move focus for".to_string());
                     }
@@ -11710,9 +13630,10 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if screen.get_first_client_id().is_none() {
                     log::error!("No connected clients to move focus for");
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message("No connected clients to move focus for".to_string());
                     }
@@ -11738,9 +13659,10 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::MoveFocusDown(client_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if screen.get_first_client_id().is_none() {
                     log::error!("No connected clients to move focus for");
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message("No connected clients to move focus for".to_string());
                     }
@@ -11773,9 +13695,10 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::MoveFocusRight(client_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if screen.get_first_client_id().is_none() {
                     log::error!("No connected clients to move focus for");
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message("No connected clients to move focus for".to_string());
                     }
@@ -11808,9 +13731,10 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::MoveFocusRightOrNextTab(client_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if screen.get_first_client_id().is_none() {
                     log::error!("No connected clients to move focus for");
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message("No connected clients to move focus for".to_string());
                     }
@@ -11836,9 +13760,10 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::MoveFocusUp(client_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if screen.get_first_client_id().is_none() {
                     log::error!("No connected clients to move focus for");
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message("No connected clients to move focus for".to_string());
                     }
@@ -11875,6 +13800,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -11894,13 +13820,16 @@ pub(crate) fn screen_thread_main(
                 cli_client_id,
                 ansi,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 match file {
                     Some(file_path) => {
                         // Write dump to file (existing behavior)
-                        match pane_id {
+                        let result: Result<()> = (|| match pane_id {
                             Some(pane_id) => {
+                                let mut found = false;
                                 for tab in screen.get_tabs_mut().values_mut() {
                                     if tab.has_pane_with_pid(&pane_id) {
+                                        found = true;
                                         if ansi {
                                             tab.dump_with_ansi_terminal_screen(
                                                 Some(file_path.clone()),
@@ -11917,43 +13846,79 @@ pub(crate) fn screen_thread_main(
                                         break;
                                     }
                                 }
+                                if found {
+                                    Ok(())
+                                } else {
+                                    Err(anyhow!("Pane with id {:?} not found", pane_id))
+                                }
                             },
                             None => {
+                                let mut dump_error = None;
+                                let mut attempted = false;
                                 if ansi {
                                     active_tab_and_connected_client_id!(
                                         screen,
                                         client_id,
-                                        |tab: &mut Tab, client_id: ClientId| tab.dump_with_ansi_active_terminal_screen(
-                                            Some(file_path.to_string()),
-                                            client_id,
-                                            full
-                                        ),
+                                        |tab: &mut Tab, client_id: ClientId| {
+                                            attempted = true;
+                                            let result = tab.dump_with_ansi_active_terminal_screen(
+                                                Some(file_path.to_string()),
+                                                client_id,
+                                                full
+                                            );
+                                            if let Err(ref error) = result {
+                                                dump_error = Some(anyhow!("{error:#}"));
+                                            }
+                                            result
+                                        },
                                         ?
                                     );
                                 } else {
                                     active_tab_and_connected_client_id!(
                                         screen,
                                         client_id,
-                                        |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
-                                            Some(file_path.to_string()),
-                                            client_id,
-                                            full
-                                        ),
+                                        |tab: &mut Tab, client_id: ClientId| {
+                                            attempted = true;
+                                            let result = tab.dump_active_terminal_screen(
+                                                Some(file_path.to_string()),
+                                                client_id,
+                                                full
+                                            );
+                                            if let Err(ref error) = result {
+                                                dump_error = Some(anyhow!("{error:#}"));
+                                            }
+                                            result
+                                        },
                                         ?
                                     );
                                 }
+                                match dump_error {
+                                    Some(error) => Err(error),
+                                    None if attempted => Ok(()),
+                                    None => Err(anyhow!("No active tab or client for dump screen")),
+                                }
                             },
+                        })();
+                        if let Err(error) = result {
+                            mark_action_as_failed(
+                                &mut completion_tx,
+                                &format!("failed to dump screen: {error:#}"),
+                            );
                         }
                         screen.render(None)?;
                         drop(completion_tx);
                     },
                     None => {
                         // Dump to STDOUT via Log
-                        let dump = match pane_id {
+                        let mut dump_error = None;
+                        let mut attempted = pane_id.is_some();
+                        let (dump, found) = match pane_id {
                             Some(pane_id) => {
                                 let mut result = String::new();
+                                let mut found = false;
                                 for tab in screen.get_tabs_mut().values_mut() {
                                     if tab.has_pane_with_pid(&pane_id) {
+                                        found = true;
                                         if ansi {
                                             if let Some(dump) = tab
                                                 .get_dump_with_ansi_terminal_screen(pane_id, full)
@@ -11970,7 +13935,7 @@ pub(crate) fn screen_thread_main(
                                         break;
                                     }
                                 }
-                                result
+                                (result, found)
                             },
                             None => {
                                 let mut result = String::new();
@@ -11979,6 +13944,13 @@ pub(crate) fn screen_thread_main(
                                         screen,
                                         client_id,
                                         |tab: &mut Tab, client_id: ClientId| {
+                                            attempted = true;
+                                            if tab.get_active_pane_id(client_id).is_none() {
+                                                dump_error = Some(anyhow!(
+                                                    "No active pane for client {client_id}"
+                                                ));
+                                                return Ok::<(), anyhow::Error>(());
+                                            }
                                             result = tab.get_dump_with_ansi_active_terminal_screen(client_id, full);
                                             Ok::<(), anyhow::Error>(())
                                         },
@@ -11989,48 +13961,104 @@ pub(crate) fn screen_thread_main(
                                         screen,
                                         client_id,
                                         |tab: &mut Tab, client_id: ClientId| {
+                                            attempted = true;
+                                            if tab.get_active_pane_id(client_id).is_none() {
+                                                dump_error = Some(anyhow!(
+                                                    "No active pane for client {client_id}"
+                                                ));
+                                                return Ok::<(), anyhow::Error>(());
+                                            }
                                             result = tab.get_dump_active_terminal_screen(client_id, full);
                                             Ok::<(), anyhow::Error>(())
                                         },
                                         ?
                                     );
                                 }
-                                result
+                                (result, true)
                             },
                         };
+                        if let Some(error) = dump_error {
+                            mark_action_as_failed(
+                                &mut completion_tx,
+                                &format!("failed to dump screen: {error:#}"),
+                            );
+                            continue;
+                        }
+                        if !attempted {
+                            mark_action_as_failed(
+                                &mut completion_tx,
+                                "No active tab or client for dump screen",
+                            );
+                            continue;
+                        }
+                        if !found {
+                            mark_action_as_failed(
+                                &mut completion_tx,
+                                &format!("Pane with id {:?} not found", pane_id.unwrap()),
+                            );
+                            continue;
+                        }
                         screen.bus.senders.send_to_server(ServerInstruction::Log(
                             vec![dump],
                             cli_client_id.unwrap_or(client_id),
-                            completion_tx,
+                            completion_tx.take(),
                         ))?;
                     },
                 }
             },
             ScreenInstruction::DumpLayout(default_shell, client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata = screen.get_layout_metadata(default_shell, None);
-                screen
-                    .bus
-                    .senders
-                    .send_to_plugin(PluginInstruction::DumpLayout(
-                        session_layout_metadata,
-                        client_id,
-                        completion_tx,
-                    ))
-                    .with_context(err_context)?;
+                if let Some(session_layout_metadata) =
+                    screen.publication_layout_metadata(default_shell.clone(), None)
+                {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::DumpLayout(
+                            session_layout_metadata,
+                            client_id,
+                            completion_tx.take(),
+                        ))
+                        .with_context(err_context)?;
+                } else {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::DumpLayout(
+                            default_shell,
+                            client_id,
+                            completion_tx.take(),
+                        ))
+                        .with_context(err_context)?;
+                }
             },
             ScreenInstruction::ListClientsMetadata(default_shell, client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata = screen.get_layout_metadata(default_shell, None);
-                screen
-                    .bus
-                    .senders
-                    .send_to_plugin(PluginInstruction::ListClientsMetadata(
-                        session_layout_metadata,
-                        client_id,
-                        completion_tx,
-                    ))
-                    .with_context(err_context)?;
+                if let Some(session_layout_metadata) =
+                    screen.publication_layout_metadata(default_shell.clone(), None)
+                {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::ListClientsMetadata(
+                            session_layout_metadata,
+                            client_id,
+                            completion_tx.take(),
+                        ))
+                        .with_context(err_context)?;
+                } else {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::ListClientsMetadata(
+                            default_shell,
+                            client_id,
+                            completion_tx.take(),
+                        ))
+                        .with_context(err_context)?;
+                }
             },
             ScreenInstruction::ListPanes {
                 show_all,
@@ -12068,18 +14096,31 @@ pub(crate) fn screen_thread_main(
                 response_channel,
             } => {
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata =
-                    screen.get_layout_metadata(Some(screen.default_shell.clone()), tab_index);
-                screen
-                    .bus
-                    .senders
-                    .send_to_pty(PtyInstruction::DumpLayoutToPlugin {
-                        session_layout_metadata,
-                        plugin_id,
-                        response_channel,
-                    })
-                    .with_context(err_context)
-                    .non_fatal();
+                if let Some(session_layout_metadata) = screen
+                    .publication_layout_metadata(Some(screen.default_shell.clone()), tab_index)
+                {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_pty(PtyInstruction::DumpLayoutToPlugin {
+                            session_layout_metadata,
+                            plugin_id,
+                            response_channel,
+                        })
+                        .with_context(err_context)
+                        .non_fatal();
+                } else {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::DumpLayoutToPlugin {
+                            plugin_id,
+                            tab_index,
+                            response_channel,
+                        })
+                        .with_context(err_context)
+                        .non_fatal();
+                }
             },
             ScreenInstruction::GetFocusedPaneInfo {
                 client_id,
@@ -12119,28 +14160,40 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ListClientsToPlugin(plugin_id, client_id) => {
                 let err_context = || format!("Failed to dump layout");
-                let session_layout_metadata =
-                    screen.get_layout_metadata(Some(screen.default_shell.clone()), None);
-                screen
-                    .bus
-                    .senders
-                    .send_to_pty(PtyInstruction::ListClientsToPlugin(
-                        session_layout_metadata,
-                        plugin_id,
-                        client_id,
-                    ))
-                    .with_context(err_context)
-                    .non_fatal();
+                if let Some(session_layout_metadata) =
+                    screen.publication_layout_metadata(Some(screen.default_shell.clone()), None)
+                {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_pty(PtyInstruction::ListClientsToPlugin(
+                            session_layout_metadata,
+                            plugin_id,
+                            client_id,
+                        ))
+                        .with_context(err_context)
+                        .non_fatal();
+                } else {
+                    screen
+                        .bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::ListClientsToPlugin(
+                            plugin_id, client_id,
+                        ))
+                        .with_context(err_context)
+                        .non_fatal();
+                }
             },
             ScreenInstruction::EditScrollback(client_id, ansi, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| {
                         if ansi {
-                            tab.edit_scrollback_raw(client_id, completion_tx)
+                            tab.edit_scrollback_raw(client_id, completion_tx.take())
                         } else {
-                            tab.edit_scrollback(client_id, completion_tx)
+                            tab.edit_scrollback(client_id, completion_tx.take())
                         }
                     },
                     ?
@@ -12186,6 +14239,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -12196,6 +14250,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollToPreviousPrompt(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -12205,6 +14260,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollToNextPrompt(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -12214,6 +14270,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::SelectCommandAtScrollPosition(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -12223,6 +14280,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::CopyLastCommandOutput(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -12246,6 +14304,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -12259,6 +14318,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -12272,6 +14332,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -12285,6 +14346,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -12298,6 +14360,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -12311,6 +14374,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -12325,6 +14389,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -12340,6 +14405,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -12355,6 +14421,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -12370,6 +14437,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -12385,6 +14453,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -12400,6 +14469,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -12415,6 +14485,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -12430,6 +14501,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -12445,6 +14517,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let was_scrolled = screen.active_pane_is_scrolled(client_id);
                 active_tab_and_connected_client_id!(
                     screen,
@@ -12467,11 +14540,12 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::CloseFocusedPane(client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let old_pane_id = screen.get_active_pane_id(&client_id);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.close_focused_pane(client_id, completion_tx), ?
+                    |tab: &mut Tab, client_id: ClientId| tab.close_focused_pane(client_id, completion_tx.take()), ?
                 );
                 let new_pane_id = screen.get_active_pane_id(&client_id);
                 if let (Some(old), Some(new)) = (old_pane_id, new_pane_id) {
@@ -12511,11 +14585,10 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 if !found_plugin {
-                    pending_events_waiting_for_tab.push(ScreenInstruction::ShowPluginCursor(
-                        pid,
-                        client_id,
-                        cursor_position,
-                    ));
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
+                        ScreenInstruction::ShowPluginCursor(pid, client_id, cursor_position),
+                    );
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -12531,7 +14604,8 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 if !found_plugin {
-                    pending_events_waiting_for_tab.push(
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
                         ScreenInstruction::SetMouseSelectionSupport(pid, selection_support),
                     );
                 }
@@ -12556,8 +14630,10 @@ pub(crate) fn screen_thread_main(
                     pending_events_waiting_for_tab.retain(|event| {
                         !matches!(event, ScreenInstruction::SetPaneCollapsed(pending_pid, _) if *pending_pid == pid)
                     });
-                    pending_events_waiting_for_tab
-                        .push(ScreenInstruction::SetPaneCollapsed(pid, collapsed));
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
+                        ScreenInstruction::SetPaneCollapsed(pid, collapsed),
+                    );
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -12568,7 +14644,15 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                 // waiting for it
                 exit_status,
+                close_pane_source,
+                run_generation,
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
+                if let (Some(generation), PaneId::Terminal(terminal_id)) = (run_generation, id) {
+                    if !screen.terminal_run_generation_matches(terminal_id, generation) {
+                        continue;
+                    }
+                }
                 if let PaneId::Plugin(plugin_id) = id {
                     if screen.close_popup_with_plugin_id(plugin_id) {
                         screen.render(None)?;
@@ -12595,12 +14679,39 @@ pub(crate) fn screen_thread_main(
                         }
                         if !found {
                             if screen.pane_ids_never_created.remove(&id) {
-                                pending_events_waiting_for_pane.remove(&id);
+                                pending_events_waiting_for_pane.discard(id);
                                 closed_pane_was_never_created = true;
-                            } else {
-                                pending_events_waiting_for_pane.entry(id).or_default().push(
-                                    ScreenInstruction::ClosePane(id, None, None, exit_status),
+                            } else if screen.terminal_was_closed(&id) {
+                                // The exit of a child whose terminal was
+                                // already closed (e.g. the user closed the
+                                // pane): it is fully cleaned up.
+                                continue;
+                            } else if close_pane_source == ClosePaneSource::ChildExit {
+                                // Replayed once the pane exists, which also
+                                // cleans up its PTY. Cleaning up now would stop
+                                // reading output the command printed before it
+                                // exited.
+                                pending_events_waiting_for_pane.push_lifecycle(
+                                    id,
+                                    ScreenInstruction::ClosePane(
+                                        id,
+                                        None,
+                                        None,
+                                        exit_status,
+                                        ClosePaneSource::ChildExit,
+                                        run_generation,
+                                    ),
                                 );
+                                continue;
+                            } else if let PaneId::Plugin(_) = id {
+                                // A headless plugin has no pane, but closing it
+                                // must still unload it (via the PTY cleanup).
+                            } else {
+                                log::warn!(
+                                    "ignoring external close for pane {:?} because it does not exist",
+                                    id
+                                );
+                                continue;
                             }
                         }
                     },
@@ -12629,7 +14740,12 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state().non_fatal();
                 screen.retain_only_existing_panes_in_pane_groups();
             },
-            ScreenInstruction::HoldPane(id, exit_status, run_command) => {
+            ScreenInstruction::HoldPane(id, exit_status, run_command, run_generation) => {
+                if let (Some(generation), PaneId::Terminal(terminal_id)) = (run_generation, id) {
+                    if !screen.terminal_run_generation_matches(terminal_id, generation) {
+                        continue;
+                    }
+                }
                 let is_first_run = false;
                 let mut found = false;
                 for tab in screen.tabs.values_mut() {
@@ -12643,14 +14759,27 @@ pub(crate) fn screen_thread_main(
                     screen.attention_pane_exited(id, exit_status);
                 }
                 if !found && screen.pane_ids_never_created.remove(&id) {
-                    pending_events_waiting_for_pane.remove(&id);
+                    pending_events_waiting_for_pane.discard(id);
+                } else if !found && screen.terminal_was_closed(&id) {
+                    // Held after its terminal was closed: nothing to hold.
                 } else if !found {
-                    pending_events_waiting_for_pane
-                        .entry(id)
-                        .or_default()
-                        .push(ScreenInstruction::HoldPane(id, exit_status, run_command));
+                    pending_events_waiting_for_pane.push_lifecycle(
+                        id,
+                        ScreenInstruction::HoldPane(id, exit_status, run_command, run_generation),
+                    );
                 }
                 screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::TerminalClosed(terminal_id) => {
+                // An aborted reader never drains. Dropping the run releases a
+                // deferred exit so it cannot pin the pane closed forever.
+                screen.terminal_runs.remove(&terminal_id);
+                let pid = PaneId::Terminal(terminal_id);
+                screen.cancel_forward_for_pane(pid);
+                if !screen.has_pane_with_pid(&pid) {
+                    screen.remember_terminal_closed(terminal_id);
+                    pending_events_waiting_for_pane.discard(pid);
+                }
             },
             ScreenInstruction::UpdatePaneName(
                 c,
@@ -12658,6 +14787,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if screen.update_rename_target_pane_name(c.clone(), client_id) {
                     screen.render(None)?;
                     screen.log_and_report_session_state()?;
@@ -12676,6 +14806,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if screen.undo_rename_of_target_pane(client_id) {
                     screen.render(None)?;
                     continue;
@@ -12692,6 +14823,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -12702,6 +14834,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::ToggleActiveTerminalNoUiFullscreen(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -12715,6 +14848,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.pane_frame_style = match screen.pane_frame_style {
                     PaneFrameStyle::Full => PaneFrameStyle::Titles,
                     PaneFrameStyle::Titles => PaneFrameStyle::None,
@@ -12728,6 +14862,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::ToggleStackListOrientation(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -12742,6 +14877,7 @@ pub(crate) fn screen_thread_main(
                 pane_id,
                 mut _completion_tx,
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let toggled = screen
                     .tabs
                     .values_mut()
@@ -12749,25 +14885,29 @@ pub(crate) fn screen_thread_main(
                 if toggled {
                     screen.render(None)?;
                     screen.log_and_report_session_state()?;
-                } else if let Some(ref mut c) = _completion_tx {
+                } else if let Some(c) = _completion_tx.as_mut() {
                     c.set_exit_status(1);
                     c.set_error_message(format!("Pane {:?} is not in a stack", pane_id));
                 }
             },
             ScreenInstruction::SetPaneFrameStyle(pane_frame_style, _completion_tx) => {
-                screen.pane_frame_style = pane_frame_style;
-                for tab in screen.tabs.values_mut() {
-                    tab.set_pane_frames(screen.pane_frame_style);
-                    tab.update_input_modes()?;
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
+                if screen.pane_frame_style != pane_frame_style {
+                    screen.pane_frame_style = pane_frame_style;
+                    for tab in screen.tabs.values_mut() {
+                        tab.set_pane_frames(screen.pane_frame_style);
+                        tab.update_input_modes()?;
+                    }
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
                 }
-                screen.render(None)?;
-                screen.log_and_report_session_state()?;
             },
             ScreenInstruction::SwitchTabNext(
                 client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.switch_tab_next(None, true, client_id)?;
                 screen.render(None)?;
             },
@@ -12776,6 +14916,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.switch_tab_prev(None, true, client_id)?;
                 screen.render(None)?;
             },
@@ -12784,6 +14925,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.close_tab(client_id)?;
                 let connected_client_ids: Vec<ClientId> =
                     screen.active_tab_ids.keys().copied().collect();
@@ -12805,6 +14947,7 @@ pub(crate) fn screen_thread_main(
                 (client_id, is_web_client),
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let tab_index = screen.get_new_tab_id();
                 pending_tab_ids.insert(tab_index);
                 let client_id_for_new_tab = if should_change_focus_to_new_tab {
@@ -12841,7 +14984,7 @@ pub(crate) fn screen_thread_main(
                         block_on_first_terminal,
                         should_change_focus_to_new_tab,
                         (client_id, is_web_client),
-                        completion_tx,
+                        completion_tx.take(),
                     ))?;
             },
             ScreenInstruction::ApplyLayout(
@@ -12853,9 +14996,10 @@ pub(crate) fn screen_thread_main(
                 tab_id,
                 should_change_focus_to_new_tab,
                 (client_id, is_web_client),
-                mut completion_tx,
+                completion_tx,
                 blocking_terminal,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 log::info!(
                     "ScreenInstruction::ApplyLayout: applying layout for tab {}",
                     tab_id
@@ -12867,6 +15011,11 @@ pub(crate) fn screen_thread_main(
                 } else {
                     mark_action_as_failed(&mut completion_tx, "Tab not found");
                 }
+                let new_terminal_ids: Vec<u32> = new_pane_pids
+                    .iter()
+                    .chain(new_floating_pane_pids.iter())
+                    .map(|(terminal_id, _)| *terminal_id)
+                    .collect();
                 screen.apply_layout(
                     layout,
                     floating_panes_layout,
@@ -12879,6 +15028,15 @@ pub(crate) fn screen_thread_main(
                     blocking_terminal,
                 )?;
                 screen.apply_hidden_bars_to_tab(tab_id);
+                // Commands started by the layout may have printed output or
+                // exited before their panes existed.
+                for terminal_id in new_terminal_ids {
+                    let pid = PaneId::Terminal(terminal_id);
+                    if screen.has_pane_with_pid(&pid) {
+                        screen
+                            .replay_pending_pane_events(pid, &mut pending_events_waiting_for_pane);
+                    }
+                }
                 let tab_of_layout = screen.tabs.get(&tab_id);
                 let pane_exists_in_tab = |pane_id: &PaneId| {
                     tab_of_layout
@@ -12955,12 +15113,22 @@ pub(crate) fn screen_thread_main(
 
                 screen.render(None)?;
             },
+            ScreenInstruction::LayoutSpawnFailed(tab_index) => {
+                pending_tab_ids.remove(&tab_index);
+                if pending_tab_ids.is_empty() {
+                    for event in pending_events_waiting_for_tab.drain(..) {
+                        screen.bus.senders.send_to_screen(event).non_fatal();
+                    }
+                }
+                screen.render(None)?;
+            },
             ScreenInstruction::GoToTab(
                 tab_index,
                 client_id,
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let client_id_to_switch = match client_id {
                     None => None,
                     Some(client_id) if screen.active_tab_ids.contains_key(&client_id) => {
@@ -12990,8 +15158,9 @@ pub(crate) fn screen_thread_main(
                 default_shell,
                 create,
                 client_id,
-                mut completion_tx,
+                completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let swap_layouts = (
                     screen.default_layout.swap_tiled_layouts.clone(),
                     screen.default_layout.swap_floating_layouts.clone(),
@@ -13044,7 +15213,7 @@ pub(crate) fn screen_thread_main(
                                     false, // block_on_first_terminal
                                     should_change_focus_to_new_tab,
                                     (client_id, is_web_client),
-                                    completion_tx,
+                                    completion_tx.take(),
                                 ))?;
                             continue; // so we don't get to the completion signalling below
                         }
@@ -13052,11 +15221,12 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::UpdateTabName(c, client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if screen.has_no_client_to_act_for(client_id) {
                     screen.report_no_client_to_act_for(
                         client_id,
                         "Cannot rename the focused tab: no client is attached to this session. Target a tab explicitly with --tab-id.".to_owned(),
-                        completion_tx,
+                        completion_tx.take(),
                     );
                 } else {
                     screen.update_active_tab_name(c, client_id)?;
@@ -13068,27 +15238,32 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.undo_active_rename_tab(client_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::MoveTabLeft(client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if pending_tab_ids.is_empty() {
                     screen.move_active_tab_to_left(client_id)?;
                     screen.render(None)?;
                 } else {
-                    // Defer execution, forward completion_tx
-                    pending_events_waiting_for_tab
-                        .push(ScreenInstruction::MoveTabLeft(client_id, completion_tx));
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
+                        ScreenInstruction::MoveTabLeft(client_id, completion_tx.take()),
+                    );
                 }
             },
             ScreenInstruction::MoveTabRight(client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if pending_tab_ids.is_empty() {
                     screen.move_active_tab_to_right(client_id)?;
                     screen.render(None)?;
                 } else {
-                    // Defer execution, forward completion_tx
-                    pending_events_waiting_for_tab
-                        .push(ScreenInstruction::MoveTabRight(client_id, completion_tx));
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
+                        ScreenInstruction::MoveTabRight(client_id, completion_tx.take()),
+                    );
                 }
             },
             ScreenInstruction::RecomputeTabSize(client_id, new_size) => {
@@ -13165,8 +15340,12 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::RenderFrameAck { client_id, seq } => {
                 screen.handle_render_frame_ack(client_id, seq)?;
             },
-            ScreenInstruction::ForwardHostQuery { pane_id, query } => {
-                screen.forward_host_query(pane_id, query);
+            ScreenInstruction::ForwardHostQuery {
+                pane_id,
+                query,
+                run_generation,
+            } => {
+                screen.handle_forward_host_query(pane_id, query, run_generation);
             },
             ScreenInstruction::NestedSessionMessageFromPane { pane_id, message } => {
                 screen.handle_nested_session_message_from_pane(pane_id, message);
@@ -13217,7 +15396,7 @@ pub(crate) fn screen_thread_main(
                 pane_id,
                 reply_bytes,
             } => {
-                screen.resume_pane_after_forward(pane_id, reply_bytes)?;
+                screen.resume_pane_after_forward(pane_id, reply_bytes, None)?;
                 // Same rationale as ForwardedReplyFromHost above — the
                 // resume's replay paints the grid, so we must schedule
                 // a render before yielding back to the screen loop.
@@ -13226,19 +15405,22 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::HostTerminalThemeChanged(mode) => {
                 screen.update_host_terminal_theme_mode(mode)?;
             },
-            ScreenInstruction::SetDarkTheme(mut completion_tx) => {
+            ScreenInstruction::SetDarkTheme(completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 screen.apply_manual_host_terminal_theme_mode(
                     HostTerminalThemeMode::Dark,
                     &mut completion_tx,
                 )?;
             },
-            ScreenInstruction::SetLightTheme(mut completion_tx) => {
+            ScreenInstruction::SetLightTheme(completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 screen.apply_manual_host_terminal_theme_mode(
                     HostTerminalThemeMode::Light,
                     &mut completion_tx,
                 )?;
             },
-            ScreenInstruction::ToggleTheme(mut completion_tx) => {
+            ScreenInstruction::ToggleTheme(completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let next = match screen.host_terminal_theme_mode {
                     Some(HostTerminalThemeMode::Dark) => HostTerminalThemeMode::Light,
                     Some(HostTerminalThemeMode::Light) => HostTerminalThemeMode::Dark,
@@ -13254,6 +15436,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.change_mode(input_mode, base_mode, client_id)?;
                 screen.render(None)?;
             },
@@ -13263,6 +15446,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.change_mode_for_all_clients(input_mode, base_mode)?;
                 screen.render(None)?;
             },
@@ -13271,6 +15455,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -13285,6 +15470,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.handle_mouse_event(event, client_id);
             },
             ScreenInstruction::Copy(
@@ -13292,6 +15478,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .copy_selection(client_id), ?);
                 screen.render(None)?;
@@ -13310,6 +15497,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.toggle_tab(client_id)?;
                 screen.render(None)?;
             },
@@ -13352,9 +15540,8 @@ pub(crate) fn screen_thread_main(
                 if screen.pending_session_card == Some(client_id) {
                     screen.pending_session_card = None;
                 }
-                screen.client_session_histories.remove(&client_id);
-                screen.last_session_history_infos.remove(&client_id);
-                screen.pending_session_card_away_since.remove(&client_id);
+                // Per-client history maps are owned by remove_client;
+                // see the cleanup ledger there.
                 let was_attached = screen.connected_clients.borrow().contains_key(&client_id);
                 screen.clear_live_views_of_client(client_id);
                 screen.mode_hints_requested.remove(&client_id);
@@ -13370,6 +15557,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -13382,6 +15570,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -13394,6 +15583,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -13406,6 +15596,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -13419,6 +15610,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -13431,6 +15623,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -13440,22 +15633,27 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::AddRedPaneFrameColorOverride(pane_ids, error_text) => {
                 let all_tabs = screen.get_tabs_mut();
+                let mut any_changed = false;
                 for pane_id in pane_ids {
                     for tab in all_tabs.values_mut() {
                         if tab.has_pane_with_pid(&pane_id) {
-                            tab.add_red_pane_frame_color_override(pane_id, error_text.clone());
+                            any_changed |=
+                                tab.add_red_pane_frame_color_override(pane_id, error_text.clone());
                             break;
                         }
                     }
                 }
-                screen.render(None)?;
+                if any_changed {
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::AddHighlightPaneFrameColorOverride(pane_ids, error_text) => {
                 let all_tabs = screen.get_tabs_mut();
+                let mut any_changed = false;
                 for pane_id in pane_ids {
                     for tab in all_tabs.values_mut() {
                         if tab.has_pane_with_pid(&pane_id) {
-                            tab.add_highlight_pane_frame_color_override(
+                            any_changed |= tab.add_highlight_pane_frame_color_override(
                                 pane_id,
                                 error_text.clone(),
                                 None,
@@ -13464,19 +15662,24 @@ pub(crate) fn screen_thread_main(
                         }
                     }
                 }
-                screen.render(None)?;
+                if any_changed {
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::ClearPaneFrameColorOverride(pane_ids) => {
                 let all_tabs = screen.get_tabs_mut();
+                let mut any_changed = false;
                 for pane_id in pane_ids {
                     for tab in all_tabs.values_mut() {
                         if tab.has_pane_with_pid(&pane_id) {
-                            tab.clear_pane_frame_color_override(pane_id, None);
+                            any_changed |= tab.clear_pane_frame_color_override(pane_id, None);
                             break;
                         }
                     }
                 }
-                screen.render(None)?;
+                if any_changed {
+                    screen.render(None)?;
+                }
             },
             ScreenInstruction::SetTabBellFlash(tab_id, is_flashing) => {
                 if let Some(tab) = screen.tabs.values_mut().find(|t| t.id == tab_id) {
@@ -13516,6 +15719,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -13530,6 +15734,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -13539,7 +15744,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::ApplyTiledSwapLayout(client_id, layout_name, mut completion_tx) => {
+            ScreenInstruction::ApplyTiledSwapLayout(client_id, layout_name, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let mut applied = false;
                 active_tab_and_connected_client_id!(
                     screen,
@@ -13552,7 +15758,7 @@ pub(crate) fn screen_thread_main(
                 );
                 if !applied {
                     log::error!("Tiled swap layout not found or incompatible: {layout_name}");
-                    if let Some(ref mut c) = completion_tx {
+                    if let Some(c) = completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!(
                             "Tiled swap layout not found or incompatible: {layout_name}"
@@ -13563,11 +15769,8 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::ApplyFloatingSwapLayout(
-                client_id,
-                layout_name,
-                mut completion_tx,
-            ) => {
+            ScreenInstruction::ApplyFloatingSwapLayout(client_id, layout_name, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let mut applied = false;
                 active_tab_and_connected_client_id!(
                     screen,
@@ -13580,7 +15783,7 @@ pub(crate) fn screen_thread_main(
                 );
                 if !applied {
                     log::error!("Floating swap layout not found or incompatible: {layout_name}");
-                    if let Some(ref mut c) = completion_tx {
+                    if let Some(c) = completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!(
                             "Floating swap layout not found or incompatible: {layout_name}"
@@ -13599,8 +15802,9 @@ pub(crate) fn screen_thread_main(
                 retain_existing_plugin_panes,
                 apply_only_to_focused_tab,
                 client_id,
-                mut completion_tx,
+                completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if tab_layouts.is_empty() {
                     log::error!("No tab layouts found, cannot override.");
                     mark_action_as_failed(&mut completion_tx, "No tab layouts found");
@@ -13710,7 +15914,7 @@ pub(crate) fn screen_thread_main(
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
                         client_id,
-                        completion_tx,
+                        completion_tx.take(),
                     ))?;
 
                 // 4. Close tabs that aren't in the layout
@@ -13722,11 +15926,14 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::OverrideLayoutComplete(
                 tab_results,
+                failed_tabs,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
                 client_id,
                 completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+                let mut failures = failed_tabs;
                 // Process each tab result
                 for tab_result in tab_results {
                     if let Some(tab) = screen.tabs.get_mut(&tab_result.tab_index) {
@@ -13748,6 +15955,7 @@ pub(crate) fn screen_thread_main(
                                 tab_result.tab_index,
                                 e
                             );
+                            failures.push((tab_result.tab_index, format!("{e:#}")));
                         }
                     } else {
                         // Tab doesn't exist - create it
@@ -13766,6 +15974,10 @@ pub(crate) fn screen_thread_main(
                                 tab_result.tab_index,
                                 e
                             );
+                            failures.push((
+                                tab_result.tab_index,
+                                format!("failed to create tab: {e:#}"),
+                            ));
                             continue;
                         }
 
@@ -13789,6 +16001,10 @@ pub(crate) fn screen_thread_main(
                                     tab_result.tab_index,
                                     e
                                 );
+                                failures.push((
+                                    tab_result.tab_index,
+                                    format!("failed to override new tab: {e:#}"),
+                                ));
                             }
                         }
                     }
@@ -13803,12 +16019,26 @@ pub(crate) fn screen_thread_main(
                 }
 
                 screen.apply_hidden_bars_to_all_tabs();
+                if !failures.is_empty() {
+                    let failure_summary = failures
+                        .iter()
+                        .map(|(tab_index, error)| format!("tab {tab_index}: {error}"))
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    if let Some(completion) = completion_tx.as_mut() {
+                        completion.set_exit_status(1);
+                        completion.set_error_message(format!(
+                            "layout override failed for {failure_summary}"
+                        ));
+                    }
+                }
                 // Single render and log after all tabs are updated (performance optimization)
                 screen.log_and_report_session_state()?;
                 let _ = screen.render(None);
                 drop(completion_tx); // action ends here, notify the action initiator
             },
             ScreenInstruction::QueryTabNames(client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let tab_names = screen
                     .get_tabs_mut()
                     .values()
@@ -13817,7 +16047,7 @@ pub(crate) fn screen_thread_main(
                 screen.bus.senders.send_to_server(ServerInstruction::Log(
                     tab_names,
                     client_id,
-                    completion_tx,
+                    completion_tx.take(),
                 ))?;
             },
             ScreenInstruction::NewTiledPluginPane(
@@ -13830,6 +16060,7 @@ pub(crate) fn screen_thread_main(
                 explicit_tab_id,
                 no_focus,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let tab_index = explicit_tab_id
                     .unwrap_or_else(|| *screen.active_tab_ids.values().next().unwrap_or(&1));
                 let size = Size::default();
@@ -13853,7 +16084,8 @@ pub(crate) fn screen_thread_main(
                         cwd,
                         should_focus_plugin,
                         None,
-                        completion_tx,
+                        completion_tx.take(),
+                        None,
                     ))?;
             },
             ScreenInstruction::NewFloatingPluginPane(
@@ -13867,6 +16099,7 @@ pub(crate) fn screen_thread_main(
                 explicit_tab_id,
                 no_focus,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let resolved_tab_index =
                     explicit_tab_id.or_else(|| screen.active_tab_ids.values().next().copied());
                 match resolved_tab_index {
@@ -13892,13 +16125,15 @@ pub(crate) fn screen_thread_main(
                                 cwd,
                                 should_focus_plugin,
                                 floating_pane_coordinates,
-                                completion_tx,
+                                completion_tx.take(),
+                                None,
                             ))?;
                     },
                     None => {
-                        log::error!(
-                            "Could not find an active tab - is there at least 1 connected user?"
-                        );
+                        let message =
+                            "Could not find an active tab - is there at least 1 connected user?";
+                        log::error!("{message}");
+                        mark_action_as_failed(&mut completion_tx, message);
                     },
                 }
             },
@@ -13913,6 +16148,7 @@ pub(crate) fn screen_thread_main(
                 explicit_tab_id,
                 no_focus,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let resolved_tab_index =
                     explicit_tab_id.or_else(|| screen.active_tab_ids.values().next().copied());
                 match resolved_tab_index {
@@ -13938,17 +16174,20 @@ pub(crate) fn screen_thread_main(
                                 None,
                                 should_focus_plugin,
                                 None,
-                                completion_tx,
+                                completion_tx.take(),
+                                None,
                             ))?;
                     },
                     None => {
-                        log::error!(
-                            "Could not find an active tab - is there at least 1 connected user?"
-                        );
+                        let message =
+                            "Could not find an active tab - is there at least 1 connected user?";
+                        log::error!("{message}");
+                        mark_action_as_failed(&mut completion_tx, message);
                     },
                 }
             },
             ScreenInstruction::StartOrReloadPluginPane(run_plugin, pane_title, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let tab_index = screen.active_tab_ids.values().next().unwrap_or(&1);
                 let size = Size::default();
                 let should_float = Some(false);
@@ -13962,7 +16201,8 @@ pub(crate) fn screen_thread_main(
                         run_plugin,
                         *tab_index,
                         size,
-                        completion_tx,
+                        completion_tx.take(),
+                        None,
                     ))?;
             },
             ScreenInstruction::AddPlugin(
@@ -13979,8 +16219,10 @@ pub(crate) fn screen_thread_main(
                 floating_pane_coordinates,
                 should_focus_plugin,
                 client_id,
-                mut completion_tx,
+                completion_tx,
+                activation_token,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let mut new_pane_placement = NewPanePlacement::default();
                 let maybe_should_float = should_float;
                 let should_be_tiled = maybe_should_float.map(|f| !f).unwrap_or(false);
@@ -14018,24 +16260,27 @@ pub(crate) fn screen_thread_main(
                         floating_pane_coordinates,
                         should_focus_plugin,
                         client_id,
-                        completion_tx,
+                        completion_tx.take(),
+                        activation_token,
                     ));
                     continue;
                 }
+                let plugin_location = run_plugin_or_alias.location_string();
                 let pane_title = pane_title.unwrap_or_else(|| {
                     format!(
                         "({}) - {}",
                         cwd.map(|cwd| cwd.display().to_string())
                             .unwrap_or(".".to_owned()),
-                        run_plugin_or_alias.location_string()
+                        &plugin_location
                     )
                 });
                 let run_plugin = Run::Plugin(run_plugin_or_alias);
 
                 // Set affected pane ID for CLI client output
-                if let Some(ref mut completion) = completion_tx {
+                if let Some(completion) = completion_tx.as_mut() {
                     completion.set_affected_pane_id(PaneId::Plugin(plugin_id));
                 }
+                screen.activate_plugin_for_load(plugin_id, activation_token);
 
                 if should_be_in_place {
                     if let Some(pane_id_to_replace) = pane_id_to_replace {
@@ -14169,118 +16414,25 @@ pub(crate) fn screen_thread_main(
                 pane_id_to_replace,
                 skip_cache,
                 client_id,
-                mut completion_tx,
+                completion_tx,
                 explicit_tab_id,
-            ) => match pane_id_to_replace {
-                Some(pane_id_to_replace) if should_open_in_place => {
-                    let resolved_tab_index =
-                        explicit_tab_id.or_else(|| screen.active_tab_ids.values().next().copied());
-                    match resolved_tab_index {
-                        Some(tab_index) => {
-                            let size = Size::default();
-                            screen
-                                .bus
-                                .senders
-                                .send_to_pty(PtyInstruction::FillPluginCwd(
-                                    Some(should_float),
-                                    should_open_in_place,
-                                    close_replaced_pane,
-                                    None,
-                                    run_plugin,
-                                    tab_index,
-                                    Some(pane_id_to_replace),
-                                    client_id,
-                                    size,
-                                    skip_cache,
-                                    None,
-                                    None,
-                                    None,
-                                    completion_tx,
-                                ))?;
-                        },
-                        None => {
-                            log::error!(
-                            "Could not find an active tab - is there at least 1 connected user?"
-                        );
-                        },
-                    }
-                },
-                _ => {
-                    let client_id = if screen.active_tab_ids.contains_key(&client_id) {
-                        Some(client_id)
-                    } else {
-                        screen.get_first_client_id()
-                    };
-                    let client_id_and_focused_tab = client_id.and_then(|client_id| {
-                        screen
-                            .active_tab_ids
-                            .get(&client_id)
-                            .map(|tab_index| (*tab_index, client_id))
-                    });
-                    let resolved_tab_and_client = explicit_tab_id
-                        .and_then(|tid| client_id.map(|cid| (tid, cid)))
-                        .or(client_id_and_focused_tab);
-                    match resolved_tab_and_client {
-                        Some((tab_index, client_id)) => {
-                            let found_and_focused = screen
-                                .focus_plugin_pane(
-                                    &run_plugin,
-                                    should_float,
-                                    move_to_focused_tab,
-                                    should_open_in_place,
-                                    client_id,
-                                    &mut completion_tx,
-                                )
-                                .unwrap_or_else(|e| {
-                                    let error_message =
-                                        format!("Failed to launch or focus plugin: {}", e);
-                                    Err::<(), _>(e).non_fatal();
-                                    mark_action_as_failed(&mut completion_tx, &error_message);
-                                    if let Some(completion_tx) = completion_tx.as_mut() {
-                                        completion_tx.clear_affected_pane_id();
-                                    }
-                                    true
-                                });
-                            if found_and_focused {
-                                screen.render(None)?;
-                                screen.log_and_report_session_state()?;
-                            } else {
-                                let floating_session_manager = (should_float
-                                    && !should_open_in_place
-                                    && popups::is_session_manager(&run_plugin))
-                                .then(|| screen.get_active_tab(client_id).ok())
-                                .flatten()
-                                .map(popups::session_manager_coordinates);
-                                let (size, coordinates) = match floating_session_manager {
-                                    Some((coordinates, content)) => (content, Some(coordinates)),
-                                    None => (Size::default(), None),
-                                };
-                                screen
-                                    .bus
-                                    .senders
-                                    .send_to_pty(PtyInstruction::FillPluginCwd(
-                                        Some(should_float),
-                                        should_open_in_place,
-                                        close_replaced_pane,
-                                        None,
-                                        run_plugin,
-                                        tab_index,
-                                        None,
-                                        client_id,
-                                        size,
-                                        skip_cache,
-                                        None,
-                                        None,
-                                        coordinates,
-                                        completion_tx,
-                                    ))?;
-                            }
-                        },
-                        None => {
-                            log::error!("No connected clients found - cannot load or focus plugin")
-                        },
-                    }
-                },
+            ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+                screen.launch_or_focus_plugin(
+                    run_plugin,
+                    should_float,
+                    move_to_focused_tab,
+                    should_open_in_place,
+                    close_replaced_pane,
+                    pane_id_to_replace,
+                    skip_cache,
+                    client_id,
+                    completion_tx.take(),
+                    explicit_tab_id,
+                )?;
+            },
+            ScreenInstruction::SettlePendingPluginActivation(token) => {
+                screen.settle_plugin_activation(token);
             },
             ScreenInstruction::LaunchPlugin(
                 run_plugin,
@@ -14319,12 +16471,16 @@ pub(crate) fn screen_thread_main(
                                     if no_focus { Some(false) } else { None },
                                     None,
                                     completion_tx,
+                                    None,
                                 ))?;
                         },
                         None => {
-                            log::error!(
-                                "Could not find an active tab - is there at least 1 connected user?"
-                            );
+                            let mut completion_tx =
+                                crate::route::RecordedCompletion::new(completion_tx);
+                            let message =
+                                "Could not find an active tab - is there at least 1 connected user?";
+                            log::error!("{message}");
+                            mark_action_as_failed(&mut completion_tx, message);
                         },
                     }
                 },
@@ -14363,10 +16519,16 @@ pub(crate) fn screen_thread_main(
                                     if no_focus { Some(false) } else { None },
                                     None,
                                     completion_tx,
+                                    None,
                                 ))?;
                         },
                         None => {
-                            log::error!("No connected clients found - cannot load or focus plugin")
+                            let mut completion_tx =
+                                crate::route::RecordedCompletion::new(completion_tx);
+                            let message =
+                                "No connected clients found - cannot load or focus plugin";
+                            log::error!("{message}");
+                            mark_action_as_failed(&mut completion_tx, message);
                         },
                     }
                 },
@@ -14409,8 +16571,9 @@ pub(crate) fn screen_thread_main(
                 should_float_if_hidden,
                 should_be_in_place_if_hidden,
                 client_id,
-                mut completion_tx,
+                completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let pane_exists = screen
                     .tabs
                     .iter()
@@ -14450,6 +16613,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
@@ -14463,11 +16627,12 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::RenameActivePane(new_name, client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if screen.has_no_client_to_act_for(client_id) {
                     screen.report_no_client_to_act_for(
                         client_id,
                         "Cannot rename the focused pane: no client is attached to this session. Target a pane explicitly with --pane-id.".to_owned(),
-                        completion_tx,
+                        completion_tx.take(),
                     );
                 } else {
                     active_tab_and_connected_client_id!(
@@ -14487,6 +16652,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 // tab_index here is 1-based user input representing display position
                 let tab_position = tab_index.saturating_sub(1); // Convert to 0-based
 
@@ -14502,7 +16668,8 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::GoToTabWithId(tab_id, client_id, _completion_tx) => {
+            ScreenInstruction::GoToTabWithId(tab_id, client_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let client_id_to_switch = client_id
                     .and_then(|cid| {
                         if screen.active_tab_ids.contains_key(&cid) {
@@ -14516,21 +16683,21 @@ pub(crate) fn screen_thread_main(
                 if let Some(client_id) = client_id_to_switch {
                     // Get the position from the ID
                     if let Some(tab_position) = screen.get_tab_position_by_id(tab_id) {
-                        // switch_active_tab expects 0-based position
+                        // switch_active_tab expects 0-based position and already updates
+                        // tab_history / renders; do not push the destination id again
+                        // (that would break ToggleTab — see #5384 / #5385).
                         screen.switch_active_tab(tab_position, None, true, client_id)?;
-                        screen.render(None)?;
-
-                        screen
-                            .tab_history
-                            .entry(client_id)
-                            .or_insert_with(Vec::new)
-                            .push(tab_id);
                     } else {
                         log::error!("Tab with ID {} not found", tab_id);
+                        if let Some(c) = _completion_tx.as_mut() {
+                            c.set_exit_status(1);
+                            c.set_error_message(format!("Tab with id {} not found", tab_id));
+                        }
                     }
                 }
             },
-            ScreenInstruction::RenameTabWithId(tab_id, new_name, _completion_tx) => {
+            ScreenInstruction::RenameTabWithId(tab_id, new_name, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 // Use get_tab_by_id_mut() helper method
                 if let Some(tab) = screen.get_tab_by_id_mut(tab_id) {
                     tab.name = clean_string_from_control_and_linebreak(&String::from_utf8_lossy(
@@ -14539,13 +16706,22 @@ pub(crate) fn screen_thread_main(
                     screen.log_and_report_session_state()?;
                 } else {
                     log::error!("Failed to find tab with ID: {}", tab_id);
+                    if let Some(c) = _completion_tx.as_mut() {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
                 }
             },
-            ScreenInstruction::CloseTabWithId(tab_id, _completion_tx) => {
+            ScreenInstruction::CloseTabWithId(tab_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if screen.get_tab_by_id(tab_id).is_some() {
                     screen.close_tab_by_id(tab_id).non_fatal();
                 } else {
                     log::error!("Failed to find tab with ID: {}", tab_id);
+                    if let Some(c) = _completion_tx.as_mut() {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
                 }
             },
             ScreenInstruction::BreakPanesToTabWithId {
@@ -14553,8 +16729,9 @@ pub(crate) fn screen_thread_main(
                 tab_id,
                 should_change_focus_to_target_tab,
                 client_id,
-                mut completion_tx,
+                completion_tx,
             } => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 // Verify tab exists
                 if screen.get_tab_by_id(tab_id).is_none() {
                     log::error!("Tab with ID {} not found", tab_id);
@@ -14603,16 +16780,19 @@ pub(crate) fn screen_thread_main(
                     );
                 }
             },
-            ScreenInstruction::BreakPane(default_shell, client_id, mut completion_tx) => {
+            ScreenInstruction::BreakPane(default_shell, client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let default_layout = screen.default_layout.clone();
                 let result = screen.break_pane(default_shell, default_layout, client_id);
                 screen.handle_break_pane_result(result, &mut completion_tx);
             },
-            ScreenInstruction::BreakPaneRight(client_id, mut completion_tx) => {
+            ScreenInstruction::BreakPaneRight(client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let result = screen.break_pane_to_new_tab(Direction::Right, client_id);
                 screen.handle_break_pane_result(result, &mut completion_tx);
             },
-            ScreenInstruction::BreakPaneLeft(client_id, mut completion_tx) => {
+            ScreenInstruction::BreakPaneLeft(client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let result = screen.break_pane_to_new_tab(Direction::Left, client_id);
                 screen.handle_break_pane_result(result, &mut completion_tx);
             },
@@ -14637,8 +16817,9 @@ pub(crate) fn screen_thread_main(
                 invoked_with,
                 close_replaced_pane,
                 client_id_tab_index_or_pane_id,
-                mut completion_tx,
+                completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 completion_tx
                     .as_mut()
                     .map(|c| c.set_affected_pane_id(new_pane_id));
@@ -14659,98 +16840,37 @@ pub(crate) fn screen_thread_main(
 
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::SerializeLayoutForResurrection => {
+            ScreenInstruction::SerializeLayoutForResurrection(coalesce) => {
+                // Clear before doing the work so a tick arriving during
+                // this pass queues a genuinely-new pending pass rather
+                // than being dropped while we serialize.
+                coalesce.store(false, std::sync::atomic::Ordering::SeqCst);
                 if screen.session_serialization {
-                    screen.dump_layout_to_hd()?;
-                }
-            },
-            ScreenInstruction::SaveSession(_client_id, completion_tx) => {
-                let err_context = || "Failed to save session";
-
-                screen.update_active_pane_ids();
-                let pane_manifest = screen.generate_and_report_pane_state()?;
-                let tab_infos = screen.generate_and_report_tab_state()?;
-
-                #[cfg(not(test))]
-                let (available_layouts, _layout_errors) = Layout::list_available_layouts(
-                    screen.layout_dir.clone(),
-                    &screen.default_layout_name,
-                );
-                #[cfg(test)]
-                let available_layouts = vec![];
-
-                let creation_time = {
-                    // The socket is named by the stable session id, not the display name.
-                    let sock_path =
-                        zellij_utils::consts::session_id_socket_path(&screen.session_id);
-                    std::fs::metadata(&sock_path)
-                        .ok()
-                        .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
-                        .and_then(|d| d.elapsed().ok())
-                        .map(|d| Duration::from_secs(d.as_secs()))
-                        .unwrap_or_default()
-                };
-                let session_info = SessionInfo {
-                    name: screen.session_name.clone(),
-                    tabs: tab_infos,
-                    panes: pane_manifest,
-                    connected_clients: screen.active_tab_ids.keys().len(),
-                    is_current_session: true,
-                    available_layouts,
-                    web_clients_allowed: screen.web_sharing.web_clients_allowed(),
-                    web_client_count: screen
-                        .connected_clients
-                        .borrow()
-                        .iter()
-                        .filter(|(_client_id, is_web_client)| **is_web_client)
-                        .count(),
-                    plugins: Default::default(),
-                    tab_history: screen.tab_history.clone(),
-                    pane_history: screen
-                        .pane_history
-                        .iter()
-                        .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
-                        .collect(),
-                    creation_time,
-                    attention_muted: screen.attention.session_is_muted(),
-                };
-
-                let session_layout_metadata = if screen.session_serialization {
-                    screen.get_layout_metadata(Some(screen.default_shell.clone()), None)
-                } else {
-                    // Create empty metadata if serialization is disabled
-                    SessionLayoutMetadata::new(screen.default_layout.clone())
-                };
-
-                screen
-                    .bus
-                    .senders
-                    .send_to_pty(PtyInstruction::SaveSessionToDisk {
-                        session_name: screen.session_name.clone(),
-                        session_info,
-                        session_layout_metadata,
-                        completion_tx,
-                    })
-                    .with_context(err_context)?;
-            },
-            ScreenInstruction::RenameSession(name, client_id, _completion_tx) => {
-                if let Err(error_text) = screen.rename_session(name)? {
-                    log::error!("{}", error_text);
-                    if let Some(os_input) = &mut screen.bus.os_input {
-                        let _ = os_input.send_to_client(
-                            client_id,
-                            ServerToClientMsg::LogError {
-                                lines: vec![error_text],
-                            },
-                        );
+                    let finished = screen.dump_layout_to_hd()?;
+                    if !finished {
+                        screen.bus.senders.send_to_screen(
+                            ScreenInstruction::SerializeLayoutForResurrection(coalesce),
+                        )?;
                     }
                 }
             },
+            ScreenInstruction::SaveSession(client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+                screen.handle_save_session(client_id, completion_tx.take())?;
+            },
+            ScreenInstruction::RenameSession(name, client_id, completion) => {
+                screen.begin_session_rename(name, client_id, false, completion)?;
+            },
+            ScreenInstruction::CommitSessionRename(commit) => {
+                screen.commit_session_rename(*commit)?;
+            },
             ScreenInstruction::UpdateSessionNameDraft(input, client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.update_session_name_draft(input, client_id)?;
                 screen.render(None)?;
             },
             ScreenInstruction::UndoRenameSession(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.undo_session_rename(client_id)?;
                 screen.render(None)?;
             },
@@ -14839,63 +16959,175 @@ pub(crate) fn screen_thread_main(
                 screen.resolve_default_theme_mode().non_fatal();
             },
             ScreenInstruction::RerunCommandPane(terminal_pane_id, completion_tx) => {
-                screen.rerun_command_pane_with_id(terminal_pane_id, completion_tx)
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+                screen.rerun_command_pane_with_id(terminal_pane_id, completion_tx.take())
             },
             ScreenInstruction::ResizePaneWithId(resize, pane_id) => {
                 screen.resize_pane_with_id(resize, pane_id)
             },
             ScreenInstruction::EditScrollbackForPaneWithId(pane_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.edit_scrollback_for_pane_with_id(pane_id, completion_tx)
+                        found = true;
+                        tab.edit_scrollback_for_pane_with_id(pane_id, completion_tx.take())
                             .non_fatal();
                         break;
                     }
                 }
+                if !found {
+                    mark_action_as_failed(
+                        &mut completion_tx,
+                        &format!("Pane with id {:?} not found", pane_id),
+                    );
+                }
                 screen.render(None)?;
             },
-            ScreenInstruction::WriteToPaneId(bytes, pane_id, _completion) => {
+            ScreenInstruction::WriteToPaneId(bytes, pane_id, client_id, completion) => {
+                // This completion reports admission of the write request, not
+                // the pty writer's eventual write. An empty owner is a
+                // finished admission; a missing target or rejected admission
+                // must record a failure.
+                let mut completion = crate::route::RecordedCompletion::new(completion);
                 let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
+                        found = true;
                         if tab.is_pane_requesting_permissions(pane_id) {
+                            mark_action_as_failed(
+                                &mut completion,
+                                &format!(
+                                    "Failed to write to pane with id {pane_id:?}: the pane is requesting permissions"
+                                ),
+                            );
                             break;
                         }
-                        tab.write_to_pane_id(&None, bytes, false, pane_id, None, None)
-                            .non_fatal();
+                        tab.scroll_to_bottom_by_pane_id(pane_id).non_fatal();
+                        if let Err(error) =
+                            tab.write_to_pane_id(&None, bytes, false, pane_id, client_id, None)
+                        {
+                            mark_action_as_failed(&mut completion, &format!("{error:#}"));
+                            Err::<(), _>(error).non_fatal();
+                        }
                         break;
                     }
+                }
+                if !found {
+                    mark_action_as_failed(
+                        &mut completion,
+                        &format!("Failed to write to pane with id {pane_id:?}: pane not found"),
+                    );
                 }
                 screen.render(None)?;
             },
             ScreenInstruction::Paste(bytes, pane_id, client_id, _completion) => {
+                let mut _completion = crate::route::RecordedCompletion::new(_completion);
+                screen.record_client_input(client_id);
                 match pane_id {
                     Some(pane_id) => {
                         let all_tabs = screen.get_tabs_mut();
+                        let mut found = false;
                         for tab in all_tabs.values_mut() {
                             if tab.has_pane_with_pid(&pane_id) {
-                                tab.paste_to_pane_id(bytes, pane_id, _completion)
+                                found = true;
+                                if tab.is_pane_requesting_permissions(pane_id) {
+                                    mark_action_as_failed(
+                                        &mut _completion,
+                                        &format!(
+                                            "Failed to paste into pane with id {pane_id:?}: the pane is requesting permissions"
+                                        ),
+                                    );
+                                    break;
+                                }
+                                tab.scroll_to_bottom_by_pane_id(pane_id).non_fatal();
+                                tab.paste_to_pane_id(bytes, pane_id, _completion.take())
                                     .non_fatal();
                                 break;
                             }
                         }
+                        if !found {
+                            mark_action_as_failed(
+                                &mut _completion,
+                                &format!(
+                                    "Failed to paste into pane with id {pane_id:?}: pane not found"
+                                ),
+                            );
+                        }
                     },
                     None => {
-                        screen.release_live_view_if_unreachable(client_id);
+                        if screen.write_paste_to_live_view(client_id, bytes.clone()) {
+                            drop(_completion);
+                            screen.render(None)?;
+                            continue;
+                        }
                         active_tab_and_connected_client_id!(
                             screen,
                             client_id,
                             |tab: &mut Tab, _client_id: ClientId| {
-                                tab.paste_to_active_terminal(bytes, client_id, _completion)
-                                    .non_fatal();
+                                let result = if tab.is_sync_panes_active() {
+                                    tab.paste_to_terminals_on_current_tab(
+                                        bytes,
+                                        client_id,
+                                        _completion.take(),
+                                    )
+                                } else {
+                                    tab.paste_to_active_terminal(
+                                        bytes,
+                                        client_id,
+                                        _completion.take(),
+                                    )
+                                };
+                                if let Err(error) = result {
+                                    mark_action_as_failed(&mut _completion, &format!("{error:#}"));
+                                }
                             }
                         );
                     },
                 }
+                screen.note_attention_input();
+                screen.render(None)?;
+            },
+            ScreenInstruction::ResetPaneInputModes(pane_id, client_id, _completion) => {
+                let mut _completion = crate::route::RecordedCompletion::new(_completion);
+                let forward_target = pane_id.or_else(|| screen.get_active_pane_id(&client_id));
+                let result = match pane_id {
+                    Some(pane_id) => {
+                        let all_tabs = screen.get_tabs_mut();
+                        let mut result = Err(anyhow!("Pane with id {:?} not found", pane_id));
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                result = tab.reset_input_modes_by_pane_id(pane_id);
+                                break;
+                            }
+                        }
+                        result
+                    },
+                    None => {
+                        screen.release_live_view_if_unreachable(client_id);
+                        let mut result = Err(anyhow!("No active pane found"));
+                        active_tab_and_connected_client_id!(
+                            screen,
+                            client_id,
+                            |tab: &mut Tab, client_id: ClientId| {
+                                result = tab.reset_input_modes_for_active_terminal(client_id);
+                            }
+                        );
+                        result
+                    },
+                };
+                if let Some(target) = forward_target {
+                    screen.settle_forward_for_pane(target);
+                }
+                if let Err(error) = result {
+                    mark_action_as_failed(&mut _completion, &format!("{error:#}"));
+                }
                 screen.render(None)?;
             },
             ScreenInstruction::SetPaneColor(pane_id, fg, bg, _completion) => {
+                let mut _completion = crate::route::RecordedCompletion::new(_completion);
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
@@ -14910,25 +17142,46 @@ pub(crate) fn screen_thread_main(
                 bytes,
                 is_kitty,
                 pane_id,
+                client_id,
                 _completion,
             ) => {
+                let mut _completion = crate::route::RecordedCompletion::new(_completion);
                 let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
+                        found = true;
                         if tab.is_pane_requesting_permissions(pane_id) {
+                            mark_action_as_failed(
+                                &mut _completion,
+                                &format!(
+                                    "Failed to write a key to pane with id {pane_id:?}: the pane is requesting permissions"
+                                ),
+                            );
                             break;
                         }
-                        tab.write_to_pane_id(
+                        tab.scroll_to_bottom_by_pane_id(pane_id).non_fatal();
+                        if let Err(error) = tab.write_to_pane_id(
                             &key_with_modifier,
                             bytes,
                             is_kitty,
                             pane_id,
-                            None, // client_id not needed for targeted write
+                            client_id,
                             None, // completion handled by instruction
-                        )
-                        .non_fatal();
+                        ) {
+                            mark_action_as_failed(&mut _completion, &format!("{error:#}"));
+                            Err::<(), _>(error).non_fatal();
+                        }
                         break;
                     }
+                }
+                if !found {
+                    mark_action_as_failed(
+                        &mut _completion,
+                        &format!(
+                            "Failed to write a key to pane with id {pane_id:?}: pane not found"
+                        ),
+                    );
                 }
                 screen.render(None)?;
             },
@@ -14985,18 +17238,14 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render(None)?;
             },
-            ScreenInstruction::ScrollUpInPaneId(pane_id) => {
+            ScreenInstruction::ScrollUpInPaneId(client_id, pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
                             tab.scroll_terminal_up(terminal_pane_id)?;
                         } else {
-                            // this is because to do this with plugins, we need the client_id -
-                            // which we do not have (yet?) in this context...
-                            log::error!(
-                                "Currently only terminal panes are supported for scrolling up"
-                            );
+                            tab.scroll_up_by_pane_id(pane_id, client_id);
                         }
                         break;
                     }
@@ -15004,18 +17253,14 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::ScrollDownInPaneId(pane_id) => {
+            ScreenInstruction::ScrollDownInPaneId(client_id, pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
                             tab.scroll_terminal_down(terminal_pane_id)?;
                         } else {
-                            // this is because to do this with plugins, we need the client_id -
-                            // which we do not have (yet?) in this context...
-                            log::error!(
-                                "Currently only terminal panes are supported for scrolling down"
-                            );
+                            tab.scroll_down_by_pane_id(pane_id, client_id).non_fatal();
                         }
                         break;
                     }
@@ -15059,18 +17304,14 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::PageScrollUpInPaneId(pane_id) => {
+            ScreenInstruction::PageScrollUpInPaneId(client_id, pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
                             tab.scroll_terminal_page_up(terminal_pane_id);
                         } else {
-                            // this is because to do this with plugins, we need the client_id -
-                            // which we do not have (yet?) in this context...
-                            log::error!(
-                                "Currently only terminal panes are supported for scrolling"
-                            );
+                            tab.page_scroll_up_by_pane_id(pane_id, client_id);
                         }
                         break;
                     }
@@ -15078,18 +17319,15 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::PageScrollDownInPaneId(pane_id) => {
+            ScreenInstruction::PageScrollDownInPaneId(client_id, pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if let PaneId::Terminal(terminal_pane_id) = pane_id {
                             tab.scroll_terminal_page_down(terminal_pane_id);
                         } else {
-                            // this is because to do this with plugins, we need the client_id -
-                            // which we do not have (yet?) in this context...
-                            log::error!(
-                                "Currently only terminal panes are supported for scrolling"
-                            );
+                            tab.page_scroll_down_by_pane_id(pane_id, client_id)
+                                .non_fatal();
                         }
                         break;
                     }
@@ -15152,8 +17390,9 @@ pub(crate) fn screen_thread_main(
                 should_change_focus_to_new_tab,
                 new_tab_name,
                 client_id,
-                mut completion_tx,
+                completion_tx,
             } => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 match screen.break_multiple_panes_to_new_tab(
                     pane_ids,
                     default_shell,
@@ -15192,8 +17431,9 @@ pub(crate) fn screen_thread_main(
                 tab_index,
                 should_change_focus_to_new_tab,
                 client_id,
-                mut completion_tx,
+                completion_tx,
             } => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 // tab_index is the target tab ID
                 screen.break_multiple_panes_to_tab_with_index(
                     pane_ids,
@@ -15221,6 +17461,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.toggle_pane_pinned(client_id);
             },
             ScreenInstruction::SetFloatingPanePinned(pane_id, should_be_pinned) => {
@@ -15232,6 +17473,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if let Some(last_pane_id) = screen.stack_panes(pane_ids_to_stack) {
                     let _ = screen.focus_pane_with_id(last_pane_id, false, false, client_id);
                     let _ = screen.render(None);
@@ -15250,8 +17492,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ChangeFloatingPanesCoordinates(
                 pane_ids_and_coordinates,
                 float_tiled_panes,
-                mut completion_tx,
+                completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let failed_pane_ids = screen
                     .change_floating_panes_coordinates(pane_ids_and_coordinates, float_tiled_panes);
                 if !failed_pane_ids.is_empty() {
@@ -15268,14 +17511,17 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state().non_fatal();
             },
             ScreenInstruction::TogglePaneBorderless(pane_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.toggle_pane_borderless(pane_id);
                 let _ = screen.render(None);
             },
             ScreenInstruction::SetPaneBorderless(pane_id, borderless, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.set_pane_borderless(pane_id, borderless);
                 let _ = screen.render(None);
             },
-            ScreenInstruction::SetPaneBorderStyle(pane_id, border_style, mut completion_tx) => {
+            ScreenInstruction::SetPaneBorderStyle(pane_id, border_style, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if !screen.set_pane_border_style(pane_id, border_style) {
                     log::error!("Pane with id {:?} not found", pane_id);
                     if let Some(c) = completion_tx.as_mut() {
@@ -15304,6 +17550,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.toggle_pane_in_group(client_id).non_fatal();
             },
             ScreenInstruction::ToggleGroupMarking(
@@ -15311,6 +17558,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.toggle_group_marking(client_id).non_fatal();
             },
             ScreenInstruction::SessionSharingStatusChange(web_sharing) => {
@@ -15418,9 +17666,10 @@ pub(crate) fn screen_thread_main(
                 let _ = screen.log_and_report_session_state();
             },
             ScreenInstruction::InterceptKeyPresses(plugin_id, client_id) => {
-                keybind_intercepts.insert(client_id, plugin_id);
+                keybind_intercepts.intercept(client_id, plugin_id);
             },
             ScreenInstruction::TogglePaneIdInGroup(pane_id, client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.toggle_pane_id_in_group(pane_id, &client_id);
                 screen.log_and_report_session_state().non_fatal();
                 screen.render(None)?;
@@ -15462,6 +17711,7 @@ pub(crate) fn screen_thread_main(
                 screen.terminal_escape_pressed(client_id);
             },
             ScreenInstruction::ToggleSessionCard(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.toggle_session_card(client_id);
             },
             ScreenInstruction::WaitForPaneExit(pane_id, waiter) => {
@@ -15483,18 +17733,22 @@ pub(crate) fn screen_thread_main(
                 screen.swap_layout_notification = enabled;
             },
             ScreenInstruction::ToggleBars(bars, client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.toggle_bars(&bars, client_id);
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::HideBars(bars, client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.hide_bars(&bars, client_id);
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::ShowBars(_client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.show_bars();
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::HideBarByPaneId(pane_id, client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.hide_bar_by_pane_id(pane_id, client_id);
                 screen.log_and_report_session_state()?;
             },
@@ -15547,7 +17801,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::UpdateClientSessionHistory { client_id, history } => {
                 screen.update_client_session_history(client_id, history);
             },
-            ScreenInstruction::GoToNextAttention(client_id, mut completion) => {
+            ScreenInstruction::GoToNextAttention(client_id, completion) => {
+                let mut completion = crate::route::RecordedCompletion::new(completion);
                 if !screen.go_to_next_attention(client_id) {
                     completion.as_mut().map(|c| {
                         c.set_error_message("Nothing needs attention".to_owned());
@@ -15559,8 +17814,9 @@ pub(crate) fn screen_thread_main(
                 session,
                 pane_id,
                 client_id,
-                mut completion,
+                completion,
             } => {
+                let mut completion = crate::route::RecordedCompletion::new(completion);
                 if !screen.mark_pane_seen(session, pane_id, client_id) {
                     completion.as_mut().map(|c| {
                         c.set_error_message("Pane not found".to_owned());
@@ -15573,14 +17829,16 @@ pub(crate) fn screen_thread_main(
                 this_session,
                 completion: _completion,
             } => {
+                let mut _completion = crate::route::RecordedCompletion::new(_completion);
                 screen.mark_all_seen(session, this_session);
             },
             ScreenInstruction::SessionPaneCommand {
                 session_name,
                 command,
                 client_id,
-                mut completion,
+                completion,
             } => {
+                let mut completion = crate::route::RecordedCompletion::new(completion);
                 if !screen.session_pane_command(session_name, command, client_id) {
                     completion.as_mut().map(|c| {
                         c.set_error_message("Pane not found".to_owned());
@@ -15685,11 +17943,13 @@ pub(crate) fn screen_thread_main(
                 screen.scroll_popup(client_id, scroll);
             },
             ScreenInstruction::DismissInfoPopups(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if screen.dismiss_info_popups(client_id) {
                     screen.render(None)?;
                 }
             },
             ScreenInstruction::OpenContextMenu(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.open_context_menu_for_focused_pane(client_id);
             },
             ScreenInstruction::SetPopupSize {
@@ -15717,8 +17977,8 @@ pub(crate) fn screen_thread_main(
                 let actions = screen.context_menu_item_actions(plugin_id, client_id, index);
                 let _ = response_channel.send(actions);
             },
-            ScreenInstruction::ClearKeyPressesIntercepts(client_id) => {
-                keybind_intercepts.remove(&client_id);
+            ScreenInstruction::ClearKeyPressesIntercepts(plugin_id, client_id) => {
+                keybind_intercepts.release(plugin_id, client_id);
             },
             ScreenInstruction::ReplacePaneWithExistingPane(
                 old_pane_id,
@@ -15867,7 +18127,8 @@ pub(crate) fn screen_thread_main(
                 screen.mirror_unpark(subscriber_id, resize_allowed);
             },
             ScreenInstruction::ToggleMirrorResize(client_id, completion) => {
-                screen.toggle_live_view_resize(client_id, completion);
+                let mut completion = crate::route::RecordedCompletion::new(completion);
+                screen.toggle_live_view_resize(client_id, completion.take());
             },
             ScreenInstruction::SetMirrorResizesSourcePane(resizes_source_pane) => {
                 screen.set_mirror_resizes_source_pane(resizes_source_pane);
@@ -15918,13 +18179,20 @@ pub(crate) fn screen_thread_main(
                         .background_plugin_subscriptions
                         .remove(&(plugin_id, client_id));
                 } else {
+                    let wants_mode_update = subscriptions.contains(&EventType::ModeUpdate);
                     screen
                         .background_plugin_subscriptions
                         .entry((plugin_id, client_id))
                         .or_default()
                         .extend(subscriptions);
                     screen.report_pane_and_tab_state_to_plugin(plugin_id, client_id)?;
+                    if wants_mode_update {
+                        screen.report_mode_info_to_plugin(plugin_id, client_id)?;
+                    }
                 }
+            },
+            ScreenInstruction::ReportModeInfoToPlugin(plugin_id, client_id) => {
+                screen.report_mode_info_to_plugin(plugin_id, client_id)?;
             },
             ScreenInstruction::ClearHintTextCache => {
                 for tab in screen.tabs.values_mut() {
@@ -15936,19 +18204,20 @@ pub(crate) fn screen_thread_main(
                 screen.broadcast_mode_update(mode_info, target_client_id)?;
             },
             // Pane-targeting CLI handlers
-            ScreenInstruction::ScrollUpWithPaneId(pane_id, mut _completion_tx) => {
+            ScreenInstruction::ScrollUpWithPaneId(client_id, pane_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.scroll_up_by_pane_id(pane_id);
+                        tab.scroll_up_by_pane_id(pane_id, client_id);
                         found = true;
                         break;
                     }
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -15956,19 +18225,20 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::ScrollDownWithPaneId(pane_id, mut _completion_tx) => {
+            ScreenInstruction::ScrollDownWithPaneId(client_id, pane_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.scroll_down_by_pane_id(pane_id).non_fatal();
+                        tab.scroll_down_by_pane_id(pane_id, client_id).non_fatal();
                         found = true;
                         break;
                     }
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -15977,6 +18247,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollToTopWithPaneId(pane_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
@@ -15988,7 +18259,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -15997,6 +18268,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::ScrollToBottomWithPaneId(pane_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
@@ -16008,7 +18280,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16016,19 +18288,20 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::PageScrollUpWithPaneId(pane_id, mut _completion_tx) => {
+            ScreenInstruction::PageScrollUpWithPaneId(client_id, pane_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.page_scroll_up_by_pane_id(pane_id);
+                        tab.page_scroll_up_by_pane_id(pane_id, client_id);
                         found = true;
                         break;
                     }
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16036,19 +18309,21 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::PageScrollDownWithPaneId(pane_id, mut _completion_tx) => {
+            ScreenInstruction::PageScrollDownWithPaneId(client_id, pane_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.page_scroll_down_by_pane_id(pane_id).non_fatal();
+                        tab.page_scroll_down_by_pane_id(pane_id, client_id)
+                            .non_fatal();
                         found = true;
                         break;
                     }
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16056,19 +18331,24 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::HalfPageScrollUpWithPaneId(pane_id, mut _completion_tx) => {
+            ScreenInstruction::HalfPageScrollUpWithPaneId(
+                client_id,
+                pane_id,
+                mut _completion_tx,
+            ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.half_page_scroll_up_by_pane_id(pane_id);
+                        tab.half_page_scroll_up_by_pane_id(pane_id, client_id);
                         found = true;
                         break;
                     }
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16076,19 +18356,25 @@ pub(crate) fn screen_thread_main(
                 screen.sync_scroll_mode_for_pane_id(pane_id)?;
                 screen.render(None)?;
             },
-            ScreenInstruction::HalfPageScrollDownWithPaneId(pane_id, mut _completion_tx) => {
+            ScreenInstruction::HalfPageScrollDownWithPaneId(
+                client_id,
+                pane_id,
+                mut _completion_tx,
+            ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.half_page_scroll_down_by_pane_id(pane_id).non_fatal();
+                        tab.half_page_scroll_down_by_pane_id(pane_id, client_id)
+                            .non_fatal();
                         found = true;
                         break;
                     }
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16097,6 +18383,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::ResizeWithPaneId(pane_id, strategy, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
@@ -16108,7 +18395,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16117,6 +18404,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::MovePaneWithPaneIdCli(pane_id, direction, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
@@ -16128,7 +18416,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16137,6 +18425,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::MovePaneBackwardsWithPaneId(pane_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
@@ -16148,7 +18437,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16157,6 +18446,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::ClearScreenWithPaneId(pane_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
@@ -16168,7 +18458,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16176,15 +18466,16 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::EditScrollbackWithPaneId(pane_id, ansi, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         if ansi {
-                            tab.edit_scrollback_raw_for_pane_with_id(pane_id, completion_tx)
+                            tab.edit_scrollback_raw_for_pane_with_id(pane_id, completion_tx.take())
                                 .non_fatal();
                         } else {
-                            tab.edit_scrollback_for_pane_with_id(pane_id, completion_tx)
+                            tab.edit_scrollback_for_pane_with_id(pane_id, completion_tx.take())
                                 .non_fatal();
                         }
                         found = true;
@@ -16193,10 +18484,15 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(c) = completion_tx.as_mut() {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
                 }
                 screen.render(None)?;
             },
             ScreenInstruction::ToggleFullscreenWithPaneId(pane_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
@@ -16208,7 +18504,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16217,6 +18513,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::ToggleNoUiFullscreenWithPaneId(pane_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
@@ -16228,7 +18525,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16241,6 +18538,7 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 mut _completion_tx,
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
@@ -16252,7 +18550,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16261,11 +18559,12 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::CloseFocusWithPaneId(pane_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.close_pane_by_pane_id(pane_id, completion_tx)
+                        tab.close_pane_by_pane_id(pane_id, completion_tx.take())
                             .non_fatal();
                         found = true;
                         break;
@@ -16278,6 +18577,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::RenamePaneWithPaneId(pane_id, name, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
@@ -16289,7 +18589,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16298,6 +18598,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::UndoRenamePaneWithPaneId(pane_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
@@ -16309,7 +18610,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16317,6 +18618,7 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::TogglePanePinnedWithPaneId(pane_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
@@ -16328,7 +18630,7 @@ pub(crate) fn screen_thread_main(
                 }
                 if !found {
                     log::error!("Pane with id {:?} not found", pane_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
@@ -16336,6 +18638,7 @@ pub(crate) fn screen_thread_main(
             },
             // Tab-targeting CLI handlers
             ScreenInstruction::UndoRenameTabWithTabId(tab_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
                     if tab.name != tab.prev_name {
                         tab.name = tab.prev_name.clone();
@@ -16343,7 +18646,7 @@ pub(crate) fn screen_thread_main(
                     }
                 } else {
                     log::error!("Tab with id {} not found", tab_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Tab with id {} not found", tab_id));
                     }
@@ -16351,11 +18654,12 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::ToggleActiveSyncTabWithTabId(tab_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
                     tab.toggle_sync_panes_is_active();
                 } else {
                     log::error!("Tab with id {} not found", tab_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Tab with id {} not found", tab_id));
                     }
@@ -16366,16 +18670,17 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ToggleFloatingPanesWithTabId(
                 tab_id,
                 default_shell,
-                mut completion_tx,
+                completion_tx,
             ) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
                     // Pass None as client_id so that if a new floating pane must be spawned,
                     // it targets this tab (via TabIndex) rather than the focused tab of some client.
-                    tab.toggle_floating_panes(None, default_shell, completion_tx)
+                    tab.toggle_floating_panes(None, default_shell, completion_tx.take())
                         .non_fatal();
                 } else {
                     log::error!("Tab with id {} not found", tab_id);
-                    if let Some(ref mut c) = completion_tx {
+                    if let Some(c) = completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Tab with id {} not found", tab_id));
                     }
@@ -16385,11 +18690,12 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::PreviousSwapLayoutWithTabId(tab_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
                     tab.previous_swap_layout().non_fatal();
                 } else {
                     log::error!("Tab with id {} not found", tab_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Tab with id {} not found", tab_id));
                     }
@@ -16398,11 +18704,12 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::NextSwapLayoutWithTabId(tab_id, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
                     tab.next_swap_layout().non_fatal();
                 } else {
                     log::error!("Tab with id {} not found", tab_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Tab with id {} not found", tab_id));
                     }
@@ -16415,11 +18722,12 @@ pub(crate) fn screen_thread_main(
                 layout_name,
                 mut _completion_tx,
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
                     let applied = tab.apply_tiled_swap_layout(&layout_name)?;
                     if !applied {
                         log::error!("Tiled swap layout not found or incompatible: {layout_name}");
-                        if let Some(ref mut c) = _completion_tx {
+                        if let Some(c) = _completion_tx.as_mut() {
                             c.set_exit_status(1);
                             c.set_error_message(format!(
                                 "Tiled swap layout not found or incompatible: {layout_name}"
@@ -16428,7 +18736,7 @@ pub(crate) fn screen_thread_main(
                     }
                 } else {
                     log::error!("Tab with id {} not found", tab_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Tab with id {} not found", tab_id));
                     }
@@ -16441,13 +18749,14 @@ pub(crate) fn screen_thread_main(
                 layout_name,
                 mut _completion_tx,
             ) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
                     let applied = tab.apply_floating_swap_layout(&layout_name)?;
                     if !applied {
                         log::error!(
                             "Floating swap layout not found or incompatible: {layout_name}"
                         );
-                        if let Some(ref mut c) = _completion_tx {
+                        if let Some(c) = _completion_tx.as_mut() {
                             c.set_exit_status(1);
                             c.set_error_message(format!(
                                 "Floating swap layout not found or incompatible: {layout_name}"
@@ -16456,7 +18765,7 @@ pub(crate) fn screen_thread_main(
                     }
                 } else {
                     log::error!("Tab with id {} not found", tab_id);
-                    if let Some(ref mut c) = _completion_tx {
+                    if let Some(c) = _completion_tx.as_mut() {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Tab with id {} not found", tab_id));
                     }
@@ -16465,6 +18774,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::MoveTabWithTabId(tab_id, direction, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if pending_tab_ids.is_empty() {
                     let tab_found = screen.move_tab_by_id(tab_id, direction).unwrap_or(true);
                     if !tab_found {
@@ -16475,14 +18785,18 @@ pub(crate) fn screen_thread_main(
                     }
                     screen.render(None)?;
                 } else {
-                    pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabWithTabId(
-                        tab_id,
-                        direction,
-                        _completion_tx,
-                    ));
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
+                        ScreenInstruction::MoveTabWithTabId(
+                            tab_id,
+                            direction,
+                            _completion_tx.take(),
+                        ),
+                    );
                 }
             },
             ScreenInstruction::MoveTabToPosition(tab_id, position, mut _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 if pending_tab_ids.is_empty() {
                     let tab_found = screen.move_tab_to_position(tab_id, position);
                     if !tab_found {
@@ -16493,11 +18807,14 @@ pub(crate) fn screen_thread_main(
                     }
                     screen.render(None)?;
                 } else {
-                    pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabToPosition(
-                        tab_id,
-                        position,
-                        _completion_tx,
-                    ));
+                    push_pending_tab_event(
+                        &mut pending_events_waiting_for_tab,
+                        ScreenInstruction::MoveTabToPosition(
+                            tab_id,
+                            position,
+                            _completion_tx.take(),
+                        ),
+                    );
                 }
             },
             ScreenInstruction::SetSoftKeyboard { client_id, on } => {
@@ -16507,6 +18824,7 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::FocusHostSession(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 let payload = nested_session::encode_payload(&NestedSessionMessage::FocusHost {
                     direction: None,
                 });
@@ -16515,9 +18833,11 @@ pub(crate) fn screen_thread_main(
                 );
             },
             ScreenInstruction::FocusGuestSession(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.focus_guest_session(client_id);
             },
             ScreenInstruction::ToggleHostFullscreen(client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.own_fullscreen_requested = !screen.own_fullscreen_requested;
                 let fullscreen = screen.own_fullscreen_requested;
                 let payload =
@@ -16534,7 +18854,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::AttentionForegroundChanged(pane_id, command) => {
                 screen.attention_foreground_changed(pane_id.into(), command);
             },
-            ScreenInstruction::MutePane(pane_id, client_id, mut completion_tx) => {
+            ScreenInstruction::MutePane(pane_id, client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if !screen.toggle_pane_mute(pane_id, client_id) {
                     completion_tx.as_mut().map(|c| {
                         c.set_error_message("Pane not found".to_owned());
@@ -16543,7 +18864,8 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state().non_fatal();
             },
-            ScreenInstruction::IgnorePaneOutput(pane_id, client_id, mut completion_tx) => {
+            ScreenInstruction::IgnorePaneOutput(pane_id, client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if !screen.toggle_pane_ignore_output(pane_id, client_id) {
                     completion_tx.as_mut().map(|c| {
                         c.set_error_message("Pane not found".to_owned());
@@ -16552,7 +18874,8 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.log_and_report_session_state().non_fatal();
             },
-            ScreenInstruction::WatchPane(pane_id, client_id, mut completion_tx) => {
+            ScreenInstruction::WatchPane(pane_id, client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if !screen.toggle_pane_watch(pane_id, client_id) {
                     completion_tx.as_mut().map(|c| {
                         c.set_error_message("Pane not found".to_owned());
@@ -16560,7 +18883,8 @@ pub(crate) fn screen_thread_main(
                     });
                 }
             },
-            ScreenInstruction::MuteTab(tab_id, client_id, mut completion_tx) => {
+            ScreenInstruction::MuteTab(tab_id, client_id, completion_tx) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if !screen.toggle_tab_mute(tab_id, client_id) {
                     completion_tx.as_mut().map(|c| {
                         c.set_error_message("Tab not found".to_owned());
@@ -16570,6 +18894,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state().non_fatal();
             },
             ScreenInstruction::MuteSession(_client_id, _completion_tx) => {
+                let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 screen.toggle_session_mute();
                 screen.log_and_report_session_state().non_fatal();
             },
@@ -16583,6 +18908,11 @@ pub(crate) fn screen_thread_main(
             },
         }
         screen.process_attention();
+        // A forward reply or a timeout can drain the last buffered bytes
+        // without scheduling another scrolled-pty continuation. Settlement
+        // must not depend on that continuation being queued.
+        screen.release_settled_run_exits();
+        screen.schedule_scrolled_pty_continuation();
     }
     Ok(())
 }

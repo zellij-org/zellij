@@ -491,6 +491,67 @@ fn saving_writes_a_backup_and_returns_the_new_saved_config() {
 }
 
 #[test]
+fn a_successful_save_replaces_the_existing_config_and_leaves_it_readable() {
+    let original = "// known bytes\nmouse_mode false\n";
+    let (dir, path) = temp_config(Some(original));
+    let saved = load(original);
+    let runtime = reconfigure(&saved, "mouse_mode true");
+    let outcome = save_config_in_place(&path, Some(original), &saved, &saved, &runtime, false);
+    assert!(matches!(outcome, SaveOutcome::Written { .. }));
+    let mut file = std::fs::File::open(&path).unwrap();
+    let mut written = String::new();
+    std::io::Read::read_to_string(&mut file, &mut written).unwrap();
+    assert_eq!(written, "// known bytes\nmouse_mode true\n");
+    assert_ne!(written, original);
+    assert_no_config_temps(dir.path());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failed_temp_write_leaves_the_original_config_bytes() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.kdl");
+    let original = "// known bytes\nmouse_mode false\n";
+    std::fs::write(&path, original).unwrap();
+    // The backup already exists, so saving can overwrite it without creating a
+    // directory entry. The locked directory then rejects the sibling temporary.
+    std::fs::write(Config::backup_file_path(&path), "previous backup\n").unwrap();
+    let saved = load(original);
+    let runtime = reconfigure(&saved, "mouse_mode true");
+    let directory_mode = std::fs::metadata(dir.path()).unwrap().permissions().mode();
+    let mut locked = std::fs::metadata(dir.path()).unwrap().permissions();
+    locked.set_mode(0o555);
+    std::fs::set_permissions(dir.path(), locked).unwrap();
+    struct RestoreMode<'a>(&'a std::path::Path, u32);
+    impl Drop for RestoreMode<'_> {
+        fn drop(&mut self) {
+            let _ = std::fs::set_permissions(self.0, std::fs::Permissions::from_mode(self.1));
+        }
+    }
+    let _restore = RestoreMode(dir.path(), directory_mode);
+    let outcome = save_config_in_place(&path, Some(original), &saved, &saved, &runtime, false);
+    assert_eq!(outcome, SaveOutcome::Failed(Some(path.clone())));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    assert_no_config_temps(dir.path());
+}
+
+fn assert_no_config_temps(dir: &std::path::Path) {
+    let leftovers: Vec<_> = std::fs::read_dir(dir)
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".zellij-config-")
+        })
+        .map(|entry| entry.file_name())
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+#[test]
 fn saving_without_a_file_creates_a_minimal_one_without_a_backup() {
     let (_dir, path) = temp_config(None);
     let saved = defaults();

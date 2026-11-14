@@ -13,12 +13,19 @@ pub type ChannelWithContext<T> = (Sender<(T, ErrorContext)>, Receiver<(T, ErrorC
 
 /// Sends messages on an [MPSC](std::sync::mpsc) channel, along with an [`ErrorContext`],
 /// synchronously or asynchronously depending on the underlying [`SenderType`].
-#[derive(Clone)]
 pub struct SenderWithContext<T> {
     sender: Sender<(T, ErrorContext)>,
 }
 
-impl<T: Clone> SenderWithContext<T> {
+impl<T> Clone for SenderWithContext<T> {
+    fn clone(&self) -> Self {
+        Self {
+            sender: self.sender.clone(),
+        }
+    }
+}
+
+impl<T> SenderWithContext<T> {
     pub fn new(sender: Sender<(T, ErrorContext)>) -> Self {
         Self { sender }
     }

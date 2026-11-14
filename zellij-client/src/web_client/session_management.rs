@@ -48,11 +48,54 @@ pub fn spawn_new_session(
     session_name: &str,
     mut os_input: Box<dyn ClientOsApi>,
     zellij_ipc_pipe: &PathBuf,
-) {
+) -> std::io::Result<()> {
     let debug = false;
     envs::set_session_name(session_name.to_owned());
     os_input.update_session_name(session_name.to_owned());
-    spawn_server(&*zellij_ipc_pipe, debug).unwrap();
+    spawn_server(&*zellij_ipc_pipe, debug)
+}
+
+/// Outcome of an exclusive create-or-attach attempt for a session socket.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionEnsureAction {
+    /// We hold (or held) the creation claim and should spawn a new server, then send the create message.
+    Create,
+    /// Another owner holds the socket claim, or a recheck found the session; attach only.
+    Attach,
+}
+
+/// Take the shared startup claim, recheck liveness, and decide whether this caller may create.
+///
+/// The claim is released before returning so the server process can acquire the same lock on bind.
+/// A lost claim (`AddrInUse`) means another owner already exists — never spawn a replacement.
+pub fn decide_session_create_or_attach(
+    session_name: &str,
+    zellij_ipc_pipe: &PathBuf,
+) -> std::io::Result<SessionEnsureAction> {
+    use zellij_utils::session_socket_claim::SessionSocketClaim;
+    use zellij_utils::sessions::session_exists;
+
+    match SessionSocketClaim::try_acquire(zellij_ipc_pipe) {
+        Ok(claim) => {
+            let action = match session_exists(session_name) {
+                Ok(true) => SessionEnsureAction::Attach,
+                Ok(false) => SessionEnsureAction::Create,
+                Err(error) => {
+                    claim.release();
+                    return Err(std::io::Error::new(
+                        error.kind(),
+                        format!(
+                            "could not recheck session {session_name:?} while holding the creation claim: {error}"
+                        ),
+                    ));
+                },
+            };
+            claim.release();
+            Ok(action)
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => Ok(SessionEnsureAction::Attach),
+        Err(err) => Err(err),
+    }
 }
 
 pub fn create_first_message(
@@ -65,12 +108,11 @@ pub fn create_first_message(
     initial_layout: Option<LayoutInfo>,
     switch_context: Option<zellij_utils::session_history::SwitchContext>,
     focus: (Option<usize>, Option<(u32, bool)>),
-) -> ClientToServerMsg {
-    let resurrection_layout = resurrection_layout(&session_name).ok().flatten();
+) -> Result<ClientToServerMsg, String> {
+    let resurrection_layout = resurrection_layout(session_name)?;
 
     let layout_info = if resurrection_layout.is_some() {
-        let id = zellij_utils::sessions::resolve_session_id(session_name)
-            .unwrap_or_else(|| session_name.to_string());
+        let id = zellij_utils::sessions::session_folder_id(session_name)?;
         Some(LayoutInfo::File(
             session_layout_cache_file_name(&id).display().to_string(),
             LayoutMetadata::default(),
@@ -85,10 +127,10 @@ pub fn create_first_message(
     let is_web_client = true;
     if is_read_only {
         // read only clients attach as watchers
-        ClientToServerMsg::AttachWatcherClient {
+        Ok(ClientToServerMsg::AttachWatcherClient {
             terminal_size: client_attributes.size,
             is_web_client,
-        }
+        })
     } else if should_create_session {
         config_opts.web_server = Some(true);
         config_opts.web_sharing = Some(WebSharing::On);
@@ -109,10 +151,10 @@ pub fn create_first_message(
             switch_context,
         };
 
-        ClientToServerMsg::FirstClientConnected {
+        Ok(ClientToServerMsg::FirstClientConnected {
             cli_assets,
             is_web_client,
-        }
+        })
     } else {
         let cli_assets = CliAssets {
             config_file_path,
@@ -132,7 +174,7 @@ pub fn create_first_message(
         };
         let is_web_client = true;
 
-        ClientToServerMsg::AttachClient {
+        Ok(ClientToServerMsg::AttachClient {
             cli_assets,
             tab_position_to_focus: focus.0,
             pane_to_focus: focus
@@ -142,26 +184,35 @@ pub fn create_first_message(
                     is_plugin,
                 }),
             is_web_client,
-        }
+        })
     }
 }
 
-pub fn create_ipc_pipe(session_name: &str, session_exists: bool) -> PathBuf {
+pub fn create_ipc_pipe(session_name: &str, session_exists: bool) -> std::io::Result<PathBuf> {
     if let Err(e) = zellij_utils::sessions::validate_session_name(session_name) {
         log::error!("Invalid session name: {}", e);
-        panic!("Invalid session name: {}", e);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid session name: {}", e),
+        ));
     }
     let sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
-    fs::create_dir_all(&sock_dir).unwrap();
-    zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
+    fs::create_dir_all(&sock_dir)?;
+    zellij_utils::shared::set_permissions(&sock_dir, 0o700)?;
     let zellij_ipc_pipe: PathBuf = if session_exists {
         // Existing session: resolve its id via the session index.
-        zellij_utils::sessions::resolve_session_socket_path(session_name)
-            .unwrap_or_else(|| sock_dir.join(session_name))
+        // A database error must not connect to the display-name socket.
+        match zellij_utils::sessions::resolve_session_socket_path(session_name) {
+            Ok(Some(path)) => path,
+            Ok(None) => sock_dir.join(session_name),
+            Err(error) => {
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, error));
+            },
+        }
     } else {
         // New session: register it under a fresh id.
         sock_dir.join(zellij_utils::sessions::register_session(session_name))
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    zellij_ipc_pipe
+    Ok(zellij_ipc_pipe)
 }

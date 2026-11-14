@@ -646,13 +646,13 @@ fn temp_file_transmission_probe_and_image_reach_the_client() {
         )
         .as_bytes(),
     );
-    terminal.wait_for_stdin("viu local support probe answered", |stdin_bytes| {
-        stdin_bytes
-            .windows(KITTY_PROBE_ACK.len())
-            .filter(|window| *window == KITTY_PROBE_ACK)
-            .count()
-            >= 2
+    terminal.wait_for_stdin("file transfer is refused", |stdin_bytes| {
+        contains_bytes(stdin_bytes, b"\x1b_Gi=31;ENOTSUPPORTED")
     });
+    assert!(
+        probe_file.path().exists(),
+        "a refused temp-file probe must not delete the file"
+    );
 
     let mut image_file = tempfile::Builder::new()
         .prefix(".tty-graphics-protocol.viuer.")
@@ -662,18 +662,29 @@ fn temp_file_transmission_probe_and_image_reach_the_client() {
     image_file.write_all(&vec![0xffu8; 2 * 2 * 4]).unwrap();
     image_file.flush().unwrap();
     let image_path = image_file.path().to_str().unwrap().to_string();
+    let bytes_before_image = zellij.raw_bytes().len();
     terminal.output(
         format!(
-            "\x1b_Gf=32,s=2,v=2,c=2,r=1,a=T,t=t;{}\x1b\\\x1b[5n",
+            "\x1b_Gf=32,s=2,v=2,c=2,r=1,a=T,t=t;{}\x1b\\",
             base64_encode(image_path.as_bytes())
         )
         .as_bytes(),
     );
-
-    zellij.wait_until_raw_output("the viu image reaches the client", |bytes| {
-        contains_bytes(bytes, b"\x1b_Ga=t,q=2,f=32,t=d,i=2000000000")
-            && contains_bytes(bytes, b"\x1b_Ga=p,q=2,i=2000000000,p=1,")
+    // No image id, so the refusal is `\x1b_G;ENOTSUPPORTED:...`. Waiting on
+    // that reply proves the transmit was handled. A device-status request is
+    // unrelated and is not required for the assertion below.
+    terminal.wait_for_stdin("temp-file image transmit is refused", |stdin_bytes| {
+        contains_bytes(
+            stdin_bytes,
+            b"\x1b_G;ENOTSUPPORTED:file transfer is not supported",
+        )
     });
+    let after = &zellij.raw_bytes()[bytes_before_image..];
+    assert!(
+        !contains_bytes(after, b"\x1b_Ga=t,q=2,f=32,t=d,i=2000000000"),
+        "a temp-file image must not be read and forwarded"
+    );
+    assert!(image_file.path().exists());
 
     zellij.quit();
 }

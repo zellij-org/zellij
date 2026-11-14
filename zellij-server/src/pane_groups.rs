@@ -38,6 +38,9 @@ impl PaneGroups {
     pub fn clear_pane_group(&mut self, client_id: &ClientId) {
         self.panes_in_group.get_mut(client_id).map(|p| p.clear());
     }
+    pub fn remove_client(&mut self, client_id: &ClientId) {
+        self.panes_in_group.remove(client_id);
+    }
     pub fn toggle_pane_id_in_group(
         &mut self,
         pane_id: PaneId,
@@ -78,7 +81,7 @@ impl PaneGroups {
     }
     pub fn group_and_ungroup_panes(
         &mut self,
-        mut pane_ids_to_group: Vec<PaneId>,
+        pane_ids_to_group: Vec<PaneId>,
         pane_ids_to_ungroup: Vec<PaneId>,
         screen_size: Size,
         client_id: &ClientId,
@@ -88,7 +91,11 @@ impl PaneGroups {
             .panes_in_group
             .entry(*client_id)
             .or_insert_with(|| vec![]);
-        client_pane_group.append(&mut pane_ids_to_group);
+        for pane_id in pane_ids_to_group {
+            if !client_pane_group.contains(&pane_id) {
+                client_pane_group.push(pane_id);
+            }
+        }
         client_pane_group.retain(|p| !pane_ids_to_ungroup.contains(p));
         if self.should_launch_plugin(&previous_groups, client_id) {
             self.launch_plugin(screen_size, client_id);
@@ -109,7 +116,11 @@ impl PaneGroups {
                 .panes_in_group
                 .entry(*client_id)
                 .or_insert_with(|| vec![]);
-            client_pane_group.append(&mut pane_ids_to_group.clone());
+            for pane_id in &pane_ids_to_group {
+                if !client_pane_group.contains(pane_id) {
+                    client_pane_group.push(*pane_id);
+                }
+            }
             client_pane_group.retain(|p| !pane_ids_to_ungroup.contains(p));
 
             if self.should_launch_plugin(&previous_groups, &client_id) {
@@ -185,6 +196,7 @@ impl PaneGroups {
                 cwd,
                 should_focus_plugin,
                 Some(floating_pane_coordinates),
+                None,
                 None,
             ));
         }

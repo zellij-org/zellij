@@ -119,10 +119,26 @@ fn plugin_asset_path(plugin_name: &str) -> PathBuf {
 
 fn newest_plugin_source_time() -> Option<std::time::SystemTime> {
     let root = crate::project_root();
-    ["default-plugins", "zellij-tile", "zellij-tile-utils"]
-        .iter()
-        .filter_map(|dir| newest_file_time(&root.join(dir)))
-        .max()
+    let mut newest = [
+        "default-plugins",
+        "zellij-tile",
+        "zellij-tile-utils",
+        "zellij-utils/src",
+    ]
+    .iter()
+    .filter_map(|dir| newest_file_time(&root.join(dir)))
+    .max();
+    for file in [
+        "Cargo.toml",
+        "Cargo.lock",
+        "rust-toolchain.toml",
+        "zellij-utils/Cargo.toml",
+    ] {
+        if let Ok(modified) = std::fs::metadata(root.join(file)).and_then(|m| m.modified()) {
+            newest = Some(newest.map_or(modified, |current| current.max(modified)));
+        }
+    }
+    newest
 }
 
 fn newest_file_time(dir: &Path) -> Option<std::time::SystemTime> {

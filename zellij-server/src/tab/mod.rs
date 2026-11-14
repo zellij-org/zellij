@@ -38,8 +38,9 @@ use zellij_utils::structured_render::{
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::panes::CoveredPanes;
-use crate::pty_writer::PtyWriteInstruction;
+use crate::pty_writer::{AdmittedWrite, PtyWriteInstruction};
 use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction, TypedInput};
+use crate::thread_bus::is_pty_write_admission_refusal;
 use crate::ui::hint_text::{held_hint_variants, HintExitStatus};
 use crate::ui::{
     boundaries::boundary_type,
@@ -73,7 +74,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     str,
     sync::Arc,
 };
@@ -163,7 +164,83 @@ macro_rules! resize_pty {
 pub const MIN_TERMINAL_HEIGHT: usize = 5;
 pub const MIN_TERMINAL_WIDTH: usize = 5;
 
-const MAX_PENDING_VTE_EVENTS: usize = 7000;
+/// Bytes of a scrolled pane's PTY output parsed on one screen-thread turn.
+/// The rest stays pending and is continued by `ScreenInstruction::ApplyScrolledPtyQuantum`.
+pub(crate) const SCROLLED_PTY_QUANTUM_BYTES: usize = 64 * 1024;
+/// Hard ceiling on bytes not yet parsed for one pane. Quanta drain this in the
+/// steady state, so a busy scrolled pane does not replay its backlog in one
+/// turn. If the screen thread still cannot keep up, the pane's whole unparsed
+/// queue is rejected and its parser reset, so a suffix cannot complete a
+/// sequence from before the gap. The loss is counted in
+/// `Tab::pending_vte_bytes_dropped` and shown in the pane title.
+pub(crate) const MAX_PENDING_VTE_BYTES: usize = 1024 * 1024;
+
+/// Unparsed PTY bytes for one scrolled pane, in arrival order. `head` is the
+/// consumed prefix of the first chunk so a quantum can split a chunk without
+/// copying the rest of the backlog.
+#[derive(Debug, Default)]
+struct PendingPtyBacklog {
+    chunks: VecDeque<PendingPtyChunk>,
+    head: usize,
+    len: usize,
+}
+
+#[derive(Debug)]
+struct PendingPtyChunk {
+    run_generation: Option<u64>,
+    bytes: Vec<u8>,
+}
+
+impl PendingPtyBacklog {
+    fn push(&mut self, bytes: Vec<u8>, run_generation: Option<u64>) {
+        if bytes.is_empty() {
+            return;
+        }
+        self.len = self.len.saturating_add(bytes.len());
+        self.chunks.push_back(PendingPtyChunk {
+            run_generation,
+            bytes,
+        });
+    }
+
+    fn take(&mut self, max: usize) -> Vec<(Option<u64>, Vec<u8>)> {
+        let mut out = Vec::new();
+        let mut remaining = max;
+        while remaining > 0 {
+            let Some(front) = self.chunks.front() else {
+                break;
+            };
+            let available = front.bytes.len().saturating_sub(self.head);
+            if available == 0 {
+                self.chunks.pop_front();
+                self.head = 0;
+                continue;
+            }
+            let take_n = available.min(remaining);
+            let start = self.head;
+            out.push((
+                front.run_generation,
+                front.bytes[start..start + take_n].to_vec(),
+            ));
+            self.head += take_n;
+            self.len = self.len.saturating_sub(take_n);
+            remaining -= take_n;
+            if self.head >= front.bytes.len() {
+                self.chunks.pop_front();
+                self.head = 0;
+            }
+        }
+        out
+    }
+
+    fn clear(&mut self) -> usize {
+        let dropped = self.len;
+        self.chunks.clear();
+        self.head = 0;
+        self.len = 0;
+        dropped
+    }
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneNotCreatedReason {
     NoRoom,
@@ -232,6 +309,29 @@ enum PaneLayer {
 
 type HoldForCommand = Option<RunCommand>;
 pub type SuppressedPanes = HashMap<PaneId, (bool, Box<dyn Pane>)>; // bool => is scrollback editor
+
+/// PID-first mutable pane lookup. Kept as a free function so callers can
+/// borrow the pane containers independently of the other `Tab` fields (for
+/// example while the resize macro reads the OS API and senders).
+fn pane_by_pid_mut<'a>(
+    floating_panes: &'a mut FloatingPanes,
+    tiled_panes: &'a mut TiledPanes,
+    suppressed_panes: &'a mut SuppressedPanes,
+    pane_id: PaneId,
+) -> Option<&'a mut Box<dyn Pane>> {
+    if suppressed_panes
+        .values()
+        .any(|(_, pane)| pane.pid() == pane_id)
+    {
+        return suppressed_panes
+            .values_mut()
+            .find(|(_, pane)| pane.pid() == pane_id)
+            .map(|(_, pane)| pane);
+    }
+    floating_panes
+        .get_pane_mut(pane_id)
+        .or_else(|| tiled_panes.get_pane_mut(pane_id))
+}
 
 pub type StackListId = usize;
 
@@ -425,7 +525,8 @@ enum StackListRemoval {
 
 enum BufferedTabInstruction {
     SetPaneSelectable(PaneId, bool),
-    HandlePtyBytes(u32, VteBytes),
+    HandlePtyBytes(u32, Option<u64>, VteBytes),
+    NoteOutputTruncated(u32),
     HoldPane(PaneId, Option<i32>, bool, RunCommand), // Option<i32> is the exit status, bool is is_first_run
 }
 
@@ -466,9 +567,16 @@ pub(crate) struct Tab {
     pane_frame_style: PaneFrameStyle,
     hidden_bars: HiddenBars,
     auto_layout: bool,
-    pending_vte_events: HashMap<u32, Vec<VteBytes>>,
-    pub selecting_with_mouse_in_pane: Option<PaneId>, // this is only pub for the tests
+    pending_vte: HashMap<u32, PendingPtyBacklog>,
+    /// Oldest scrolled-output bytes dropped because `MAX_PENDING_VTE_BYTES`
+    /// was hit. Not the steady state: quanta are supposed to drain the backlog.
+    #[cfg(test)]
+    pending_vte_bytes_dropped: HashMap<u32, u64>,
+    pub selecting_with_mouse_in_pane: HashMap<ClientId, PaneId>, // this is only pub for the tests
     pane_being_resized_with_mouse: Option<PaneResizeState>,
+    // Resolves link ids on chunks that carry no handler of their own (live
+    // views, popups). Panes own their handlers, so a pane's cells never
+    // resolve through this one.
     link_handler: Rc<RefCell<LinkHandler>>,
     clipboard_provider: ClipboardProvider,
     // TODO: used only to focus the pane when the layout is loaded
@@ -484,6 +592,7 @@ pub(crate) struct Tab {
     // cursor_shape_csi)
     is_pending: bool, // a pending tab is one that is still being loaded or otherwise waiting
     pending_instructions: Vec<BufferedTabInstruction>, // instructions that came while the tab was
+    pending_pty_bytes: HashMap<u32, usize>,
     // pending and need to be re-applied
     swap_layouts: SwapLayouts,
     default_shell: PathBuf,
@@ -542,6 +651,21 @@ pub(crate) struct Tab {
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
+/// Where a viewport shift should finish. Applied one row quantum per turn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ViewportGoal {
+    Bottom,
+    Top,
+}
+
+fn terminal_page_scroll_rows(content_rows: usize) -> usize {
+    content_rows.max(1)
+}
+
+fn terminal_half_page_scroll_rows(content_rows: usize) -> usize {
+    (content_rows / 2).max(1)
+}
+
 pub trait Pane {
     fn x(&self) -> usize;
     fn y(&self) -> usize;
@@ -585,6 +709,9 @@ pub trait Pane {
     fn request_permissions_from_user(&mut self, _permissions: Option<PluginPermission>) {}
     fn is_requesting_permissions(&self) -> bool {
         false
+    }
+    fn render_lock_deadline(&self) -> Option<std::time::Instant> {
+        None
     }
     fn render(
         &mut self,
@@ -650,6 +777,38 @@ pub trait Pane {
     fn clear_command_output_flash(&mut self) {}
     fn clear_scroll(&mut self);
     fn is_scrolled(&self) -> bool;
+    /// Start moving this pane's viewport toward `goal`, one row quantum
+    /// per `advance_viewport_goal` call.
+    fn begin_viewport_goal(&mut self, _goal: ViewportGoal) {}
+    /// Move one quantum toward the viewport goal. Returns true when the
+    /// goal is still unfinished.
+    fn advance_viewport_goal(&mut self) -> bool {
+        false
+    }
+    fn viewport_goal_pending(&self) -> bool {
+        false
+    }
+    /// True when this pane still has a viewport shift, a search scan, or
+    /// a scrollback recount that must run on a later screen turn.
+    fn has_deferred_pane_work(&self) -> bool {
+        false
+    }
+    /// Perform one quantum of deferred pane work that is not PTY bytes.
+    fn advance_deferred_pane_work(&mut self) {}
+    /// `true` when queued PTY bytes may be parsed now. `false` means the
+    /// viewport is still moving toward the live bottom and the bytes must
+    /// stay queued.
+    fn prepare_scrolled_output(&mut self, _has_queued_bytes: bool) -> bool {
+        true
+    }
+    /// The scrolled backlog for this pane is empty. Restore the user's
+    /// viewport one quantum at a time.
+    fn scrolled_backlog_idle(&mut self) {}
+    /// Put a short scrolled view back after one parsed quantum. A distance
+    /// longer than one row quantum stays parked at the bottom with renders
+    /// locked until the backlog is idle, so the trip does not reverse
+    /// direction every turn.
+    fn restore_short_output_catchup(&mut self) {}
     fn active_at(&self) -> Instant;
     fn set_active_at(&mut self, instant: Instant);
     fn set_frame(&mut self, frame: bool);
@@ -814,11 +973,31 @@ pub trait Pane {
     fn clear_forward_pause(&mut self) -> bool {
         false
     }
-    /// Drain and return any PTY bytes that arrived while the pane was
-    /// forward-paused. Tab calls this on resume and re-feeds the bytes
-    /// through `handle_pty_bytes`. Default empty for non-terminal panes.
+    /// Drain and return any PTY bytes that have been buffered but not
+    /// yet processed. Default empty for non-terminal panes.
     fn drain_pending_pty_input(&mut self) -> Vec<u8> {
         vec![]
+    }
+    /// Whether PTY bytes are buffered waiting to be processed. After
+    /// clearing the forward pause, Tab resumes the pane by calling
+    /// `handle_pty_bytes` with no new bytes.
+    fn has_pending_pty_input(&self) -> bool {
+        false
+    }
+    /// Whether the pane still has output to apply. This includes semantic
+    /// work that is not visible as raw bytes, such as an unfinished repeat.
+    fn has_pending_output(&self) -> bool {
+        false
+    }
+    /// Whether new PTY bytes can make progress now. False while a semantic
+    /// operation or an already-buffered suffix must run first.
+    fn can_accept_pty_bytes(&self) -> bool {
+        true
+    }
+    /// Whether the pane is forward-paused with more buffered output than
+    /// it is allowed to hold while waiting for the host.
+    fn pending_pty_input_exceeds_forward_limit(&self) -> bool {
+        false
     }
     /// Whether this pane is currently waiting for a host-forward reply.
     fn is_forward_paused(&self) -> bool {
@@ -843,6 +1022,9 @@ pub trait Pane {
         false
     }
     fn reset_input_modes_left_by_lost_guest(&mut self) {}
+    fn reset_input_modes(&mut self) -> bool {
+        false
+    }
     fn render_full_viewport(&mut self) {}
     fn relative_position(&self, position_on_screen: &Position) -> Position {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
@@ -1022,14 +1204,15 @@ pub trait Pane {
     fn take_initial_attention_flags(&mut self) -> Option<(bool, bool)> {
         None
     }
-    fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
+    fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>) -> bool;
     fn add_highlight_pane_frame_color_override(
         &mut self,
         _text: Option<String>,
         _client_id: Option<ClientId>,
-    ) {
+    ) -> bool {
+        false
     }
-    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>);
+    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) -> bool;
     fn frame_color_override(&self) -> Option<PaletteColor>;
     fn invoked_with(&self) -> &Option<Run>;
     fn set_title(&mut self, title: String);
@@ -1043,6 +1226,15 @@ pub trait Pane {
     }
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
     fn current_title(&self) -> String;
+    /// Output for this pane was cut. The notice is pane state, not bytes in
+    /// the terminal stream.
+    fn note_output_truncated(&mut self) {}
+    /// Drop every unparsed byte for this pane and reset the decoder, so the
+    /// bytes after an admission gap cannot complete a sequence from before it.
+    fn reject_unparsed_input(&mut self) {}
+    /// Drop a control sequence the parser had not finished, without
+    /// dispatching it. Used at a pre-open output gap.
+    fn discard_unfinished_input(&mut self) {}
     fn stack_list_entry_label(&self) -> String {
         self.current_title()
     }
@@ -1069,6 +1261,11 @@ pub trait Pane {
     fn serialize(&self, _scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
         None
     }
+    /// `true` while a pane snapshot still has older rows inside the request
+    /// and the absolute cell ceiling. The next `serialize` call emits them.
+    fn serialize_snapshot_has_more(&self) -> bool {
+        false
+    }
     fn rerun(&mut self) -> Option<RunCommand> {
         None
     } // only relevant to terminal panes
@@ -1079,6 +1276,9 @@ pub trait Pane {
     fn update_sixel_host_support(&mut self, _supported: bool) {}
     fn take_notification_end(&mut self) -> Option<NotificationEnd> {
         None
+    }
+    fn has_client_instance(&self, _client_id: ClientId) -> bool {
+        true
     }
     fn attach_exit_waiter(&mut self, waiter: NotificationEnd) -> Option<NotificationEnd> {
         Some(waiter)
@@ -1152,6 +1352,8 @@ pub trait Pane {
     fn set_mirror_pinned_size(&mut self, _size: Option<Size>) -> bool {
         false
     }
+    /// Size a collapsed stack member's PTY as if it were the expanded member.
+    fn set_collapsed_stack_program_size(&mut self, _size: Option<Size>) {}
     fn mirror_change_counter(&self) -> u64 {
         0
     }
@@ -1167,7 +1369,7 @@ pub enum GuestChoiceIndicator {
 pub enum AdjustedInput {
     WriteBytesToTerminal(Vec<u8>),
     ReRunCommandInThisPane(RunCommand),
-    PermissionRequestResult(Vec<PermissionType>, PermissionStatus),
+    PermissionRequestResult(Vec<PermissionType>, PermissionStatus, u64),
     CloseThisPane,
     DropToShellInThisPane { working_dir: Option<PathBuf> },
     WriteKeyToPlugin(KeyWithModifier),
@@ -1194,6 +1396,15 @@ pub fn get_next_terminal_position(
         })
         .count();
     tiled_panes_count + floating_panes_count + 1
+}
+
+fn fail_cli_write(completion: &mut Option<NotificationEnd>, message: &str) {
+    // Publish here. A later raw drop is abandonment and would clear this error.
+    if let Some(mut completion) = completion.take() {
+        completion.set_exit_status(1);
+        completion.set_error_message(message.to_owned());
+        completion.complete_recorded();
+    }
 }
 
 impl Tab {
@@ -1306,7 +1517,7 @@ impl Tab {
         );
 
         let clipboard_provider = match copy_options.command {
-            Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
+            Some(command) => ClipboardProvider::command(CopyCommand::new(command)),
             None => ClipboardProvider::Osc52(copy_options.clipboard),
         };
         let swap_layouts = SwapLayouts::new(swap_layouts, display_area.clone());
@@ -1346,9 +1557,11 @@ impl Tab {
             pane_frame_style,
             hidden_bars: HiddenBars::default(),
             auto_layout,
-            pending_vte_events: HashMap::new(),
+            pending_vte: HashMap::new(),
+            #[cfg(test)]
+            pending_vte_bytes_dropped: HashMap::new(),
             connected_clients,
-            selecting_with_mouse_in_pane: None,
+            selecting_with_mouse_in_pane: HashMap::new(),
             pane_being_resized_with_mouse: None,
             link_handler: Rc::new(RefCell::new(LinkHandler::new())),
             clipboard_provider,
@@ -1361,6 +1574,7 @@ impl Tab {
             cursor_positions_and_shape: HashMap::new(),
             is_pending: true, // will be switched to false once the layout is applied
             pending_instructions: vec![],
+            pending_pty_bytes: HashMap::new(),
             swap_layouts,
             default_shell,
             debug,
@@ -2171,6 +2385,10 @@ impl Tab {
             if let Some((_is_scrollback_editor, pane)) = self.suppressed_panes.get_mut(&member) {
                 pane.set_geom(visible_geom);
                 pane.set_content_offset(visible_offset);
+                // This pane was a collapsed one-liner in the classic in-grid
+                // stack before it was hidden. Its PTY should now follow the
+                // expanded visible member, not the old one-line geometry.
+                pane.set_collapsed_stack_program_size(None);
                 let _ = resize_pty!(pane, self.os_api, self.senders, self.character_cell_size);
             }
         }
@@ -2395,7 +2613,6 @@ impl Tab {
             &self.senders,
             &self.sixel_image_store,
             &self.kitty_image_store,
-            &self.link_handler,
             &self.terminal_emulator_colors,
             &self.terminal_emulator_color_codes,
             &self.character_cell_size,
@@ -2490,7 +2707,6 @@ impl Tab {
             &self.senders,
             &self.sixel_image_store,
             &self.kitty_image_store,
-            &self.link_handler,
             &self.terminal_emulator_colors,
             &self.terminal_emulator_color_codes,
             &self.character_cell_size,
@@ -2599,7 +2815,6 @@ impl Tab {
                 &self.senders,
                 &self.sixel_image_store,
                 &self.kitty_image_store,
-                &self.link_handler,
                 &self.terminal_emulator_colors,
                 &self.terminal_emulator_color_codes,
                 &self.character_cell_size,
@@ -2668,7 +2883,6 @@ impl Tab {
                 &self.senders,
                 &self.sixel_image_store,
                 &self.kitty_image_store,
-                &self.link_handler,
                 &self.terminal_emulator_colors,
                 &self.terminal_emulator_color_codes,
                 &self.character_cell_size,
@@ -2777,16 +2991,75 @@ impl Tab {
         }
         Ok(())
     }
+    /// Keep the earliest output that arrived before the layout existed.
+    /// Bytes past [`MAX_PENDING_VTE_BYTES`] for one pane are dropped, so a
+    /// program that floods a tab that is still loading cannot grow this
+    /// vector without a limit.
+    fn buffer_pending_pty_bytes(&mut self, pid: u32, bytes: VteBytes, run_generation: Option<u64>) {
+        if bytes.is_empty() {
+            return;
+        }
+        let used = self.pending_pty_bytes.get(&pid).copied().unwrap_or(0);
+        if used.saturating_add(bytes.len()) > MAX_PENDING_VTE_BYTES {
+            // The pane does not exist yet, so there is no decoder to resume.
+            // Drop the buffered prefix instead of replaying a suffix that
+            // may start inside a control sequence, and note the gap.
+            let mut dropped = 0usize;
+            self.pending_instructions
+                .retain(|instruction| match instruction {
+                    BufferedTabInstruction::HandlePtyBytes(buffered_pid, _, buffered)
+                        if *buffered_pid == pid =>
+                    {
+                        dropped = dropped.saturating_add(buffered.len());
+                        false
+                    },
+                    BufferedTabInstruction::NoteOutputTruncated(buffered_pid)
+                        if *buffered_pid == pid =>
+                    {
+                        false
+                    },
+                    _ => true,
+                });
+            self.pending_pty_bytes.remove(&pid);
+            log::warn!(
+                "pane {pid} rejected {dropped} bytes of output buffered before its tab was \
+                 applied at the {MAX_PENDING_VTE_BYTES} byte ceiling"
+            );
+            self.pending_instructions
+                .push(BufferedTabInstruction::NoteOutputTruncated(pid));
+        }
+        *self.pending_pty_bytes.entry(pid).or_default() += bytes.len();
+        if let Some(BufferedTabInstruction::HandlePtyBytes(last_pid, last_generation, buffered)) =
+            self.pending_instructions.last_mut()
+        {
+            if *last_pid == pid && *last_generation == run_generation {
+                buffered.extend_from_slice(&bytes);
+                return;
+            }
+        }
+        self.pending_instructions
+            .push(BufferedTabInstruction::HandlePtyBytes(
+                pid,
+                run_generation,
+                bytes,
+            ));
+    }
     pub fn apply_buffered_instructions(&mut self) -> Result<()> {
         let buffered_instructions: Vec<BufferedTabInstruction> =
             self.pending_instructions.drain(..).collect();
+        self.pending_pty_bytes.clear();
         for buffered_instruction in buffered_instructions {
             match buffered_instruction {
                 BufferedTabInstruction::SetPaneSelectable(pane_id, selectable) => {
                     self.set_pane_selectable(pane_id, selectable);
                 },
-                BufferedTabInstruction::HandlePtyBytes(terminal_id, bytes) => {
-                    self.handle_pty_bytes(terminal_id, bytes)?;
+                BufferedTabInstruction::HandlePtyBytes(terminal_id, run_generation, bytes) => {
+                    self.handle_pty_bytes_with_generation(terminal_id, bytes, run_generation)?;
+                },
+                BufferedTabInstruction::NoteOutputTruncated(terminal_id) => {
+                    if let Some(pane) = self.get_pane_by_pid_mut(PaneId::Terminal(terminal_id)) {
+                        pane.note_output_truncated();
+                    }
                 },
                 BufferedTabInstruction::HoldPane(
                     terminal_id,
@@ -3050,6 +3323,34 @@ impl Tab {
         let was_dimmed = self.dimmed_clients.contains(&client_id);
         self.mode_info.borrow_mut().remove(&client_id);
         self.connected_clients.borrow_mut().remove(&client_id);
+        self.tiled_panes.remove_client(client_id);
+        self.current_pane_group
+            .borrow_mut()
+            .remove_client(&client_id);
+        self.cursor_positions_and_shape.remove(&client_id);
+        self.mouse_hover_pane_id.remove(&client_id);
+        self.plugin_hover_pane_id.remove(&client_id);
+        self.popup_hover_plugin_id.remove(&client_id);
+        self.last_hint_text.remove(&client_id);
+        self.last_active_pane_scroll.remove(&client_id);
+        if let Some(pane_id) = self.selecting_with_mouse_in_pane.remove(&client_id) {
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.reset_selection(Some(client_id));
+            }
+        }
+        if self
+            .pane_being_resized_with_mouse
+            .as_ref()
+            .map(|state| state.client_id)
+            == Some(client_id)
+        {
+            self.pane_being_resized_with_mouse = None;
+        }
+        let had_mouse_press = self.mouse_press_owner.remove(&client_id).is_some();
+        if had_mouse_press && self.mouse_press_owner.is_empty() {
+            self.pane_being_resized_with_mouse = None;
+            self.floating_panes.forget_pane_being_moved_with_mouse();
+        }
         self.mouse_help_text_visible.remove(&client_id);
         self.mouse_last_pane_id.remove(&client_id);
         self.last_mouse_activity_time.remove(&client_id);
@@ -3061,9 +3362,11 @@ impl Tab {
         }
     }
     fn forget_held_mouse_gestures(&mut self) {
-        if let Some(pane_id) = self.selecting_with_mouse_in_pane.take() {
+        let selections: Vec<(ClientId, PaneId)> =
+            self.selecting_with_mouse_in_pane.drain().collect();
+        for (client_id, pane_id) in selections {
             if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-                pane.reset_selection(None);
+                pane.reset_selection(Some(client_id));
             }
         }
         self.pane_being_resized_with_mouse = None;
@@ -3459,7 +3762,6 @@ impl Tab {
                         self.style,
                         next_terminal_position,
                         initial_pane_title.clone().unwrap_or_default(),
-                        self.link_handler.clone(),
                         self.character_cell_size.clone(),
                         self.sixel_image_store.clone(),
                         self.kitty_image_store.clone(),
@@ -3492,7 +3794,6 @@ impl Tab {
                     self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
-                    self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.connected_clients_in_app
                         .borrow()
@@ -3587,7 +3888,6 @@ impl Tab {
                         self.style,
                         next_terminal_position,
                         initial_pane_title.clone().unwrap_or_default(),
-                        self.link_handler.clone(),
                         self.character_cell_size.clone(),
                         self.sixel_image_store.clone(),
                         self.kitty_image_store.clone(),
@@ -3620,7 +3920,6 @@ impl Tab {
                     self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
-                    self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.connected_clients_in_app
                         .borrow()
@@ -3705,7 +4004,6 @@ impl Tab {
                         self.style,
                         next_terminal_position,
                         initial_pane_title.clone().unwrap_or_default(),
-                        self.link_handler.clone(),
                         self.character_cell_size.clone(),
                         self.sixel_image_store.clone(),
                         self.kitty_image_store.clone(),
@@ -3738,7 +4036,6 @@ impl Tab {
                     self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
-                    self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.connected_clients_in_app
                         .borrow()
@@ -3886,7 +4183,6 @@ impl Tab {
                         self.style,
                         next_terminal_position,
                         initial_pane_title.clone().unwrap_or_default(),
-                        self.link_handler.clone(),
                         self.character_cell_size.clone(),
                         self.sixel_image_store.clone(),
                         self.kitty_image_store.clone(),
@@ -3919,7 +4215,6 @@ impl Tab {
                     self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
-                    self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.connected_clients_in_app
                         .borrow()
@@ -4062,6 +4357,49 @@ impl Tab {
         match pid {
             PaneId::Terminal(pid) => {
                 let new_pane: Box<dyn Pane> = Box::new(self.new_scrollback_editor_pane(pid));
+                if let Some(root) = self.visible_restoration_root_for_pane(pane_id_to_replace) {
+                    let mut current = root;
+                    while current != pane_id_to_replace {
+                        let Some(next) = self
+                            .suppressed_panes
+                            .get(&current)
+                            .map(|(_, pane)| pane.pid())
+                        else {
+                            let error = anyhow!(
+                                "Could not find the restoration chain for pane {:?}",
+                                pane_id_to_replace
+                            );
+                            Err::<(), _>(error).with_context(err_context).non_fatal();
+                            self.close_unplaced_pane(
+                                new_pane,
+                                None,
+                                PaneNotCreatedReason::PaneToReplaceNotFound,
+                            );
+                            return Ok(());
+                        };
+                        match self.replace_pane_with_suppressed_pane(current) {
+                            Ok(Some(old_visible)) => {
+                                let old_visible_id = old_visible.pid();
+                                drop(old_visible);
+                                self.close_pane(old_visible_id, true, None);
+                                let _ = self
+                                    .senders
+                                    .send_to_pty(PtyInstruction::ClosePane(old_visible_id, None));
+                            },
+                            Ok(None) => {},
+                            Err(error) => {
+                                Err::<(), _>(error).with_context(err_context).non_fatal();
+                                self.close_unplaced_pane(
+                                    new_pane,
+                                    None,
+                                    PaneNotCreatedReason::PaneToReplaceNotFound,
+                                );
+                                return Ok(());
+                            },
+                        }
+                        current = next;
+                    }
+                }
                 let replaced_pane = if self.floating_panes.panes_contain(&pane_id_to_replace) {
                     self.floating_panes
                         .replace_pane(pane_id_to_replace, new_pane)
@@ -4136,7 +4474,6 @@ impl Tab {
                     self.style,
                     next_terminal_position,
                     String::new(),
-                    self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
                     self.kitty_image_store.clone(),
@@ -4223,7 +4560,6 @@ impl Tab {
                     self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
-                    self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.connected_clients_in_app
                         .borrow()
@@ -4296,12 +4632,13 @@ impl Tab {
         };
         match replaced_pane {
             Ok(replaced_pane) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 self.track_stack_list_member_id_swap(pane_id_to_replace, replacement_pane_id);
                 let pane_id = replaced_pane.pid();
                 self.forget_typed_input(pane_id);
                 let _ = self
                     .senders
-                    .send_to_pty(PtyInstruction::ClosePane(pane_id, completion_tx));
+                    .send_to_pty(PtyInstruction::ClosePane(pane_id, completion_tx.take()));
                 let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     None,
@@ -4378,7 +4715,6 @@ impl Tab {
                     self.style,
                     next_terminal_position,
                     String::new(),
-                    self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
                     self.kitty_image_store.clone(),
@@ -4471,7 +4807,6 @@ impl Tab {
                     self.style,
                     next_terminal_position,
                     String::new(),
-                    self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
                     self.kitty_image_store.clone(),
@@ -4625,7 +4960,6 @@ impl Tab {
                 self.style,
                 next_terminal_position,
                 String::new(),
-                self.link_handler.clone(),
                 self.character_cell_size.clone(),
                 self.sixel_image_store.clone(),
                 self.kitty_image_store.clone(),
@@ -4693,12 +5027,53 @@ impl Tab {
             .map(|pane| pane.is_scrolled())
             .unwrap_or(false)
     }
+    /// Explicit identity lookup: the returned pane, if any, has `pid() == pane_id`.
+    /// Suppressed panes are stored under the ID of their replacement, so this
+    /// must search by the pane's own ID rather than by the map key.
+    fn suppressed_key_for_pane_identity(&self, pane_id: PaneId) -> Option<PaneId> {
+        self.suppressed_panes
+            .iter()
+            .find(|(_, (_, pane))| pane.pid() == pane_id)
+            .map(|(key, _)| *key)
+    }
+    /// Return the visible pane whose replacement chain contains `target`.
+    /// Unwinding that chain restores `target` into a visible slot.
+    fn visible_restoration_root_for_pane(&self, target: PaneId) -> Option<PaneId> {
+        let visible_ids = self
+            .tiled_panes
+            .pane_ids()
+            .copied()
+            .chain(self.floating_panes.pane_ids().copied());
+        for visible_id in visible_ids {
+            if visible_id == target {
+                return Some(visible_id);
+            }
+            let mut current = visible_id;
+            let mut seen = HashSet::new();
+            while let Some((_, pane)) = self.suppressed_panes.get(&current) {
+                let next = pane.pid();
+                if next == target {
+                    return Some(visible_id);
+                }
+                if !seen.insert(next) {
+                    break;
+                }
+                current = next;
+            }
+        }
+        None
+    }
     pub fn get_pane_with_id(&self, pane_id: PaneId) -> Option<&dyn Pane> {
-        self.floating_panes
-            .get_pane(pane_id)
-            .map(Box::as_ref)
-            .or_else(|| self.tiled_panes.get_pane(pane_id).map(Box::as_ref))
-            .or_else(|| self.suppressed_panes.get(&pane_id).map(|p| p.1.as_ref()))
+        if let Some(pane) = self.floating_panes.get_pane(pane_id) {
+            return Some(pane.as_ref());
+        }
+        if let Some(pane) = self.tiled_panes.get_pane(pane_id) {
+            return Some(pane.as_ref());
+        }
+        self.suppressed_panes
+            .values()
+            .find(|(_, pane)| pane.pid() == pane_id)
+            .map(|(_, pane)| pane.as_ref())
     }
     pub fn get_pane_with_id_mut(&mut self, pane_id: PaneId) -> Option<&mut Box<dyn Pane>> {
         self.floating_panes
@@ -4706,9 +5081,36 @@ impl Tab {
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
             .or_else(|| {
                 self.suppressed_panes
-                    .get_mut(&pane_id)
+                    .values_mut()
+                    .find(|(_, pane)| pane.pid() == pane_id)
                     .map(|(_, pane)| pane)
             })
+    }
+    /// Resolve a pane by its terminal identity rather than by the key it is
+    /// stored under. A suppressed pane keeps its original pid while it is
+    /// stored under the id of the pane that replaced it, and suppression can
+    /// nest. PTY traffic, deferred work and run settlement all address that
+    /// original pid.
+    pub fn get_pane_by_pid(&self, pane_id: PaneId) -> Option<&dyn Pane> {
+        if let Some((_, pane)) = self
+            .suppressed_panes
+            .values()
+            .find(|(_, pane)| pane.pid() == pane_id)
+        {
+            return Some(pane.as_ref());
+        }
+        self.floating_panes
+            .get_pane(pane_id)
+            .map(Box::as_ref)
+            .or_else(|| self.tiled_panes.get_pane(pane_id).map(Box::as_ref))
+    }
+    pub fn get_pane_by_pid_mut(&mut self, pane_id: PaneId) -> Option<&mut Box<dyn Pane>> {
+        pane_by_pid_mut(
+            &mut self.floating_panes,
+            &mut self.tiled_panes,
+            &mut self.suppressed_panes,
+            pane_id,
+        )
     }
     pub fn get_active_pane_mut(&mut self, client_id: ClientId) -> Option<&mut Box<dyn Pane>> {
         self.get_active_pane_id(client_id).and_then(|ap| {
@@ -4759,9 +5161,16 @@ impl Tab {
             }
         });
         if let Some(focus_event) = focus_event {
-            let _ = self
-                .os_api
-                .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
+            if self.senders.to_pty_writer.is_some() {
+                let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Write(
+                    AdmittedWrite::new(focus_event.into_bytes(), terminal_id, None, None),
+                ));
+            } else {
+                // Test and embedded buses have no writer thread.
+                let _ = self
+                    .os_api
+                    .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
+            }
         }
     }
     pub fn check_and_handle_bell_notifications(
@@ -4877,7 +5286,12 @@ impl Tab {
             .floating_panes
             .get_mut(&pane_id)
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
-            .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1));
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|(_, pane)| pane.pid() == pane_id)
+                    .map(|(_, pane)| pane)
+            });
         if let Some(pane) = pane {
             pane.set_pane_default_colors(fg, bg);
         }
@@ -5166,39 +5580,200 @@ impl Tab {
             pane.set_guest_modal_shortcuts(shortcuts);
         }
     }
+    #[cfg(test)]
     pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
+        self.handle_pty_bytes_with_generation(pid, bytes, None)
+    }
+    pub fn handle_pty_bytes_with_generation(
+        &mut self,
+        pid: u32,
+        bytes: VteBytes,
+        run_generation: Option<u64>,
+    ) -> Result<()> {
         if self.is_pending {
-            self.pending_instructions
-                .push(BufferedTabInstruction::HandlePtyBytes(pid, bytes));
+            self.buffer_pending_pty_bytes(pid, bytes, run_generation);
             return Ok(());
         }
         let err_context = || format!("failed to handle pty bytes from fd {pid}");
-        if let Some(terminal_output) = self
-            .tiled_panes
-            .get_pane_mut(PaneId::Terminal(pid))
-            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Terminal(pid)))
-            .or_else(|| {
-                self.suppressed_panes
-                    .values_mut()
-                    .find(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
-                    .map(|s_p| &mut s_p.1)
-            })
+        // A scrolled pane used to buffer every byte and then parse the whole
+        // backlog in this call. Parse at most one quantum now; the screen
+        // thread continues the rest on a later turn. Bytes that arrived while
+        // a backlog already exists stay behind it so order does not change.
+        if self.pending_vte_len(pid) > 0
+            || self.terminal_pane_is_scrolled(pid)
+            || !self.terminal_pane_can_accept_pty_bytes(pid)
         {
-            // If the pane is scrolled buffer the vte events
-            if terminal_output.is_scrolled() {
-                self.pending_vte_events.entry(pid).or_default().push(bytes);
-                if let Some(evs) = self.pending_vte_events.get(&pid) {
-                    // Reset scroll - and process all pending events for this pane
-                    if evs.len() >= MAX_PENDING_VTE_EVENTS {
-                        terminal_output.clear_scroll();
-                        self.process_pending_vte_events(pid)
-                            .with_context(err_context)?;
-                    }
+            self.enqueue_pending_vte(pid, bytes, run_generation);
+            self.apply_one_pending_vte_quantum(pid)
+                .with_context(err_context)?;
+            return Ok(());
+        }
+        self.process_pty_bytes(pid, bytes, run_generation)
+            .with_context(err_context)
+    }
+    fn terminal_pane_is_scrolled(&self, pid: u32) -> bool {
+        self.get_pane_by_pid(PaneId::Terminal(pid))
+            .is_some_and(|pane| pane.is_scrolled())
+    }
+    fn terminal_pane_can_accept_pty_bytes(&self, pid: u32) -> bool {
+        self.get_pane_by_pid(PaneId::Terminal(pid))
+            .map(|pane| pane.can_accept_pty_bytes())
+            .unwrap_or(true)
+    }
+    fn enqueue_pending_vte(&mut self, pid: u32, bytes: Vec<u8>, run_generation: Option<u64>) {
+        if bytes.is_empty() {
+            return;
+        }
+        let overflowed = {
+            let backlog = self.pending_vte.entry(pid).or_default();
+            backlog.push(bytes, run_generation);
+            backlog.len > MAX_PENDING_VTE_BYTES
+        };
+        if overflowed {
+            // Reject the pane's whole unparsed queue rather than splicing a
+            // suffix onto parser state from before an arbitrary byte gap.
+            let dropped = self
+                .pending_vte
+                .remove(&pid)
+                .map(|mut backlog| backlog.clear())
+                .unwrap_or(0);
+            if dropped > 0 {
+                #[cfg(test)]
+                {
+                    *self.pending_vte_bytes_dropped.entry(pid).or_default() += dropped as u64;
                 }
-                return Ok(());
+                log::warn!(
+                    "pane {pid} rejected {dropped} bytes of scrolled output at the \
+                     {MAX_PENDING_VTE_BYTES} byte pending ceiling and reset the parser"
+                );
+            }
+            if let Some(pane) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
+                pane.reject_unparsed_input();
             }
         }
-        self.process_pty_bytes(pid, bytes).with_context(err_context)
+        if self.pending_vte.get(&pid).map(|backlog| backlog.len) == Some(0) {
+            self.pending_vte.remove(&pid);
+        }
+    }
+    fn take_pending_vte_quantum(&mut self, pid: u32) -> Vec<(Option<u64>, Vec<u8>)> {
+        let Some(backlog) = self.pending_vte.get_mut(&pid) else {
+            return Vec::new();
+        };
+        let bytes = backlog.take(SCROLLED_PTY_QUANTUM_BYTES);
+        if backlog.len == 0 {
+            self.pending_vte.remove(&pid);
+        }
+        bytes
+    }
+    pub(crate) fn pending_vte_len(&self, pid: u32) -> usize {
+        self.pending_vte
+            .get(&pid)
+            .map(|backlog| backlog.len)
+            .unwrap_or(0)
+    }
+    /// Whether the pane still has output to apply, either in the scrolled
+    /// backlog, buffered behind a forward-paused host query, or waiting for
+    /// deferred semantic work such as an unfinished repeat.
+    pub(crate) fn has_pending_output(&self, pid: u32) -> bool {
+        self.pending_vte_len(pid) > 0
+            || self
+                .get_pane_by_pid(PaneId::Terminal(pid))
+                .is_some_and(|pane| pane.has_pending_output())
+    }
+    #[cfg(test)]
+    pub(crate) fn pending_vte_bytes_dropped(&self, pid: u32) -> u64 {
+        self.pending_vte_bytes_dropped
+            .get(&pid)
+            .copied()
+            .unwrap_or(0)
+    }
+    pub(crate) fn has_pending_vte_bytes(&self) -> bool {
+        self.pending_vte.values().any(|backlog| backlog.len > 0)
+    }
+    /// Parse at most one quantum of queued PTY bytes for every pane that has
+    /// some. Does not loop until the backlog is empty.
+    pub(crate) fn apply_pending_vte_quanta(&mut self) -> Result<()> {
+        let pids: Vec<u32> = self.pending_vte.keys().copied().collect();
+        for pid in pids {
+            self.apply_one_pending_vte_quantum(pid)
+                .context("failed to apply a scrolled pty quantum")?;
+        }
+        Ok(())
+    }
+    fn apply_one_pending_vte_quantum(&mut self, pid: u32) -> Result<()> {
+        if !self.has_terminal_pid(pid) {
+            self.pending_vte.remove(&pid);
+            return Ok(());
+        }
+        let has_bytes = self.pending_vte_len(pid) > 0;
+        let (parse_now, can_accept) = self
+            .get_pane_by_pid_mut(PaneId::Terminal(pid))
+            .map(|pane| {
+                let parse_now = pane.prepare_scrolled_output(has_bytes);
+                let can_accept = pane.can_accept_pty_bytes();
+                (parse_now, can_accept)
+            })
+            .unwrap_or((true, true));
+        if !parse_now || !has_bytes || !can_accept {
+            return Ok(());
+        }
+        let segments = self.take_pending_vte_quantum(pid);
+        if segments.is_empty() {
+            if let Some(pane) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
+                pane.scrolled_backlog_idle();
+            }
+            return Ok(());
+        }
+        for (run_generation, bytes) in segments {
+            self.process_pty_bytes(pid, bytes, run_generation)?;
+        }
+        if self.pending_vte_len(pid) == 0 {
+            if let Some(pane) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
+                pane.scrolled_backlog_idle();
+            }
+        } else if let Some(pane) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
+            pane.restore_short_output_catchup();
+        }
+        Ok(())
+    }
+    pub(crate) fn has_deferred_screen_work(&self) -> bool {
+        self.has_pending_vte_bytes() || self.panes_have_deferred_work()
+    }
+    fn panes_have_deferred_work(&self) -> bool {
+        self.tiled_panes
+            .get_panes()
+            .chain(self.floating_panes.get_panes())
+            .any(|(_, pane)| pane.has_deferred_pane_work())
+            || self
+                .suppressed_panes
+                .values()
+                .any(|(_, pane)| pane.has_deferred_pane_work())
+    }
+    pub(crate) fn advance_deferred_pane_work(&mut self) {
+        let pane_ids = self.get_all_pane_ids();
+        for pane_id in pane_ids {
+            let did_work = if let Some(pane) = self.get_pane_by_pid_mut(pane_id) {
+                if pane.has_deferred_pane_work() {
+                    pane.advance_deferred_pane_work();
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+            if did_work {
+                if let PaneId::Terminal(pid) = pane_id {
+                    // Delivering a deferred REP step can release bytes that
+                    // produce host queries, clipboard/OSC events or messages.
+                    // Run them through the normal post-output drain so none
+                    // stay stuck until an unrelated chunk arrives.
+                    if let Err(error) = self.process_pty_bytes(pid, Vec::new(), None) {
+                        log::error!("failed to settle deferred output for pane {pid}: {error}");
+                    }
+                }
+            }
+        }
     }
     pub fn handle_plugin_bytes(
         &mut self,
@@ -5229,16 +5804,6 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn process_pending_vte_events(&mut self, pid: u32) -> Result<()> {
-        if let Some(pending_vte_events) = self.pending_vte_events.get_mut(&pid) {
-            let vte_events: Vec<VteBytes> = pending_vte_events.drain(..).collect();
-            for vte_event in vte_events {
-                self.process_pty_bytes(pid, vte_event)
-                    .context("failed to process pending vte events")?;
-            }
-        }
-        Ok(())
-    }
     /// Deliver a forwarded host reply (or cache-fallback synthesis,
     /// or a locally-answered query payload) to a pane that is currently
     /// forward-paused. The reply bytes are written to the pane's PTY
@@ -5248,53 +5813,66 @@ impl Tab {
     /// paused are re-fed through vte. The re-feed itself may produce
     /// another forward and re-arm the pause; the cycle bounds at the
     /// buffered byte count.
-    pub fn resume_pane_after_forward(&mut self, pid: u32, reply_bytes: Vec<u8>) -> Result<()> {
+    pub fn resume_pane_after_forward(
+        &mut self,
+        pid: u32,
+        reply_bytes: Vec<u8>,
+        run_generation: Option<u64>,
+    ) -> Result<()> {
         let err_context = || format!("failed to resume pane {pid} after forward");
         // Write the reply first so the app sees it on stdin before
         // any subsequent (sync or async) reply that follows in the
         // buffered byte stream.
         if !reply_bytes.is_empty() {
-            self.write_to_pane_id_without_preprocessing(reply_bytes, PaneId::Terminal(pid))
-                .with_context(err_context)?;
+            if let Err(error) = self.write_to_pane_id_without_preprocessing(
+                reply_bytes,
+                PaneId::Terminal(pid),
+                run_generation,
+            ) {
+                if is_pty_write_admission_refusal(&error) {
+                    log::debug!("forwarded reply for pane {pid} was refused by the write budget");
+                } else {
+                    return Err(error).with_context(err_context);
+                }
+            }
         }
-        // Clear the pause and pull out any bytes that were buffered
-        // while it waited for the host reply.
-        let buffered = if let Some(terminal_output) = self
-            .tiled_panes
-            .get_pane_mut(PaneId::Terminal(pid))
-            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Terminal(pid)))
-            .or_else(|| {
-                self.suppressed_panes
-                    .values_mut()
-                    .find(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
-                    .map(|s_p| &mut s_p.1)
-            }) {
-            terminal_output.clear_forward_pause();
-            terminal_output.drain_pending_pty_input()
-        } else {
-            // Pane closed between forward dispatch and reply arrival.
-            return Ok(());
-        };
-        if !buffered.is_empty() {
-            self.process_pty_bytes(pid, buffered)
+        // Clear the pause; any bytes buffered while it waited for the
+        // host reply are processed in place, in order.
+        let has_buffered =
+            if let Some(terminal_output) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
+                terminal_output.clear_forward_pause();
+                terminal_output.has_pending_pty_input()
+            } else {
+                // Pane closed between forward dispatch and reply arrival.
+                return Ok(());
+            };
+        if has_buffered {
+            self.process_pty_bytes(pid, Vec::new(), run_generation)
                 .with_context(err_context)?;
         }
         Ok(())
     }
-    fn process_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
+    /// Whether the terminal pane `pid` is waiting on a host reply with
+    /// more output buffered than it may hold.
+    pub fn pending_pty_input_exceeds_forward_limit(&self, pid: u32) -> bool {
+        self.get_pane_by_pid(PaneId::Terminal(pid))
+            .map(|pane| pane.pending_pty_input_exceeds_forward_limit())
+            .unwrap_or(false)
+    }
+    fn process_pty_bytes(
+        &mut self,
+        pid: u32,
+        mut bytes: VteBytes,
+        run_generation: Option<u64>,
+    ) -> Result<()> {
         let err_context = || format!("failed to process pty bytes from pid {pid}");
 
-        if let Some(terminal_output) = self
-            .tiled_panes
-            .get_pane_mut(PaneId::Terminal(pid))
-            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Terminal(pid)))
-            .or_else(|| {
-                self.suppressed_panes
-                    .values_mut()
-                    .find(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
-                    .map(|s_p| &mut s_p.1)
-            })
-        {
+        if let Some(terminal_output) = pane_by_pid_mut(
+            &mut self.floating_panes,
+            &mut self.tiled_panes,
+            &mut self.suppressed_panes,
+            PaneId::Terminal(pid),
+        ) {
             if self.pids_waiting_resize.remove(&pid) {
                 resize_pty!(
                     terminal_output,
@@ -5304,21 +5882,44 @@ impl Tab {
                 )
                 .with_context(err_context)?;
             }
-            terminal_output.handle_pty_bytes(bytes);
-            let messages_to_pty = terminal_output.drain_messages_to_pty();
-            let forwarded_queries = terminal_output.drain_forwarded_queries();
-            // If at least one forward was produced, the pane stopped
-            // processing its `pending_pty_input` queue at the byte
-            // that produced the forward. Arm the pause so subsequent
-            // PTY bytes accumulate in the same queue rather than
-            // being processed; they will be drained in stream order
-            // when the host reply (or cache-fallback synthesis, or
-            // 500 ms timeout) lands via `resume_pane_after_forward`.
-            // Pause arming is independent of which forward bears the
-            // reply: resume is keyed by pane_id, not by token, so a
-            // single flag suffices for any number of queued forwards.
-            if !forwarded_queries.is_empty() {
+            let mut messages_to_pty = vec![];
+            let mut dropped_queries = 0;
+            let forwarded_queries = loop {
+                terminal_output.handle_pty_bytes(std::mem::take(&mut bytes));
+                messages_to_pty.extend(terminal_output.drain_messages_to_pty());
+                let forwarded_queries = terminal_output.drain_forwarded_queries();
+                if forwarded_queries.is_empty() {
+                    break forwarded_queries;
+                }
+                // If at least one forward was produced, the pane stopped
+                // processing its `pending_pty_input` queue at the byte
+                // that produced the forward. Arm the pause so subsequent
+                // PTY bytes accumulate in the same queue rather than
+                // being processed; they will be drained in stream order
+                // when the host reply (or cache-fallback synthesis, or
+                // 500 ms timeout) lands via `resume_pane_after_forward`.
+                // Pause arming is independent of which forward bears the
+                // reply: resume is keyed by pane_id, not by token, so a
+                // single flag suffices for any number of queued forwards.
                 terminal_output.arm_forward_pause();
+                if !terminal_output.pending_pty_input_exceeds_forward_limit() {
+                    break forwarded_queries;
+                }
+                // Too much output is queued behind this query to wait
+                // for the host. Leave the query unanswered and keep
+                // processing, so that a pane flooding queries cannot keep
+                // the buffer above the limit one query at a time.
+                terminal_output.clear_forward_pause();
+                dropped_queries += forwarded_queries.len();
+            };
+            if dropped_queries > 0 {
+                log::warn!(
+                    "pane {} has more than {} bytes of output queued behind host terminal \
+                     queries; not forwarding {} of them",
+                    pid,
+                    crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED,
+                    dropped_queries
+                );
             }
             let nested_session_messages = terminal_output.drain_nested_session_messages();
             let clipboard_update = terminal_output.drain_clipboard_update();
@@ -5331,16 +5932,39 @@ impl Tab {
                     .push((PaneId::Terminal(pid), pane_signals));
             }
             for message in messages_to_pty {
-                self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
-                    .with_context(err_context)?;
+                if let Err(error) = self.write_to_pane_id_without_preprocessing(
+                    message,
+                    PaneId::Terminal(pid),
+                    None,
+                ) {
+                    if is_pty_write_admission_refusal(&error) {
+                        log::debug!(
+                            "synchronous reply for pane {pid} was refused by the write budget"
+                        );
+                    } else {
+                        return Err(error).with_context(err_context);
+                    }
+                }
             }
-            for query in forwarded_queries {
-                let _ = self
+            let mut forward_dispatch_failed = false;
+            for query in crate::host_query::pack_shared_round_trip(forwarded_queries) {
+                if self
                     .senders
                     .send_to_screen(ScreenInstruction::ForwardHostQuery {
                         pane_id: PaneId::Terminal(pid),
                         query,
-                    });
+                        run_generation,
+                    })
+                    .is_err()
+                {
+                    forward_dispatch_failed = true;
+                }
+            }
+            if forward_dispatch_failed {
+                log::error!("failed to dispatch a forwarded host query for pane {pid}");
+                if let Some(terminal_output) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
+                    terminal_output.clear_forward_pause();
+                }
             }
             for message in nested_session_messages {
                 let _ =
@@ -5389,7 +6013,8 @@ impl Tab {
         client_id: ClientId,
     ) -> Result<bool> {
         // returns true if a UI update should be triggered (eg. when closing a command pane with
-        // ctrl-c)
+        // ctrl-c). One recipient's failure must not skip the others. The
+        // first error is returned so the screen owner can record it.
         let mut should_trigger_ui_change = false;
         let mut pane_ids = self.get_static_and_floating_pane_ids();
         pane_ids.extend(
@@ -5398,22 +6023,45 @@ impl Tab {
                 .filter(|member| self.pane_is_hidden_stack_list_member(member))
                 .copied(),
         );
+        let mut recipient_failure = None;
+        let is_sync_panes_active = self.is_sync_panes_active();
         for pane_id in pane_ids {
-            let ui_change_triggered = self
-                .write_to_pane_id(
-                    key_with_modifier,
-                    raw_input_bytes.clone(),
-                    raw_input_bytes_are_kitty,
-                    pane_id,
-                    Some(client_id),
-                    None,
-                )
-                .context("failed to write to terminals on current tab")?;
-            if ui_change_triggered {
-                should_trigger_ui_change = true;
+            // Exclusion controls synchronized fanout, not explicitly addressed input.
+            if is_sync_panes_active
+                && self
+                    .get_pane_with_id(pane_id)
+                    .map(|pane| pane.exclude_from_sync())
+                    .unwrap_or(false)
+            {
+                continue;
+            }
+            match self.write_to_pane_id(
+                key_with_modifier,
+                raw_input_bytes.clone(),
+                raw_input_bytes_are_kitty,
+                pane_id,
+                Some(client_id),
+                None,
+            ) {
+                Ok(ui_change_triggered) => {
+                    if ui_change_triggered {
+                        should_trigger_ui_change = true;
+                    }
+                },
+                Err(error) => {
+                    let error = error.context("failed to write to terminals on current tab");
+                    if recipient_failure.is_none() {
+                        recipient_failure = Some(error);
+                    } else {
+                        log::error!("{error:#}");
+                    }
+                },
             }
         }
-        Ok(should_trigger_ui_change)
+        match recipient_failure {
+            Some(error) => Err(error),
+            None => Ok(should_trigger_ui_change),
+        }
     }
 
     pub fn write_to_active_terminal(
@@ -5497,13 +6145,134 @@ impl Tab {
         pane_id: PaneId,
         completion: Option<NotificationEnd>,
     ) -> Result<()> {
+        self.paste_to_pane_id_for_client(bytes, pane_id, None, completion)
+    }
+
+    fn paste_to_pane_id_for_client(
+        &mut self,
+        bytes: Vec<u8>,
+        pane_id: PaneId,
+        client_id: Option<ClientId>,
+        mut completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        // Paste is data, not a permission decision. Check before the marker
+        // protocol can reinterpret a one-byte body as a y/n keypress.
+        if self.is_pane_requesting_permissions(pane_id) {
+            let error = anyhow!(
+                "failed to paste into pane with id {pane_id:?}: the pane is requesting permissions"
+            );
+            fail_cli_write(&mut completion, &format!("{error:#}"));
+            return Err(error);
+        }
+        let bytes = without_paste_markers(bytes);
+        // Plugin panes collect the paste across begin, body, and end, and
+        // emit PastedText from the end marker. Those steps are not pty writes.
+        // Preserve the client audience of the focused-paste entry point.
+        if matches!(pane_id, PaneId::Plugin(_)) {
+            // The normal key path consumes the first input to clear a selection.
+            // Do that before BEGIN, or the paste body would become key events.
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+                pane.reset_selection(client_id);
+            }
+            return self.paste_in_marker_steps(bytes, pane_id, client_id, completion);
+        }
+        self.paste_terminal_in_one_write(bytes, pane_id, completion)
+    }
+
+    /// Plugin paste protocol: begin arms the buffer, the body appends, and
+    /// the end marker delivers `PastedText`. None of those is a pty admission.
+    fn paste_in_marker_steps(
+        &mut self,
+        bytes: Vec<u8>,
+        pane_id: PaneId,
+        client_id: Option<ClientId>,
+        mut completion: Option<NotificationEnd>,
+    ) -> Result<()> {
         let bracketed_paste_begin = vec![27, 91, 50, 48, 48, 126];
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126];
-        let bytes = without_paste_markers(bytes);
+        if let Err(error) = self.write_to_pane_id(
+            &None,
+            bracketed_paste_begin,
+            false,
+            pane_id,
+            client_id,
+            None,
+        ) {
+            fail_cli_write(&mut completion, &format!("{error:#}"));
+            return Err(error);
+        }
+        if let Err(error) = self.write_to_pane_id(&None, bytes, false, pane_id, client_id, None) {
+            fail_cli_write(&mut completion, &format!("{error:#}"));
+            return Err(error);
+        }
+        self.write_to_pane_id(
+            &None,
+            bracketed_paste_end,
+            false,
+            pane_id,
+            client_id,
+            completion,
+        )?;
+        Ok(())
+    }
 
-        self.write_to_pane_id(&None, bracketed_paste_begin, false, pane_id, None, None)?;
-        self.write_to_pane_id(&None, bytes, false, pane_id, None, None)?;
-        self.write_to_pane_id(&None, bracketed_paste_end, false, pane_id, None, completion)?;
+    /// Begin, body, and end are one byte string, so a rejected admission
+    /// cannot deliver the begin marker without the end marker.
+    fn paste_terminal_in_one_write(
+        &mut self,
+        bytes: Vec<u8>,
+        pane_id: PaneId,
+        mut completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let bracketed_paste_begin = vec![27, 91, 50, 48, 48, 126];
+        let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126];
+        if self.get_pane_with_id(pane_id).is_none() {
+            let error = anyhow!("failed to find pane with id {pane_id:?}")
+                .context(format!("failed to write to pane with id {pane_id:?}"));
+            fail_cli_write(&mut completion, &format!("{error:#}"));
+            return Err(error);
+        }
+        // Adjusting the begin marker reports whether this pane keeps it.
+        // The result is not admitted. A held pane does not answer with the
+        // marker, so it keeps the three-step path and still writes nothing
+        // until the real key is applied.
+        let keeps_bracketed_paste = {
+            let pane = self
+                .get_pane_with_id_mut(pane_id)
+                .expect("pane was present");
+            match pane.adjust_input_to_terminal(&None, bracketed_paste_begin.clone(), false, None) {
+                Some(AdjustedInput::WriteBytesToTerminal(adjusted)) => {
+                    adjusted.as_slice() == bracketed_paste_begin.as_slice()
+                },
+                _ => false,
+            }
+        };
+        if !keeps_bracketed_paste {
+            let held = self
+                .get_pane_with_id(pane_id)
+                .map(|pane| pane.is_held())
+                .unwrap_or(false);
+            if held {
+                return self.paste_in_marker_steps(bytes, pane_id, None, completion);
+            }
+        }
+        let payload = if keeps_bracketed_paste {
+            let mut payload = Vec::with_capacity(
+                bracketed_paste_begin.len() + bytes.len() + bracketed_paste_end.len(),
+            );
+            payload.extend_from_slice(&bracketed_paste_begin);
+            payload.extend_from_slice(&bytes);
+            payload.extend_from_slice(&bracketed_paste_end);
+            payload
+        } else {
+            bytes
+        };
+        if let Err(error) = self.write_to_pane_id(&None, payload, false, pane_id, None, completion)
+        {
+            // Admission failure already published the completion. A miss
+            // before that publish is recorded above.
+            return Err(error);
+        }
         Ok(())
     }
 
@@ -5534,7 +6303,8 @@ impl Tab {
             .or_else(|| self.floating_panes.get_pane_mut(pane_id))
             .or_else(|| {
                 self.suppressed_panes
-                    .get_mut(&pane_id)
+                    .values_mut()
+                    .find(|(_, pane)| pane.pid() == pane_id)
                     .map(|(_, pane)| pane)
             });
         let Some(pane) = pane else {
@@ -5569,22 +6339,90 @@ impl Tab {
         completion: Option<NotificationEnd>,
     ) -> Result<()> {
         let err_context = || format!("failed to paste to active terminal for client {client_id}");
-        if let Some(PaneId::Plugin(plugin_id)) = self.live_view_focus(client_id) {
-            if self.live_views.borrow().is_captured(plugin_id, client_id) {
-                self.live_views.borrow_mut().send_paste(client_id, bytes);
-                drop(completion);
-                return Ok(());
-            }
-        }
         let active_pane_id = self
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("no active pane for client {client_id}"))
             .with_context(err_context)?;
         self.local_input.insert(active_pane_id);
         self.typed_into.insert(active_pane_id);
-        self.paste_to_pane_id(bytes, active_pane_id, completion)
+        self.paste_to_pane_id_for_client(bytes, active_pane_id, Some(client_id), completion)
     }
 
+    pub fn paste_to_terminals_on_current_tab(
+        &mut self,
+        bytes: Vec<u8>,
+        client_id: ClientId,
+        mut completion: Option<NotificationEnd>,
+    ) -> Result<()> {
+        let mut pane_ids = self.get_static_and_floating_pane_ids();
+        pane_ids.extend(
+            self.stack_list_of_member
+                .keys()
+                .filter(|member| self.pane_is_hidden_stack_list_member(member))
+                .copied(),
+        );
+        pane_ids.retain(|pane_id| {
+            !self
+                .get_pane_with_id(*pane_id)
+                .map(|pane| pane.exclude_from_sync())
+                .unwrap_or(false)
+        });
+        if let Some(pane_id) = pane_ids
+            .iter()
+            .find(|pane_id| self.is_pane_requesting_permissions(**pane_id))
+        {
+            let error = anyhow!(
+                "failed to paste into pane with id {pane_id:?}: the pane is requesting permissions"
+            );
+            fail_cli_write(&mut completion, &format!("{error:#}"));
+            return Err(error);
+        }
+        let mut recipient_failure = None;
+        let last_recipient = pane_ids.last().copied();
+        for pane_id in pane_ids {
+            self.local_input.insert(pane_id);
+            self.typed_into.insert(pane_id);
+            // Keep the completion with the final recipient so every synchronous
+            // admission failure is observed before the owner can be moved into a
+            // successful write.
+            let pane_completion = if recipient_failure.is_none() && Some(pane_id) == last_recipient
+            {
+                completion.take()
+            } else {
+                None
+            };
+            if let Err(error) = self.paste_to_pane_id_for_client(
+                bytes.clone(),
+                pane_id,
+                Some(client_id),
+                pane_completion,
+            ) {
+                if recipient_failure.is_none() {
+                    recipient_failure = Some(error);
+                } else {
+                    log::error!("failed to paste into a synchronized pane: {error:#}");
+                }
+            }
+        }
+        match recipient_failure {
+            Some(error) => {
+                fail_cli_write(&mut completion, &format!("{error:#}"));
+                Err(error)
+            },
+            None => {
+                drop(completion);
+                Ok(())
+            },
+        }
+    }
+
+    /// Write input to an explicitly addressed pane.
+    ///
+    /// For plugin panes, `client_id` is the input audience. `None` is reserved
+    /// for the explicitly clientless plugin API (for example
+    /// [`Self::paste_to_pane_id`]) and deliberately addresses all client
+    /// instances of that plugin. Adapters that know the acting client must
+    /// pass `Some(client_id)` so a targeted write cannot become a broadcast.
     pub fn write_to_pane_id(
         &mut self,
         key_with_modifier: &Option<KeyWithModifier>,
@@ -5598,26 +6436,20 @@ impl Tab {
         let err_context = || format!("failed to write to pane with id {pane_id:?}");
 
         let mut should_update_ui = false;
-        let is_sync_panes_active = self.is_sync_panes_active();
         let live_view_focus = client_id.and_then(|client_id| self.live_view_focus(client_id));
 
         let active_pane = self
             .floating_panes
             .get_mut(&pane_id)
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
-            .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|(_, pane)| pane.pid() == pane_id)
+                    .map(|(_, pane)| pane)
+            })
             .ok_or_else(|| anyhow!(format!("failed to find pane with id {pane_id:?}")))
             .with_context(err_context)?;
-
-        // We always write for non-synced terminals.
-        // However if the terminal is part of a tab-sync, we need to
-        // check if the terminal should receive input or not (depending on its
-        // 'exclude_from_sync' configuration).
-        let should_not_write_to_terminal = is_sync_panes_active && active_pane.exclude_from_sync();
-
-        if should_not_write_to_terminal {
-            return Ok(should_update_ui);
-        }
 
         if let (PaneId::Plugin(plugin_id), Some(client_id)) = (pane_id, client_id) {
             if self.live_views.borrow().is_captured(plugin_id, client_id)
@@ -5643,6 +6475,7 @@ impl Tab {
                 .any(|byte| *byte != b'\r' && *byte != b'\n');
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 match active_pane.adjust_input_to_terminal(
                     key_with_modifier,
                     raw_input_bytes,
@@ -5658,11 +6491,12 @@ impl Tab {
                             }
                         }
                         self.senders
-                            .send_to_pty_writer(PtyWriteInstruction::Write(
+                            .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
                                 adjusted_input,
                                 active_terminal_id,
-                                completion_tx,
-                            ))
+                                completion_tx.take(),
+                                None,
+                            )))
                             .with_context(err_context)?;
                     },
                     Some(AdjustedInput::ReRunCommandInThisPane(command)) => {
@@ -5671,7 +6505,7 @@ impl Tab {
                             .send_to_pty(PtyInstruction::ReRunCommandInPane(
                                 PaneId::Terminal(active_terminal_id),
                                 command,
-                                completion_tx,
+                                completion_tx.take(),
                             ))
                             .with_context(err_context)?;
                         should_update_ui = true;
@@ -5687,7 +6521,7 @@ impl Tab {
                                 pane_id: PaneId::Terminal(active_terminal_id),
                                 shell: Some(self.default_shell.clone()),
                                 working_dir,
-                                completion_tx,
+                                completion_tx: completion_tx.take(),
                             })
                             .with_context(err_context)?;
                         should_update_ui = true;
@@ -5728,24 +6562,31 @@ impl Tab {
                 client_id,
             ) {
                 Some(AdjustedInput::WriteKeyToPlugin(key_with_modifier)) => {
+                    // A control client may not have an instance of this plugin
+                    // pane. The pane itself is then the audience; dropping the
+                    // key would make targeted CLI input silently disappear.
+                    let plugin_client_id =
+                        client_id.filter(|client_id| active_pane.has_client_instance(*client_id));
                     self.senders
                         .send_to_plugin(PluginInstruction::Update(vec![(
                             Some(pid),
-                            client_id,
+                            plugin_client_id,
                             Event::Key(key_with_modifier),
                         )]))
                         .with_context(err_context)?;
                 },
                 Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
+                    let plugin_client_id =
+                        client_id.filter(|client_id| active_pane.has_client_instance(*client_id));
                     let mut plugin_updates = vec![];
                     for key in parse_keys(&adjusted_input) {
-                        plugin_updates.push((Some(pid), client_id, Event::Key(key)));
+                        plugin_updates.push((Some(pid), plugin_client_id, Event::Key(key)));
                     }
                     self.senders
                         .send_to_plugin(PluginInstruction::Update(plugin_updates))
                         .with_context(err_context)?;
                 },
-                Some(AdjustedInput::PermissionRequestResult(permissions, status)) => {
+                Some(AdjustedInput::PermissionRequestResult(permissions, status, prompt_id)) => {
                     if active_pane.query_should_be_suppressed() {
                         active_pane.set_should_be_suppressed(false);
                         self.suppress_pane(PaneId::Plugin(pid), client_id);
@@ -5758,6 +6599,7 @@ impl Tab {
                             permissions,
                             status,
                             None,
+                            prompt_id,
                         ))
                         .with_context(err_context)?;
                     should_update_ui = true;
@@ -5780,6 +6622,7 @@ impl Tab {
         &mut self,
         raw_input_bytes: Vec<u8>,
         pane_id: PaneId,
+        run_generation: Option<u64>,
     ) -> Result<bool> {
         // returns true if we need to update the UI (eg. when a command pane is closed with ctrl-c)
         let err_context = || format!("failed to write to pane with id {pane_id:?}");
@@ -5790,9 +6633,8 @@ impl Tab {
             PaneId::Terminal(active_terminal_id) => {
                 self.senders
                     .send_to_pty_writer(PtyWriteInstruction::Write(
-                        raw_input_bytes,
-                        active_terminal_id,
-                        None,
+                        AdmittedWrite::new(raw_input_bytes, active_terminal_id, None, None)
+                            .with_run_generation(run_generation),
                     ))
                     .with_context(err_context)?;
                 should_update_ui = true;
@@ -6300,6 +7142,12 @@ impl Tab {
     ) -> impl Iterator<Item = (&PaneId, &(bool, Box<dyn Pane>))> {
         // bool => is_scrollback_editor
         self.suppressed_panes.iter()
+    }
+    pub(crate) fn next_render_lock_deadline(&self) -> Option<std::time::Instant> {
+        self.get_tiled_panes()
+            .chain(self.get_floating_panes())
+            .filter_map(|(_, pane)| pane.render_lock_deadline())
+            .min()
     }
     fn get_selectable_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.get_tiled_panes().filter(|(_, p)| p.selectable())
@@ -6930,10 +7778,10 @@ impl Tab {
     /// a hidden plugin cannot know when to show itself again.
     pub fn get_plugin_ids_including_suppressed(&self) -> Vec<PluginId> {
         let mut plugin_ids = self.get_plugin_ids();
-        for pane_id in self.suppressed_panes.keys() {
-            if let PaneId::Plugin(plugin_id) = pane_id {
-                if !plugin_ids.contains(plugin_id) {
-                    plugin_ids.push(*plugin_id);
+        for pane in self.suppressed_panes.values() {
+            if let PaneId::Plugin(plugin_id) = pane.1.pid() {
+                if !plugin_ids.contains(&plugin_id) {
+                    plugin_ids.push(plugin_id);
                 }
             }
         }
@@ -6966,7 +7814,11 @@ impl Tab {
         }
 
         // Check suppressed panes
-        if let Some((_previous_id, pane)) = self.suppressed_panes.get(&pane_id) {
+        if let Some((_previous_id, pane)) = self
+            .suppressed_panes
+            .values()
+            .find(|(_, pane)| pane.pid() == pane_id)
+        {
             let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
             info.is_focused = false;
             info.is_fullscreen = false;
@@ -7127,9 +7979,8 @@ impl Tab {
         ignore_suppressed_panes: bool,
         exit_status: Option<i32>,
     ) {
-        if self.selecting_with_mouse_in_pane == Some(id) {
-            self.selecting_with_mouse_in_pane = None;
-        }
+        self.selecting_with_mouse_in_pane
+            .retain(|_, pane_id| *pane_id != id);
         self.forget_typed_input(id);
         let id_parks_a_different_pane = self.pane_parked_by(&id).is_some();
         if !ignore_suppressed_panes
@@ -7153,6 +8004,29 @@ impl Tab {
         // we need to ignore suppressed panes when we toggle a pane to be floating/embedded(tiled)
         // this is because in that case, while we do use this logic, we're not actually closing the
         // pane, we're moving it
+        if !ignore_suppressed_panes {
+            if let Some(restoration_key) = self.suppressed_key_for_pane_identity(id) {
+                if restoration_key != id {
+                    if let Some((_, mut closed_pane)) =
+                        self.suppressed_panes.remove(&restoration_key)
+                    {
+                        if let Some(exit_status) = exit_status {
+                            closed_pane.update_exit_status(exit_status);
+                        }
+                        drop(closed_pane);
+                        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+                            None,
+                            None,
+                            Event::PaneClosed(id.into()),
+                        )]));
+                        let _ = self.senders.send_to_screen(
+                            ScreenInstruction::NotifyPaneClosedToSubscribers { pane_id: id.into() },
+                        );
+                        return;
+                    }
+                }
+            }
+        }
         if !ignore_suppressed_panes && self.suppressed_panes.contains_key(&id) {
             let pane_is_suppressed_by_itself = self
                 .suppressed_panes
@@ -7248,6 +8122,17 @@ impl Tab {
                     pane.reset_logical_position();
                     pane
                 });
+            }
+        }
+        if let Some(restoration_key) = self.suppressed_key_for_pane_identity(id) {
+            if restoration_key != id {
+                return self
+                    .suppressed_panes
+                    .remove(&restoration_key)
+                    .map(|(_, mut pane)| {
+                        pane.reset_logical_position();
+                        pane
+                    });
             }
         }
         if !dont_swap_if_suppressed && self.suppressed_panes.contains_key(&id) {
@@ -7450,6 +8335,25 @@ impl Tab {
             pane.clear_screen();
         }
     }
+    pub fn reset_input_modes_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
+        let pane = self
+            .get_pane_with_id_mut(pane_id)
+            .ok_or_else(|| anyhow!("Pane with id {:?} not found", pane_id))?;
+        if pane.reset_input_modes() {
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "Pane with id {:?} does not support input mode resets",
+                pane_id
+            ))
+        }
+    }
+    pub fn reset_input_modes_for_active_terminal(&mut self, client_id: ClientId) -> Result<()> {
+        let pane_id = self
+            .get_active_pane_id(client_id)
+            .ok_or_else(|| anyhow!("No active pane for client {}", client_id))?;
+        self.reset_input_modes_by_pane_id(pane_id)
+    }
     pub fn dump_active_terminal_screen(
         &mut self,
         file: Option<String>,
@@ -7459,13 +8363,13 @@ impl Tab {
         let err_context =
             || format!("failed to dump active terminal screen for client {client_id}");
 
-        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let dump = active_pane.dump_screen(full, Some(client_id));
-            self.os_api
-                .write_to_file(dump, file)
-                .with_context(err_context)?;
-        }
-        Ok(())
+        let active_pane = self
+            .get_active_pane_or_floating_pane_mut(client_id)
+            .ok_or_else(|| anyhow!("No active pane for client {client_id}"))?;
+        let dump = active_pane.dump_screen(full, Some(client_id));
+        self.os_api
+            .write_to_file(dump, file)
+            .with_context(err_context)
     }
     pub fn dump_with_ansi_active_terminal_screen(
         &mut self,
@@ -7476,13 +8380,13 @@ impl Tab {
         let err_context =
             || format!("failed to dump active terminal screen for client {client_id}");
 
-        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let dump = active_pane.dump_screen_with_ansi(full, Some(client_id));
-            self.os_api
-                .write_to_file(dump, file)
-                .with_context(err_context)?;
-        }
-        Ok(())
+        let active_pane = self
+            .get_active_pane_or_floating_pane_mut(client_id)
+            .ok_or_else(|| anyhow!("No active pane for client {client_id}"))?;
+        let dump = active_pane.dump_screen_with_ansi(full, Some(client_id));
+        self.os_api
+            .write_to_file(dump, file)
+            .with_context(err_context)
     }
     pub fn dump_terminal_screen(
         &mut self,
@@ -7490,11 +8394,21 @@ impl Tab {
         pane_id: PaneId,
         full: bool,
     ) -> Result<()> {
-        if let Some(pane) = self.get_pane_with_id(pane_id) {
-            let dump = pane.dump_screen(full, None);
-            self.os_api.write_to_file(dump, file).non_fatal()
-        }
-        Ok(())
+        self.try_dump_terminal_screen(file, pane_id, full)
+    }
+    fn try_dump_terminal_screen(
+        &mut self,
+        file: Option<String>,
+        pane_id: PaneId,
+        full: bool,
+    ) -> Result<()> {
+        let pane = self
+            .get_pane_with_id(pane_id)
+            .ok_or_else(|| anyhow!("Pane with id {:?} not found", pane_id))?;
+        let dump = pane.dump_screen(full, None);
+        self.os_api
+            .write_to_file(dump, file)
+            .with_context(|| "failed to dump terminal screen")
     }
     pub fn dump_with_ansi_terminal_screen(
         &mut self,
@@ -7502,11 +8416,21 @@ impl Tab {
         pane_id: PaneId,
         full: bool,
     ) -> Result<()> {
-        if let Some(pane) = self.get_pane_with_id(pane_id) {
-            let dump = pane.dump_screen_with_ansi(full, None);
-            self.os_api.write_to_file(dump, file).non_fatal()
-        }
-        Ok(())
+        self.try_dump_with_ansi_terminal_screen(file, pane_id, full)
+    }
+    fn try_dump_with_ansi_terminal_screen(
+        &mut self,
+        file: Option<String>,
+        pane_id: PaneId,
+        full: bool,
+    ) -> Result<()> {
+        let pane = self
+            .get_pane_with_id(pane_id)
+            .ok_or_else(|| anyhow!("Pane with id {:?} not found", pane_id))?;
+        let dump = pane.dump_screen_with_ansi(full, None);
+        self.os_api
+            .write_to_file(dump, file)
+            .with_context(|| "failed to dump terminal screen")
     }
     pub fn get_dump_active_terminal_screen(&mut self, client_id: ClientId, full: bool) -> String {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
@@ -7599,13 +8523,24 @@ impl Tab {
     pub fn edit_scrollback_for_pane_with_id(
         &mut self,
         pane_id: PaneId,
-        completion_tx: Option<NotificationEnd>,
+        mut completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         if let PaneId::Terminal(_terminal_pane_id) = pane_id {
+            if self.get_pane_with_id(pane_id).is_none() {
+                let error = anyhow!("Pane with id {:?} not found", pane_id);
+                fail_cli_write(&mut completion_tx, &format!("{error:#}"));
+                return Err(error);
+            }
             self.make_hidden_stack_list_member_visible(pane_id);
             let file = private_scrollback_dump_path();
-            self.dump_terminal_screen(Some(String::from(file.to_string_lossy())), pane_id, true)
-                .non_fatal();
+            if let Err(error) = self.try_dump_terminal_screen(
+                Some(String::from(file.to_string_lossy())),
+                pane_id,
+                true,
+            ) {
+                fail_cli_write(&mut completion_tx, &format!("{error:#}"));
+                return Err(error);
+            }
             let line_number = self
                 .get_pane_with_id(pane_id)
                 .and_then(|a_t| a_t.get_line_number());
@@ -7616,24 +8551,32 @@ impl Tab {
                 completion_tx,
             ))
         } else {
-            log::error!("Editing plugin pane scrollback is currently unsupported.");
-            Ok(())
+            let error = anyhow!("Editing plugin pane scrollback is currently unsupported.");
+            fail_cli_write(&mut completion_tx, &format!("{error:#}"));
+            Err(error)
         }
     }
     pub fn edit_scrollback_raw_for_pane_with_id(
         &mut self,
         pane_id: PaneId,
-        completion_tx: Option<NotificationEnd>,
+        mut completion_tx: Option<NotificationEnd>,
     ) -> Result<()> {
         if let PaneId::Terminal(_terminal_pane_id) = pane_id {
+            if self.get_pane_with_id(pane_id).is_none() {
+                let error = anyhow!("Pane with id {:?} not found", pane_id);
+                fail_cli_write(&mut completion_tx, &format!("{error:#}"));
+                return Err(error);
+            }
             self.make_hidden_stack_list_member_visible(pane_id);
             let file = private_scrollback_dump_path();
-            self.dump_with_ansi_terminal_screen(
+            if let Err(error) = self.try_dump_with_ansi_terminal_screen(
                 Some(String::from(file.to_string_lossy())),
                 pane_id,
                 true,
-            )
-            .non_fatal();
+            ) {
+                fail_cli_write(&mut completion_tx, &format!("{error:#}"));
+                return Err(error);
+            }
             let line_number = self
                 .get_pane_with_id(pane_id)
                 .and_then(|a_t| a_t.get_line_number());
@@ -7644,8 +8587,9 @@ impl Tab {
                 completion_tx,
             ))
         } else {
-            log::error!("Editing plugin pane scrollback is currently unsupported.");
-            Ok(())
+            let error = anyhow!("Editing plugin pane scrollback is currently unsupported.");
+            fail_cli_write(&mut completion_tx, &format!("{error:#}"));
+            Err(error)
         }
     }
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {
@@ -7720,16 +8664,8 @@ impl Tab {
     }
 
     pub fn scroll_active_terminal_down(&mut self, client_id: ClientId) -> Result<()> {
-        let err_context = || format!("failed to scroll down active pane for client {client_id}");
-
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.scroll_down(1, client_id);
-            if !active_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd)
-                        .with_context(err_context)?;
-                }
-            }
         }
         Ok(())
     }
@@ -7753,15 +8689,8 @@ impl Tab {
             self.write_to_pane_id(&None, b"\x1b[B".to_vec(), false, pane_id, None, None)
                 .with_context(err_context)?;
         } else {
-            let needs_flush = if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
                 pane.scroll_down(1, fictitious_client_id);
-                !pane.is_scrolled()
-            } else {
-                false
-            };
-            if needs_flush {
-                self.process_pending_vte_events(terminal_pane_id)
-                    .with_context(err_context)?;
             }
         }
         Ok(())
@@ -7769,8 +8698,7 @@ impl Tab {
 
     pub fn scroll_active_terminal_up_page(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            // prevent overflow when row == 0
-            let scroll_rows = active_pane.rows().max(1).saturating_sub(1);
+            let scroll_rows = terminal_page_scroll_rows(active_pane.get_content_rows());
             active_pane.scroll_up(scroll_rows, client_id);
         }
     }
@@ -7780,25 +8708,15 @@ impl Tab {
             let fictitious_client_id = 1; // this is not checked for terminal panes and we
                                           // don't have an actual client id here
                                           // TODO: traits were a mistake
-                                          // prevent overflow when row == 0
-            let scroll_rows = terminal_pane.rows().max(1).saturating_sub(1);
+            let scroll_rows = terminal_page_scroll_rows(terminal_pane.get_content_rows());
             terminal_pane.scroll_up(scroll_rows, fictitious_client_id);
         }
     }
 
     pub fn scroll_active_terminal_down_page(&mut self, client_id: ClientId) -> Result<()> {
-        let err_context =
-            || format!("failed to scroll down one page in active pane for client {client_id}");
-
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let scroll_rows = active_pane.get_content_rows();
+            let scroll_rows = terminal_page_scroll_rows(active_pane.get_content_rows());
             active_pane.scroll_down(scroll_rows, client_id);
-            if !active_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd)
-                        .with_context(err_context)?;
-                }
-            }
         }
         Ok(())
     }
@@ -7808,103 +8726,55 @@ impl Tab {
             let fictitious_client_id = 1; // this is not checked for terminal panes and we
                                           // don't have an actual client id here
                                           // TODO: traits were a mistake
-            let scroll_rows = terminal_pane.get_content_rows();
+            let scroll_rows = terminal_page_scroll_rows(terminal_pane.get_content_rows());
             terminal_pane.scroll_down(scroll_rows, fictitious_client_id);
-            if !terminal_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = terminal_pane.pid() {
-                    self.process_pending_vte_events(raw_fd).non_fatal()
-                }
-            }
         }
     }
 
     pub fn scroll_active_terminal_up_half_page(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            // prevent overflow when row == 0
-            let scroll_rows = (active_pane.rows().max(1).saturating_sub(1)) / 2;
+            let scroll_rows = terminal_half_page_scroll_rows(active_pane.get_content_rows());
             active_pane.scroll_up(scroll_rows, client_id);
         }
     }
 
     pub fn scroll_active_terminal_down_half_page(&mut self, client_id: ClientId) -> Result<()> {
-        let err_context =
-            || format!("failed to scroll down half a page in active pane for client {client_id}");
-
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let scroll_rows = (active_pane.rows().max(1) - 1) / 2;
+            let scroll_rows = terminal_half_page_scroll_rows(active_pane.get_content_rows());
             active_pane.scroll_down(scroll_rows, client_id);
-            if !active_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd)
-                        .with_context(err_context)?;
-                }
-            }
         }
         Ok(())
     }
 
     pub fn scroll_active_terminal_to_bottom(&mut self, client_id: ClientId) -> Result<()> {
-        let err_context =
-            || format!("failed to scroll to bottom in active pane for client {client_id}");
-
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            active_pane.clear_scroll();
-            if !active_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd)
-                        .with_context(err_context)?;
-                }
-            }
+            active_pane.begin_viewport_goal(ViewportGoal::Bottom);
         }
         Ok(())
     }
 
     pub fn scroll_terminal_to_bottom(&mut self, terminal_pane_id: u32) {
         if let Some(terminal_pane) = self.get_pane_with_id_mut(PaneId::Terminal(terminal_pane_id)) {
-            terminal_pane.clear_scroll();
-            if !terminal_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = terminal_pane.pid() {
-                    self.process_pending_vte_events(raw_fd).non_fatal();
-                }
-            }
+            terminal_pane.begin_viewport_goal(ViewportGoal::Bottom);
         }
     }
 
     pub fn scroll_active_terminal_to_top(&mut self, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            active_pane.clear_scroll();
-            if let Some(size) = active_pane.get_line_number() {
-                active_pane.scroll_up(size, client_id);
-            }
+            active_pane.begin_viewport_goal(ViewportGoal::Top);
         }
         Ok(())
     }
 
     pub fn scroll_terminal_to_top(&mut self, terminal_pane_id: u32) {
         if let Some(terminal_pane) = self.get_pane_with_id_mut(PaneId::Terminal(terminal_pane_id)) {
-            terminal_pane.clear_scroll();
-            if let Some(size) = terminal_pane.get_line_number() {
-                let fictitious_client_id = 1; // this is not checked for terminal panes and we
-                                              // don't have an actual client id here
-                                              // TODO: traits were a mistake
-                terminal_pane.scroll_up(size, fictitious_client_id);
-            }
+            terminal_pane.begin_viewport_goal(ViewportGoal::Top);
         }
     }
 
     pub fn clear_active_terminal_scroll(&mut self, client_id: ClientId) -> Result<()> {
-        // TODO: is this a thing?
-        let err_context =
-            || format!("failed to clear scroll in active pane for client {client_id}");
-
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            active_pane.clear_scroll();
-            if !active_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd)
-                        .with_context(err_context)?;
-                }
-            }
+            active_pane.begin_viewport_goal(ViewportGoal::Bottom);
         }
         Ok(())
     }
@@ -8155,8 +9025,9 @@ impl Tab {
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
             .or_else(|| {
                 self.suppressed_panes
-                    .get_mut(&pane_id)
-                    .map(|s_p| &mut s_p.1)
+                    .values_mut()
+                    .find(|(_, pane)| pane.pid() == pane_id)
+                    .map(|(_, pane)| pane)
             })
             .with_context(err_context)?;
         pane.rename(buf);
@@ -8272,7 +9143,7 @@ impl Tab {
         &mut self,
         pane_id: PaneId,
         error_text: Option<String>,
-    ) {
+    ) -> bool {
         if let Some(pane) = self
             .tiled_panes
             .get_pane_mut(pane_id)
@@ -8284,15 +9155,16 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             })
         {
-            pane.add_red_pane_frame_color_override(error_text);
+            return pane.add_red_pane_frame_color_override(error_text);
         }
+        false
     }
     pub fn add_highlight_pane_frame_color_override(
         &mut self,
         pane_id: PaneId,
         error_text: Option<String>,
         client_id: Option<ClientId>,
-    ) {
+    ) -> bool {
         if let Some(pane) = self
             .tiled_panes
             .get_pane_mut(pane_id)
@@ -8304,14 +9176,15 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             })
         {
-            pane.add_highlight_pane_frame_color_override(error_text, client_id);
+            return pane.add_highlight_pane_frame_color_override(error_text, client_id);
         }
+        false
     }
     pub fn clear_pane_frame_color_override(
         &mut self,
         pane_id: PaneId,
         client_id: Option<ClientId>,
-    ) {
+    ) -> bool {
         if let Some(pane) = self
             .tiled_panes
             .get_pane_mut(pane_id)
@@ -8323,8 +9196,9 @@ impl Tab {
                     .map(|s_p| &mut s_p.1)
             })
         {
-            pane.clear_pane_frame_color_override(client_id);
+            return pane.clear_pane_frame_color_override(client_id);
         }
+        false
     }
     pub fn set_plugin_regex_highlights_for_pane(
         &mut self,
@@ -8857,7 +9731,9 @@ impl Tab {
                 if let Some(pinned) = floating_pane_coordinates.pinned.as_ref() {
                     pane.set_pinned(*pinned);
                 }
-                new_pane_geom.adjust_coordinates(floating_pane_coordinates.clone(), *viewport);
+                new_pane_geom
+                    .adjust_coordinates(floating_pane_coordinates.clone(), *viewport)
+                    .with_context(err_context)?;
                 self.swap_layouts.set_is_floating_damaged();
             }
             pane.set_active_at(Instant::now());
@@ -9056,6 +9932,9 @@ impl Tab {
             reason.message()
         );
         reason.mark_completion(&mut notification_end);
+        // The failure is known here. The close instruction must not be the
+        // thing that publishes it: dropping that owner is abandonment.
+        crate::route::settle(notification_end.take());
         self.panes_not_created.insert(pane_id, reason);
         let pane_to_flag = client_id.and_then(|client_id| self.get_active_pane_id(client_id));
         if let (Some(pane_to_flag), Some(pane_error_text)) =
@@ -9070,10 +9949,7 @@ impl Tab {
         }
         let _ = self
             .senders
-            .send_to_pty(PtyInstruction::ClosePaneThatWasNotCreated(
-                pane_id,
-                notification_end,
-            ));
+            .send_to_pty(PtyInstruction::ClosePaneThatWasNotCreated(pane_id, None));
         let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
             None,
             None,
@@ -9199,25 +10075,35 @@ impl Tab {
             .floating_panes
             .get_mut(&pane_id)
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
-            .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1))
-        {
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|(_, pane)| pane.pid() == pane_id)
+                    .map(|(_, pane)| pane)
+            }) {
             Some(pane_to_rerun) => {
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
                 if let Some(command_to_rerun) = pane_to_rerun.rerun() {
+                    self.pending_vte.remove(&terminal_pane_id);
                     self.pids_waiting_resize.insert(terminal_pane_id);
                     let _ = self.senders.send_to_pty(PtyInstruction::ReRunCommandInPane(
                         pane_id,
                         command_to_rerun,
-                        completion_tx,
+                        completion_tx.take(),
                     ));
                 } else {
-                    log::error!("Pane is still running!")
+                    log::error!("Pane is still running!");
+                    fail_cli_write(&mut completion_tx, "Pane is still running");
                 }
             },
             None => {
-                log::error!(
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+                let message = format!(
                     "Failed to find terminal pane with id {} to rerun in tab",
                     terminal_pane_id
                 );
+                log::error!("{message}");
+                fail_cli_write(&mut completion_tx, &message);
             },
         }
     }
@@ -9351,7 +10237,7 @@ impl Tab {
     }
     pub fn update_copy_options(&mut self, copy_options: &CopyOptions) {
         self.clipboard_provider = match &copy_options.command {
-            Some(command) => ClipboardProvider::Command(CopyCommand::new(command.clone())),
+            Some(command) => ClipboardProvider::command(CopyCommand::new(command.clone())),
             None => ClipboardProvider::Osc52(copy_options.clipboard),
         };
         self.copy_on_select = copy_options.copy_on_select;
@@ -9646,7 +10532,11 @@ impl Tab {
             return Ok(());
         }
 
-        if let Some(pane) = self.suppressed_panes.get_mut(pane_id) {
+        if let Some(pane) = self
+            .suppressed_panes
+            .values_mut()
+            .find(|(_, pane)| pane.pid() == *pane_id)
+        {
             let is_borderless = pane.1.borderless();
             if is_borderless {
                 pane.1.set_content_offset(Offset::frame(1));
@@ -9686,7 +10576,11 @@ impl Tab {
         }
 
         // Try suppressed panes
-        if let Some(pane) = self.suppressed_panes.get_mut(pane_id) {
+        if let Some(pane) = self
+            .suppressed_panes
+            .values_mut()
+            .find(|(_, pane)| pane.pid() == *pane_id)
+        {
             if borderless {
                 pane.1.set_content_offset(Offset::default());
             } else {
@@ -9714,7 +10608,11 @@ impl Tab {
             self.set_force_render();
             return true;
         }
-        if let Some(pane) = self.suppressed_panes.get_mut(&pane_id) {
+        if let Some(pane) = self
+            .suppressed_panes
+            .values_mut()
+            .find(|(_, pane)| pane.pid() == pane_id)
+        {
             pane.1.set_border_style_override(border_style);
             return true;
         }
@@ -9741,7 +10639,6 @@ impl Tab {
             self.style,
             next_terminal_position,
             String::new(),
-            self.link_handler.clone(),
             self.character_cell_size.clone(),
             self.sixel_image_store.clone(),
             self.kitty_image_store.clone(),
@@ -9785,82 +10682,60 @@ impl Tab {
             .unwrap_or(false)
     }
     // --- Pane-targeting CLI methods ---
-    pub fn scroll_up_by_pane_id(&mut self, pane_id: PaneId) {
-        let fictitious_client_id = 1;
+    pub fn scroll_up_by_pane_id(&mut self, pane_id: PaneId, client_id: ClientId) {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            pane.scroll_up(1, fictitious_client_id);
+            pane.scroll_up(1, client_id);
         }
     }
-    pub fn scroll_down_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
-        let fictitious_client_id = 1;
+    pub fn scroll_down_by_pane_id(&mut self, pane_id: PaneId, client_id: ClientId) -> Result<()> {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            pane.scroll_down(1, fictitious_client_id);
-            if !pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = pane.pid() {
-                    self.process_pending_vte_events(raw_fd)?;
-                }
-            }
+            pane.scroll_down(1, client_id);
         }
         Ok(())
     }
     pub fn scroll_to_top_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
-        let fictitious_client_id = 1;
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            pane.clear_scroll();
-            if let Some(size) = pane.get_line_number() {
-                pane.scroll_up(size, fictitious_client_id);
-            }
+            pane.begin_viewport_goal(ViewportGoal::Top);
         }
         Ok(())
     }
     pub fn scroll_to_bottom_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            pane.clear_scroll();
-            if !pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = pane.pid() {
-                    self.process_pending_vte_events(raw_fd)?;
-                }
-            }
+            pane.begin_viewport_goal(ViewportGoal::Bottom);
         }
         Ok(())
     }
-    pub fn page_scroll_up_by_pane_id(&mut self, pane_id: PaneId) {
-        let fictitious_client_id = 1;
+    pub fn page_scroll_up_by_pane_id(&mut self, pane_id: PaneId, client_id: ClientId) {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            let scroll_rows = pane.rows().max(1).saturating_sub(1);
-            pane.scroll_up(scroll_rows, fictitious_client_id);
+            let scroll_rows = terminal_page_scroll_rows(pane.get_content_rows());
+            pane.scroll_up(scroll_rows, client_id);
         }
     }
-    pub fn page_scroll_down_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
-        let fictitious_client_id = 1;
+    pub fn page_scroll_down_by_pane_id(
+        &mut self,
+        pane_id: PaneId,
+        client_id: ClientId,
+    ) -> Result<()> {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             let scroll_rows = pane.get_content_rows();
-            pane.scroll_down(scroll_rows, fictitious_client_id);
-            if !pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = pane.pid() {
-                    self.process_pending_vte_events(raw_fd)?;
-                }
-            }
+            pane.scroll_down(scroll_rows, client_id);
         }
         Ok(())
     }
-    pub fn half_page_scroll_up_by_pane_id(&mut self, pane_id: PaneId) {
-        let fictitious_client_id = 1;
+    pub fn half_page_scroll_up_by_pane_id(&mut self, pane_id: PaneId, client_id: ClientId) {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            let scroll_rows = (pane.rows().max(1).saturating_sub(1)) / 2;
-            pane.scroll_up(scroll_rows, fictitious_client_id);
+            let scroll_rows = terminal_half_page_scroll_rows(pane.get_content_rows());
+            pane.scroll_up(scroll_rows, client_id);
         }
     }
-    pub fn half_page_scroll_down_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
-        let fictitious_client_id = 1;
+    pub fn half_page_scroll_down_by_pane_id(
+        &mut self,
+        pane_id: PaneId,
+        client_id: ClientId,
+    ) -> Result<()> {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            let scroll_rows = (pane.rows().max(1).saturating_sub(1)) / 2;
-            pane.scroll_down(scroll_rows, fictitious_client_id);
-            if !pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = pane.pid() {
-                    self.process_pending_vte_events(raw_fd)?;
-                }
-            }
+            let scroll_rows = terminal_half_page_scroll_rows(pane.get_content_rows());
+            pane.scroll_down(scroll_rows, client_id);
         }
         Ok(())
     }

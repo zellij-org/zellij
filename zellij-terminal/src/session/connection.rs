@@ -85,7 +85,7 @@ impl MessageSink for IpcSink {
             .map_err(|_| anyhow!("sender mutex was poisoned"))?;
         sender
             .send_client_msg(msg)
-            .map_err(|e| anyhow!("failed to send message to server: {:?}", e))
+            .map_err(|e| e.context("failed to send message to server"))
     }
 }
 
@@ -131,7 +131,8 @@ pub enum Role {
 /// The socket of an existing session. Sockets are named by session id, which the session index
 /// maps from the name; sessions from before ids are named after the session itself.
 pub fn socket_path(session_name: &str) -> Result<PathBuf> {
-    let path = zellij_utils::consts::session_socket_path(session_name);
+    let path = zellij_utils::consts::session_socket_path(session_name)
+        .map_err(|error| anyhow::anyhow!(error))?;
     checked_socket_path(path)
 }
 
@@ -252,7 +253,9 @@ fn connect_with_retry(
     let sender = retry_until(deadline, || zellij_utils::consts::ipc_connect(path))
         .map(IpcSenderWithContext::new)
         .map_err(|e| anyhow!("failed to connect to {:?}: {}", path, e))?;
-    let receiver = sender.get_receiver();
+    let receiver = sender
+        .get_receiver()
+        .map_err(|e| anyhow!("failed to clone IPC reply channel: {}", e))?;
     Ok((sender, receiver))
 }
 
@@ -280,6 +283,7 @@ fn retry_until<T>(
     loop {
         match attempt() {
             Ok(value) => return Ok(value),
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => return Err(e),
             Err(e) => {
                 if Instant::now() >= deadline {
                     return Err(e);
@@ -431,6 +435,25 @@ mod tests {
             cell_width: 10,
             cell_height: 20,
         }
+    }
+
+    #[test]
+    fn connect_retry_does_not_wait_after_permission_is_denied() {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut attempts = 0;
+        let result: std::io::Result<()> = retry_until(deadline, || {
+            attempts += 1;
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "denied",
+            ))
+        });
+
+        assert_eq!(
+            result.expect_err("permission denied is terminal").kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        assert_eq!(attempts, 1, "a denied client must not keep retrying");
     }
 
     fn message_for(info: &ClientInfo, geometry: Geometry) -> ClientToServerMsg {

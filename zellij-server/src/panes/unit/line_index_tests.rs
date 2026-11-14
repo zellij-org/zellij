@@ -1,0 +1,1312 @@
+use super::*;
+use crate::panes::terminal_character::TerminalCharacter;
+
+fn character_row(text: &str, canonical: bool) -> Row {
+    let mut row = Row::from_columns(text.chars().map(TerminalCharacter::new).collect());
+    if canonical {
+        row = row.canonical();
+    }
+    row
+}
+
+fn character_row_with_blanks(text: &str, blanks: usize, canonical: bool) -> Row {
+    let mut columns: Vec<TerminalCharacter> = text.chars().map(TerminalCharacter::new).collect();
+    columns.extend(std::iter::repeat_n(TerminalCharacter::new(' '), blanks));
+    let mut row = Row::from_columns(columns);
+    row.compress_trailing_blanks();
+    if canonical {
+        row = row.canonical();
+    }
+    row
+}
+
+fn empty_row(canonical: bool) -> Row {
+    let row = Row::new();
+    if canonical {
+        row.canonical()
+    } else {
+        row
+    }
+}
+
+struct Fixture {
+    rows: VecDeque<Row>,
+    index: LineIndex,
+}
+
+impl Fixture {
+    fn new(rows: Vec<Row>, width: usize) -> Self {
+        let rows: VecDeque<Row> = rows.into();
+        let mut index = LineIndex::new(width);
+        index.regroup(&rows, width);
+        index.measure_all(&rows);
+        Self { rows, index }
+    }
+
+    fn append(&mut self, row: Row) -> LineDelta {
+        self.index.append_row(&mut self.rows, row)
+    }
+
+    fn evict_front(&mut self, count: usize) -> LineDelta {
+        self.index.remove_front(&mut self.rows, count)
+    }
+
+    fn take_back(&mut self, count: usize) -> (Vec<Row>, LineDelta) {
+        self.index.take_back(&mut self.rows, count)
+    }
+
+    fn prepend(&mut self, rows: Vec<Row>) -> LineDelta {
+        self.index.prepend_rows(&mut self.rows, rows)
+    }
+
+    fn set_width(&mut self, width: usize) {
+        self.index.set_width(width);
+    }
+
+    fn measure_next(&mut self, rows: usize, cells: usize) -> MeasureProgress {
+        self.index
+            .measure_next(&self.rows, MeasureBudget::new(rows, cells))
+    }
+
+    fn measure_all(&mut self) {
+        self.index.measure_all(&self.rows);
+    }
+
+    fn line_counts(&self) -> Vec<usize> {
+        self.index.lines.iter().map(|line| line.row_count).collect()
+    }
+}
+
+fn reference_wrap_height<'a>(rows: impl IntoIterator<Item = &'a Row>, width: usize) -> usize {
+    if width == 0 {
+        return 1;
+    }
+    let mut completed = 0usize;
+    let mut current = 0usize;
+    let mut push = |character_width: usize| {
+        if current + character_width > width {
+            if current > 0 {
+                completed += 1;
+            }
+            current = 0;
+        }
+        current += character_width;
+    };
+    for row in rows {
+        for character in &row.columns {
+            push(character.width());
+        }
+        for _ in 0..(row.stored_cell_count() - row.columns.len()) {
+            push(1);
+        }
+    }
+    (completed + usize::from(current > 0)).max(1)
+}
+
+fn reference_line_counts(rows: &VecDeque<Row>) -> Vec<usize> {
+    let mut counts = Vec::new();
+    for (index, row) in rows.iter().enumerate() {
+        if index == 0 || row.is_canonical {
+            counts.push(1);
+        } else {
+            *counts.last_mut().expect("non-empty") += 1;
+        }
+    }
+    counts
+}
+
+fn reference_heights(rows: &VecDeque<Row>, width: usize) -> Vec<usize> {
+    let mut heights = Vec::new();
+    let mut start = 0;
+    for (index, _row) in rows.iter().enumerate() {
+        let continues = rows
+            .get(index + 1)
+            .map(|next| !next.is_canonical)
+            .unwrap_or(false);
+        if !continues {
+            heights.push(reference_wrap_height(rows.range(start..=index), width));
+            start = index + 1;
+        }
+    }
+    heights
+}
+
+fn reference_total(rows: &VecDeque<Row>, width: usize) -> usize {
+    reference_heights(rows, width).into_iter().sum()
+}
+
+fn row_signature(row: &Row) -> (bool, Vec<usize>, usize) {
+    (
+        row.is_canonical,
+        row.columns
+            .iter()
+            .map(|character| character.width())
+            .collect(),
+        row.stored_cell_count() - row.columns.len(),
+    )
+}
+
+fn assert_exact_total(fixture: &Fixture, width: usize) {
+    assert_eq!(
+        fixture.index.total_display_rows(),
+        LineDelta::Exact(reference_total(&fixture.rows, width) as isize),
+        "exact total must match the reference model"
+    );
+    assert_eq!(
+        fixture.line_counts(),
+        reference_line_counts(&fixture.rows),
+        "logical-line grouping must match the reference model"
+    );
+    assert_eq!(
+        (0..fixture.index.line_count())
+            .map(|line| fixture.index.line_height(line).unwrap())
+            .collect::<Vec<_>>(),
+        reference_heights(&fixture.rows, width)
+    );
+}
+
+#[test]
+fn groups_canonical_and_continuation_rows() {
+    let fixture = Fixture::new(
+        vec![
+            character_row("a", true),
+            character_row("b", false),
+            character_row("c", true),
+        ],
+        80,
+    );
+    assert_eq!(fixture.index.line_count(), 2);
+    assert_eq!(fixture.line_counts(), vec![2, 1]);
+    assert_exact_total(&fixture, 80);
+}
+
+#[test]
+fn wide_characters_are_never_split() {
+    let fixture = Fixture::new(vec![character_row("a界b", true)], 3);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(2));
+    assert_exact_total(&fixture, 3);
+
+    let fixture = Fixture::new(vec![character_row("界界", true)], 2);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(2));
+    assert_exact_total(&fixture, 2);
+
+    let fixture = Fixture::new(vec![character_row("界", true)], 1);
+    assert_exact_total(&fixture, 1);
+}
+
+#[test]
+fn width_change_invalidates_summaries_and_resumable_measurement_is_exact() {
+    let mut fixture = Fixture::new(
+        vec![
+            character_row("abcdefghij", true),
+            character_row("klmnop", false),
+            character_row("qrstuvwxyz", true),
+        ],
+        80,
+    );
+    fixture.set_width(4);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::NeedsMeasure);
+    let mut progress = MeasureProgress::Pending;
+    while progress == MeasureProgress::Pending {
+        progress = fixture.measure_next(1, 1);
+    }
+    assert_eq!(progress, MeasureProgress::Done);
+    assert_exact_total(&fixture, 4);
+}
+
+#[test]
+fn zero_width_treats_each_line_as_one_display_row() {
+    let mut fixture = Fixture::new(
+        vec![
+            character_row("abc", true),
+            character_row("de", false),
+            character_row("f", true),
+        ],
+        0,
+    );
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(2));
+
+    fixture.set_width(5);
+    fixture.set_width(0);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::NeedsMeasure);
+    let mut progress = MeasureProgress::Pending;
+    while progress == MeasureProgress::Pending {
+        progress = fixture.measure_next(1, 1);
+    }
+    assert_eq!(progress, MeasureProgress::Done);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(2));
+    assert_eq!(fixture.index.line_height(0), Some(1));
+    assert_eq!(fixture.index.line_height(1), Some(1));
+}
+
+#[test]
+fn append_updates_measured_line_incrementally() {
+    let width = 5;
+    let mut fixture = Fixture::new(
+        vec![character_row("abc", true), character_row("def", false)],
+        width,
+    );
+    let old_total = fixture.index.total_display_rows().exact().unwrap();
+    let delta = fixture.append(character_row("ghijk", false));
+    assert_eq!(delta, LineDelta::Exact(1));
+    assert_eq!(
+        fixture.index.total_display_rows().exact(),
+        Some(old_total + 1)
+    );
+    assert_exact_total(&fixture, width);
+    assert_eq!(fixture.index.lines.back().unwrap().row_count, 3);
+}
+
+#[test]
+fn append_to_unmeasured_last_line_is_incorporated_when_measured() {
+    let width = 4;
+    let mut fixture = Fixture::new(
+        vec![character_row("abc", true), character_row("defgh", true)],
+        10,
+    );
+    fixture.set_width(width);
+    while fixture.index.line_height(0).is_none() {
+        assert_eq!(fixture.measure_next(1, 1), MeasureProgress::Pending);
+    }
+    assert_eq!(fixture.index.line_height(0), Some(1));
+    assert_eq!(fixture.index.line_height(1), None);
+
+    fixture.append(character_row("ij", false));
+    assert_eq!(fixture.append(empty_row(false)), LineDelta::NeedsMeasure);
+    fixture.measure_all();
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn append_during_an_active_measurement_is_incorporated() {
+    let width = 4;
+    let mut fixture = Fixture::new(vec![character_row("abcdefgh", true)], 100);
+    fixture.set_width(width);
+    assert_eq!(fixture.measure_next(1, 2), MeasureProgress::Pending);
+    assert_eq!(
+        fixture.append(character_row("ijkl", false)),
+        LineDelta::NeedsMeasure
+    );
+
+    let mut progress = MeasureProgress::Pending;
+    while progress == MeasureProgress::Pending {
+        progress = fixture.measure_next(1, 1);
+    }
+    assert_eq!(progress, MeasureProgress::Done);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(3));
+    assert_eq!(fixture.index.lines.front().unwrap().row_count, 2);
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn structural_removal_while_unmeasured_updates_grouping() {
+    let width = 3;
+    let mut fixture = Fixture::new(
+        vec![
+            character_row("abcde", true),
+            character_row("fghij", false),
+            character_row("klm", true),
+        ],
+        5,
+    );
+    fixture.set_width(width);
+    assert_eq!(fixture.evict_front(2), LineDelta::NeedsMeasure);
+    assert_eq!(fixture.line_counts(), reference_line_counts(&fixture.rows));
+    fixture.measure_all();
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn partial_front_eviction_mid_open_row_rebases_to_a_start_boundary() {
+    let width = 5;
+    let mut fixture = Fixture::new(
+        vec![character_row("abc", true), character_row("xyz", false)],
+        width,
+    );
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(2));
+    assert_eq!(fixture.evict_front(1), LineDelta::Exact(-1));
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(1));
+    assert_eq!(
+        fixture.index.lines.front().unwrap().boundary_at(0, width),
+        RowBoundary::default()
+    );
+    assert_exact_total(&fixture, width);
+
+    let mut fixture = Fixture::new(
+        vec![
+            character_row("abcde", true),
+            character_row("fghij", false),
+            character_row("klm", false),
+        ],
+        width,
+    );
+    let before = reference_total(&fixture.rows, width) as isize;
+    let removed = fixture.evict_front(2).exact().unwrap();
+    assert_eq!(
+        fixture.index.total_display_rows().exact().unwrap(),
+        before + removed
+    );
+    assert_eq!(fixture.evict_front(0), LineDelta::Exact(0));
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn partial_front_eviction_after_completed_rows_rebases_the_open_row() {
+    let width = 5;
+    let mut fixture = Fixture::new(
+        vec![
+            character_row("abcde", true),
+            character_row("fghij", false),
+            character_row("klmno", false),
+        ],
+        width,
+    );
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(3));
+    assert_eq!(
+        fixture.index.lines.front().unwrap().boundary_at(2, width),
+        RowBoundary {
+            completed_rows: 1,
+            current: 5
+        }
+    );
+    assert_eq!(fixture.evict_front(2), LineDelta::Exact(-2));
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(1));
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn mixed_width_partial_front_cuts_remeasure_survivors_from_column_zero() {
+    let width = 7;
+    let mut fixture = Fixture::new(
+        vec![
+            character_row("a\u{754c}b", true),
+            character_row("\u{754c}\u{754c}a", false),
+            character_row("ab\u{754c}", false),
+            character_row("\u{754c}a\u{754c}", false),
+            character_row("a\u{754c}\u{754c}a", false),
+        ],
+        width,
+    );
+    assert!(
+        fixture
+            .index
+            .lines
+            .front()
+            .unwrap()
+            .uniform_character_width
+            .is_none(),
+        "the fixture must exercise the mixed-width path"
+    );
+
+    for cut in 1..=4 {
+        let line = fixture.index.lines.front().unwrap();
+        let surviving_rows = line.row_count - 1;
+        let rows = fixture
+            .rows
+            .iter()
+            .skip(1)
+            .take(surviving_rows)
+            .cloned()
+            .collect::<Vec<_>>();
+        let expected_height = reference_wrap_height(rows.iter(), width);
+
+        reset_row_visits();
+        reset_cell_visits();
+        reset_boundary_discoveries();
+        assert_eq!(
+            fixture.evict_front(1),
+            LineDelta::NeedsMeasure,
+            "cut {cut} must defer measurement"
+        );
+        assert_eq!(row_visits(), 0, "cut {cut} scanned rows synchronously");
+        assert_eq!(cell_visits(), 0, "cut {cut} scanned cells synchronously");
+        assert_eq!(
+            boundary_discoveries(),
+            0,
+            "cut {cut} rebuilt boundaries synchronously"
+        );
+        assert_eq!(fixture.index.total_display_rows(), LineDelta::NeedsMeasure);
+        fixture.measure_all();
+
+        let line = fixture.index.lines.front().unwrap();
+        assert_eq!(line.height, expected_height);
+        assert_eq!(line.boundary_at(0, width), RowBoundary::default());
+        assert_exact_total(&fixture, width);
+    }
+}
+
+#[test]
+fn mixed_width_cut_matches_fresh_wrap_of_the_surviving_rows() {
+    let width = 3;
+    let mut fixture = Fixture::new(
+        vec![
+            character_row("ab", true),
+            character_row("\u{754c}", false),
+            character_row("c", false),
+        ],
+        width,
+    );
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(2));
+
+    assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+    fixture.measure_all();
+    assert_eq!(
+        fixture.index.total_display_rows(),
+        LineDelta::Exact(reference_total(&fixture.rows, width) as isize)
+    );
+    assert_eq!(
+        fixture.index.lines.front().unwrap().height,
+        1,
+        "fresh wrap of the identical surviving rows is one display row"
+    );
+
+    assert_eq!(
+        fixture.append(character_row("de", false)),
+        LineDelta::Exact(1)
+    );
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn continuation_churn_keeps_prefix_metadata_bounded() {
+    let retained_rows = 64;
+    let text = "x".repeat(80);
+    let rows = (0..retained_rows)
+        .map(|index| character_row(&text, index == 0))
+        .collect();
+    let mut fixture = Fixture::new(rows, 80);
+
+    for _ in 0..100_000 {
+        assert_eq!(fixture.evict_front(1), LineDelta::Exact(-1));
+        assert_eq!(
+            fixture.append(character_row(&text, false)),
+            LineDelta::Exact(1)
+        );
+    }
+
+    assert_eq!(fixture.rows.len(), retained_rows);
+    let line = fixture.index.lines.front().unwrap();
+    assert!(
+        line.cell_prefix.len() <= retained_rows + 1024,
+        "retained prefix length grew with lifetime appends: {}",
+        line.cell_prefix.len()
+    );
+    assert!(
+        line.cell_prefix.capacity() <= 4096,
+        "retained prefix capacity grew with lifetime appends: {}",
+        line.cell_prefix.capacity()
+    );
+    assert_exact_total(&fixture, 80);
+}
+
+#[test]
+fn large_line_releases_backing_capacity_after_shrinking() {
+    let width = 200;
+    let text = "x".repeat(width);
+    let mut rows = vec![character_row(&text, true)];
+    rows.extend((0..10_000).map(|_| character_row(&text, false)));
+    let mut fixture = Fixture::new(rows, width);
+    assert!(
+        fixture.index.lines.front().unwrap().cell_prefix.capacity() > 8_000,
+        "fixture did not grow the prefix backing"
+    );
+
+    let retained_rows = 64;
+    for _ in 0..(10_001 - retained_rows) {
+        assert_eq!(fixture.evict_front(1), LineDelta::Exact(-1));
+    }
+    let line = fixture.index.lines.front().unwrap();
+    assert_eq!(line.row_count, retained_rows);
+    assert!(
+        line.cell_prefix.capacity() <= 4_096,
+        "large backing survived the shrink: {}",
+        line.cell_prefix.capacity()
+    );
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn mixed_width_continuation_churn_keeps_metadata_bounded() {
+    let retained_rows = 64;
+    let texts = [
+        "a\u{754c}b",
+        "\u{754c}\u{754c}a",
+        "ab\u{754c}",
+        "\u{754c}a\u{754c}",
+    ];
+    let mut rows: Vec<Row> = (0..retained_rows)
+        .map(|index| character_row(texts[index % texts.len()], index == 0))
+        .collect();
+    let mut fixture = Fixture::new(std::mem::take(&mut rows), 7);
+
+    for cycle in 0..100_000 {
+        assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+        fixture.measure_all();
+        let delta = fixture.append(character_row(texts[cycle % texts.len()], false));
+        if delta == LineDelta::NeedsMeasure {
+            fixture.measure_all();
+        }
+    }
+
+    let line = fixture.index.lines.front().unwrap();
+    assert!(
+        line.cell_prefix.len() <= line.row_count + 1024,
+        "mixed-line prefix metadata grew with lifetime appends: {}",
+        line.cell_prefix.len()
+    );
+    assert!(
+        line.cell_prefix.capacity() <= 4096,
+        "mixed-line prefix capacity grew with lifetime appends: {}",
+        line.cell_prefix.capacity()
+    );
+    assert_exact_total(&fixture, 7);
+}
+
+#[test]
+fn unmeasured_partial_cut_does_not_scan_the_surviving_suffix() {
+    let rows = (0..10_000)
+        .map(|index| character_row(&"x".repeat(80), index == 0))
+        .collect();
+    let mut fixture = Fixture::new(rows, 80);
+    fixture.set_width(81);
+
+    reset_row_visits();
+    reset_cell_visits();
+    assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+    assert!(row_visits() <= 128, "row visits: {}", row_visits());
+    assert!(cell_visits() <= 128 * 81, "cell visits: {}", cell_visits());
+
+    fixture.measure_all();
+    assert_exact_total(&fixture, 81);
+}
+
+#[test]
+fn uniform_to_mixed_append_defers_the_full_remeasure() {
+    let width = 80;
+    let text = "x".repeat(width);
+    let mut rows = vec![character_row(&text, true)];
+    rows.extend((0..10_000).map(|_| character_row(&text, false)));
+    let mut fixture = Fixture::new(rows, width);
+
+    reset_row_visits();
+    reset_cell_visits();
+    assert_eq!(
+        fixture.append(character_row("\u{754c}", false)),
+        LineDelta::NeedsMeasure
+    );
+    assert!(row_visits() <= 1, "the transition scanned old rows eagerly");
+    assert_eq!(cell_visits(), 0, "the transition scanned cells eagerly");
+
+    fixture.measure_all();
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn first_unmeasured_hint_does_not_rescan_measured_lines() {
+    let rows = (0..2_000)
+        .map(|_| character_row("x", true))
+        .collect::<Vec<_>>();
+    let mut fixture = Fixture::new(rows, 10);
+    let last = fixture.index.line_count() - 1;
+    fixture.index.invalidate_line(last);
+
+    reset_line_scan_visits();
+    assert_eq!(fixture.measure_next(1, 1), MeasureProgress::Done);
+    assert!(
+        line_scan_visits() <= 2,
+        "finding the invalidated tail rescanned {} lines",
+        line_scan_visits()
+    );
+    assert_exact_total(&fixture, 10);
+}
+
+#[test]
+fn finishing_a_later_line_does_not_forget_an_earlier_invalidation() {
+    let width = 3;
+    let mut rows = vec![
+        character_row("ab", true),
+        character_row("\u{754c}", false),
+        character_row("c", false),
+        character_row("x", true),
+        character_row("y", true),
+    ];
+    rows.extend((0..10).map(|_| character_row("z", false)));
+    let mut fixture = Fixture::new(rows, width);
+    assert_eq!(fixture.index.line_count(), 3);
+
+    let last = fixture.index.line_count() - 1;
+    fixture.index.invalidate_line(last);
+    assert_eq!(
+        fixture.measure_next(2, usize::MAX),
+        MeasureProgress::Pending
+    );
+
+    // The cursor is on the last line; invalidate the front mixed line.
+    assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+    let mut progress = MeasureProgress::Pending;
+    while progress == MeasureProgress::Pending {
+        progress = fixture.measure_next(1, usize::MAX);
+    }
+    assert_eq!(progress, MeasureProgress::Done);
+    assert_eq!(
+        fixture.index.total_display_rows(),
+        LineDelta::NeedsMeasure,
+        "the invalidated front line is still unmeasured"
+    );
+
+    fixture.measure_all();
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn retired_front_prefixes_are_compacted() {
+    let width = 2;
+    let mut rows = vec![character_row("xx", true)];
+    rows.extend((0..2000).map(|_| character_row("xx", false)));
+    let mut fixture = Fixture::new(rows, width);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(2001));
+
+    for _ in 0..1500 {
+        assert_eq!(fixture.evict_front(1), LineDelta::Exact(-1));
+    }
+
+    let line = fixture.index.lines.front().unwrap();
+    assert!(
+        line.cell_prefix_base < 1024,
+        "retired prefix must be reclaimed"
+    );
+    assert!(
+        line.cell_prefix.len() <= line.row_count + 1024,
+        "retained prefix metadata must stay bounded"
+    );
+    assert_exact_total(&fixture, width);
+
+    let _ = fixture.append(character_row("xy", false));
+    assert_exact_total(&fixture, width);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(502));
+}
+
+#[test]
+fn whole_line_front_eviction_removes_the_line_height() {
+    let width = 5;
+    let mut fixture = Fixture::new(
+        vec![
+            character_row("abcde", true),
+            character_row("fghij", false),
+            character_row("z", true),
+        ],
+        width,
+    );
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(3));
+    assert_eq!(fixture.evict_front(2), LineDelta::Exact(-2));
+    assert_eq!(fixture.index.line_count(), 1);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(1));
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn back_transfer_restores_the_last_line_boundary() {
+    let width = 5;
+    let mut fixture = Fixture::new(
+        vec![character_row("abcde", true), character_row("f", false)],
+        width,
+    );
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(2));
+    let before = fixture.rows.iter().map(row_signature).collect::<Vec<_>>();
+    let (taken, delta) = fixture.take_back(1);
+    assert_eq!(delta, LineDelta::Exact(-1));
+    assert_eq!(taken.len(), 1);
+    assert_eq!(row_signature(&taken[0]), before[before.len() - 1]);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(1));
+    assert_eq!(fixture.index.lines.back().unwrap().row_count, 1);
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn back_transfer_across_a_canonical_boundary_drops_the_whole_line() {
+    let width = 10;
+    let mut fixture = Fixture::new(
+        vec![character_row("abcde", true), character_row("fghij", true)],
+        width,
+    );
+    assert_eq!(fixture.take_back(1).1, LineDelta::Exact(-1));
+    assert_eq!(fixture.index.line_count(), 1);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(1));
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn prepend_merges_with_a_continuation_first_line() {
+    let width = 10;
+    let mut fixture = Fixture::new(vec![character_row("b", false)], width);
+    assert_eq!(
+        fixture.prepend(vec![character_row("a", true)]),
+        LineDelta::Exact(0)
+    );
+    assert_eq!(fixture.index.line_count(), 1);
+    assert_eq!(fixture.index.line_row_count(0), Some(2));
+    assert_eq!(
+        fixture.index.lines.front().unwrap().boundary_at(0, width),
+        RowBoundary::default()
+    );
+    assert_eq!(
+        fixture.index.lines.front().unwrap().boundary_at(1, width),
+        RowBoundary {
+            completed_rows: 0,
+            current: 1
+        }
+    );
+    assert_exact_total(&fixture, width);
+
+    let mut fixture = Fixture::new(vec![character_row("b", true)], width);
+    assert_eq!(
+        fixture.prepend(vec![character_row("a", false)]),
+        LineDelta::Exact(1)
+    );
+    assert_eq!(fixture.index.line_count(), 2);
+    assert_eq!(fixture.line_counts(), vec![1, 1]);
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn prepend_multiple_groups_merges_only_the_last_group() {
+    let width = 5;
+    let mut fixture = Fixture::new(vec![character_row("b", false)], width);
+    assert_eq!(
+        fixture.prepend(vec![character_row("a", false), character_row("cc", true)]),
+        LineDelta::Exact(1)
+    );
+    assert_eq!(fixture.line_counts(), vec![1, 2]);
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn prepend_into_an_empty_index_creates_lines() {
+    let width = 5;
+    let mut fixture = Fixture::new(Vec::new(), width);
+    assert_eq!(
+        fixture.prepend(vec![character_row("abc", true), character_row("de", false),]),
+        LineDelta::Exact(1)
+    );
+    assert_eq!(fixture.index.line_count(), 1);
+    assert_eq!(fixture.index.line_row_count(0), Some(2));
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn empty_continuation_rows_do_not_change_height_but_can_be_transferred() {
+    let width = 5;
+    let mut fixture = Fixture::new(
+        vec![
+            character_row("abc", true),
+            empty_row(false),
+            empty_row(false),
+        ],
+        width,
+    );
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(1));
+    let (taken, delta) = fixture.take_back(2);
+    assert_eq!(delta, LineDelta::Exact(0));
+    assert_eq!(taken.len(), 2);
+    assert_eq!(fixture.index.line_row_count(0), Some(1));
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn front_cut_during_measurement_keeps_cursor_progress_and_matches_oracle() {
+    let width = 7;
+    let rows: Vec<_> = (0..40)
+        .map(|index| character_row(&format!("{index:02}x\u{754c}"), index == 0))
+        .collect();
+    let mut fixture = Fixture::new(rows, 4);
+    fixture.set_width(width);
+    assert_eq!(
+        fixture.measure_next(10, usize::MAX),
+        MeasureProgress::Pending
+    );
+    let before = fixture
+        .index
+        .measure
+        .as_ref()
+        .expect("measurement stays open")
+        .row_index;
+    assert!(before > 4, "cursor row_index was only {before}");
+    let cut = 2;
+    assert_eq!(fixture.evict_front(cut), LineDelta::NeedsMeasure);
+    let cursor = fixture.index.measure.as_ref().expect("cursor");
+    assert_eq!(cursor.line_index, 0);
+    assert_eq!(
+        cursor.row_index,
+        before - cut,
+        "rows already walked must slide with the front cut"
+    );
+    let slid = cursor.row_index;
+    assert_eq!(
+        fixture.measure_next(5, usize::MAX),
+        MeasureProgress::Pending
+    );
+    let advanced = fixture.index.measure.as_ref().expect("cursor").row_index;
+    assert!(advanced > slid, "the next quantum did not move forward");
+    assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+    assert_eq!(
+        fixture.index.measure.as_ref().expect("cursor").row_index,
+        advanced - 1
+    );
+    fixture.measure_all();
+    assert_exact_total(&fixture, width);
+
+    // A cut past the cursor resumes on the surviving suffix only.
+    let rows: Vec<_> = (0..30)
+        .map(|index| character_row(&format!("z{index:02}"), index == 0))
+        .collect();
+    let mut fixture = Fixture::new(rows, 3);
+    fixture.set_width(5);
+    assert_eq!(
+        fixture.measure_next(2, usize::MAX),
+        MeasureProgress::Pending
+    );
+    let cursor = fixture.index.measure.as_ref().expect("cursor");
+    assert!(cursor.row_index < 8);
+    assert_eq!(fixture.evict_front(8), LineDelta::NeedsMeasure);
+    let cursor = fixture.index.measure.as_ref().expect("suffix cursor");
+    assert_eq!(cursor.row_index, 0);
+    assert_eq!(cursor.cell_index, 0);
+    assert!(!cursor.contaminated_prefix);
+    fixture.measure_all();
+    assert_exact_total(&fixture, 5);
+}
+
+#[test]
+fn mixed_width_front_cuts_publish_the_pass_they_interrupted() {
+    let width = 10;
+    let retained = 400usize;
+    let quantum = 64usize;
+    let mut fixture = Fixture::new(
+        (0..retained)
+            .map(|index| character_row(&format!("\u{754c}{index:05}"), index == 0))
+            .collect(),
+        width,
+    );
+    fixture.index.regroup(&fixture.rows, width);
+    assert!(!fixture.index.is_fully_measured());
+
+    let mut previous_source = 0usize;
+    let mut resets = 0usize;
+    let mut saw_exact = false;
+    let turns = (retained / quantum).saturating_mul(4).saturating_add(8);
+    for _ in 0..turns {
+        assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+        let appended = fixture.append(character_row(&format!("\u{754c}{retained:05}"), false));
+        assert_eq!(appended, LineDelta::NeedsMeasure);
+        let progress = fixture.measure_next(quantum, usize::MAX);
+        if let Some(source) = fixture.index.measure_cursor_source_row() {
+            let anchored = fixture.index.measure_anchor_offset().unwrap_or(0) > 0;
+            if !anchored && source + quantum < previous_source {
+                resets += 1;
+            }
+            previous_source = source;
+        }
+        if progress == MeasureProgress::Done {
+            assert_exact_total(&fixture, width);
+            let mut fresh = LineIndex::new(width);
+            fresh.regroup(&fixture.rows, width);
+            fresh.measure_all(&fixture.rows);
+            let published = fixture.index.lines.front().unwrap();
+            let expected = fresh.lines.front().unwrap();
+            assert_eq!(published.row_count, expected.row_count);
+            for row in 0..published.row_count {
+                assert_eq!(
+                    published.boundary_at(row, width),
+                    expected.boundary_at(row, width),
+                    "row {row} boundary diverged after front-cut publication"
+                );
+            }
+            saw_exact = true;
+            break;
+        }
+    }
+    assert_eq!(resets, 0, "front eviction restarted the in-progress cursor");
+    assert!(saw_exact, "interrupted mixed-width passes never published");
+}
+
+#[test]
+fn measure_next_budgets_contaminated_reconciliation() {
+    let width = 10;
+    let retained = 256usize;
+    let quantum = 32usize;
+    let cell_budget = quantum * 6;
+    let mut fixture = Fixture::new(
+        (0..retained)
+            .map(|index| character_row(&format!("\u{754c}{index:04}"), index == 0))
+            .collect(),
+        width,
+    );
+    fixture.index.regroup(&fixture.rows, width);
+
+    let mut completions = 0usize;
+    for turn in 0..retained.saturating_mul(4) {
+        assert_eq!(fixture.evict_front(1), LineDelta::NeedsMeasure);
+        assert_eq!(
+            fixture.append(character_row(&format!("\u{754c}{turn:04}"), false)),
+            LineDelta::NeedsMeasure
+        );
+        reset_row_visits();
+        reset_cell_visits();
+        reset_boundary_discoveries();
+        reset_line_scan_visits();
+        let progress = fixture.measure_next(quantum, cell_budget);
+        assert!(
+            row_visits() + line_scan_visits() <= quantum,
+            "turn {turn} measured {} rows and scanned {} lines, budget {quantum}",
+            row_visits(),
+            line_scan_visits()
+        );
+        assert!(
+            cell_visits() <= cell_budget,
+            "turn {turn} measured {} cells, budget {cell_budget}",
+            cell_visits()
+        );
+        assert!(
+            boundary_discoveries() <= quantum,
+            "turn {turn} discovered {} boundaries, budget {quantum}",
+            boundary_discoveries()
+        );
+        if progress == MeasureProgress::Done {
+            completions += 1;
+            assert_exact_total(&fixture, width);
+        }
+    }
+    assert!(
+        completions >= 2,
+        "only {completions} reconciliations completed"
+    );
+}
+
+#[test]
+fn reconciliation_converges_after_front_churn_stops() {
+    let width = 10;
+    let retained = 384usize;
+    let quantum = 24usize;
+    // The cell budget, not the row budget, is the limiting rate here.
+    let cell_budget = quantum * 3;
+    let mut fixture = Fixture::new(
+        (0..retained)
+            .map(|index| character_row(&format!("\u{754c}{index:04}"), index == 0))
+            .collect(),
+        width,
+    );
+    fixture.index.regroup(&fixture.rows, width);
+
+    for turn in 0..retained {
+        let _ = fixture.evict_front(1);
+        let _ = fixture.append(character_row(&format!("\u{754c}{turn:04}"), false));
+        reset_row_visits();
+        reset_cell_visits();
+        reset_boundary_discoveries();
+        reset_line_scan_visits();
+        let _ = fixture.measure_next(quantum, cell_budget);
+        assert!(
+            row_visits() + line_scan_visits() <= quantum,
+            "churn turn {turn} measured {} rows and scanned {} lines",
+            row_visits(),
+            line_scan_visits()
+        );
+        assert!(
+            cell_visits() <= cell_budget,
+            "churn turn {turn} measured {} cells",
+            cell_visits()
+        );
+        assert!(
+            boundary_discoveries() <= quantum,
+            "churn turn {turn} discovered {} boundaries",
+            boundary_discoveries()
+        );
+    }
+
+    let mut calls = 0usize;
+    loop {
+        reset_row_visits();
+        reset_cell_visits();
+        reset_boundary_discoveries();
+        reset_line_scan_visits();
+        let progress = fixture.measure_next(quantum, cell_budget);
+        assert!(
+            row_visits() + line_scan_visits() <= quantum,
+            "convergence call {calls} measured {} rows and scanned {} lines",
+            row_visits(),
+            line_scan_visits()
+        );
+        assert!(
+            cell_visits() <= cell_budget,
+            "convergence call {calls} measured {} cells",
+            cell_visits()
+        );
+        assert!(
+            boundary_discoveries() <= quantum,
+            "convergence call {calls} discovered {} boundaries",
+            boundary_discoveries()
+        );
+        if progress == MeasureProgress::Done {
+            break;
+        }
+        calls += 1;
+        assert!(
+            calls < retained.saturating_mul(4),
+            "reconciliation did not converge after {calls} calls"
+        );
+    }
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn helper_line_scans_are_charged_to_the_row_budget() {
+    let width = 8;
+    let line_count = 512usize;
+    let rows = (0..line_count)
+        .map(|index| character_row(&format!("{index:03}"), true))
+        .collect();
+    let mut fixture = Fixture::new(rows, width);
+    fixture.index.invalidate_line(1);
+    fixture.index.invalidate_line(line_count - 1);
+
+    let quantum = 8usize;
+    let cell_budget = quantum * width;
+    let mut scanned = 0usize;
+    let mut calls = 0usize;
+    loop {
+        reset_row_visits();
+        reset_cell_visits();
+        reset_boundary_discoveries();
+        reset_line_scan_visits();
+        let progress = fixture.measure_next(quantum, cell_budget);
+        let spent = row_visits() + line_scan_visits();
+        assert!(
+            spent <= quantum,
+            "call {calls} spent {spent} row units ({} measured rows, {} helper scans), budget {quantum}",
+            row_visits(),
+            line_scan_visits()
+        );
+        assert!(
+            cell_visits() <= cell_budget,
+            "call {calls} measured {} cells, budget {cell_budget}",
+            cell_visits()
+        );
+        assert!(
+            boundary_discoveries() <= quantum,
+            "call {calls} discovered {} boundaries",
+            boundary_discoveries()
+        );
+        scanned += line_scan_visits();
+        if progress == MeasureProgress::Done {
+            break;
+        }
+        calls += 1;
+        assert!(
+            calls < line_count.saturating_mul(2),
+            "helper scan did not converge after {calls} calls"
+        );
+    }
+    assert!(
+        scanned >= line_count / 2,
+        "the fixture only scanned {scanned} measured lines"
+    );
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn back_cut_retires_a_partially_scanned_removed_row() {
+    let width = 2;
+    let mut fixture = Fixture::new(
+        vec![
+            character_row("ab", true),
+            character_row("cd", false),
+            character_row("ef", false),
+        ],
+        80,
+    );
+    fixture.set_width(width);
+    assert_eq!(fixture.measure_next(8, 3), MeasureProgress::Pending);
+    let cursor = fixture
+        .index
+        .measure
+        .as_ref()
+        .expect("partially scanned line");
+    assert_eq!(cursor.row_index, 1);
+    assert_eq!(cursor.cell_index, 1);
+
+    let (taken, _) = fixture.take_back(2);
+    assert_eq!(taken.len(), 2);
+    assert_eq!(fixture.rows.len(), 1);
+    fixture.measure_all();
+
+    assert_eq!(reference_total(&fixture.rows, width), 1);
+    assert_exact_total(&fixture, width);
+}
+
+#[test]
+fn back_cuts_at_every_cell_boundary_match_the_fresh_oracle() {
+    let width = 2;
+    for measured_cells in 1..6 {
+        for cut in 0..=2 {
+            let mut fixture = Fixture::new(
+                vec![
+                    character_row("ab", true),
+                    character_row("cd", false),
+                    character_row("ef", false),
+                ],
+                80,
+            );
+            fixture.set_width(width);
+            assert_eq!(
+                fixture.measure_next(8, measured_cells),
+                MeasureProgress::Pending
+            );
+            fixture.take_back(cut);
+            fixture.measure_all();
+            assert_exact_total(&fixture, width);
+        }
+    }
+}
+
+#[test]
+fn transferring_every_row_empties_the_index() {
+    let width = 5;
+    let mut fixture = Fixture::new(
+        vec![character_row("abc", true), character_row("def", false)],
+        width,
+    );
+    let (taken, delta) = fixture.take_back(2);
+    assert_eq!(taken.len(), 2);
+    assert_eq!(delta, LineDelta::Exact(-2));
+    assert_eq!(fixture.rows.len(), 0);
+    assert_eq!(fixture.index.line_count(), 0);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(0));
+}
+
+#[test]
+fn trailing_blanks_use_their_stored_width() {
+    let width = 7;
+    let fixture = Fixture::new(vec![character_row_with_blanks("ab", 8, true)], width);
+    assert_exact_total(&fixture, width);
+    assert_eq!(fixture.index.total_display_rows(), LineDelta::Exact(2));
+}
+
+struct Lcg(u64);
+
+impl Lcg {
+    fn next(&mut self) -> u64 {
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        self.0
+    }
+
+    fn below(&mut self, limit: usize) -> usize {
+        (self.next() % limit as u64) as usize
+    }
+}
+
+fn random_row(rng: &mut Lcg) -> Row {
+    let canonical = rng.below(3) == 0;
+    let length = rng.below(9);
+    let mut columns = Vec::new();
+    for _ in 0..length {
+        let character = match rng.below(6) {
+            0 => '界',
+            1 => 'a',
+            2 => ' ',
+            3 => 'é',
+            4 => '1',
+            _ => 'x',
+        };
+        columns.push(TerminalCharacter::new(character));
+    }
+    let blanks = if length == 0 {
+        rng.below(3)
+    } else {
+        rng.below(2)
+    };
+    columns.extend(std::iter::repeat_n(TerminalCharacter::new(' '), blanks));
+    let mut row = Row::from_columns(columns);
+    row.compress_trailing_blanks();
+    if canonical {
+        row = row.canonical();
+    }
+    row
+}
+
+#[test]
+fn randomized_operations_match_the_reference_model() {
+    let mut rng = Lcg(0x5eed_1234_9876_abcd);
+    let mut width = 1 + rng.below(10);
+    let mut fixture = Fixture::new(Vec::new(), width);
+
+    for step in 0..10_000 {
+        let operation = rng.below(10);
+        match operation {
+            0..=3 => {
+                let row = random_row(&mut rng);
+                let _ = fixture.append(row);
+            },
+            4 => {
+                width = 1 + rng.below(10);
+                fixture.set_width(width);
+            },
+            5 => {
+                let _ = fixture.measure_next(rng.below(5) + 1, rng.below(8) + 1);
+            },
+            6 => {
+                fixture.measure_all();
+                let count = rng.below(fixture.rows.len() + 1);
+                let before = fixture.rows.iter().map(row_signature).collect::<Vec<_>>();
+                let _ = fixture.evict_front(count);
+                assert_eq!(
+                    fixture.rows.iter().map(row_signature).collect::<Vec<_>>(),
+                    before[count..]
+                );
+            },
+            7 => {
+                fixture.measure_all();
+                let count = rng.below(fixture.rows.len() + 1);
+                let before = fixture.rows.iter().map(row_signature).collect::<Vec<_>>();
+                let (taken, _) = fixture.take_back(count);
+                assert_eq!(
+                    taken.iter().map(row_signature).collect::<Vec<_>>(),
+                    before[before.len() - count..]
+                );
+                assert_eq!(
+                    fixture.rows.iter().map(row_signature).collect::<Vec<_>>(),
+                    before[..before.len() - count]
+                );
+            },
+            8 => {
+                let prepend_count = rng.below(4);
+                let added = (0..prepend_count)
+                    .map(|_| random_row(&mut rng))
+                    .collect::<Vec<_>>();
+                let before = fixture.rows.iter().map(row_signature).collect::<Vec<_>>();
+                let _ = fixture.prepend(added.clone());
+                let actual = fixture.rows.iter().map(row_signature).collect::<Vec<_>>();
+                assert_eq!(
+                    actual[..added.len()],
+                    added.iter().map(row_signature).collect::<Vec<_>>()[..]
+                );
+                assert_eq!(actual[added.len()..], before[..]);
+            },
+            _ => {
+                fixture.measure_all();
+            },
+        }
+
+        for line in &fixture.index.lines {
+            line.check_prefix(&format!("step {step} op {operation}"));
+        }
+        if fixture.index.is_fully_measured() {
+            assert_exact_total(&fixture, width);
+        } else {
+            assert_eq!(fixture.index.total_display_rows(), LineDelta::NeedsMeasure);
+        }
+        let _ = step;
+    }
+}

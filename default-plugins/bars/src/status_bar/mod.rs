@@ -829,10 +829,11 @@ fn second_line(client: &ClientState, tip_name: &str, cols: usize) -> LinePart {
 }
 
 pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
-    if keyvec.is_empty() {
+    // Empty check folded into pop: None ⇒ no modifiers in common.
+    let Some(first) = keyvec.pop() else {
         return vec![];
-    }
-    let mut common_modifiers = keyvec.pop().unwrap().key_modifiers.clone();
+    };
+    let mut common_modifiers = first.key_modifiers.clone();
     for key in keyvec {
         common_modifiers = common_modifiers
             .intersection(&key.key_modifiers)
