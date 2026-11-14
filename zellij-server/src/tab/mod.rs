@@ -541,6 +541,14 @@ pub(crate) struct Tab {
     live_views: crate::pane_mirror::SharedLiveViews,
 }
 
+fn terminal_page_scroll_rows(rows: usize) -> usize {
+    rows.max(1).saturating_sub(1)
+}
+
+fn terminal_half_page_scroll_rows(rows: usize) -> usize {
+    (rows.max(1).saturating_sub(1)) / 2
+}
+
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
 pub trait Pane {
     fn x(&self) -> usize;
@@ -7769,8 +7777,7 @@ impl Tab {
 
     pub fn scroll_active_terminal_up_page(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            // prevent overflow when row == 0
-            let scroll_rows = active_pane.rows().max(1).saturating_sub(1);
+            let scroll_rows = terminal_page_scroll_rows(active_pane.rows());
             active_pane.scroll_up(scroll_rows, client_id);
         }
     }
@@ -7780,8 +7787,7 @@ impl Tab {
             let fictitious_client_id = 1; // this is not checked for terminal panes and we
                                           // don't have an actual client id here
                                           // TODO: traits were a mistake
-                                          // prevent overflow when row == 0
-            let scroll_rows = terminal_pane.rows().max(1).saturating_sub(1);
+            let scroll_rows = terminal_page_scroll_rows(terminal_pane.rows());
             terminal_pane.scroll_up(scroll_rows, fictitious_client_id);
         }
     }
@@ -7791,7 +7797,7 @@ impl Tab {
             || format!("failed to scroll down one page in active pane for client {client_id}");
 
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let scroll_rows = active_pane.get_content_rows();
+            let scroll_rows = terminal_page_scroll_rows(active_pane.rows());
             active_pane.scroll_down(scroll_rows, client_id);
             if !active_pane.is_scrolled() {
                 if let PaneId::Terminal(raw_fd) = active_pane.pid() {
@@ -7808,7 +7814,7 @@ impl Tab {
             let fictitious_client_id = 1; // this is not checked for terminal panes and we
                                           // don't have an actual client id here
                                           // TODO: traits were a mistake
-            let scroll_rows = terminal_pane.get_content_rows();
+            let scroll_rows = terminal_page_scroll_rows(terminal_pane.rows());
             terminal_pane.scroll_down(scroll_rows, fictitious_client_id);
             if !terminal_pane.is_scrolled() {
                 if let PaneId::Terminal(raw_fd) = terminal_pane.pid() {
@@ -7820,8 +7826,7 @@ impl Tab {
 
     pub fn scroll_active_terminal_up_half_page(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            // prevent overflow when row == 0
-            let scroll_rows = (active_pane.rows().max(1).saturating_sub(1)) / 2;
+            let scroll_rows = terminal_half_page_scroll_rows(active_pane.rows());
             active_pane.scroll_up(scroll_rows, client_id);
         }
     }
@@ -7831,7 +7836,7 @@ impl Tab {
             || format!("failed to scroll down half a page in active pane for client {client_id}");
 
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let scroll_rows = (active_pane.rows().max(1) - 1) / 2;
+            let scroll_rows = terminal_half_page_scroll_rows(active_pane.rows());
             active_pane.scroll_down(scroll_rows, client_id);
             if !active_pane.is_scrolled() {
                 if let PaneId::Terminal(raw_fd) = active_pane.pid() {
@@ -9827,14 +9832,14 @@ impl Tab {
     pub fn page_scroll_up_by_pane_id(&mut self, pane_id: PaneId) {
         let fictitious_client_id = 1;
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            let scroll_rows = pane.rows().max(1).saturating_sub(1);
+            let scroll_rows = terminal_page_scroll_rows(pane.rows());
             pane.scroll_up(scroll_rows, fictitious_client_id);
         }
     }
     pub fn page_scroll_down_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
         let fictitious_client_id = 1;
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            let scroll_rows = pane.get_content_rows();
+            let scroll_rows = terminal_page_scroll_rows(pane.rows());
             pane.scroll_down(scroll_rows, fictitious_client_id);
             if !pane.is_scrolled() {
                 if let PaneId::Terminal(raw_fd) = pane.pid() {
@@ -9847,14 +9852,14 @@ impl Tab {
     pub fn half_page_scroll_up_by_pane_id(&mut self, pane_id: PaneId) {
         let fictitious_client_id = 1;
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            let scroll_rows = (pane.rows().max(1).saturating_sub(1)) / 2;
+            let scroll_rows = terminal_half_page_scroll_rows(pane.rows());
             pane.scroll_up(scroll_rows, fictitious_client_id);
         }
     }
     pub fn half_page_scroll_down_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
         let fictitious_client_id = 1;
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            let scroll_rows = (pane.rows().max(1).saturating_sub(1)) / 2;
+            let scroll_rows = terminal_half_page_scroll_rows(pane.rows());
             pane.scroll_down(scroll_rows, fictitious_client_id);
             if !pane.is_scrolled() {
                 if let PaneId::Terminal(raw_fd) = pane.pid() {
