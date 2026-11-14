@@ -675,6 +675,9 @@ pub trait Pane {
     fn supports_mouse_selection(&self) -> bool {
         true
     }
+    fn has_selection(&self, _client_id: ClientId) -> bool {
+        false
+    }
     fn get_selected_text(&self, _client_id: ClientId) -> Option<String> {
         None
     }
@@ -8036,6 +8039,16 @@ impl Tab {
                 self.local_input.insert(pane_id);
             }
         }
+    }
+
+    pub fn reset_selection(&mut self, client_id: ClientId) {
+        self.get_active_pane_mut(client_id)
+            .map(|p| p.reset_selection(Some(client_id)));
+    }
+
+    pub fn has_selection(&self, client_id: ClientId) -> bool {
+        self.get_active_pane(client_id)
+            .map_or(false, |p| p.has_selection(client_id))
     }
 
     pub fn copy_selection(&self, client_id: ClientId) -> Result<()> {

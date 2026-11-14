@@ -14,6 +14,13 @@
 //         bind "Alt y" { NewTab; }
 //     }
 // }
+//
+// To bind SmartCopy (copy an active selection, otherwise send Ctrl+C through), add:
+// keybinds {
+//     normal {
+//         bind "Ctrl c" { SmartCopy; }
+//     }
+// }
 
 // Plugin aliases - can be used to change the implementation of Zellij
 // changing these requires a restart to take effect
