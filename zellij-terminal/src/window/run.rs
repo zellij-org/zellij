@@ -297,6 +297,7 @@ impl Rendering {
             options: self.options,
             settings,
             theme_mode: None,
+            os_theme: None,
             scale: 1.0,
             zoom: 1.0,
             sender,

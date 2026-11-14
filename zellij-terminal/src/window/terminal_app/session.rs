@@ -11,7 +11,7 @@ use crate::window::Switched;
 use anyhow::{anyhow, Result};
 use std::time::Instant;
 use winit::window::UserAttentionType;
-use zellij_utils::data::ConnectToSession;
+use zellij_utils::data::{ConnectToSession, HostTerminalThemeMode};
 use zellij_utils::ipc::ClientToServerMsg;
 
 impl App {
@@ -73,6 +73,37 @@ impl App {
         match &self.sender {
             Some(sender) => send(sender, msg),
             None => Ok(()),
+        }
+    }
+
+    /// Reads the appearance the system reports for the window, and tells the
+    /// session when there is one.
+    pub(in crate::window) fn observe_os_theme(&mut self) {
+        let theme = self
+            .surfaces
+            .as_ref()
+            .and_then(|surfaces| surfaces.window.theme());
+        self.os_theme_changed(theme);
+    }
+
+    pub(in crate::window) fn os_theme_changed(&mut self, theme: Option<winit::window::Theme>) {
+        let mode = theme.map(host_theme_mode);
+        if mode == self.os_theme {
+            return;
+        }
+        self.os_theme = mode;
+        self.report_os_theme();
+    }
+
+    /// Tells the session the system appearance, so that `theme_dark` and
+    /// `theme_light` follow it. A system that reports none leaves the
+    /// session's own default in place.
+    pub(in crate::window) fn report_os_theme(&self) {
+        let Some(mode) = self.os_theme else {
+            return;
+        };
+        if let Err(e) = self.tell(ClientToServerMsg::HostTerminalThemeChanged { mode }) {
+            report!("failed to report the system appearance: {}", e);
         }
     }
 
@@ -198,6 +229,7 @@ impl App {
                 if !self.focused {
                     self.report_focus();
                 }
+                self.report_os_theme();
                 Followed::Kept
             },
             Err(e) => {
@@ -282,5 +314,12 @@ impl App {
         self.sender = None;
         self.show_notice(&message);
         self.failure = Some(failure);
+    }
+}
+
+fn host_theme_mode(theme: winit::window::Theme) -> HostTerminalThemeMode {
+    match theme {
+        winit::window::Theme::Light => HostTerminalThemeMode::Light,
+        winit::window::Theme::Dark => HostTerminalThemeMode::Dark,
     }
 }

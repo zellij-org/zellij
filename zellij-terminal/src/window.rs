@@ -220,6 +220,9 @@ pub(crate) struct App {
     options: Options,
     settings: Settings,
     theme_mode: Option<HostTerminalThemeMode>,
+    /// The appearance the operating system reports for this window, if it
+    /// reports one.
+    os_theme: Option<HostTerminalThemeMode>,
     scale: f64,
     zoom: f64,
     sender: Option<SharedSender>,
@@ -415,6 +418,7 @@ impl App {
                 self.schedule_draw();
                 self.resized(size.width, size.height);
             },
+            WindowEvent::ThemeChanged(theme) => self.os_theme_changed(Some(theme)),
             WindowEvent::Moved(_) => self.follow_display_occasionally(),
             WindowEvent::ScaleFactorChanged {
                 scale_factor,

@@ -59,6 +59,7 @@ impl App {
         self.placement.windowed_cells = (self.placement.startup.cols, self.placement.startup.rows);
         self.placement.windowed_known = self.placement.startup.mode == StartupMode::Windowed;
         self.follow_display();
+        self.observe_os_theme();
         self.schedule_draw();
         self.rescale(scale);
         self.resized(size.width, size.height);
