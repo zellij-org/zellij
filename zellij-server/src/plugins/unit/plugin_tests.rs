@@ -249,7 +249,7 @@ impl SettleCompletion for ScreenInstruction {
             | ScreenInstruction::MouseEvent(_, _, completion)
             | ScreenInstruction::UpdateSearch(_, _, completion)
             | ScreenInstruction::OverrideLayout(_, _, _, _, _, _, _, completion)
-            | ScreenInstruction::OverrideLayoutComplete(_, _, _, _, completion) => {
+            | ScreenInstruction::OverrideLayoutComplete(_, _, _, _, _, completion) => {
                 publish_fake_completion(completion)
             },
             ScreenInstruction::ApplyLayout(_, _, _, _, _, _, _, _, completion, blocking) => {

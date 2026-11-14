@@ -2000,6 +2000,10 @@ pub struct Grid {
     /// Zellij should forward to the host terminal; the host's reply is
     /// later routed back to this pane's pty.
     pub pending_forwarded_queries: Vec<crate::host_query::HostQuery>,
+    /// Whether any queued forwarded query cannot share a DA-barrier batch.
+    /// Kept alongside the list so the parser's per-step pause check stays
+    /// constant-time even when an application floods thousands of queries.
+    pending_forwarded_query_blocks: bool,
     /// A batchable host query is already queued, and the next sequence would
     /// write to the pane's stdin or start a query that cannot share that
     /// batch. The bytes of that sequence stay unparsed until the reply.
@@ -2571,6 +2575,7 @@ impl Grid {
             pending_desktop_notifications: Vec::new(),
             notification_tracker: NotificationTracker::default(),
             pending_forwarded_queries: Vec::new(),
+            pending_forwarded_query_blocks: false,
             hold_for_forward: false,
             pending_nested_session_messages: Vec::new(),
             ui_components_enabled: false,
@@ -2640,6 +2645,23 @@ impl Grid {
         } else {
             self.kitty_keyboard_state.flags()
         }
+    }
+    fn text_area_pixel_size(&self) -> Option<(u16, u16)> {
+        let cell_size = (*self.character_cell_size.borrow())?;
+        let width = u32::try_from(self.width)
+            .ok()?
+            .checked_mul(u32::try_from(cell_size.width).ok()?)?;
+        let height = u32::try_from(self.height)
+            .ok()?
+            .checked_mul(u32::try_from(cell_size.height).ok()?)?;
+        Some((u16::try_from(width).ok()?, u16::try_from(height).ok()?))
+    }
+    fn character_cell_pixel_size(&self) -> Option<(u16, u16)> {
+        let cell_size = (*self.character_cell_size.borrow())?;
+        Some((
+            u16::try_from(cell_size.width).ok()?,
+            u16::try_from(cell_size.height).ok()?,
+        ))
     }
     /// Clear input-reporting modes without touching screen contents or
     /// scrollback. This is a recovery path for a pane whose application left
@@ -5419,6 +5441,11 @@ impl Grid {
         self.pad_lines_until(self.cursor.y, pad_character.clone());
         self.pad_current_line_until(self.cursor.x, pad_character);
     }
+    fn home_cursor(&mut self) {
+        let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+        pad_character.styles = self.cursor.pending_styles.clone();
+        self.move_cursor_to(0, 0, pad_character);
+    }
     pub fn move_cursor_up(&mut self, count: usize) {
         let (scroll_region_top, scroll_region_bottom) = self.scroll_region;
         if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
@@ -7987,10 +8014,22 @@ impl Grid {
     pub(crate) fn batch_is_open(&self) -> bool {
         !self.hold_for_forward
             && !self.pending_forwarded_queries.is_empty()
-            && self
-                .pending_forwarded_queries
-                .iter()
-                .all(crate::host_query::HostQuery::shares_da_barrier)
+            && !self.pending_forwarded_query_blocks
+    }
+
+    fn queue_forwarded_query(&mut self, query: crate::host_query::HostQuery) {
+        self.pending_forwarded_query_blocks |= !query.shares_da_barrier();
+        self.pending_forwarded_queries.push(query);
+    }
+
+    pub(crate) fn drain_pending_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
+        self.pending_forwarded_query_blocks = false;
+        self.pending_forwarded_queries.drain(..).collect()
+    }
+
+    pub(crate) fn clear_pending_forwarded_queries(&mut self) {
+        self.pending_forwarded_query_blocks = false;
+        self.pending_forwarded_queries.clear();
     }
 
     /// Stop before `bytes` when it would write a reply to the pane, or start
@@ -8438,14 +8477,12 @@ impl Handler for Grid {
                 if !query_indices.is_empty() {
                     // One OSC that names several registers is one query.
                     // The host answers them in one round trip.
-                    self.pending_forwarded_queries.push(
-                        crate::host_query::HostQuery::PaletteRegister {
-                            indices: query_indices,
-                            terminator: crate::host_query::OscTerminator::from_bell_terminated(
-                                bell_terminated,
-                            ),
-                        },
-                    );
+                    self.queue_forwarded_query(crate::host_query::HostQuery::PaletteRegister {
+                        indices: query_indices,
+                        terminator: crate::host_query::OscTerminator::from_bell_terminated(
+                            bell_terminated,
+                        ),
+                    });
                 }
             },
 
@@ -8517,7 +8554,7 @@ impl Handler for Grid {
                                             continue;
                                         },
                                     };
-                                    self.pending_forwarded_queries.push(query);
+                                    self.queue_forwarded_query(query);
                                 }
                             } else {
                                 // Set: parse color and store as pane
@@ -8578,7 +8615,7 @@ impl Handler for Grid {
                 let clipboard = *params[1].get(0).unwrap_or(&b'c');
                 match params[2] {
                     b"?" => {
-                        self.pending_forwarded_queries.push(
+                        self.queue_forwarded_query(
                             crate::host_query::HostQuery::ClipboardContent {
                                 selection: clipboard as char,
                                 terminator: crate::host_query::OscTerminator::from_bell_terminated(
@@ -8906,6 +8943,7 @@ impl Handler for Grid {
                         },
                         6 => {
                             self.origin_mode = false;
+                            self.home_cursor();
                         },
                         7 => {
                             self.disable_linewrap = true;
@@ -9044,6 +9082,7 @@ impl Handler for Grid {
                         },
                         6 => {
                             self.origin_mode = true;
+                            self.home_cursor();
                         },
                         7 => {
                             self.disable_linewrap = false;
@@ -9135,6 +9174,7 @@ impl Handler for Grid {
                 }
             } else {
                 self.set_scroll_region_to_viewport_size();
+                self.home_cursor();
             }
         } else if c == 'M' {
             // delete lines if currently inside scroll region, or otherwise
@@ -9377,8 +9417,7 @@ impl Handler for Grid {
                 // straight to the pane's pty.
                 for param in params_iter.map(|param| param[0]) {
                     if param == 996 {
-                        self.pending_forwarded_queries
-                            .push(crate::host_query::HostQuery::ColorPaletteMode);
+                        self.queue_forwarded_query(crate::host_query::HostQuery::ColorPaletteMode);
                     }
                 }
             } else {
@@ -9428,18 +9467,29 @@ impl Handler for Grid {
         } else if c == 't' {
             match next_param_or(1) as usize {
                 14 => {
-                    // Forward to host: apps asking for text-area pixels
-                    // want the real window size, not Zellij's synthesised
-                    // (cell_size * grid_size) value. The host's reply will
-                    // be written back to this pane by the forwarding
-                    // infrastructure on Screen.
-                    self.pending_forwarded_queries
-                        .push(crate::host_query::HostQuery::TextAreaPixelSize);
+                    // Report this pane's text area, not the outer host
+                    // window. The shared cell metrics are the same ones
+                    // used to size the pane's PTY.
+                    if let Some((width, height)) = self.text_area_pixel_size() {
+                        let text_area_report = format!("\x1b[4;{};{}t", height, width);
+                        self.pending_messages_to_pty
+                            .push(text_area_report.into_bytes());
+                    } else if self.debug {
+                        log::warn!(
+                            "Cannot answer text-area pixel query without character-cell metrics"
+                        );
+                    }
                 },
                 16 => {
-                    // Forward to host: character-cell pixel size.
-                    self.pending_forwarded_queries
-                        .push(crate::host_query::HostQuery::CharacterCellPixelSize);
+                    if let Some((width, height)) = self.character_cell_pixel_size() {
+                        let cell_size_report = format!("\x1b[6;{};{}t", height, width);
+                        self.pending_messages_to_pty
+                            .push(cell_size_report.into_bytes());
+                    } else {
+                        self.queue_forwarded_query(
+                            crate::host_query::HostQuery::CharacterCellPixelSize,
+                        );
+                    }
                 },
                 18 => {
                     // report text area
@@ -9552,12 +9602,7 @@ impl Handler for Grid {
     }
 
     fn paused(&self) -> bool {
-        self.pending_rep.is_some()
-            || self.hold_for_forward
-            || self
-                .pending_forwarded_queries
-                .iter()
-                .any(|query| !query.shares_da_barrier())
+        self.pending_rep.is_some() || self.hold_for_forward || self.pending_forwarded_query_blocks
     }
 
     fn begin_turn(&mut self) {
@@ -9569,18 +9614,12 @@ impl Handler for Grid {
             let _ = self.continue_pending_rep();
             return true;
         }
-        if self.batch_is_open()
-            || self.hold_for_forward
-            || self
-                .pending_forwarded_queries
-                .iter()
-                .any(|query| !query.shares_da_barrier())
-        {
+        if self.batch_is_open() || self.hold_for_forward || self.pending_forwarded_query_blocks {
             // Synchronous `Parser::feed` has no host-reply channel. Drop the
             // unanswered batch so replay harnesses can consume the stream;
             // production `feed_until_paused` callers never take this path.
             self.hold_for_forward = false;
-            self.pending_forwarded_queries.clear();
+            self.clear_pending_forwarded_queries();
             return true;
         }
         false

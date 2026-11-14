@@ -11,6 +11,7 @@ expression: received_write_instructions
             terminal_id: 0,
             completion: None,
             budget: true,
+            run_generation: None,
             handed_off: false,
         },
     ),

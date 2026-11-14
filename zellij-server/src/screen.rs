@@ -734,6 +734,7 @@ pub enum ScreenInstruction {
     ForwardHostQuery {
         pane_id: PaneId,
         query: crate::host_query::HostQuery,
+        run_generation: Option<u64>,
     },
     NestedSessionMessageFromPane {
         pane_id: PaneId,
@@ -848,6 +849,7 @@ pub enum ScreenInstruction {
     ),
     OverrideLayoutComplete(
         Vec<TabOverrideResult>, // results for each tab
+        Vec<(usize, String)>,   // tabs that failed before reaching the screen
         bool,                   // retain_existing_terminal_panes
         bool,                   // retain_existing_plugin_panes
         ClientId,
@@ -2364,6 +2366,8 @@ pub(crate) struct Screen {
     tabs: BTreeMap<usize, Tab>,
     last_single_pane_tab_names: HashMap<usize, Option<String>>,
     pixel_dimensions: PixelDimensions,
+    client_pixel_dimensions: HashMap<ClientId, PixelDimensions>,
+    pixel_dimension_provider: Option<ClientId>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
     stacked_pane_list: Rc<RefCell<bool>>,
@@ -2582,6 +2586,7 @@ struct PendingForward {
     token: u32,
     pane_id: PaneId,
     query: crate::host_query::HostQuery,
+    run_generation: Option<u64>,
 }
 
 /// A forward currently in flight (dispatched to the client, waiting
@@ -2593,6 +2598,7 @@ struct PendingForward {
 struct PendingForwardEntry {
     pane_id: PaneId,
     query: crate::host_query::HostQuery,
+    run_generation: Option<u64>,
 }
 
 /// Reserved sentinel token for Zellij's own startup batch of host
@@ -2850,6 +2856,8 @@ impl Screen {
             bus,
             max_panes,
             pixel_dimensions: Default::default(),
+            client_pixel_dimensions: HashMap::new(),
+            pixel_dimension_provider: None,
             character_cell_size: Rc::new(RefCell::new(None)),
             stacked_resize: Rc::new(RefCell::new(stacked_resize)),
             stacked_pane_list: Rc::new(RefCell::new(stacked_pane_list)),
@@ -3897,38 +3905,86 @@ impl Screen {
         }
     }
 
+    fn usable_pixel_size(size: Option<SizeInPixels>) -> Option<SizeInPixels> {
+        size.filter(|size| size.width > 0 && size.height > 0)
+    }
+    fn resolved_pixel_dimensions_for_client(&self, client_id: ClientId) -> Option<PixelDimensions> {
+        let reported = *self.client_pixel_dimensions.get(&client_id)?;
+        let text_area_size = Self::usable_pixel_size(reported.text_area_size);
+        let character_cell_size = if let Some(character_cell_size) =
+            Self::usable_pixel_size(reported.character_cell_size)
+        {
+            Some(character_cell_size)
+        } else {
+            let text_area_size = text_area_size?;
+            let client_size = self.client_sizes.get(&client_id).copied()?;
+            if client_size.rows == 0 || client_size.cols == 0 {
+                return None;
+            }
+            Self::usable_pixel_size(Some(SizeInPixels {
+                height: text_area_size.height / client_size.rows,
+                width: text_area_size.width / client_size.cols,
+            }))
+        }?;
+        Some(PixelDimensions {
+            text_area_size,
+            character_cell_size: Some(character_cell_size),
+        })
+    }
+    /// Use one client's complete metrics as the provider rather than merging
+    /// fields from clients that may have different font sizes. Prefer the
+    /// client that just reported usable metrics, then keep the current
+    /// provider, then fall back to any other usable client.
+    fn select_pixel_dimension_provider(&mut self, preferred: Option<ClientId>) -> bool {
+        let previous_character_cell_size = *self.character_cell_size.borrow();
+        let selected_client = preferred
+            .filter(|client_id| {
+                self.resolved_pixel_dimensions_for_client(*client_id)
+                    .is_some()
+            })
+            .or_else(|| {
+                self.pixel_dimension_provider.filter(|client_id| {
+                    self.resolved_pixel_dimensions_for_client(*client_id)
+                        .is_some()
+                })
+            })
+            .or_else(|| {
+                self.client_pixel_dimensions
+                    .keys()
+                    .copied()
+                    .find(|client_id| {
+                        self.resolved_pixel_dimensions_for_client(*client_id)
+                            .is_some()
+                    })
+            });
+        if let Some(client_id) = selected_client {
+            if let Some(pixel_dimensions) = self.resolved_pixel_dimensions_for_client(client_id) {
+                self.pixel_dimensions = pixel_dimensions;
+            }
+        }
+        self.pixel_dimension_provider = selected_client;
+        if let Some(character_cell_size) = self.pixel_dimensions.character_cell_size {
+            *self.character_cell_size.borrow_mut() = Some(character_cell_size);
+        }
+        *self.character_cell_size.borrow() != previous_character_cell_size
+    }
     pub fn update_pixel_dimensions(
         &mut self,
         client_id: ClientId,
         mut pixel_dimensions: PixelDimensions,
     ) -> bool {
-        let previous_character_cell_size = *self.character_cell_size.borrow();
-        let usable_size =
-            |size: Option<SizeInPixels>| size.filter(|size| size.width > 0 && size.height > 0);
-        pixel_dimensions.character_cell_size = usable_size(pixel_dimensions.character_cell_size);
-        pixel_dimensions.text_area_size = usable_size(pixel_dimensions.text_area_size);
-        self.pixel_dimensions.merge(pixel_dimensions);
-        self.pixel_dimensions.character_cell_size =
-            usable_size(self.pixel_dimensions.character_cell_size);
-        self.pixel_dimensions.text_area_size = usable_size(self.pixel_dimensions.text_area_size);
-        if let Some(character_cell_size) = self.pixel_dimensions.character_cell_size {
-            *self.character_cell_size.borrow_mut() = Some(character_cell_size);
-        } else if let Some(text_area_size) = self.pixel_dimensions.text_area_size {
-            let Some(client_size) = self.client_sizes.get(&client_id).copied() else {
-                return false;
-            };
-            if client_size.rows == 0 || client_size.cols == 0 {
-                return false;
-            }
-            let character_cell_size = SizeInPixels {
-                height: text_area_size.height / client_size.rows,
-                width: text_area_size.width / client_size.cols,
-            };
-            if character_cell_size.width > 0 && character_cell_size.height > 0 {
-                *self.character_cell_size.borrow_mut() = Some(character_cell_size);
-            }
+        pixel_dimensions.character_cell_size =
+            Self::usable_pixel_size(pixel_dimensions.character_cell_size);
+        pixel_dimensions.text_area_size = Self::usable_pixel_size(pixel_dimensions.text_area_size);
+        let reported_usable_metrics = pixel_dimensions.character_cell_size.is_some()
+            || pixel_dimensions.text_area_size.is_some();
+        if let Some(existing) = self.client_pixel_dimensions.get_mut(&client_id) {
+            existing.merge(pixel_dimensions);
+        } else {
+            self.client_pixel_dimensions
+                .insert(client_id, pixel_dimensions);
         }
-        *self.character_cell_size.borrow() != previous_character_cell_size
+        self.select_pixel_dimension_provider(reported_usable_metrics.then_some(client_id))
     }
 
     pub fn resize_pty_all_panes(&mut self) -> Result<()> {
@@ -4354,10 +4410,19 @@ impl Screen {
     /// Queries are serialized globally: at most one is in flight to the
     /// client at a time; the rest wait in `forward_queue`. Returns the
     /// allocated token so callers (tests) can observe it if useful.
+    #[cfg(test)]
     pub fn forward_host_query(
         &mut self,
         pane_id: PaneId,
         query: crate::host_query::HostQuery,
+    ) -> u32 {
+        self.forward_host_query_with_generation(pane_id, query, None)
+    }
+    pub fn forward_host_query_with_generation(
+        &mut self,
+        pane_id: PaneId,
+        query: crate::host_query::HostQuery,
+        run_generation: Option<u64>,
     ) -> u32 {
         // ColorPaletteMode is answered locally — Zellij already knows
         // the host's mode from its own startup query and from
@@ -4365,23 +4430,23 @@ impl Screen {
         // machinery (no token, no in-flight slot, no host round-trip)
         // and write the reply straight to the originating pane's pty.
         if let crate::host_query::HostQuery::ColorPaletteMode = query {
-            self.answer_color_palette_mode_query_locally(pane_id);
+            self.answer_color_palette_mode_query_locally(pane_id, run_generation);
             return STARTUP_SENTINEL_TOKEN; // sentinel: no real forward happened
         }
         if query.is_noop() {
             // Nothing to ask and nothing to wait for. Treat it as a local
             // no-op rather than pausing the pane until the forward timeout.
-            let _ = self.resume_pane_after_forward(pane_id, Vec::new());
+            let _ = self.resume_pane_after_forward(pane_id, Vec::new(), run_generation);
             return STARTUP_SENTINEL_TOKEN;
         }
         if let crate::host_query::HostQuery::ClipboardContent { .. } = query {
             if !self.paste_buffer_read_enabled {
-                let _ = self.resume_pane_after_forward(pane_id, Vec::new());
+                let _ = self.resume_pane_after_forward(pane_id, Vec::new(), run_generation);
                 return STARTUP_SENTINEL_TOKEN;
             }
-            return self.enqueue_clipboard_forward(pane_id, query);
+            return self.enqueue_clipboard_forward(pane_id, query, run_generation);
         }
-        if self.merge_queued_round_trip(pane_id, &query) {
+        if self.merge_queued_round_trip(pane_id, &query, run_generation) {
             return self
                 .forward_queue
                 .back()
@@ -4400,9 +4465,10 @@ impl Screen {
                 token,
                 pane_id,
                 query,
+                run_generation,
             });
         } else {
-            self.dispatch_forward(token, pane_id, query);
+            self.dispatch_forward(token, pane_id, query, run_generation);
         }
         token
     }
@@ -4417,6 +4483,7 @@ impl Screen {
         &mut self,
         pane_id: PaneId,
         query: &crate::host_query::HostQuery,
+        run_generation: Option<u64>,
     ) -> bool {
         use crate::host_query::HostQuery;
         if !query.shares_da_barrier() {
@@ -4425,7 +4492,10 @@ impl Screen {
         let Some(back) = self.forward_queue.back_mut() else {
             return false;
         };
-        if back.pane_id != pane_id || !back.query.shares_da_barrier() {
+        if back.pane_id != pane_id
+            || back.run_generation != run_generation
+            || !back.query.shares_da_barrier()
+        {
             return false;
         }
         let mut incoming = match query.clone() {
@@ -4454,8 +4524,9 @@ impl Screen {
         &mut self,
         pane_id: PaneId,
         query: crate::host_query::HostQuery,
+        run_generation: Option<u64>,
     ) -> u32 {
-        let token = self.forward_host_query(pane_id, query);
+        let token = self.forward_host_query_with_generation(pane_id, query, run_generation);
         if let PaneId::Terminal(pid) = pane_id {
             self.enforce_forward_buffer_limit(pid);
         }
@@ -4466,6 +4537,7 @@ impl Screen {
         &mut self,
         pane_id: PaneId,
         query: crate::host_query::HostQuery,
+        run_generation: Option<u64>,
     ) -> u32 {
         let token = self.next_forward_token;
         self.next_forward_token = self.next_forward_token.wrapping_add(1);
@@ -4477,9 +4549,10 @@ impl Screen {
                 token,
                 pane_id,
                 query,
+                run_generation,
             });
         } else {
-            self.dispatch_clipboard_forward(token, pane_id, query);
+            self.dispatch_clipboard_forward(token, pane_id, query, run_generation);
         }
         token
     }
@@ -4489,10 +4562,17 @@ impl Screen {
         token: u32,
         pane_id: PaneId,
         query: crate::host_query::HostQuery,
+        run_generation: Option<u64>,
     ) {
         let query_bytes = query.to_query_bytes();
-        self.pending_clipboard_forwards
-            .insert(token, PendingForwardEntry { pane_id, query });
+        self.pending_clipboard_forwards.insert(
+            token,
+            PendingForwardEntry {
+                pane_id,
+                query,
+                run_generation,
+            },
+        );
         self.clipboard_forward_in_flight_token = Some(token);
         let _ = self
             .bus
@@ -4517,22 +4597,30 @@ impl Screen {
 
     fn handle_clipboard_reply(&mut self, token: u32, reply_bytes: Vec<u8>) -> Result<()> {
         let mut resume_result = Ok(());
-        if let Some(PendingForwardEntry { pane_id, query }) =
-            self.pending_clipboard_forwards.remove(&token)
+        if let Some(PendingForwardEntry {
+            pane_id,
+            query,
+            run_generation,
+        }) = self.pending_clipboard_forwards.remove(&token)
         {
             let payload = if reply_bytes.is_empty() {
                 query.empty_reply_bytes()
             } else {
                 reply_bytes
             };
-            resume_result = self.resume_pane_after_forward(pane_id, payload);
+            resume_result = self.resume_pane_after_forward(pane_id, payload, run_generation);
         }
         self.clipboard_forward_in_flight_token = None;
         while let Some(next) = self.clipboard_forward_queue.pop_front() {
             if !self.pane_exists(&next.pane_id) {
                 continue;
             }
-            self.dispatch_clipboard_forward(next.token, next.pane_id, next.query);
+            self.dispatch_clipboard_forward(
+                next.token,
+                next.pane_id,
+                next.query,
+                next.run_generation,
+            );
             break;
         }
         resume_result
@@ -4542,7 +4630,11 @@ impl Screen {
         self.tabs.values().any(|tab| tab.has_pane_with_pid(pane_id))
     }
 
-    fn answer_color_palette_mode_query_locally(&mut self, pane_id: PaneId) {
+    fn answer_color_palette_mode_query_locally(
+        &mut self,
+        pane_id: PaneId,
+        run_generation: Option<u64>,
+    ) {
         if matches!(pane_id, PaneId::Plugin(_)) {
             return;
         }
@@ -4554,7 +4646,7 @@ impl Screen {
         // Route via Tab so the reply lands on the pane in the correct
         // stream position and any PTY input the app emitted while
         // waiting is replayed.
-        let _ = self.resume_pane_after_forward(pane_id, reply);
+        let _ = self.resume_pane_after_forward(pane_id, reply, run_generation);
     }
 
     fn effective_host_terminal_theme_mode(&self) -> HostTerminalThemeMode {
@@ -4577,10 +4669,17 @@ impl Screen {
         token: u32,
         pane_id: PaneId,
         query: crate::host_query::HostQuery,
+        run_generation: Option<u64>,
     ) {
         let query_bytes = query.to_query_bytes();
-        self.pending_forwarded_queries
-            .insert(token, PendingForwardEntry { pane_id, query });
+        self.pending_forwarded_queries.insert(
+            token,
+            PendingForwardEntry {
+                pane_id,
+                query,
+                run_generation,
+            },
+        );
         self.forward_in_flight_token = Some(token);
         let _ = self
             .bus
@@ -4647,7 +4746,11 @@ impl Screen {
         }
         let mut resume_result = Ok(());
         if let Some(entry) = self.pending_forwarded_queries.remove(&token) {
-            let PendingForwardEntry { pane_id, query } = entry;
+            let PendingForwardEntry {
+                pane_id,
+                query,
+                run_generation,
+            } = entry;
             match pane_id {
                 PaneId::Terminal(_) => {
                     let payload = if reply_bytes.is_empty() {
@@ -4658,7 +4761,8 @@ impl Screen {
                     // Route via Tab so the reply lands on the pane in
                     // the correct stream position and any PTY input
                     // the app emitted while waiting is replayed.
-                    resume_result = self.resume_pane_after_forward(pane_id, payload);
+                    resume_result =
+                        self.resume_pane_after_forward(pane_id, payload, run_generation);
                 },
                 PaneId::Plugin(_) => {
                     // Plugin panes do not issue whitelisted host queries;
@@ -4674,7 +4778,7 @@ impl Screen {
         // Release the slot and dispatch the next queued forward, if any.
         self.forward_in_flight_token = None;
         if let Some(next) = self.forward_queue.pop_front() {
-            self.dispatch_forward(next.token, next.pane_id, next.query);
+            self.dispatch_forward(next.token, next.pane_id, next.query, next.run_generation);
         }
         resume_result
     }
@@ -4707,7 +4811,11 @@ impl Screen {
                 // token arrives; that reply then finds no entry and is
                 // dropped, and only then does the next query dispatch.
                 if let Some(entry) = self.pending_clipboard_forwards.remove(&token) {
-                    self.resume_pane_after_forward(pane_id, entry.query.empty_reply_bytes())?;
+                    self.resume_pane_after_forward(
+                        pane_id,
+                        entry.query.empty_reply_bytes(),
+                        entry.run_generation,
+                    )?;
                     return Ok(true);
                 }
             }
@@ -4718,7 +4826,7 @@ impl Screen {
         if let Some(index) = self.forward_queue.iter().position(|f| f.pane_id == pane_id) {
             if let Some(queued) = self.forward_queue.remove(index) {
                 let payload = self.synthesize_cached_reply(&queued.query);
-                self.resume_pane_after_forward(pane_id, payload)?;
+                self.resume_pane_after_forward(pane_id, payload, queued.run_generation)?;
                 return Ok(true);
             }
         }
@@ -4728,7 +4836,11 @@ impl Screen {
             .position(|f| f.pane_id == pane_id)
         {
             if let Some(queued) = self.clipboard_forward_queue.remove(index) {
-                self.resume_pane_after_forward(pane_id, queued.query.empty_reply_bytes())?;
+                self.resume_pane_after_forward(
+                    pane_id,
+                    queued.query.empty_reply_bytes(),
+                    queued.run_generation,
+                )?;
                 return Ok(true);
             }
         }
@@ -4744,6 +4856,7 @@ impl Screen {
         &mut self,
         pane_id: PaneId,
         reply_bytes: Vec<u8>,
+        run_generation: Option<u64>,
     ) -> Result<()> {
         let terminal_id = match pane_id {
             PaneId::Terminal(id) => id,
@@ -4754,10 +4867,18 @@ impl Screen {
                 return Ok(());
             },
         };
+        if let Some(generation) = run_generation {
+            if !run_generation_matches(&self.terminal_runs, terminal_id, generation) {
+                log::debug!(
+                    "Discarding forwarded reply for stale run {generation} in terminal {terminal_id}"
+                );
+                return Ok(());
+            }
+        }
         let mut found = false;
         for tab in self.tabs.values_mut() {
             if tab.has_pane_with_pid(&pane_id) {
-                tab.resume_pane_after_forward(terminal_id, reply_bytes.clone())
+                tab.resume_pane_after_forward(terminal_id, reply_bytes.clone(), run_generation)
                     .with_context(|| {
                         format!("failed to resume pane {pane_id:?} after a forwarded reply")
                     })?;
@@ -4766,23 +4887,23 @@ impl Screen {
             }
         }
         if !found {
-            // No tab owns the pane — the pane was closed between the
-            // forward dispatch and the reply arrival. The terminal id
-            // is probably defunct; the write goes to the PTY writer
-            // anyway because an empty payload is the canonical "host
-            // declined" reply some apps rely on, and a non-empty
-            // payload may still be deliverable until the pty drains.
-            let _ = self
-                .bus
-                .senders
-                .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
-                    reply_bytes,
-                    terminal_id,
-                    None,
-                    None,
-                )));
+            // Unit tests construct a Screen without tabs to exercise the
+            // token machinery directly. Production forwarding always
+            // originates from a pane that belongs to a tab, so a missing
+            // pane means it was closed and the reply must be discarded.
+            #[cfg(test)]
+            if self.tabs.is_empty() {
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_pty_writer(PtyWriteInstruction::Write(
+                        AdmittedWrite::new(reply_bytes, terminal_id, None, None)
+                            .with_run_generation(run_generation),
+                    ));
+                return Ok(());
+            }
             log::debug!(
-                "ResumePaneAfterForward: pane {:?} not in any tab, fell back to direct PTY write",
+                "ResumePaneAfterForward: pane {:?} no longer exists; discarding reply",
                 pane_id
             );
         }
@@ -7662,6 +7783,20 @@ impl Screen {
             self.push_sixel_host_support_to_tabs();
         }
         self.client_sizes.remove(&client_id);
+        if self.client_pixel_dimensions.remove(&client_id).is_some() {
+            let character_cell_size_changed = if self.client_pixel_dimensions.is_empty() {
+                let had_character_cell_size = self.character_cell_size.borrow().is_some();
+                self.pixel_dimensions = PixelDimensions::default();
+                self.pixel_dimension_provider = None;
+                *self.character_cell_size.borrow_mut() = None;
+                had_character_cell_size
+            } else {
+                self.select_pixel_dimension_provider(None)
+            };
+            if character_cell_size_changed {
+                self.resize_pty_all_panes().non_fatal();
+            }
+        }
         self.client_display_slots.borrow_mut().remove(&client_id);
         self.release_structured_render_state(client_id);
         self.pane_render_subscribers.remove(&client_id);
@@ -10552,7 +10687,7 @@ impl Screen {
         if !run_generation_accepts(&mut self.terminal_runs, terminal_id, generation) {
             return Ok(None);
         }
-        self.apply_pty_bytes(terminal_id, bytes)
+        self.apply_pty_bytes_with_generation(terminal_id, bytes, Some(generation))
     }
     fn note_terminal_run_started(&mut self, terminal_id: u32, generation: u64) {
         if self.terminal_was_closed(&PaneId::Terminal(terminal_id)) {
@@ -10639,6 +10774,14 @@ impl Screen {
         }
     }
     fn apply_pty_bytes(&mut self, pid: u32, vte_bytes: VteBytes) -> Result<Option<VteBytes>> {
+        self.apply_pty_bytes_with_generation(pid, vte_bytes, None)
+    }
+    fn apply_pty_bytes_with_generation(
+        &mut self,
+        pid: u32,
+        vte_bytes: VteBytes,
+        run_generation: Option<u64>,
+    ) -> Result<Option<VteBytes>> {
         self.pane_output_activity
             .insert(PaneId::Terminal(pid), Instant::now());
         let mut vte_bytes = Some(vte_bytes);
@@ -10650,7 +10793,7 @@ impl Screen {
                     let title_before = tab
                         .get_pane_with_id(PaneId::Terminal(pid))
                         .map(|pane| pane.current_title());
-                    tab.handle_pty_bytes(pid, bytes)
+                    tab.handle_pty_bytes_with_generation(pid, bytes, run_generation)
                         .context("failed to process pty bytes")?;
                     let title_after = tab
                         .get_pane_with_id(PaneId::Terminal(pid))
@@ -14951,8 +15094,12 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::RenderFrameAck { client_id, seq } => {
                 screen.handle_render_frame_ack(client_id, seq)?;
             },
-            ScreenInstruction::ForwardHostQuery { pane_id, query } => {
-                screen.handle_forward_host_query(pane_id, query);
+            ScreenInstruction::ForwardHostQuery {
+                pane_id,
+                query,
+                run_generation,
+            } => {
+                screen.handle_forward_host_query(pane_id, query, run_generation);
             },
             ScreenInstruction::NestedSessionMessageFromPane { pane_id, message } => {
                 screen.handle_nested_session_message_from_pane(pane_id, message);
@@ -15003,7 +15150,7 @@ pub(crate) fn screen_thread_main(
                 pane_id,
                 reply_bytes,
             } => {
-                screen.resume_pane_after_forward(pane_id, reply_bytes)?;
+                screen.resume_pane_after_forward(pane_id, reply_bytes, None)?;
                 // Same rationale as ForwardedReplyFromHost above — the
                 // resume's replay paints the grid, so we must schedule
                 // a render before yielding back to the screen loop.
@@ -15533,12 +15680,14 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::OverrideLayoutComplete(
                 tab_results,
+                failed_tabs,
                 retain_existing_terminal_panes,
                 retain_existing_plugin_panes,
                 client_id,
                 completion_tx,
             ) => {
-                let completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+                let mut completion_tx = crate::route::RecordedCompletion::new(completion_tx);
+                let mut failures = failed_tabs;
                 // Process each tab result
                 for tab_result in tab_results {
                     if let Some(tab) = screen.tabs.get_mut(&tab_result.tab_index) {
@@ -15560,6 +15709,7 @@ pub(crate) fn screen_thread_main(
                                 tab_result.tab_index,
                                 e
                             );
+                            failures.push((tab_result.tab_index, format!("{e:#}")));
                         }
                     } else {
                         // Tab doesn't exist - create it
@@ -15578,6 +15728,10 @@ pub(crate) fn screen_thread_main(
                                 tab_result.tab_index,
                                 e
                             );
+                            failures.push((
+                                tab_result.tab_index,
+                                format!("failed to create tab: {e:#}"),
+                            ));
                             continue;
                         }
 
@@ -15601,6 +15755,10 @@ pub(crate) fn screen_thread_main(
                                     tab_result.tab_index,
                                     e
                                 );
+                                failures.push((
+                                    tab_result.tab_index,
+                                    format!("failed to override new tab: {e:#}"),
+                                ));
                             }
                         }
                     }
@@ -15615,6 +15773,19 @@ pub(crate) fn screen_thread_main(
                 }
 
                 screen.apply_hidden_bars_to_all_tabs();
+                if !failures.is_empty() {
+                    let failure_summary = failures
+                        .iter()
+                        .map(|(tab_index, error)| format!("tab {tab_index}: {error}"))
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    if let Some(completion) = completion_tx.as_mut() {
+                        completion.set_exit_status(1);
+                        completion.set_error_message(format!(
+                            "layout override failed for {failure_summary}"
+                        ));
+                    }
+                }
                 // Single render and log after all tabs are updated (performance optimization)
                 screen.log_and_report_session_state()?;
                 let _ = screen.render(None);

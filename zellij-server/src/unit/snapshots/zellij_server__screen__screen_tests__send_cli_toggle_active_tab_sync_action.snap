@@ -2,4 +2,4 @@
 source: zellij-server/src/./unit/screen_tests.rs
 expression: received_write_instructions
 ---
-[Write(AdmittedWrite { bytes: [102, 111, 111], terminal_id: 0, completion: None, budget: true, handed_off: false }), Write(AdmittedWrite { bytes: [102, 111, 111], terminal_id: 1, completion: None, budget: true, handed_off: false })]
+[Write(AdmittedWrite { bytes: [102, 111, 111], terminal_id: 0, completion: None, budget: true, run_generation: None, handed_off: false }), Write(AdmittedWrite { bytes: [102, 111, 111], terminal_id: 1, completion: None, budget: true, run_generation: None, handed_off: false })]

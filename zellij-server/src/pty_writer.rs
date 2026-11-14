@@ -23,6 +23,7 @@ pub struct AdmittedWrite {
     terminal_id: u32,
     completion: Option<NotificationEnd>,
     budget: Option<Arc<PtyIngressBudget>>,
+    run_generation: Option<u64>,
     handed_off: bool,
 }
 
@@ -38,8 +39,14 @@ impl AdmittedWrite {
             terminal_id,
             completion,
             budget,
+            run_generation: None,
             handed_off: false,
         }
+    }
+
+    pub fn with_run_generation(mut self, run_generation: Option<u64>) -> Self {
+        self.run_generation = run_generation;
+        self
     }
 
     /// Move the fields out. Drop then does nothing: the caller owns the
@@ -72,6 +79,10 @@ impl AdmittedWrite {
     pub fn completion(&self) -> Option<&NotificationEnd> {
         self.completion.as_ref()
     }
+
+    pub fn run_generation(&self) -> Option<u64> {
+        self.run_generation
+    }
 }
 
 impl Drop for AdmittedWrite {
@@ -96,6 +107,7 @@ impl std::fmt::Debug for AdmittedWrite {
             .field("terminal_id", &self.terminal_id)
             .field("completion", &self.completion)
             .field("budget", &self.budget.is_some())
+            .field("run_generation", &self.run_generation)
             .field("handed_off", &self.handed_off)
             .finish()
     }
@@ -427,8 +439,10 @@ impl PtyWriterLoop {
                     PtyWriteInstruction::Write(admitted) => {
                         // Disarm the guard before any early return. The overflow
                         // path has to release and fail the completion itself.
+                        let reported_run_generation = admitted.run_generation();
                         let (bytes, terminal_id, completion, budget) = admitted.into_parts();
-                        let run_generation = self.adopted_runs.get(&terminal_id).copied();
+                        let run_generation = reported_run_generation
+                            .or_else(|| self.adopted_runs.get(&terminal_id).copied());
                         let queue = self.pending.entry(terminal_id).or_default();
                         if queue.remaining_bytes.saturating_add(bytes.len()) > MAX_PENDING_BYTES {
                             log::error!(

@@ -17445,9 +17445,9 @@ pub fn pending_vte_bytes_are_bounded_while_scrolled() {
 pub fn pre_layout_pty_output_is_coalesced_and_bounded() {
     let mut tab = create_new_tab(Size { rows: 24, cols: 80 }, false);
     tab.is_pending = true;
-    tab.buffer_pending_pty_bytes(1, vec![b'a'; super::MAX_PENDING_VTE_BYTES]);
-    tab.buffer_pending_pty_bytes(1, b"dropped".to_vec());
-    tab.buffer_pending_pty_bytes(2, b"other".to_vec());
+    tab.buffer_pending_pty_bytes(1, vec![b'a'; super::MAX_PENDING_VTE_BYTES], None);
+    tab.buffer_pending_pty_bytes(1, b"dropped".to_vec(), None);
+    tab.buffer_pending_pty_bytes(2, b"other".to_vec(), None);
 
     assert_eq!(tab.pending_instructions.len(), 3);
     match &tab.pending_instructions[0] {
@@ -17455,7 +17455,7 @@ pub fn pre_layout_pty_output_is_coalesced_and_bounded() {
         _ => panic!("expected a truncation marker"),
     }
     match &tab.pending_instructions[1] {
-        super::BufferedTabInstruction::HandlePtyBytes(pid, bytes) => {
+        super::BufferedTabInstruction::HandlePtyBytes(pid, _, bytes) => {
             assert_eq!(*pid, 1);
             assert_eq!(bytes, b"dropped");
         },
@@ -20433,6 +20433,8 @@ pub fn mouse_resize_of_a_closed_floating_pane_releases_the_mouse() {
         .position_and_size();
     tab.pane_being_resized_with_mouse = Some(super::PaneResizeState {
         pane_id: PaneId::Terminal(3),
+        client_id: 1,
+        button: zellij_utils::data::MouseButton::Left,
         edge: super::PaneEdge::Right,
         start_position: zellij_utils::position::Position::new(10, 10),
         start_geom,
@@ -20446,6 +20448,8 @@ pub fn mouse_resize_of_a_closed_floating_pane_releases_the_mouse() {
     assert!(tab.pane_being_resized_with_mouse.is_none());
     tab.pane_being_resized_with_mouse = Some(super::PaneResizeState {
         pane_id: PaneId::Terminal(99),
+        client_id: 1,
+        button: zellij_utils::data::MouseButton::Left,
         edge: super::PaneEdge::Right,
         start_position: zellij_utils::position::Position::new(10, 10),
         start_geom,
@@ -20455,6 +20459,53 @@ pub fn mouse_resize_of_a_closed_floating_pane_releases_the_mouse() {
         zellij_utils::position::Position::new(12, 14),
     );
     assert!(tab.handle_mouse_event(&release, 1).is_ok());
+    assert!(tab.pane_being_resized_with_mouse.is_none());
+}
+
+#[test]
+pub fn buttonless_mouse_motion_cancels_a_resize_gesture() {
+    let mut tab = tab_with_two_floating_panes();
+    let start_geom = tab
+        .floating_panes
+        .get_pane(PaneId::Terminal(3))
+        .unwrap()
+        .position_and_size();
+    tab.pane_being_resized_with_mouse = Some(super::PaneResizeState {
+        pane_id: PaneId::Terminal(3),
+        client_id: 1,
+        button: zellij_utils::data::MouseButton::Left,
+        edge: super::PaneEdge::Right,
+        start_position: zellij_utils::position::Position::new(10, 10),
+        start_geom,
+        is_floating: true,
+    });
+
+    let motion = zellij_utils::input::mouse::MouseEvent::new_buttonless_motion(
+        zellij_utils::position::Position::new(12, 14),
+    );
+    assert!(tab.handle_mouse_event(&motion, 1).is_ok());
+    assert!(tab.pane_being_resized_with_mouse.is_none());
+}
+
+#[test]
+pub fn removing_a_client_cancels_its_resize_gesture() {
+    let mut tab = tab_with_two_floating_panes();
+    let start_geom = tab
+        .floating_panes
+        .get_pane(PaneId::Terminal(3))
+        .unwrap()
+        .position_and_size();
+    tab.pane_being_resized_with_mouse = Some(super::PaneResizeState {
+        pane_id: PaneId::Terminal(3),
+        client_id: 1,
+        button: zellij_utils::data::MouseButton::Left,
+        edge: super::PaneEdge::Right,
+        start_position: zellij_utils::position::Position::new(10, 10),
+        start_geom,
+        is_floating: true,
+    });
+
+    tab.remove_client(1);
     assert!(tab.pane_being_resized_with_mouse.is_none());
 }
 
@@ -21887,6 +21938,64 @@ pub fn a_click_reaches_a_program_that_asked_for_the_mouse() {
 }
 
 #[test]
+pub fn a_captured_mouse_release_survives_a_focus_change() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    tab.tiled_panes.focus_pane(PaneId::Terminal(1), 1);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+    tab.handle_pty_bytes(2, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+
+    let position = zellij_utils::position::Position::new(5, 5);
+    tab.handle_mouse_event(
+        &zellij_utils::input::mouse::MouseEvent::new_left_press_event(position),
+        1,
+    )
+    .unwrap();
+    assert!(matches!(
+        tab.mouse_press_owner.get(&1),
+        Some(super::mouse_handler::MousePressOwner::App(
+            PaneId::Terminal(1)
+        ))
+    ));
+    let _ = drain_pty_writer(&rx);
+
+    tab.tiled_panes.focus_pane(PaneId::Terminal(2), 1);
+    // Release over the captured pane's frame after focus moved: the app that
+    // captured the press must still receive the release.
+    let release_position = zellij_utils::position::Position::new(0, 0);
+    tab.handle_mouse_event(
+        &zellij_utils::input::mouse::MouseEvent::new_left_release_event(release_position),
+        1,
+    )
+    .unwrap();
+
+    let writes: Vec<(u32, Vec<u8>)> = drain_pty_writer(&rx)
+        .into_iter()
+        .filter_map(|instruction| {
+            pty_write_bytes(&instruction).map(|(terminal_id, bytes)| (terminal_id, bytes.to_vec()))
+        })
+        .collect();
+    assert!(
+        writes
+            .iter()
+            .any(|(terminal_id, bytes)| *terminal_id == 1 && bytes.starts_with(b"\x1b[<")),
+        "the release should reach the pane that captured the press: {writes:?}"
+    );
+    assert!(
+        !writes.iter().any(|(terminal_id, _)| *terminal_id == 2),
+        "the release must not go to the newly focused pane: {writes:?}"
+    );
+}
+
+#[test]
 pub fn a_shift_click_bypasses_a_program_that_asked_for_the_mouse() {
     let size = Size {
         cols: 121,
@@ -22046,7 +22155,7 @@ fn nested_suppression_resolves_terminal_identity_by_pid_not_map_key() {
 #[test]
 fn deferred_rep_suffix_forwards_its_host_query() {
     let mut tab = create_new_tab(Size { cols: 20, rows: 5 }, true);
-    tab.handle_pty_bytes(1, b"a\x1b[1025b\x1b[14t".to_vec())
+    tab.handle_pty_bytes(1, b"a\x1b[1025b\x1b]11;?\x1b\\".to_vec())
         .unwrap();
     assert!(tab.has_pending_output(1));
 

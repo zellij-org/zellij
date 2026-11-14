@@ -179,38 +179,52 @@ pub(crate) const MAX_PENDING_VTE_BYTES: usize = 1024 * 1024;
 /// copying the rest of the backlog.
 #[derive(Debug, Default)]
 struct PendingPtyBacklog {
-    chunks: VecDeque<Vec<u8>>,
+    chunks: VecDeque<PendingPtyChunk>,
     head: usize,
     len: usize,
 }
 
+#[derive(Debug)]
+struct PendingPtyChunk {
+    run_generation: Option<u64>,
+    bytes: Vec<u8>,
+}
+
 impl PendingPtyBacklog {
-    fn push(&mut self, bytes: Vec<u8>) {
+    fn push(&mut self, bytes: Vec<u8>, run_generation: Option<u64>) {
         if bytes.is_empty() {
             return;
         }
         self.len = self.len.saturating_add(bytes.len());
-        self.chunks.push_back(bytes);
+        self.chunks.push_back(PendingPtyChunk {
+            run_generation,
+            bytes,
+        });
     }
 
-    fn take(&mut self, max: usize) -> Vec<u8> {
+    fn take(&mut self, max: usize) -> Vec<(Option<u64>, Vec<u8>)> {
         let mut out = Vec::new();
-        while out.len() < max {
+        let mut remaining = max;
+        while remaining > 0 {
             let Some(front) = self.chunks.front() else {
                 break;
             };
-            let available = front.len().saturating_sub(self.head);
+            let available = front.bytes.len().saturating_sub(self.head);
             if available == 0 {
                 self.chunks.pop_front();
                 self.head = 0;
                 continue;
             }
-            let take_n = available.min(max - out.len());
+            let take_n = available.min(remaining);
             let start = self.head;
-            out.extend_from_slice(&front[start..start + take_n]);
+            out.push((
+                front.run_generation,
+                front.bytes[start..start + take_n].to_vec(),
+            ));
             self.head += take_n;
             self.len = self.len.saturating_sub(take_n);
-            if self.head >= front.len() {
+            remaining -= take_n;
+            if self.head >= front.bytes.len() {
                 self.chunks.pop_front();
                 self.head = 0;
             }
@@ -510,7 +524,7 @@ enum StackListRemoval {
 
 enum BufferedTabInstruction {
     SetPaneSelectable(PaneId, bool),
-    HandlePtyBytes(u32, VteBytes),
+    HandlePtyBytes(u32, Option<u64>, VteBytes),
     NoteOutputTruncated(u32),
     HoldPane(PaneId, Option<i32>, bool, RunCommand), // Option<i32> is the exit status, bool is is_first_run
 }
@@ -2977,7 +2991,7 @@ impl Tab {
     /// Bytes past [`MAX_PENDING_VTE_BYTES`] for one pane are dropped, so a
     /// program that floods a tab that is still loading cannot grow this
     /// vector without a limit.
-    fn buffer_pending_pty_bytes(&mut self, pid: u32, bytes: VteBytes) {
+    fn buffer_pending_pty_bytes(&mut self, pid: u32, bytes: VteBytes, run_generation: Option<u64>) {
         if bytes.is_empty() {
             return;
         }
@@ -2989,7 +3003,7 @@ impl Tab {
             let mut dropped = 0usize;
             self.pending_instructions
                 .retain(|instruction| match instruction {
-                    BufferedTabInstruction::HandlePtyBytes(buffered_pid, buffered)
+                    BufferedTabInstruction::HandlePtyBytes(buffered_pid, _, buffered)
                         if *buffered_pid == pid =>
                     {
                         dropped = dropped.saturating_add(buffered.len());
@@ -3011,16 +3025,20 @@ impl Tab {
                 .push(BufferedTabInstruction::NoteOutputTruncated(pid));
         }
         *self.pending_pty_bytes.entry(pid).or_default() += bytes.len();
-        if let Some(BufferedTabInstruction::HandlePtyBytes(last_pid, buffered)) =
+        if let Some(BufferedTabInstruction::HandlePtyBytes(last_pid, last_generation, buffered)) =
             self.pending_instructions.last_mut()
         {
-            if *last_pid == pid {
+            if *last_pid == pid && *last_generation == run_generation {
                 buffered.extend_from_slice(&bytes);
                 return;
             }
         }
         self.pending_instructions
-            .push(BufferedTabInstruction::HandlePtyBytes(pid, bytes));
+            .push(BufferedTabInstruction::HandlePtyBytes(
+                pid,
+                run_generation,
+                bytes,
+            ));
     }
     pub fn apply_buffered_instructions(&mut self) -> Result<()> {
         let buffered_instructions: Vec<BufferedTabInstruction> =
@@ -3031,8 +3049,8 @@ impl Tab {
                 BufferedTabInstruction::SetPaneSelectable(pane_id, selectable) => {
                     self.set_pane_selectable(pane_id, selectable);
                 },
-                BufferedTabInstruction::HandlePtyBytes(terminal_id, bytes) => {
-                    self.handle_pty_bytes(terminal_id, bytes)?;
+                BufferedTabInstruction::HandlePtyBytes(terminal_id, run_generation, bytes) => {
+                    self.handle_pty_bytes_with_generation(terminal_id, bytes, run_generation)?;
                 },
                 BufferedTabInstruction::NoteOutputTruncated(terminal_id) => {
                     if let Some(pane) = self.get_pane_by_pid_mut(PaneId::Terminal(terminal_id)) {
@@ -3315,6 +3333,14 @@ impl Tab {
             if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
                 pane.reset_selection(Some(client_id));
             }
+        }
+        if self
+            .pane_being_resized_with_mouse
+            .as_ref()
+            .map(|state| state.client_id)
+            == Some(client_id)
+        {
+            self.pane_being_resized_with_mouse = None;
         }
         let had_mouse_press = self.mouse_press_owner.remove(&client_id).is_some();
         if had_mouse_press && self.mouse_press_owner.is_empty() {
@@ -5483,9 +5509,18 @@ impl Tab {
             pane.set_guest_modal_shortcuts(shortcuts);
         }
     }
+    #[cfg(test)]
     pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
+        self.handle_pty_bytes_with_generation(pid, bytes, None)
+    }
+    pub fn handle_pty_bytes_with_generation(
+        &mut self,
+        pid: u32,
+        bytes: VteBytes,
+        run_generation: Option<u64>,
+    ) -> Result<()> {
         if self.is_pending {
-            self.buffer_pending_pty_bytes(pid, bytes);
+            self.buffer_pending_pty_bytes(pid, bytes, run_generation);
             return Ok(());
         }
         let err_context = || format!("failed to handle pty bytes from fd {pid}");
@@ -5497,12 +5532,13 @@ impl Tab {
             || self.terminal_pane_is_scrolled(pid)
             || !self.terminal_pane_can_accept_pty_bytes(pid)
         {
-            self.enqueue_pending_vte(pid, bytes);
+            self.enqueue_pending_vte(pid, bytes, run_generation);
             self.apply_one_pending_vte_quantum(pid)
                 .with_context(err_context)?;
             return Ok(());
         }
-        self.process_pty_bytes(pid, bytes).with_context(err_context)
+        self.process_pty_bytes(pid, bytes, run_generation)
+            .with_context(err_context)
     }
     fn terminal_pane_is_scrolled(&self, pid: u32) -> bool {
         self.get_pane_by_pid(PaneId::Terminal(pid))
@@ -5513,13 +5549,13 @@ impl Tab {
             .map(|pane| pane.can_accept_pty_bytes())
             .unwrap_or(true)
     }
-    fn enqueue_pending_vte(&mut self, pid: u32, bytes: Vec<u8>) {
+    fn enqueue_pending_vte(&mut self, pid: u32, bytes: Vec<u8>, run_generation: Option<u64>) {
         if bytes.is_empty() {
             return;
         }
         let overflowed = {
             let backlog = self.pending_vte.entry(pid).or_default();
-            backlog.push(bytes);
+            backlog.push(bytes, run_generation);
             backlog.len > MAX_PENDING_VTE_BYTES
         };
         if overflowed {
@@ -5548,7 +5584,7 @@ impl Tab {
             self.pending_vte.remove(&pid);
         }
     }
-    fn take_pending_vte_quantum(&mut self, pid: u32) -> Vec<u8> {
+    fn take_pending_vte_quantum(&mut self, pid: u32) -> Vec<(Option<u64>, Vec<u8>)> {
         let Some(backlog) = self.pending_vte.get_mut(&pid) else {
             return Vec::new();
         };
@@ -5610,14 +5646,16 @@ impl Tab {
         if !parse_now || !has_bytes || !can_accept {
             return Ok(());
         }
-        let bytes = self.take_pending_vte_quantum(pid);
-        if bytes.is_empty() {
+        let segments = self.take_pending_vte_quantum(pid);
+        if segments.is_empty() {
             if let Some(pane) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
                 pane.scrolled_backlog_idle();
             }
             return Ok(());
         }
-        self.process_pty_bytes(pid, bytes)?;
+        for (run_generation, bytes) in segments {
+            self.process_pty_bytes(pid, bytes, run_generation)?;
+        }
         if self.pending_vte_len(pid) == 0 {
             if let Some(pane) = self.get_pane_by_pid_mut(PaneId::Terminal(pid)) {
                 pane.scrolled_backlog_idle();
@@ -5659,7 +5697,7 @@ impl Tab {
                     // produce host queries, clipboard/OSC events or messages.
                     // Run them through the normal post-output drain so none
                     // stay stuck until an unrelated chunk arrives.
-                    if let Err(error) = self.process_pty_bytes(pid, Vec::new()) {
+                    if let Err(error) = self.process_pty_bytes(pid, Vec::new(), None) {
                         log::error!("failed to settle deferred output for pane {pid}: {error}");
                     }
                 }
@@ -5704,14 +5742,23 @@ impl Tab {
     /// paused are re-fed through vte. The re-feed itself may produce
     /// another forward and re-arm the pause; the cycle bounds at the
     /// buffered byte count.
-    pub fn resume_pane_after_forward(&mut self, pid: u32, reply_bytes: Vec<u8>) -> Result<()> {
+    pub fn resume_pane_after_forward(
+        &mut self,
+        pid: u32,
+        reply_bytes: Vec<u8>,
+        run_generation: Option<u64>,
+    ) -> Result<()> {
         let err_context = || format!("failed to resume pane {pid} after forward");
         // Write the reply first so the app sees it on stdin before
         // any subsequent (sync or async) reply that follows in the
         // buffered byte stream.
         if !reply_bytes.is_empty() {
-            self.write_to_pane_id_without_preprocessing(reply_bytes, PaneId::Terminal(pid))
-                .with_context(err_context)?;
+            self.write_to_pane_id_without_preprocessing(
+                reply_bytes,
+                PaneId::Terminal(pid),
+                run_generation,
+            )
+            .with_context(err_context)?;
         }
         // Clear the pause; any bytes buffered while it waited for the
         // host reply are processed in place, in order.
@@ -5724,7 +5771,7 @@ impl Tab {
                 return Ok(());
             };
         if has_buffered {
-            self.process_pty_bytes(pid, Vec::new())
+            self.process_pty_bytes(pid, Vec::new(), run_generation)
                 .with_context(err_context)?;
         }
         Ok(())
@@ -5736,7 +5783,12 @@ impl Tab {
             .map(|pane| pane.pending_pty_input_exceeds_forward_limit())
             .unwrap_or(false)
     }
-    fn process_pty_bytes(&mut self, pid: u32, mut bytes: VteBytes) -> Result<()> {
+    fn process_pty_bytes(
+        &mut self,
+        pid: u32,
+        mut bytes: VteBytes,
+        run_generation: Option<u64>,
+    ) -> Result<()> {
         let err_context = || format!("failed to process pty bytes from pid {pid}");
 
         if let Some(terminal_output) = pane_by_pid_mut(
@@ -5804,7 +5856,7 @@ impl Tab {
                     .push((PaneId::Terminal(pid), pane_signals));
             }
             for message in messages_to_pty {
-                self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
+                self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid), None)
                     .with_context(err_context)?;
             }
             for query in crate::host_query::pack_shared_round_trip(forwarded_queries) {
@@ -5813,6 +5865,7 @@ impl Tab {
                     .send_to_screen(ScreenInstruction::ForwardHostQuery {
                         pane_id: PaneId::Terminal(pid),
                         query,
+                        run_generation,
                     });
             }
             for message in nested_session_messages {
@@ -6404,6 +6457,7 @@ impl Tab {
         &mut self,
         raw_input_bytes: Vec<u8>,
         pane_id: PaneId,
+        run_generation: Option<u64>,
     ) -> Result<bool> {
         // returns true if we need to update the UI (eg. when a command pane is closed with ctrl-c)
         let err_context = || format!("failed to write to pane with id {pane_id:?}");
@@ -6413,12 +6467,10 @@ impl Tab {
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
                 self.senders
-                    .send_to_pty_writer(PtyWriteInstruction::Write(AdmittedWrite::new(
-                        raw_input_bytes,
-                        active_terminal_id,
-                        None,
-                        None,
-                    )))
+                    .send_to_pty_writer(PtyWriteInstruction::Write(
+                        AdmittedWrite::new(raw_input_bytes, active_terminal_id, None, None)
+                            .with_run_generation(run_generation),
+                    ))
                     .with_context(err_context)?;
                 should_update_ui = true;
             },

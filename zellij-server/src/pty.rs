@@ -38,6 +38,111 @@ use zellij_utils::{
     session_serialization,
 };
 
+const EXPLICIT_SAVE_QUEUE_CAPACITY: usize = 4;
+
+enum PersistenceJob {
+    ExplicitSave {
+        session_id: String,
+        incarnation: u128,
+        session_info: SessionInfo,
+        session_layout_metadata: SessionLayoutMetadata,
+        completion: Option<NotificationEnd>,
+    },
+    ReportLayout(SessionLayoutMetadata),
+}
+
+struct PersistenceSender {
+    sender: zellij_utils::channels::Sender<PersistenceJob>,
+}
+
+impl PersistenceSender {
+    fn try_send(
+        &self,
+        job: PersistenceJob,
+    ) -> Result<(), zellij_utils::channels::TrySendError<PersistenceJob>> {
+        self.sender.try_send(job)
+    }
+}
+
+fn spawn_persistence_worker(senders: ThreadSenders) -> PersistenceSender {
+    let (sender, receiver) =
+        zellij_utils::channels::bounded::<PersistenceJob>(EXPLICIT_SAVE_QUEUE_CAPACITY);
+    let _ = std::thread::Builder::new()
+        .name("session-persistence".to_owned())
+        .spawn(move || {
+            while let Ok(job) = receiver.recv() {
+                match job {
+                    PersistenceJob::ExplicitSave {
+                        session_id,
+                        incarnation,
+                        session_info,
+                        session_layout_metadata,
+                        completion,
+                    } => {
+                        let mut completion = crate::route::RecordedCompletion::new(completion);
+                        let result: anyhow::Result<()> = (|| {
+                            let kdl_and_files = session_serialization::serialize_session_layout(
+                                session_layout_metadata.into(),
+                            )
+                            .map_err(|e| anyhow::anyhow!("failed to serialize layout: {}", e))?;
+                            let _ = senders.send_to_background_jobs(
+                                BackgroundJob::ReportLayoutInfo(kdl_and_files.clone()),
+                            );
+                            write_session_state_to_disk(
+                                session_id,
+                                incarnation,
+                                session_info,
+                                kdl_and_files,
+                            )
+                            .map_err(|e| {
+                                anyhow::anyhow!("failed to persist session state to disk: {}", e)
+                            })?;
+                            let timestamp_millis = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis()
+                                as u64;
+                            let _ = senders.send_to_plugin(
+                                PluginInstruction::UpdateSessionSaveTime(timestamp_millis),
+                            );
+                            Ok(())
+                        })();
+                        if let Err(error) = result {
+                            log::error!("Explicit session save failed: {error:#}");
+                            if let Some(completion) = completion.as_mut() {
+                                completion.set_exit_status(1);
+                                completion.set_error_message(format!("{error:#}"));
+                            }
+                        }
+                    },
+                    PersistenceJob::ReportLayout(session_layout_metadata) => {
+                        match session_serialization::serialize_session_layout(
+                            session_layout_metadata.into(),
+                        ) {
+                            Ok(kdl_and_files) => {
+                                let _ = senders.send_to_background_jobs(
+                                    BackgroundJob::ReportLayoutInfo(kdl_and_files),
+                                );
+                            },
+                            Err(error) => {
+                                log::error!("Failed to serialize layout: {}", error);
+                            },
+                        }
+                    },
+                }
+            }
+        });
+    PersistenceSender { sender }
+}
+
+fn fail_explicit_save_completion(completion: Option<NotificationEnd>, message: String) {
+    if let Some(mut completion) = completion {
+        completion.set_exit_status(1);
+        completion.set_error_message(message);
+        completion.complete_recorded();
+    }
+}
+
 pub type VteBytes = Vec<u8>;
 pub type TabIndex = u32;
 
@@ -322,6 +427,7 @@ pub(crate) struct Pty {
     pane_env: PaneEnv,
     plugin_cwds: HashMap<u32, PathBuf>, // plugin_id -> cwd
     session_context_pane: Option<PaneId>,
+    persistence_sender: Option<PersistenceSender>,
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: String) -> Result<()> {
@@ -331,6 +437,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
     } else {
         zellij_utils::sessions::read_session_incarnation(&session_id).ok()
     };
+    pty.persistence_sender = Some(spawn_persistence_worker(pty.bus.senders.clone()));
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -702,9 +809,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 let err_context = || "failed to override layout";
 
                 let mut all_tab_results = Vec::new();
+                let mut failed_tabs = Vec::new();
 
                 // Process each tab
                 for (tab_layout_info, plugin_ids) in tab_layouts_with_plugin_ids {
+                    let tab_index = tab_layout_info.tab_index;
                     match pty.spawn_terminals_for_layout_override(
                         cwd.clone(),
                         tab_layout_info.tiled_layout,
@@ -721,11 +830,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     ) {
                         Ok(tab_result) => all_tab_results.push(tab_result),
                         Err(e) => {
-                            log::error!(
-                                "Failed to spawn terminals for tab {}: {:?}",
-                                tab_layout_info.tab_index,
-                                e
-                            );
+                            log::error!("Failed to spawn terminals for tab {}: {:?}", tab_index, e);
+                            failed_tabs.push((tab_index, format!("{e:#}")));
                             // Continue with other tabs (best-effort approach)
                         },
                     }
@@ -736,6 +842,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     .senders
                     .send_to_screen(ScreenInstruction::OverrideLayoutComplete(
                         all_tab_results,
+                        failed_tabs,
                         retain_existing_terminal_panes,
                         retain_existing_plugin_panes,
                         client_id,
@@ -959,23 +1066,18 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                 pty.plugin_cwds.insert(plugin_id, cwd);
             },
             PtyInstruction::LogLayoutToHd(mut session_layout_metadata) => {
-                let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 if session_layout_metadata.is_dirty() {
-                    match session_serialization::serialize_session_layout(
-                        session_layout_metadata.into(),
-                    ) {
-                        Ok(kdl_layout_and_pane_contents) => {
-                            pty.bus
-                                .senders
-                                .send_to_background_jobs(BackgroundJob::ReportLayoutInfo(
-                                    kdl_layout_and_pane_contents,
-                                ))
-                                .with_context(err_context)?;
-                        },
-                        Err(e) => {
-                            log::error!("Failed to log layout to HD: {}", e);
-                        },
+                    if let Some(sender) = pty.persistence_sender.as_ref() {
+                        if let Err(error) =
+                            sender.try_send(PersistenceJob::ReportLayout(session_layout_metadata))
+                        {
+                            log::error!("Failed to queue layout serialization: {:?}", error);
+                        }
+                    } else {
+                        log::error!(
+                            "Session persistence worker unavailable; dropping layout snapshot"
+                        );
                     }
                 }
             },
@@ -989,49 +1091,46 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
             } => {
                 let mut _completion_tx = crate::route::RecordedCompletion::new(_completion_tx);
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
-                match session_serialization::serialize_session_layout(
-                    session_layout_metadata.into(),
-                ) {
-                    Ok(kdl_and_files) => {
-                        // Cache is keyed by the stable session id, not the name.
-                        match pty.session_incarnation {
-                            None => {
-                                log::error!(
-                                    "Refusing to persist session state for {} without a captured incarnation",
-                                    session_id
-                                );
-                            },
-                            Some(incarnation) => match write_session_state_to_disk(
-                                session_id.clone(),
-                                incarnation,
-                                session_info,
-                                kdl_and_files.clone(),
-                            ) {
-                                Ok(()) => {
-                                    // Update session save time for plugin query
-                                    let timestamp_millis = std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .unwrap_or_default()
-                                        .as_millis()
-                                        as u64;
-                                    let _ = pty.bus.senders.send_to_plugin(
-                                        PluginInstruction::UpdateSessionSaveTime(timestamp_millis),
-                                    );
-                                },
-                                Err(e) => {
-                                    log::error!("Failed to persist session state to disk: {}", e);
-                                },
-                            },
-                        }
-
-                        let _ = pty.bus.senders.send_to_background_jobs(
-                            BackgroundJob::ReportLayoutInfo(kdl_and_files),
+                let incarnation = match pty.session_incarnation {
+                    Some(incarnation) => incarnation,
+                    None => {
+                        let message = format!(
+                            "refusing to persist session state for {} without a captured incarnation",
+                            session_id
                         );
-                    },
-                    Err(e) => {
-                        log::error!("Failed to serialize layout: {}", e);
+                        log::error!("{message}");
+                        fail_explicit_save_completion(_completion_tx.take(), message);
+                        continue;
                     },
                 };
+                let job = PersistenceJob::ExplicitSave {
+                    session_id: session_id.clone(),
+                    incarnation,
+                    session_info,
+                    session_layout_metadata,
+                    completion: _completion_tx.take(),
+                };
+                let Some(sender) = pty.persistence_sender.as_ref() else {
+                    if let PersistenceJob::ExplicitSave { completion, .. } = job {
+                        fail_explicit_save_completion(
+                            completion,
+                            "session persistence worker is unavailable".to_owned(),
+                        );
+                    }
+                    continue;
+                };
+                if let Err(error) = sender.try_send(job) {
+                    let job = match error {
+                        zellij_utils::channels::TrySendError::Full(job)
+                        | zellij_utils::channels::TrySendError::Disconnected(job) => job,
+                    };
+                    if let PersistenceJob::ExplicitSave { completion, .. } = job {
+                        fail_explicit_save_completion(
+                            completion,
+                            "session persistence queue is full".to_owned(),
+                        );
+                    }
+                }
             },
             PtyInstruction::FillPluginCwd(
                 should_float,
@@ -1172,6 +1271,7 @@ impl Pty {
             pane_env,
             plugin_cwds: HashMap::new(),
             session_context_pane: None,
+            persistence_sender: None,
         }
     }
     pub fn get_default_terminal(

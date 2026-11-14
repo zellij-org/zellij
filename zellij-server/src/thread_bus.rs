@@ -466,17 +466,16 @@ fn reserve_pty_write(
     };
     // Disarm the caller's guard before try_reserve. Rejection must not build
     // another one: nothing was reserved, so nothing may be released.
+    let reported_run_generation = admitted.run_generation();
     let (bytes, terminal_id, mut completion, _caller_budget) = admitted.into_parts();
     if let Err(message) = budget.try_reserve(terminal_id, bytes.len()) {
         fail_write_completion(&mut completion, message.clone());
         return Err(anyhow::anyhow!(message)).context("failed to send message to pty writer");
     }
-    Ok(PtyWriteInstruction::Write(AdmittedWrite::new(
-        bytes,
-        terminal_id,
-        completion,
-        Some(Arc::clone(budget)),
-    )))
+    Ok(PtyWriteInstruction::Write(
+        AdmittedWrite::new(bytes, terminal_id, completion, Some(Arc::clone(budget)))
+            .with_run_generation(reported_run_generation),
+    ))
 }
 
 fn reject_unadmitted(instruction: PtyWriteInstruction, message: &str) -> Result<()> {

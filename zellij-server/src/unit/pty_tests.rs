@@ -1514,6 +1514,75 @@ fn a_generic_spawn_failure_reports_an_error_completion() {
     pty_thread.join().unwrap();
 }
 
+#[test]
+fn an_explicit_save_without_an_incarnation_reports_failure() {
+    let mock = MockOsApi::new();
+    let (pty_tx, pty_rx) = channels::unbounded();
+    let pty_sender = SenderWithContext::new(pty_tx);
+    let bus: Bus<PtyInstruction> = Bus::new(
+        vec![pty_rx],
+        None,
+        Some(&pty_sender),
+        None,
+        None,
+        None,
+        None,
+        Some(Box::new(mock)),
+    )
+    .should_silently_fail();
+    let pty = Pty::new(bus, false, None, None, Default::default());
+    let pty_thread = std::thread::spawn(move || {
+        pty_thread_main(pty, Box::new(Layout::default()), "test-session".to_owned()).unwrap()
+    });
+    let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+
+    pty_sender
+        .send(PtyInstruction::SaveSessionToDisk {
+            session_name: "test-session".to_owned(),
+            session_info: SessionInfo::default(),
+            session_layout_metadata: SessionLayoutMetadata::default(),
+            completion_tx: Some(NotificationEnd::new(completion_tx)),
+        })
+        .unwrap();
+
+    let result = completion_rx
+        .blocking_recv()
+        .expect("the failed explicit save must complete the action");
+    assert_eq!(result.exit_status, Some(1));
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("without a captured incarnation")),
+        "the completion must carry the persistence failure: {:?}",
+        result.error_message
+    );
+
+    let _ = pty_sender.send(PtyInstruction::Exit);
+    pty_thread.join().unwrap();
+}
+
+#[test]
+fn the_persistence_worker_serializes_layout_off_the_pty_actor() {
+    let (background_jobs_tx, background_jobs_rx) = channels::unbounded();
+    let senders = ThreadSenders {
+        to_background_jobs: Some(SenderWithContext::new(background_jobs_tx)),
+        ..Default::default()
+    };
+    let persistence_sender = spawn_persistence_worker(senders);
+
+    persistence_sender
+        .try_send(PersistenceJob::ReportLayout(
+            SessionLayoutMetadata::default(),
+        ))
+        .expect("the worker lane accepts a layout snapshot");
+
+    let (instruction, _) = background_jobs_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("the worker reports serialized layout to the background jobs thread");
+    assert!(matches!(instruction, BackgroundJob::ReportLayoutInfo(_)));
+}
+
 fn run_with_hold(command: &str, hold_on_close: bool) -> Run {
     let mut run_command = RunCommand::new(PathBuf::from(command));
     run_command.hold_on_close = hold_on_close;

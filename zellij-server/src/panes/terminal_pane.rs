@@ -1050,7 +1050,7 @@ impl Pane for TerminalPane {
 
     fn drain_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
         self.grid.clear_forward_hold();
-        self.grid.pending_forwarded_queries.drain(..).collect()
+        self.grid.drain_pending_forwarded_queries()
     }
 
     fn drain_nested_session_messages(&mut self) -> Vec<NestedSessionMessage> {
@@ -1988,7 +1988,7 @@ impl TerminalPane {
         self.fake_cursor_locations.clear();
         self.discard_unfinished_input();
         self.grid.clear_forward_hold();
-        self.grid.pending_forwarded_queries.clear();
+        self.grid.clear_pending_forwarded_queries();
         self.grid.pending_messages_to_pty.clear();
         self.grid.pending_clipboard_update = None;
         self.grid.pending_osc7_cwd = None;

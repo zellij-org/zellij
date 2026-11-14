@@ -3418,17 +3418,11 @@ fn terminal_pixel_size_reports() {
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
     vte_parser.feed(&mut grid, &content);
-    // CSI 14t and CSI 16t are forwarded to the host; Zellij no longer
-    // synthesises local replies from character_cell_size for these.
-    assert!(grid.pending_messages_to_pty.is_empty());
-    use crate::host_query::HostQuery;
     assert_eq!(
-        grid.pending_forwarded_queries,
-        vec![
-            HostQuery::TextAreaPixelSize,
-            HostQuery::CharacterCellPixelSize
-        ],
+        grid.pending_messages_to_pty,
+        vec![b"\x1b[4;1071;776t".to_vec(), b"\x1b[6;21;8t".to_vec()],
     );
+    assert!(grid.pending_forwarded_queries.is_empty());
 }
 
 #[test]
@@ -3460,17 +3454,11 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
     vte_parser.feed(&mut grid, &content);
-    // Forwarding is independent of character_cell_size availability —
-    // the host terminal is authoritative for these queries regardless
-    // of what Zellij knows locally.
     assert!(grid.pending_messages_to_pty.is_empty());
     use crate::host_query::HostQuery;
     assert_eq!(
         grid.pending_forwarded_queries,
-        vec![
-            HostQuery::TextAreaPixelSize,
-            HostQuery::CharacterCellPixelSize
-        ],
+        vec![HostQuery::CharacterCellPixelSize],
     );
 }
 
@@ -6665,36 +6653,25 @@ fn new_grid_for_forwarding_test() -> Grid {
 }
 
 #[test]
-fn csi_14t_forwards_to_host_not_local() {
-    // CSI 14t used to synthesize a local "\x1b[4;H;Wt" reply; after the
-    // refactor it must be forwarded to the host instead so apps observe
-    // the terminal's real window pixel dimensions.
+fn csi_14t_reports_the_pane_text_area_locally() {
     let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     parser.feed(&mut grid, b"\x1b[14t");
-    assert!(
-        grid.pending_messages_to_pty.is_empty(),
-        "local reply path must not fire for 14t"
-    );
-    assert_eq!(grid.pending_forwarded_queries.len(), 1);
     assert_eq!(
-        grid.pending_forwarded_queries[0],
-        crate::host_query::HostQuery::TextAreaPixelSize,
-        "forwarded classification must be TextAreaPixelSize"
+        grid.pending_messages_to_pty,
+        vec![b"\x1b[4;160;160t".to_vec()],
+        "14t must report the pane text area, not the outer window"
     );
+    assert!(grid.pending_forwarded_queries.is_empty());
 }
 
 #[test]
-fn csi_16t_forwards_to_host_not_local() {
+fn csi_16t_reports_the_shared_cell_size_locally() {
     let mut parser = vt_parser::Parser::new();
     let mut grid = new_grid_for_forwarding_test();
     parser.feed(&mut grid, b"\x1b[16t");
-    assert!(grid.pending_messages_to_pty.is_empty());
-    assert_eq!(grid.pending_forwarded_queries.len(), 1);
-    assert_eq!(
-        grid.pending_forwarded_queries[0],
-        crate::host_query::HostQuery::CharacterCellPixelSize,
-    );
+    assert_eq!(grid.pending_messages_to_pty, vec![b"\x1b[6;16;8t".to_vec()]);
+    assert!(grid.pending_forwarded_queries.is_empty());
 }
 
 #[test]
@@ -12217,7 +12194,7 @@ fn cursor_position_reports_respect_origin_mode_and_scroll_region() {
         (
             "decom_cleared_returns_to_absolute",
             b"\x1b[5;10r\x1b[?6h\x1b[3;1H\x1b[?6l\x1b[6n",
-            b"\x1b[7;1R",
+            b"\x1b[1;1R",
         ),
     ];
     for (label, input, expected) in cases {
@@ -16120,4 +16097,99 @@ fn reset_input_modes_clears_saved_alternate_screen_keyboard_state() {
     feed_bytes(&mut grid, b"\x1b[?1049l");
     assert_eq!(grid.kitty_keyboard_flags(), 0);
     assert_eq!(viewport_texts(&grid)[0], "main");
+}
+
+#[test]
+fn origin_mode_transitions_home_the_cursor() {
+    let mut grid = create_grid_with_size_and_raw(10, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[3;7r");
+    feed_bytes(&mut grid, b"\x1b[5;10H");
+
+    feed_bytes(&mut grid, b"\x1b[?6h");
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((0, 2))
+    );
+
+    feed_bytes(&mut grid, b"\x1b[4;5H");
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((4, 5))
+    );
+
+    feed_bytes(&mut grid, b"\x1b[?6l");
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((0, 0))
+    );
+}
+
+#[test]
+fn origin_mode_transitions_clear_pending_wrap() {
+    let mut grid = create_grid_with_size_and_raw(5, 5, b"abcde");
+    assert_eq!(grid.cursor.x, 5);
+
+    feed_bytes(&mut grid, b"\x1b[?6h");
+    assert_eq!(grid.cursor.x, 0);
+}
+
+#[test]
+fn resetting_scroll_margins_homes_the_cursor() {
+    let mut grid = create_grid_with_size_and_raw(10, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[3;7r");
+    feed_bytes(&mut grid, b"\x1b[8;12H");
+
+    feed_bytes(&mut grid, b"\x1b[r");
+    assert_eq!(
+        grid.cursor_coordinates().map(|(x, y, _)| (x, y)),
+        Some((0, 0))
+    );
+}
+
+#[test]
+fn terminal_pixel_queries_use_the_pane_text_area() {
+    let mut grid = create_grid_with_size_and_raw(5, 7, b"");
+    *grid.character_cell_size.borrow_mut() = Some(SizeInPixels {
+        height: 20,
+        width: 10,
+    });
+
+    feed_bytes(&mut grid, b"\x1b[14t");
+    assert_eq!(
+        grid.pending_messages_to_pty.pop(),
+        Some(b"\x1b[4;100;70t".to_vec()),
+        "14t reports the pane text area, not the outer window"
+    );
+    feed_bytes(&mut grid, b"\x1b[16t");
+    assert_eq!(
+        grid.pending_messages_to_pty.pop(),
+        Some(b"\x1b[6;20;10t".to_vec())
+    );
+    feed_bytes(&mut grid, b"\x1b[18t");
+    assert_eq!(
+        grid.pending_messages_to_pty.pop(),
+        Some(b"\x1b[8;5;7t".to_vec())
+    );
+    assert!(
+        grid.pending_forwarded_queries.is_empty(),
+        "pane-local pixel and character queries must not go to the host"
+    );
+}
+
+#[test]
+fn text_area_pixel_query_is_unanswered_without_cell_metrics() {
+    let mut grid = create_grid_with_size_and_raw(5, 7, b"");
+    feed_bytes(&mut grid, b"\x1b[14t");
+    assert!(
+        grid.pending_messages_to_pty.is_empty(),
+        "a full-window pixel reply must not be substituted for an unknown pane size"
+    );
+    assert!(grid.pending_forwarded_queries.is_empty());
+
+    feed_bytes(&mut grid, b"\x1b[16t");
+    assert!(grid.pending_messages_to_pty.is_empty());
+    assert!(matches!(
+        grid.pending_forwarded_queries.as_slice(),
+        [crate::host_query::HostQuery::CharacterCellPixelSize]
+    ));
 }

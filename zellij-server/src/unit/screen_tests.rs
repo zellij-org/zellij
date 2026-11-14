@@ -2061,6 +2061,90 @@ fn zero_character_cell_sizes_are_ignored() {
 }
 
 #[test]
+fn pixel_dimensions_use_one_clients_complete_metrics() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(size, true, true);
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 100,
+            rows: 50,
+        },
+    );
+
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 10,
+                width: 5,
+            }),
+            text_area_size: None,
+        },
+    );
+    screen.update_pixel_dimensions(
+        2,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: Some(SizeInPixels {
+                height: 1050,
+                width: 900,
+            }),
+        },
+    );
+
+    assert_eq!(
+        *screen.character_cell_size.borrow(),
+        Some(SizeInPixels {
+            height: 21,
+            width: 9
+        }),
+        "the newest complete report becomes the provider"
+    );
+    assert_eq!(
+        screen.pixel_dimensions,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 21,
+                width: 9
+            }),
+            text_area_size: Some(SizeInPixels {
+                height: 1050,
+                width: 900
+            }),
+        },
+        "text-area and cell metrics come from the same client"
+    );
+
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: None,
+        },
+    );
+    assert_eq!(
+        *screen.character_cell_size.borrow(),
+        Some(SizeInPixels {
+            height: 21,
+            width: 9
+        }),
+        "an empty update does not steal the provider"
+    );
+
+    screen.client_pixel_dimensions.remove(&2);
+    screen.select_pixel_dimension_provider(None);
+    assert_eq!(
+        *screen.character_cell_size.borrow(),
+        Some(SizeInPixels {
+            height: 10,
+            width: 5
+        }),
+        "the provider falls back to the remaining usable client"
+    );
+}
+
+#[test]
 fn attach_after_first_tab_closed() {
     // ensure https://github.com/zellij-org/zellij/issues/1645 is fixed
     let size = Size {
@@ -9999,6 +10083,18 @@ impl ForwardCapture {
         out
     }
 
+    fn drain_pty_writes_with_generation(&self) -> Vec<(Vec<u8>, u32, Option<u64>)> {
+        let mut out = Vec::new();
+        while let Ok((instr, _ctx)) = self.pty_writer_rx.try_recv() {
+            if let PtyWriteInstruction::Write(write) = instr {
+                let run_generation = write.run_generation();
+                let (bytes, terminal_id, _, _) = write.into_parts();
+                out.push((bytes, terminal_id, run_generation));
+            }
+        }
+        out
+    }
+
     /// Drain every pending `ServerInstruction::KeyPassthroughChanged`,
     /// returning the `notify_guest` flag for each. Other variants are
     /// dropped.
@@ -10786,6 +10882,7 @@ fn plugin_pane_reply_is_dropped_without_write() {
         super::PendingForwardEntry {
             pane_id: PaneId::Plugin(42),
             query: bg_query(),
+            run_generation: None,
         },
     );
     screen.forward_in_flight_token = Some(77);
@@ -10805,6 +10902,74 @@ fn plugin_pane_reply_is_dropped_without_write() {
     assert!(
         screen.forward_in_flight_token.is_none(),
         "slot still released"
+    );
+}
+
+#[test]
+fn reply_from_a_previous_run_is_discarded() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.terminal_runs.insert(
+        1,
+        super::TerminalRun {
+            generation: 2,
+            drained: false,
+            deferred_exit: None,
+        },
+    );
+    screen.pending_forwarded_queries.insert(
+        7,
+        super::PendingForwardEntry {
+            pane_id: PaneId::Terminal(1),
+            query: bg_query(),
+            run_generation: Some(1),
+        },
+    );
+    screen.forward_in_flight_token = Some(7);
+
+    screen
+        .handle_forwarded_reply_from_host(7, b"stale".to_vec())
+        .expect("ok");
+
+    assert!(
+        capture.drain_pty_writes().is_empty(),
+        "a reply from run 1 must not reach run 2"
+    );
+    assert_eq!(screen.forward_in_flight_token, None);
+}
+
+#[test]
+fn reply_from_the_current_run_is_stamped_with_its_origin_generation() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.terminal_runs.insert(
+        1,
+        super::TerminalRun {
+            generation: 2,
+            drained: false,
+            deferred_exit: None,
+        },
+    );
+    screen.pending_forwarded_queries.insert(
+        8,
+        super::PendingForwardEntry {
+            pane_id: PaneId::Terminal(1),
+            query: bg_query(),
+            run_generation: Some(2),
+        },
+    );
+    screen.forward_in_flight_token = Some(8);
+
+    screen
+        .handle_forwarded_reply_from_host(8, b"reply".to_vec())
+        .expect("ok");
+
+    assert_eq!(
+        capture.drain_pty_writes_with_generation(),
+        vec![(b"reply".to_vec(), 1, Some(2))],
+        "the reply must carry the originating run into the pty writer"
     );
 }
 
@@ -12097,12 +12262,7 @@ fn empty_reply_with_paused_pane_drains_buffer_without_phantom_write() {
 // bytes the kitty interceptor was holding. With `noise`, an unrelated APC
 // follows every line so that the stream takes the interceptor path.
 fn numbered_lines_with_queries(count: usize, noise: bool) -> (Vec<u8>, Vec<String>) {
-    let queries: [&[u8]; 4] = [
-        b"\x1b[14t",
-        b"\x1b[16t",
-        b"\x1b]11;?\x07",
-        b"\x1b]10;?\x1b\\",
-    ];
+    let queries: [&[u8]; 2] = [b"\x1b]11;?\x07", b"\x1b]10;?\x1b\\"];
     let mut stream = Vec::new();
     let mut lines = Vec::new();
     for i in 0..count {
@@ -12260,9 +12420,9 @@ fn output_buffered_behind_a_host_query_is_capped() {
 
     // The pane asks the host a question that is never answered.
     screen
-        .apply_pty_bytes(1, b"before\x1b[14t".to_vec())
+        .apply_pty_bytes(1, b"before\x1b]11;?\x1b\\".to_vec())
         .unwrap();
-    let token = screen.forward_host_query(pane_id, crate::host_query::HostQuery::TextAreaPixelSize);
+    let token = screen.forward_host_query(pane_id, bg_query());
     assert_eq!(capture.drain_forward_queries().len(), 1);
     let is_paused = |screen: &mut Screen| {
         let tab = screen.get_active_tab_mut(1).unwrap();
@@ -12322,15 +12482,17 @@ fn a_pane_flooding_queries_cannot_keep_more_than_the_limit_buffered() {
     let pane_id = PaneId::Terminal(1);
 
     // The host never answers, and the pane never stops asking.
-    screen.apply_pty_bytes(1, b"\x1b[14t".to_vec()).unwrap();
-    screen.handle_forward_host_query(pane_id, HostQuery::TextAreaPixelSize);
-    let flood = b"\x1b[14t".repeat(20_000);
+    screen
+        .apply_pty_bytes(1, b"\x1b]11;?\x1b\\".to_vec())
+        .unwrap();
+    screen.handle_forward_host_query(pane_id, bg_query(), None);
+    let flood = b"\x1b]11;?\x1b\\".repeat(20_000);
     for round in 0..(4 * LIMIT / flood.len() + 4) {
         screen.apply_pty_bytes(1, flood.clone()).unwrap();
         if pane_is_forward_paused(&mut screen, pane_id) && screen.forward_in_flight_token.is_none()
         {
             // The pane paused on another query; its instruction is handled.
-            screen.handle_forward_host_query(pane_id, HostQuery::TextAreaPixelSize);
+            screen.handle_forward_host_query(pane_id, bg_query(), None);
         }
         assert!(
             !screen
@@ -12354,12 +12516,13 @@ fn output_buffered_while_the_forward_was_queued_is_capped_once_it_is_registered(
     // pauses on its query and buffers the rest, but the ForwardHostQuery
     // instruction is only handled afterwards.
     let tab = screen.get_active_tab_mut(1).unwrap();
-    tab.handle_pty_bytes(1, b"\x1b[14t".to_vec()).unwrap();
+    tab.handle_pty_bytes(1, b"\x1b]11;?\x1b\\".to_vec())
+        .unwrap();
     tab.handle_pty_bytes(1, vec![b'x'; LIMIT + 1]).unwrap();
     assert!(tab.pending_pty_input_exceeds_forward_limit(1));
     assert!(pane_is_forward_paused(&mut screen, pane_id));
 
-    screen.handle_forward_host_query(pane_id, HostQuery::TextAreaPixelSize);
+    screen.handle_forward_host_query(pane_id, bg_query(), None);
 
     assert!(!pane_is_forward_paused(&mut screen, pane_id));
     assert_eq!(screen.forward_in_flight_token, None, "the slot is released");
@@ -12383,9 +12546,9 @@ fn the_limit_applies_to_a_pane_hidden_behind_the_scrollback_editor() {
         .unwrap();
 
     screen
-        .apply_pty_bytes(1, b"before\x1b[14t".to_vec())
+        .apply_pty_bytes(1, b"before\x1b]11;?\x1b\\".to_vec())
         .unwrap();
-    screen.handle_forward_host_query(PaneId::Terminal(1), HostQuery::TextAreaPixelSize);
+    screen.handle_forward_host_query(PaneId::Terminal(1), bg_query(), None);
     assert!(screen.forward_in_flight_token.is_some());
 
     let tab = screen.get_active_tab_mut(1).unwrap();
@@ -12415,9 +12578,9 @@ fn a_cancelled_clipboard_read_holds_the_slot_until_the_client_is_done_with_it() 
     assert!(screen
         .stop_waiting_for_forward_reply(PaneId::Terminal(1))
         .unwrap());
-    assert_eq!(
-        capture.drain_pty_writes(),
-        vec![(b"\x1b]52;c;\x1b\\".to_vec(), 1)]
+    assert!(
+        capture.drain_pty_writes().is_empty(),
+        "a cancelled read for a pane that never existed must not fall back to the terminal id"
     );
     assert!(
         capture.drain_forward_queries().is_empty(),
@@ -17761,6 +17924,39 @@ pub fn overriding_with_an_empty_layout_keeps_all_tabs_and_reports_failure() {
         .plugin_instructions
         .iter()
         .any(|i| matches!(i, PluginInstruction::OverrideLayout(..))));
+}
+
+#[test]
+pub fn override_layout_completion_reports_tabs_that_failed_on_the_pty_side() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let result = send_instructions_and_collect(
+        size,
+        true,
+        |_| {},
+        |completion| {
+            ScreenInstruction::OverrideLayoutComplete(
+                vec![],
+                vec![(7, "simulated spawn failure".to_owned())],
+                false,
+                false,
+                1,
+                Some(completion),
+            )
+        },
+    );
+    assert_eq!(result.completion.exit_status, Some(1));
+    assert!(
+        result
+            .completion
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("tab 7: simulated spawn failure")),
+        "the completion must name the failed tab: {:?}",
+        result.completion.error_message
+    );
 }
 
 #[test]
