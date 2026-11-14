@@ -259,10 +259,11 @@ impl ClientOsApi for ClientOsInputOutput {
             None => {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
-                let buffer = stdin.fill_buf().unwrap();
-                let length = buffer.len();
-                let read_bytes = Vec::from(buffer);
-                stdin.consume(length);
+                let buffer = stdin.fill_buf().map_err(|_| "failed to read from stdin")?;
+                // fill_buf returns an empty slice on EOF. Returning Ok(&[]) here
+                // made stdin_pump loop at 100%+ CPU after the terminal closed.
+                let read_bytes = bytes_from_stdin_fill(buffer)?;
+                stdin.consume(read_bytes.len());
 
                 let session_name_after_reading_from_stdin =
                     { self.session_name.lock().unwrap().clone() };
@@ -489,5 +490,28 @@ mod tests {
         let size = os_input.get_terminal_size();
         assert!(size.rows > 0, "rows should be positive");
         assert!(size.cols > 0, "cols should be positive");
+    }
+}
+
+fn bytes_from_stdin_fill(buffer: &[u8]) -> Result<Vec<u8>, &'static str> {
+    if buffer.is_empty() {
+        Err("EOF")
+    } else {
+        Ok(Vec::from(buffer))
+    }
+}
+
+#[cfg(test)]
+mod stdin_fill_tests {
+    use super::bytes_from_stdin_fill;
+
+    #[test]
+    fn empty_fill_is_eof() {
+        assert_eq!(bytes_from_stdin_fill(b""), Err("EOF"));
+    }
+
+    #[test]
+    fn nonempty_fill_is_forwarded() {
+        assert_eq!(bytes_from_stdin_fill(b"abc"), Ok(b"abc".to_vec()));
     }
 }
