@@ -755,13 +755,7 @@ fn individual_messages_client(
     action: Action,
     pane_id: Option<u32>,
 ) -> Option<i32> {
-    let is_blocking = matches!(
-        &action,
-        Action::NewBlockingPane {
-            unblock_condition: Some(_),
-            ..
-        }
-    );
+    let is_blocking = is_blocking_action(&action);
     let msg = ClientToServerMsg::Action {
         action,
         terminal_id: pane_id,
@@ -804,6 +798,10 @@ fn individual_messages_client(
             _ => {},
         }
     }
+}
+
+pub(crate) fn is_blocking_action(action: &Action) -> bool {
+    matches!(action, Action::NewBlockingPane { .. })
 }
 
 pub fn start_subscribe_client(
