@@ -1572,15 +1572,98 @@ fn the_persistence_worker_serializes_layout_off_the_pty_actor() {
     let persistence_sender = spawn_persistence_worker(senders);
 
     persistence_sender
-        .try_send(PersistenceJob::ReportLayout(
-            SessionLayoutMetadata::default(),
-        ))
+        .try_send_background(PersistenceJob::ReportLayout {
+            session_layout_metadata: SessionLayoutMetadata::default(),
+            metadata_context: LayoutMetadataContext {
+                panes: vec![],
+                pids_to_cwds: Default::default(),
+                pids_to_cmds: Default::default(),
+                foreground_cmds: Default::default(),
+                post_command_discovery_hook: None,
+                resurrects: Default::default(),
+                default_shell: PathBuf::from("/bin/sh"),
+                default_editor: None,
+            },
+        })
         .expect("the worker lane accepts a layout snapshot");
 
     let (instruction, _) = background_jobs_rx
         .recv_timeout(std::time::Duration::from_secs(5))
         .expect("the worker reports serialized layout to the background jobs thread");
     assert!(matches!(instruction, BackgroundJob::ReportLayoutInfo(_)));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_stalled_command_discovery_hook_does_not_block_pty_control() {
+    let mock = MockOsApi::new();
+    mock.set_foreground_cmd(100, vec!["sleep".to_owned()]);
+    let (pty_tx, pty_rx) = channels::unbounded();
+    let (background_jobs_tx, background_jobs_rx) = channels::unbounded();
+    let pty_sender = SenderWithContext::new(pty_tx.clone());
+    let background_jobs_sender = SenderWithContext::new(background_jobs_tx);
+    let bus: Bus<PtyInstruction> = Bus::new(
+        vec![pty_rx],
+        None,
+        Some(&pty_sender),
+        None,
+        None,
+        None,
+        Some(&background_jobs_sender),
+        Some(Box::new(mock)),
+    )
+    .should_silently_fail();
+    let mut pty = Pty::new(
+        bus,
+        false,
+        None,
+        Some("sleep 2; echo $RESURRECT_COMMAND".to_owned()),
+        Default::default(),
+    );
+    pty.session_id = "test-session".to_owned();
+    set_active_terminal(&mut pty, 1, 100);
+    let session_layout_metadata =
+        session_with_terminal_pane_run(1, run_command("sleep", vec!["30"]));
+    let metadata_context = pty.layout_metadata_context(&session_layout_metadata);
+    assert_eq!(
+        metadata_context.foreground_cmds.get(&1),
+        Some(&vec!["sleep".to_owned()]),
+        "the fixture must have a foreground command for the hook to process"
+    );
+    assert_eq!(
+        metadata_context.post_command_discovery_hook.as_deref(),
+        Some("sleep 2; echo $RESURRECT_COMMAND"),
+        "the configured hook must be captured in the job context"
+    );
+
+    let started_at = std::time::Instant::now();
+    let pty_thread = std::thread::spawn(move || {
+        pty_thread_main(pty, Box::new(Layout::default()), "test-session".to_owned()).unwrap()
+    });
+    pty_sender
+        .send(PtyInstruction::LogLayoutToHd(session_layout_metadata))
+        .unwrap();
+    pty_sender.send(PtyInstruction::Exit).unwrap();
+    pty_thread.join().unwrap();
+
+    assert!(
+        started_at.elapsed() < std::time::Duration::from_secs(1),
+        "the pty actor waited for the command-discovery hook"
+    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        let (instruction, _) = background_jobs_rx
+            .recv_timeout(remaining)
+            .expect("the queued layout job must complete after the hook");
+        if matches!(instruction, BackgroundJob::ReportLayoutInfo(_)) {
+            break;
+        }
+    }
+    assert!(
+        started_at.elapsed() >= std::time::Duration::from_secs(1),
+        "the worker did not run the configured post-command hook"
+    );
 }
 
 fn run_with_hold(command: &str, hold_on_close: bool) -> Run {
