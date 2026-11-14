@@ -33,6 +33,7 @@ pub struct Options {
     pub startup_mode: StartupMode,
     pub transparency: Transparency,
     pub blur: bool,
+    pub decorations: bool,
     pub padding: Padding,
     pub padding_balance: bool,
     pub padding_color: PaddingColor,
@@ -150,6 +151,7 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
             mode: section.opacity_mode.unwrap_or_default(),
         },
         blur: section.blur.unwrap_or(false),
+        decorations: section.decorations.unwrap_or(true),
         padding: Padding::of(section),
         padding_balance: section.padding_balance.unwrap_or(false),
         padding_color: section.padding_color.unwrap_or_default(),
@@ -967,6 +969,22 @@ mod tests {
         assert_eq!(options.transparency.opacity, 1.0);
         assert_eq!(options.transparency.mode, OpacityMode::Background);
         assert!(!options.blur);
+        assert!(
+            options.decorations,
+            "with nothing configured the window keeps its decorations"
+        );
+    }
+
+    #[test]
+    fn the_window_decorations_follow_the_configuration() {
+        let options = resolve(
+            &settings(TerminalConfig {
+                decorations: Some(false),
+                ..TerminalConfig::default()
+            }),
+            None,
+        );
+        assert!(!options.decorations);
     }
 
     #[test]

@@ -1402,6 +1402,13 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
             "false",
             OnlyYou,
         ),
+        SettingKey::TerminalDecorations => info(
+            "Window decorations",
+            "Show the title bar and window borders",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
         SettingKey::TerminalPadding => info(
             "Padding",
             "Space around the text on all sides, in pixels",
@@ -1972,7 +1979,8 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | TerminalInitialRows
         | TerminalOpacity
         | TerminalOpacityMode
-        | TerminalBlur => (C::ZellijTerminal, "Window"),
+        | TerminalBlur
+        | TerminalDecorations => (C::ZellijTerminal, "Window"),
         TerminalPadding
         | TerminalPaddingTop
         | TerminalPaddingRight

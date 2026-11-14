@@ -919,6 +919,11 @@ web_client {
 //     // (Requires restart)
 //     startup_mode "remember"
 //
+//     // Whether the window has its desktop's decorations (title bar and borders).
+//     // Turning them off gives a borderless window.
+//     // (Requires restart)
+//     decorations true
+//
 //     // Where a command opens when another app uses Zellij as its terminal
 //     // (`zellij terminal -e <command>`, as xdg-terminal-exec or a file manager
 //     // runs it): "new_session" (the default) gives it a session of its own;

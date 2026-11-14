@@ -161,6 +161,7 @@ fn a_saved_maximized_state_opens_maximized() {
     let attributes = window::startup_attributes(
         winit::window::WindowAttributes::default(),
         plan.startup.mode,
+        true,
     );
     assert!(attributes.maximized);
     assert!(attributes.fullscreen.is_none());
