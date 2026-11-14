@@ -14145,7 +14145,7 @@ fn test_ctrl_scroll_down_on_active_tiled_pane_decreases_pane_size() {
 }
 
 #[test]
-fn test_ctrl_scroll_up_on_inactive_tiled_pane_increases_active_tiled_pane_size() {
+fn test_ctrl_scroll_up_on_inactive_tiled_pane_increases_hovered_pane_size() {
     let size = Size {
         cols: 120,
         rows: 20,
@@ -14171,6 +14171,22 @@ fn test_ctrl_scroll_up_on_inactive_tiled_pane_increases_active_tiled_pane_size()
         Palette::default(),
     );
 
+    let hovered = PaneId::Terminal(1);
+    let focused = PaneId::Terminal(2);
+    assert_eq!(tab.get_active_pane_id(client_id), Some(focused));
+    let hovered_cols_before = tab
+        .get_pane_with_id(hovered)
+        .unwrap()
+        .position_and_size()
+        .cols
+        .as_usize();
+    let focused_cols_before = tab
+        .get_pane_with_id(focused)
+        .unwrap()
+        .position_and_size()
+        .cols
+        .as_usize();
+
     let inactive_pane_position = Position::new(5, 10);
     let effect = tab
         .handle_mouse_event(
@@ -14180,6 +14196,29 @@ fn test_ctrl_scroll_up_on_inactive_tiled_pane_increases_active_tiled_pane_size()
         .unwrap();
 
     assert!(effect.state_changed);
+    assert_eq!(
+        tab.get_active_pane_id(client_id),
+        Some(focused),
+        "ctrl-scroll must not move focus onto the hovered pane"
+    );
+    assert!(
+        tab.get_pane_with_id(hovered)
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize()
+            > hovered_cols_before,
+        "scroll up must enlarge the hovered pane"
+    );
+    assert!(
+        tab.get_pane_with_id(focused)
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize()
+            < focused_cols_before,
+        "scroll up must not enlarge the focused pane instead"
+    );
 
     let mut output = Output::default();
     tab.render(&mut output, None).unwrap();
@@ -14195,7 +14234,7 @@ fn test_ctrl_scroll_up_on_inactive_tiled_pane_increases_active_tiled_pane_size()
 }
 
 #[test]
-fn test_ctrl_scroll_down_on_inactive_tiled_pane_decreases_active_tiled_pane_size() {
+fn test_ctrl_scroll_down_on_inactive_tiled_pane_decreases_hovered_pane_size() {
     let size = Size {
         cols: 120,
         rows: 20,
@@ -14221,6 +14260,22 @@ fn test_ctrl_scroll_down_on_inactive_tiled_pane_decreases_active_tiled_pane_size
         Palette::default(),
     );
 
+    let hovered = PaneId::Terminal(1);
+    let focused = PaneId::Terminal(2);
+    assert_eq!(tab.get_active_pane_id(client_id), Some(focused));
+    let hovered_cols_before = tab
+        .get_pane_with_id(hovered)
+        .unwrap()
+        .position_and_size()
+        .cols
+        .as_usize();
+    let focused_cols_before = tab
+        .get_pane_with_id(focused)
+        .unwrap()
+        .position_and_size()
+        .cols
+        .as_usize();
+
     let inactive_pane_position = Position::new(5, 10);
     let effect = tab
         .handle_mouse_event(
@@ -14230,6 +14285,29 @@ fn test_ctrl_scroll_down_on_inactive_tiled_pane_decreases_active_tiled_pane_size
         .unwrap();
 
     assert!(effect.state_changed);
+    assert_eq!(
+        tab.get_active_pane_id(client_id),
+        Some(focused),
+        "ctrl-scroll must not move focus onto the hovered pane"
+    );
+    assert!(
+        tab.get_pane_with_id(hovered)
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize()
+            < hovered_cols_before,
+        "scroll down must shrink the hovered pane"
+    );
+    assert!(
+        tab.get_pane_with_id(focused)
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize()
+            > focused_cols_before,
+        "scroll down must not shrink the focused pane instead"
+    );
 
     let mut output = Output::default();
     tab.render(&mut output, None).unwrap();
@@ -15363,6 +15441,222 @@ fn test_ctrl_scroll_down_in_stack_dissolves_stack_lists_before_mutation() {
     let mut pane_ids_final = tab.get_all_pane_ids();
     pane_ids_final.sort();
     assert_eq!(pane_ids_before, pane_ids_final);
+}
+
+#[test]
+fn ctrl_scroll_resizes_the_hovered_floating_pane_and_keeps_focus() {
+    fn place(x: usize) -> FloatingPaneCoordinates {
+        FloatingPaneCoordinates {
+            x: Some(PercentOrFixed::Fixed(x)),
+            y: Some(PercentOrFixed::Fixed(3)),
+            width: Some(PercentOrFixed::Fixed(24)),
+            height: Some(PercentOrFixed::Fixed(8)),
+            pinned: Some(false),
+            borderless: Some(false),
+            border_style: None,
+        }
+    }
+    fn open() -> (Tab, ClientId) {
+        let size = Size {
+            cols: 121,
+            rows: 20,
+        };
+        let client_id = 1;
+        let mut tab = create_new_tab(size, ModeInfo::default());
+        tab.toggle_floating_panes(Some(client_id), None, None)
+            .unwrap();
+        tab.new_pane(
+            PaneId::Terminal(2),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::Floating(Some(place(8))),
+            Some(client_id),
+            None,
+        )
+        .unwrap();
+        tab.new_pane(
+            PaneId::Terminal(3),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::Floating(Some(place(70))),
+            Some(client_id),
+            None,
+        )
+        .unwrap();
+        tab.focus_pane_with_id(PaneId::Terminal(2), false, false, client_id)
+            .unwrap();
+        (tab, client_id)
+    }
+
+    for scroll_up in [true, false] {
+        let (mut tab, client_id) = open();
+        let focused = PaneId::Terminal(2);
+        let hovered = PaneId::Terminal(3);
+        assert_eq!(tab.get_active_pane_id(client_id), Some(focused));
+        let hovered_geom = tab.get_pane_with_id(hovered).unwrap().position_and_size();
+        let focused_geom = tab.get_pane_with_id(focused).unwrap().position_and_size();
+        let tiled_geom = tab
+            .get_pane_with_id(PaneId::Terminal(1))
+            .unwrap()
+            .position_and_size();
+        let point = Position::new(
+            (hovered_geom.y + hovered_geom.rows.as_usize() / 2) as i32,
+            (hovered_geom.x + hovered_geom.cols.as_usize() / 2) as u16,
+        );
+        let event = if scroll_up {
+            MouseEvent::new_ctrl_scroll_up_event(point)
+        } else {
+            MouseEvent::new_ctrl_scroll_down_event(point)
+        };
+        let effect = tab.handle_mouse_event(&event, client_id).unwrap();
+        assert!(effect.state_changed);
+        assert_eq!(
+            tab.get_active_pane_id(client_id),
+            Some(focused),
+            "ctrl-scroll must not move focus to the hovered floating pane"
+        );
+        assert_eq!(
+            tab.get_pane_with_id(focused).unwrap().position_and_size(),
+            focused_geom
+        );
+        assert_eq!(
+            tab.get_pane_with_id(PaneId::Terminal(1))
+                .unwrap()
+                .position_and_size(),
+            tiled_geom
+        );
+        let hovered_cols = tab
+            .get_pane_with_id(hovered)
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize();
+        if scroll_up {
+            assert!(
+                hovered_cols > hovered_geom.cols.as_usize(),
+                "scroll up must enlarge the hovered floating pane"
+            );
+        } else {
+            assert!(
+                hovered_cols < hovered_geom.cols.as_usize(),
+                "scroll down must shrink the hovered floating pane"
+            );
+        }
+    }
+}
+
+#[test]
+fn ctrl_scroll_on_an_unfocused_stack_resizes_that_stack_and_keeps_focus() {
+    fn open() -> Tab {
+        create_new_tab_with_stacked_pane_list(
+            Size {
+                cols: 150,
+                rows: 40,
+            },
+            ModeInfo::default(),
+            true,
+            Some(two_adjacent_stacks_layout()),
+        )
+    }
+    fn visible(tab: &Tab, ids: &[u32]) -> PaneId {
+        let found: Vec<_> = ids
+            .iter()
+            .copied()
+            .map(PaneId::Terminal)
+            .filter(|id| tab.tiled_panes.get_pane(*id).is_some())
+            .collect();
+        assert_eq!(
+            found.len(),
+            1,
+            "expected one visible stack member among {ids:?}, found {found:?}"
+        );
+        found[0]
+    }
+    fn center(tab: &Tab, id: PaneId) -> Position {
+        let geom = tab.get_pane_with_id(id).unwrap().position_and_size();
+        Position::new(
+            (geom.y + geom.rows.as_usize() / 2) as i32,
+            (geom.x + geom.cols.as_usize() / 2) as u16,
+        )
+    }
+    fn signature(tab: &Tab) -> Vec<(PaneId, usize, usize, usize, usize)> {
+        let mut ids = tab.get_all_pane_ids();
+        ids.sort();
+        ids.into_iter()
+            .map(|id| {
+                let geom = tab.get_pane_with_id(id).unwrap().position_and_size();
+                (
+                    id,
+                    geom.x,
+                    geom.y,
+                    geom.cols.as_usize(),
+                    geom.rows.as_usize(),
+                )
+            })
+            .collect()
+    }
+
+    let client_id = 1;
+    for scroll_up in [true, false] {
+        let event_at = |position: Position| {
+            if scroll_up {
+                MouseEvent::new_ctrl_scroll_up_event(position)
+            } else {
+                MouseEvent::new_ctrl_scroll_down_event(position)
+            }
+        };
+
+        // Focus stays on the left stack while the wheel is over the right one.
+        let mut hovered_tab = open();
+        let mut output = Output::default();
+        hovered_tab.render(&mut output, None).unwrap();
+        let left = visible(&hovered_tab, &[1, 2, 3]);
+        let right = visible(&hovered_tab, &[4, 5, 6]);
+        assert_eq!(hovered_tab.get_active_pane_id(client_id), Some(left));
+        let right_at = center(&hovered_tab, right);
+        assert_ne!(right_at, center(&hovered_tab, left));
+        assert_eq!(
+            hovered_tab.get_pane_id_at(&right_at, false).unwrap(),
+            Some(right)
+        );
+        hovered_tab
+            .handle_mouse_event(&event_at(right_at), client_id)
+            .unwrap();
+        assert_eq!(
+            hovered_tab.get_active_pane_id(client_id),
+            Some(left),
+            "ctrl-scroll on the other stack must not move focus"
+        );
+        assert!(
+            !hovered_tab.has_stack_lists(),
+            "stack lists still dissolve before the classic resize"
+        );
+        let hovered_layout = signature(&hovered_tab);
+
+        // The same wheel over the right stack, once that stack is focused.
+        let mut focused_tab = open();
+        let mut output = Output::default();
+        focused_tab.render(&mut output, None).unwrap();
+        let right = visible(&focused_tab, &[4, 5, 6]);
+        focused_tab
+            .focus_pane_with_id(right, false, false, client_id)
+            .unwrap();
+        assert_eq!(focused_tab.get_active_pane_id(client_id), Some(right));
+        let right_at = center(&focused_tab, right);
+        focused_tab
+            .handle_mouse_event(&event_at(right_at), client_id)
+            .unwrap();
+        assert!(!focused_tab.has_stack_lists());
+        assert_eq!(
+            signature(&focused_tab),
+            hovered_layout,
+            "scroll_up={scroll_up} must resize the stack under the cursor, not the focused one"
+        );
+    }
 }
 
 #[test]
