@@ -2,6 +2,16 @@
  * Link handling functions for terminal
  */
 
+const ALLOWED_LINK_PROTOCOLS = ['http:', 'https:', 'mailto:'];
+
+export function isAllowedLinkUri(uri) {
+    try {
+        return ALLOWED_LINK_PROTOCOLS.includes(new URL(uri).protocol);
+    } catch {
+        return false;
+    }
+}
+
 /**
  * Build a link handler object for terminal links
  * @returns {object} Object containing linkHandler and activateLink function
@@ -39,8 +49,11 @@ export function build_link_handler() {
     }
     
     function activateLink(event, uri) {
-        const newWindow = window.open(uri, '_blank');
-        if (newWindow) newWindow.opener = null; // prevent the opened link from gaining access to the terminal instance
+        // the uri can come from an OSC 8 hyperlink written by anything running
+        // in the terminal, so only open schemes that are safe to hand to the
+        // browser (not javascript:, data: and the like)
+        if (!isAllowedLinkUri(uri)) return;
+        window.open(uri, '_blank', 'noopener');
     }
 
     let linkHandler = {};
