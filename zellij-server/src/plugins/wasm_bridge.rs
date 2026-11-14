@@ -5811,10 +5811,12 @@ mod timer_generation_tests {
 mod load_result_generation_tests {
     use super::apply_event_to_plugin;
     use crate::plugins::plugin_loader::PluginLoader;
-    use crate::plugins::plugin_map::{PluginEnv, RunningPlugin};
-    use std::collections::{BTreeMap, HashSet, VecDeque};
+    use crate::plugins::plugin_map::{
+        PluginEnv, PluginMap, PluginMetadata, RunningPlugin, Subscriptions,
+    };
+    use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
     use std::path::PathBuf;
-    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     use wasmi::{Engine, Linker, Module, Store};
     use zellij_utils::data::{Event, InputMode, PermissionType};
@@ -5888,6 +5890,122 @@ mod load_result_generation_tests {
             .instantiate_and_start(&mut store, &module)
             .expect("instance");
         RunningPlugin::new(store, instance, 0, 0)
+    }
+
+    #[test]
+    fn plugin_discovery_does_not_wait_for_guest_execution() {
+        let running = Arc::new(Mutex::new(running_plugin(1)));
+        let plugin_config = running.lock().unwrap().store.data().plugin.clone();
+        let mut map = PluginMap::default();
+        map.insert_metadata(
+            1,
+            PluginMetadata {
+                plugin_config,
+                tab_index: None,
+                rows: 1,
+                columns: 1,
+                cwd: PathBuf::new(),
+                is_background: false,
+            },
+        );
+        map.insert(
+            1,
+            1,
+            running.clone(),
+            Arc::new(Mutex::new(Subscriptions::new())),
+            Default::default(),
+        );
+        let unrelated = Arc::new(Mutex::new(running_plugin(2)));
+        map.insert_metadata(
+            2,
+            PluginMetadata {
+                plugin_config: PluginConfig {
+                    path: PathBuf::from("/unrelated.wasm"),
+                    _allow_exec_host_cmd: false,
+                    location: RunPluginLocation::File(PathBuf::from("/unrelated.wasm")),
+                    initial_userspace_configuration: Default::default(),
+                    initial_cwd: None,
+                },
+                tab_index: None,
+                rows: 1,
+                columns: 1,
+                cwd: PathBuf::new(),
+                is_background: false,
+            },
+        );
+        map.insert(
+            2,
+            2,
+            unrelated,
+            Arc::new(Mutex::new(Subscriptions::new())),
+            Default::default(),
+        );
+        let map = Arc::new(Mutex::new(map));
+        let execution_guard = running.lock().unwrap();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let map_for_discovery = map.clone();
+        std::thread::spawn(move || {
+            let index = map_for_discovery.lock().unwrap().clone_plugin_assets();
+            let _ = done_tx.send(index);
+        });
+        let index = done_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("plugin discovery waited on the guest execution mutex");
+        assert_eq!(
+            index.get(&RunPluginLocation::File(PathBuf::from("/unrelated.wasm"))),
+            Some(&HashMap::from([(Default::default(), vec![(2, 2)])])),
+            "an unrelated plugin must still be discoverable"
+        );
+        drop(execution_guard);
+    }
+
+    #[test]
+    fn replacing_a_plugin_does_not_wait_for_the_old_guest_execution() {
+        let old_running = Arc::new(Mutex::new(running_plugin(1)));
+        let old_load_alive = old_running.lock().unwrap().load_alive_handle();
+        let plugin_config = old_running.lock().unwrap().store.data().plugin.clone();
+        let mut map = PluginMap::default();
+        map.insert_metadata(
+            1,
+            PluginMetadata {
+                plugin_config,
+                tab_index: None,
+                rows: 1,
+                columns: 1,
+                cwd: PathBuf::new(),
+                is_background: false,
+            },
+        );
+        map.insert(
+            1,
+            1,
+            old_running.clone(),
+            Arc::new(Mutex::new(Subscriptions::new())),
+            Default::default(),
+        );
+        let map = Arc::new(Mutex::new(map));
+        let execution_guard = old_running.lock().unwrap();
+        let replacement = Arc::new(Mutex::new(running_plugin(2)));
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let map_for_replacement = map.clone();
+        std::thread::spawn(move || {
+            map_for_replacement.lock().unwrap().insert(
+                1,
+                1,
+                replacement,
+                Arc::new(Mutex::new(Subscriptions::new())),
+                Default::default(),
+            );
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("plugin replacement waited on the old guest execution mutex");
+        assert!(
+            !old_load_alive.load(Ordering::Acquire),
+            "the replaced reservation must be revoked"
+        );
+        drop(execution_guard);
     }
 
     fn stdin_len(running: &RunningPlugin) -> usize {

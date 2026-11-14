@@ -50,6 +50,10 @@ pub struct PluginMetadata {
 pub struct PluginMap {
     plugin_assets: HashMap<PluginKey, PluginAssets>,
     plugin_quarantine_flags: HashMap<PluginKey, Arc<AtomicBool>>,
+    /// Retirement handles captured when an instance is published, before its
+    /// guest execution starts. Replacing an instance can therefore revoke the
+    /// old load without taking the old execution mutex.
+    plugin_load_alives: HashMap<PluginKey, Arc<AtomicBool>>,
     plugin_metadata: HashMap<PluginId, PluginMetadata>,
     shared_assets: HashMap<PluginId, PluginAssets>,
     shared_quarantine_flags: HashMap<PluginId, Arc<AtomicBool>>,
@@ -71,6 +75,7 @@ impl Default for PluginMap {
         Self {
             plugin_assets: HashMap::new(),
             plugin_quarantine_flags: HashMap::new(),
+            plugin_load_alives: HashMap::new(),
             plugin_metadata: HashMap::new(),
             shared_assets: HashMap::new(),
             shared_quarantine_flags: HashMap::new(),
@@ -96,6 +101,7 @@ impl PluginMap {
         client_id: ClientId,
     ) -> Option<PluginAssets> {
         self.plugin_quarantine_flags.remove(&(plugin_id, client_id));
+        self.plugin_load_alives.remove(&(plugin_id, client_id));
         self.plugin_assets.remove(&(plugin_id, client_id))
     }
     /// A loader starts publishing instances of the plugin.
@@ -123,6 +129,7 @@ impl PluginMap {
         for (plugin_id, client_id) in ids_in_plugin_map {
             if pid == plugin_id {
                 self.plugin_quarantine_flags.remove(&(plugin_id, client_id));
+                self.plugin_load_alives.remove(&(plugin_id, client_id));
                 if let Some(plugin_asset) = self.plugin_assets.remove(&(plugin_id, client_id)) {
                     removed.insert((plugin_id, client_id), plugin_asset);
                 }
@@ -136,6 +143,7 @@ impl PluginMap {
         for key in ids_in_plugin_map {
             if key.1 == client_id {
                 self.plugin_quarantine_flags.remove(&key);
+                self.plugin_load_alives.remove(&key);
                 if let Some(plugin_asset) = self.plugin_assets.remove(&key) {
                     removed.insert(key, plugin_asset);
                 }
@@ -333,20 +341,22 @@ impl PluginMap {
         &self,
     ) -> HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>
     {
-        let assets: Vec<(PluginId, ClientId, Arc<Mutex<RunningPlugin>>)> = self
-            .plugin_assets
-            .iter()
-            .map(|((plugin_id, client_id), (running_plugin, _, _))| {
-                (*plugin_id, *client_id, running_plugin.clone())
-            })
-            .collect();
+        self.plugin_assets_index_from_keys(self.plugin_assets.keys().copied())
+    }
+    fn plugin_assets_index_from_keys(
+        &self,
+        keys: impl Iterator<Item = PluginKey>,
+    ) -> HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>
+    {
         let mut cloned_plugin_assets: HashMap<
             RunPluginLocation,
             HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>,
         > = HashMap::new();
-        for (plugin_id, client_id, running_plugin) in assets {
-            let running_plugin = running_plugin.lock().unwrap();
-            let plugin_config = &running_plugin.store.data().plugin;
+        for (plugin_id, client_id) in keys {
+            let Some(metadata) = self.plugin_metadata.get(&plugin_id) else {
+                continue;
+            };
+            let plugin_config = &metadata.plugin_config;
             let running_plugin_location = &plugin_config.location;
             let running_plugin_configuration = &plugin_config.initial_userspace_configuration;
             match cloned_plugin_assets.get_mut(running_plugin_location) {
@@ -390,19 +400,29 @@ impl PluginMap {
         subscriptions: Arc<Mutex<Subscriptions>>,
         running_workers: HashMap<String, Sender<MessageToWorker>>,
     ) {
-        self.plugin_quarantine_flags.insert(
-            (plugin_id, client_id),
-            running_plugin.lock().unwrap().quarantine_flag(),
-        );
+        let (quarantine_flag, load_alive) = {
+            let running_plugin = running_plugin.lock().unwrap();
+            (
+                running_plugin.quarantine_flag(),
+                running_plugin.load_alive_handle(),
+            )
+        };
+        self.plugin_quarantine_flags
+            .insert((plugin_id, client_id), quarantine_flag);
+        let replaced_load_alive = self
+            .plugin_load_alives
+            .insert((plugin_id, client_id), load_alive);
         let replaced = self.plugin_assets.insert(
             (plugin_id, client_id),
             (running_plugin, subscriptions, running_workers),
         );
-        if let Some((replaced_plugin, _subscriptions, workers)) = replaced {
+        if let Some((_replaced_plugin, _subscriptions, workers)) = replaced {
             // A new instance for this (plugin, client) replaces the old one. Retire the old load
             // before any queued callback can reach it, and stop its workers so they do not keep
             // running against a PluginEnv that no longer owns this key.
-            replaced_plugin.lock().unwrap().store.data().retire_load();
+            if let Some(load_alive) = replaced_load_alive {
+                crate::plugins::shared::retire_load_alive(&load_alive);
+            }
             for (_worker_name, worker_sender) in workers {
                 let _ = worker_sender.try_send(MessageToWorker::Exit);
             }
@@ -710,6 +730,9 @@ impl RunningPlugin {
     pub fn quarantine_flag(&self) -> Arc<AtomicBool> {
         self.quarantined.clone()
     }
+    pub fn load_alive_handle(&self) -> Arc<AtomicBool> {
+        self.store.data().load_alive.clone()
+    }
     pub fn mark_quarantined(&self) {
         self.quarantined.store(true, Ordering::SeqCst);
     }
@@ -780,5 +803,66 @@ mod released_contract_detection_tests {
     fn built_in_plugins_are_never_treated_as_built_against_0_45() {
         let built_in = RunPluginLocation::Zellij(PluginTag::new("status-bar"));
         assert!(!lacks_marker(built_in, &["load", "update", "render"]));
+    }
+}
+
+#[cfg(test)]
+mod discovery_index_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn metadata(location: PathBuf, configuration: &str) -> PluginMetadata {
+        PluginMetadata {
+            plugin_config: PluginConfig {
+                path: location.clone(),
+                _allow_exec_host_cmd: false,
+                location: RunPluginLocation::File(location),
+                initial_userspace_configuration: PluginUserConfiguration::new(BTreeMap::from([(
+                    "scope".to_owned(),
+                    configuration.to_owned(),
+                )])),
+                initial_cwd: None,
+            },
+            tab_index: None,
+            rows: 0,
+            columns: 0,
+            cwd: PathBuf::new(),
+            is_background: true,
+        }
+    }
+
+    #[test]
+    fn discovery_index_uses_metadata_and_keeps_configurations_distinct() {
+        let mut map = PluginMap::default();
+        map.insert_metadata(1, metadata(PathBuf::from("/a.wasm"), "one"));
+        map.insert_metadata(2, metadata(PathBuf::from("/a.wasm"), "two"));
+        map.insert_metadata(3, metadata(PathBuf::from("/b.wasm"), "one"));
+
+        let index = map.plugin_assets_index_from_keys([(1, 10), (2, 20), (3, 30)].into_iter());
+
+        assert_eq!(
+            index[&RunPluginLocation::File(PathBuf::from("/a.wasm"))]
+                [&PluginUserConfiguration::new(BTreeMap::from([(
+                    "scope".to_owned(),
+                    "one".to_owned()
+                )]))],
+            vec![(1, 10)]
+        );
+        assert_eq!(
+            index[&RunPluginLocation::File(PathBuf::from("/a.wasm"))]
+                [&PluginUserConfiguration::new(BTreeMap::from([(
+                    "scope".to_owned(),
+                    "two".to_owned()
+                )]))],
+            vec![(2, 20)]
+        );
+        assert_eq!(
+            index[&RunPluginLocation::File(PathBuf::from("/b.wasm"))]
+                [&PluginUserConfiguration::new(BTreeMap::from([(
+                    "scope".to_owned(),
+                    "one".to_owned()
+                )]))],
+            vec![(3, 30)]
+        );
     }
 }

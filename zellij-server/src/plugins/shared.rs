@@ -348,6 +348,13 @@ pub fn retire_older_published_loads(session_scope: u64, plugin_id: PluginId) {
     crate::plugins::reap_retired_operations();
 }
 
+/// Retire a load through the handle captured before its guest began
+/// executing. Used when a `(plugin, client)` instance is replaced.
+pub fn retire_load_alive(alive: &Arc<AtomicBool>) {
+    alive.store(false, Ordering::Release);
+    crate::plugins::reap_retired_operations();
+}
+
 pub fn take_plugin_data_dirs(session_scope: u64, plugin_id: PluginId) -> Vec<PathBuf> {
     take_matching(session_scope, |id, _, _| *id == plugin_id)
 }
