@@ -744,7 +744,7 @@ fn confirming_quit_in_the_panel_stops_every_session_and_the_app() {
 }
 
 #[test]
-fn the_inbox_shortcut_and_the_tray_open_the_sessions_until_something_needs_you() {
+fn the_inbox_shortcut_and_the_tray_open_the_inbox_even_when_empty() {
     let Some(mut desktop) = Desktop::start() else {
         return;
     };
@@ -754,7 +754,7 @@ fn the_inbox_shortcut_and_the_tray_open_the_sessions_until_something_needs_you()
     desktop.wait_for_state("the inbox panel", |state| {
         state.panel == panel(PopupView::Inbox)
     });
-    desktop.wait_for_panel_to_show("Sessions");
+    desktop.wait_for_panel_to_show("Inbox");
     desktop.toggle_inbox_with_the_shortcut();
     desktop.wait_for_state("the panel closed", |state| state.panel.is_none());
     assert_eq!(
@@ -767,8 +767,7 @@ fn the_inbox_shortcut_and_the_tray_open_the_sessions_until_something_needs_you()
     desktop.wait_for_state("the inbox panel from the tray", |state| {
         state.panel == panel(PopupView::Inbox)
     });
-    desktop.wait_for_panel_to_show("Sessions");
-    assert!(!desktop.panel_shows("Inbox"));
+    desktop.wait_for_panel_to_show("Inbox");
     desktop.toggle_inbox_with_the_shortcut();
     desktop.wait_for_state("the panel closed", |state| state.panel.is_none());
     desktop.make_session_need_you("elsewhere");
