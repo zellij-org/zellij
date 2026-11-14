@@ -17246,6 +17246,29 @@ pub fn half_page_scroll_down_by_pane_id() {
 }
 
 #[test]
+pub fn page_and_half_page_scroll_keep_the_same_overlap_in_both_directions() {
+    let pane_id = PaneId::Terminal(1);
+    let mut tab = tab_with_scrollback();
+    let pane_rows = tab
+        .get_pane_with_id(pane_id)
+        .expect("scrollback tab has a terminal pane")
+        .rows();
+    let page_rows = pane_rows.max(1).saturating_sub(1);
+    assert!(page_rows > 0, "the framed pane should have scrollable rows");
+
+    tab.page_scroll_up_by_pane_id(pane_id);
+    assert_eq!(scrolled_lines(&tab), page_rows);
+    tab.page_scroll_down_by_pane_id(pane_id).unwrap();
+    assert_eq!(scrolled_lines(&tab), 0);
+
+    let half_page_rows = page_rows / 2;
+    tab.half_page_scroll_up_by_pane_id(pane_id);
+    assert_eq!(scrolled_lines(&tab), half_page_rows);
+    tab.half_page_scroll_down_by_pane_id(pane_id).unwrap();
+    assert_eq!(scrolled_lines(&tab), 0);
+}
+
+#[test]
 pub fn rename_pane_by_pane_id() {
     let size = Size {
         cols: 121,
