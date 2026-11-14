@@ -16071,3 +16071,53 @@ fn reset_terminal_state_clears_the_kitty_keyboard_stack() {
     feed_bytes(&mut grid, b"\x1b[<u");
     assert_eq!(grid.kitty_keyboard_flags(), 0);
 }
+
+#[test]
+fn reset_input_modes_preserves_scrollback_and_viewport() {
+    use super::{MouseMode, MouseTracking};
+
+    let mut grid = create_grid_with_size_and_raw(2, 5, b"one\r\ntwo\r\nthree\r\nfour");
+    let scrollback_before = scrollback_texts(&grid);
+    let viewport_before = viewport_texts(&grid);
+    assert!(!scrollback_before.is_empty());
+
+    feed_bytes(
+        &mut grid,
+        b"\x1b[?1000h\x1b[?1006h\x1b[?1004h\x1b[?2004h\x1b[>1u\x1b[?1h\x1b[20h",
+    );
+    assert_ne!(grid.mouse_tracking, MouseTracking::Off);
+    assert!(matches!(grid.mouse_mode, MouseMode::Sgr));
+    assert!(grid.focus_event_tracking);
+    assert!(grid.bracketed_paste_mode);
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+    assert!(grid.cursor_key_mode);
+    assert!(grid.new_line_mode);
+
+    grid.reset_input_modes();
+
+    assert_eq!(grid.mouse_tracking, MouseTracking::Off);
+    assert!(matches!(grid.mouse_mode, MouseMode::NoEncoding));
+    assert!(!grid.focus_event_tracking);
+    assert!(!grid.bracketed_paste_mode);
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+    assert!(!grid.cursor_key_mode);
+    assert!(!grid.new_line_mode);
+    assert_eq!(scrollback_texts(&grid), scrollback_before);
+    assert_eq!(viewport_texts(&grid), viewport_before);
+}
+
+#[test]
+fn reset_input_modes_clears_saved_alternate_screen_keyboard_state() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"main");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    feed_bytes(&mut grid, b"\x1b[?1049h");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+
+    grid.reset_input_modes();
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+
+    feed_bytes(&mut grid, b"\x1b[?1049l");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+    assert_eq!(viewport_texts(&grid)[0], "main");
+}

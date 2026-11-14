@@ -1004,6 +1004,9 @@ pub trait Pane {
         false
     }
     fn reset_input_modes_left_by_lost_guest(&mut self) {}
+    fn reset_input_modes(&mut self) -> bool {
+        false
+    }
     fn render_full_viewport(&mut self) {}
     fn relative_position(&self, position_on_screen: &Position) -> Position {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
@@ -8070,6 +8073,25 @@ impl Tab {
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
             pane.clear_screen();
         }
+    }
+    pub fn reset_input_modes_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
+        let pane = self
+            .get_pane_with_id_mut(pane_id)
+            .ok_or_else(|| anyhow!("Pane with id {:?} not found", pane_id))?;
+        if pane.reset_input_modes() {
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "Pane with id {:?} does not support input mode resets",
+                pane_id
+            ))
+        }
+    }
+    pub fn reset_input_modes_for_active_terminal(&mut self, client_id: ClientId) -> Result<()> {
+        let pane_id = self
+            .get_active_pane_id(client_id)
+            .ok_or_else(|| anyhow!("No active pane for client {}", client_id))?;
+        self.reset_input_modes_by_pane_id(pane_id)
     }
     pub fn dump_active_terminal_screen(
         &mut self,

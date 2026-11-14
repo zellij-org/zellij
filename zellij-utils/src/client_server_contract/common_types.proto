@@ -359,6 +359,7 @@ message Action {
     PasteFromClipboardByPaneIdAction paste_from_clipboard_by_pane_id = 193;
     ToggleStackListOrientationAction toggle_stack_list_orientation = 194;
     ToggleStackListOrientationByPaneIdAction toggle_stack_list_orientation_by_pane_id = 195;
+    ResetPaneInputModesAction reset_pane_input_modes = 196;
   }
 }
 
@@ -1436,6 +1437,7 @@ message ResizeByPaneIdAction { PaneId pane_id = 1; ResizeAction resize_action = 
 message MovePaneByPaneIdAction { PaneId pane_id = 1; optional Direction direction = 2; }
 message MovePaneBackwardsByPaneIdAction { PaneId pane_id = 1; }
 message ClearScreenByPaneIdAction { PaneId pane_id = 1; }
+message ResetPaneInputModesAction { optional PaneId pane_id = 1; }
 message EditScrollbackByPaneIdAction {
   PaneId pane_id = 1;
   bool ansi = 2;

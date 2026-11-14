@@ -1235,6 +1235,10 @@ impl Pane for TerminalPane {
     fn reset_input_modes_left_by_lost_guest(&mut self) {
         self.grid.reset_input_modes_left_by_lost_guest();
     }
+    fn reset_input_modes(&mut self) -> bool {
+        self.grid.reset_input_modes();
+        true
+    }
 
     fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
         self.grid

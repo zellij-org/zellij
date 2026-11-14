@@ -1302,6 +1302,12 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
     },
+    /// Reset a terminal pane's input modes without clearing its screen or scrollback.
+    ResetPaneInputModes {
+        /// Target a specific terminal pane by ID. Defaults to the focused pane.
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+    },
     /// Dumps the viewport and optionally scrollback of a pane to a file or STDOUT
     DumpScreen {
         /// File path to dump the pane content to. If omitted, prints to STDOUT.
@@ -2361,6 +2367,35 @@ mod tests {
     fn max_panes_must_be_at_least_one() {
         assert!(try_parse(&["--max-panes", "0"]).is_err());
         assert_eq!(try_parse(&["--max-panes", "1"]).unwrap().max_panes, Some(1));
+    }
+
+    #[test]
+    fn reset_pane_input_modes_parses_with_optional_pane_id() {
+        let cli = try_parse(&[
+            "action",
+            "reset-pane-input-modes",
+            "--pane-id",
+            "terminal_3",
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Command::Action(cli_action)) => match *cli_action {
+                CliAction::ResetPaneInputModes { pane_id } => {
+                    assert_eq!(pane_id.as_deref(), Some("terminal_3"));
+                },
+                other => panic!("Expected ResetPaneInputModes, got {:?}", other),
+            },
+            other => panic!("Expected Action, got {:?}", other),
+        }
+
+        let cli = try_parse(&["action", "reset-pane-input-modes"]).unwrap();
+        match cli.command {
+            Some(Command::Action(cli_action)) => match *cli_action {
+                CliAction::ResetPaneInputModes { pane_id } => assert!(pane_id.is_none()),
+                other => panic!("Expected ResetPaneInputModes, got {:?}", other),
+            },
+            other => panic!("Expected Action, got {:?}", other),
+        }
     }
 
     #[test]

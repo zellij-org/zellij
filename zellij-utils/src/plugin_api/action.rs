@@ -1560,6 +1560,9 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::ApplyFloatingSwapLayoutByTabId { .. } => {
                 Err("These are CLI-only actions, not available in keybindings")
             },
+            Action::ResetPaneInputModes { .. } => {
+                Err("ResetPaneInputModes is not available to plugins")
+            },
             Action::CloseFocusByPaneId { pane_id } => Ok(ProtobufAction {
                 name: ProtobufActionName::CloseFocusByPaneId as i32,
                 optional_payload: Some(OptionalPayload::TargetPaneIdPayload(TargetPaneIdPayload {

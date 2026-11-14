@@ -2641,14 +2641,27 @@ impl Grid {
             self.kitty_keyboard_state.flags()
         }
     }
+    /// Clear input-reporting modes without touching screen contents or
+    /// scrollback. This is a recovery path for a pane whose application left
+    /// mouse, focus, paste or kitty keyboard modes enabled.
+    pub fn reset_input_modes(&mut self) {
+        self.mouse_mode = MouseMode::NoEncoding;
+        self.mouse_tracking = MouseTracking::Off;
+        self.focus_event_tracking = false;
+        self.bracketed_paste_mode = false;
+        self.cursor_key_mode = false;
+        self.new_line_mode = false;
+        self.kitty_keyboard_state = KittyKeyboardState::default();
+        if let Some(alternate_screen_state) = self.alternate_screen_state.as_mut() {
+            alternate_screen_state.kitty_keyboard_state = KittyKeyboardState::default();
+        }
+        self.mark_for_rerender();
+    }
     pub fn reset_input_modes_left_by_lost_guest(&mut self) {
         if self.alternate_screen_state.is_none() {
             return;
         }
-        self.mouse_mode = MouseMode::NoEncoding;
-        self.mouse_tracking = MouseTracking::Off;
-        self.focus_event_tracking = false;
-        self.kitty_keyboard_state = KittyKeyboardState::default();
+        self.reset_input_modes();
         self.color_palette_notification_enabled = false;
     }
     pub fn update_line_for_rendering(&mut self, line_index: usize) {

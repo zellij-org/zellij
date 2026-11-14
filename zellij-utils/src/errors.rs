@@ -527,6 +527,7 @@ pub enum ScreenContext {
     MovePaneWithPaneIdCli,
     MovePaneBackwardsWithPaneId,
     ClearScreenWithPaneId,
+    ResetPaneInputModes,
     EditScrollbackWithPaneId,
     ToggleFullscreenWithPaneId,
     ToggleNoUiFullscreenWithPaneId,

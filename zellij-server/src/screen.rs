@@ -1042,6 +1042,7 @@ pub enum ScreenInstruction {
     EditScrollbackForPaneWithId(PaneId, Option<NotificationEnd>),
     WriteToPaneId(Vec<u8>, PaneId, Option<ClientId>, Option<NotificationEnd>),
     Paste(Vec<u8>, Option<PaneId>, ClientId, Option<NotificationEnd>),
+    ResetPaneInputModes(Option<PaneId>, ClientId, Option<NotificationEnd>),
     SetPaneColor(
         PaneId,
         Option<String>,
@@ -1836,6 +1837,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::WriteToPaneId(..) => ScreenContext::WriteToPaneId,
             ScreenInstruction::Paste(..) => ScreenContext::Paste,
+            ScreenInstruction::ResetPaneInputModes(..) => ScreenContext::ResetPaneInputModes,
             ScreenInstruction::SetPaneColor(..) => ScreenContext::SetPaneColor,
             ScreenInstruction::WriteKeyToPaneId(..) => ScreenContext::WriteKeyToPaneId,
             ScreenInstruction::CopyTextToClipboard(..) => ScreenContext::CopyTextToClipboard,
@@ -16640,6 +16642,38 @@ pub(crate) fn screen_thread_main(
                             }
                         );
                     },
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::ResetPaneInputModes(pane_id, client_id, _completion) => {
+                let mut _completion = crate::route::RecordedCompletion::new(_completion);
+                let result = match pane_id {
+                    Some(pane_id) => {
+                        let all_tabs = screen.get_tabs_mut();
+                        let mut result = Err(anyhow!("Pane with id {:?} not found", pane_id));
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id) {
+                                result = tab.reset_input_modes_by_pane_id(pane_id);
+                                break;
+                            }
+                        }
+                        result
+                    },
+                    None => {
+                        screen.release_live_view_if_unreachable(client_id);
+                        let mut result = Err(anyhow!("No active pane found"));
+                        active_tab_and_connected_client_id!(
+                            screen,
+                            client_id,
+                            |tab: &mut Tab, client_id: ClientId| {
+                                result = tab.reset_input_modes_for_active_terminal(client_id);
+                            }
+                        );
+                        result
+                    },
+                };
+                if let Err(error) = result {
+                    mark_action_as_failed(&mut _completion, &format!("{error:#}"));
                 }
                 screen.render(None)?;
             },

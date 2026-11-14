@@ -1578,6 +1578,7 @@ impl From<crate::input::actions::Action>
             RenameTabAction,
             RenameTabByIdAction,
             RenameTerminalPaneAction,
+            ResetPaneInputModesAction,
             ResizeAction,
             ResizeByPaneIdAction,
             RunAction,
@@ -2655,6 +2656,11 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ClearScreenByPaneId { pane_id } => {
                 ActionType::ClearScreenByPaneId(ClearScreenByPaneIdAction {
                     pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::ResetPaneInputModes { pane_id } => {
+                ActionType::ResetPaneInputModes(ResetPaneInputModesAction {
+                    pane_id: pane_id.map(|pane_id| pane_id.into()),
                 })
             },
             crate::input::actions::Action::EditScrollbackByPaneId { pane_id, ansi } => {
@@ -3808,6 +3814,11 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .pane_id
                         .ok_or_else(|| anyhow!("ClearScreenByPaneId missing pane_id"))?
                         .try_into()?,
+                })
+            },
+            ActionType::ResetPaneInputModes(a) => {
+                Ok(crate::input::actions::Action::ResetPaneInputModes {
+                    pane_id: a.pane_id.map(|pane_id| pane_id.try_into()).transpose()?,
                 })
             },
             ActionType::EditScrollbackByPaneId(a) => {

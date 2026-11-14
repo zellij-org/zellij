@@ -154,6 +154,7 @@ pub fn action_without_arguments(
         "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
         "NextSwapLayout" => Ok(Action::NextSwapLayout),
         "Clear" => Ok(Action::ClearScreen),
+        "ResetPaneInputModes" => Ok(Action::ResetPaneInputModes { pane_id: None }),
         _ => Err(ConfigError::new_kdl_error(
             format!("Unsupported action: {:?}", action_name),
             action_node.span().offset(),
@@ -696,6 +697,10 @@ impl Action {
     pub fn to_kdl(&self) -> Option<KdlNode> {
         match self {
             Action::Quit => Some(KdlNode::new("Quit")),
+            Action::ResetPaneInputModes { pane_id: None } => {
+                Some(KdlNode::new("ResetPaneInputModes"))
+            },
+            Action::ResetPaneInputModes { pane_id: Some(_) } => None,
             Action::Write {
                 key_with_modifier: _key,
                 bytes,
@@ -2025,6 +2030,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "Copy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Clear" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "ResetPaneInputModes" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
             "Confirm" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Deny" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Write" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
@@ -11387,6 +11395,19 @@ fn run_with_background_parses_and_is_written_back() {
         },
     };
     assert_eq!(action, expected);
+    let written = action.to_kdl().unwrap();
+    let reparsed = Action::try_from((&written, &Options::default())).unwrap();
+    assert_eq!(reparsed, expected);
+}
+
+#[test]
+fn reset_pane_input_modes_parses_and_is_written_back() {
+    let document: KdlDocument = "ResetPaneInputModes".parse().unwrap();
+    let node = document.nodes().first().unwrap();
+    let action = Action::try_from((node, &Options::default())).unwrap();
+    let expected = Action::ResetPaneInputModes { pane_id: None };
+    assert_eq!(action, expected);
+
     let written = action.to_kdl().unwrap();
     let reparsed = Action::try_from((&written, &Options::default())).unwrap();
     assert_eq!(reparsed, expected);

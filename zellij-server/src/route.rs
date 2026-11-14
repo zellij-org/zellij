@@ -2805,6 +2805,15 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ResetPaneInputModes { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ResetPaneInputModes(
+                    pane_id.map(|pane_id| pane_id.into()),
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::EditScrollbackByPaneId { pane_id, ansi } => {
             senders
                 .send_to_screen(ScreenInstruction::EditScrollbackWithPaneId(
