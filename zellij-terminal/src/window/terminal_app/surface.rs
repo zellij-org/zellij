@@ -81,7 +81,9 @@ impl App {
             .with_inner_size(self.requested_size());
         let base = created_hidden(base);
         let base = match self.appearance.look {
-            WindowLook::Terminal => startup_attributes(base, self.placement.startup.mode),
+            WindowLook::Terminal => {
+                startup_attributes(base, self.placement.startup.mode, self.options.decorations)
+            },
             WindowLook::Popup { position } => popup_attributes(base, position),
         };
         let base = with_activation_token(base, self.activation_token.take());

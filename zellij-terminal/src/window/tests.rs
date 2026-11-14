@@ -74,6 +74,7 @@ fn test_options(intercept_paste: bool) -> Options {
         startup_mode: StartupMode::Windowed,
         transparency: Transparency::OPAQUE,
         blur: false,
+        decorations: true,
         padding: crate::config::options::Padding::default(),
         padding_balance: false,
         padding_color: PaddingColor::Background,
@@ -768,7 +769,7 @@ fn closing_while_fullscreen_keeps_the_windowed_size_and_reopens_fullscreen() {
     assert_eq!(startup.mode, StartupMode::Fullscreen);
     assert_eq!((startup.cols, startup.rows), (90, 30));
     assert!(
-        startup_attributes(WindowAttributes::default(), startup.mode)
+        startup_attributes(WindowAttributes::default(), startup.mode, true)
             .fullscreen
             .is_some()
     );
@@ -989,15 +990,15 @@ fn frame_with_sideband(rows: usize, cols: usize, seq: u64, sideband: &[u8]) -> V
 
 #[test]
 fn the_startup_mode_reaches_the_attributes_the_window_is_built_with() {
-    let windowed = startup_attributes(WindowAttributes::default(), StartupMode::Windowed);
+    let windowed = startup_attributes(WindowAttributes::default(), StartupMode::Windowed, true);
     assert!(!windowed.maximized);
     assert!(windowed.fullscreen.is_none());
 
-    let maximized = startup_attributes(WindowAttributes::default(), StartupMode::Maximized);
+    let maximized = startup_attributes(WindowAttributes::default(), StartupMode::Maximized, true);
     assert!(maximized.maximized);
     assert!(maximized.fullscreen.is_none());
 
-    let fullscreen = startup_attributes(WindowAttributes::default(), StartupMode::Fullscreen);
+    let fullscreen = startup_attributes(WindowAttributes::default(), StartupMode::Fullscreen, true);
     assert!(!fullscreen.maximized);
     assert_eq!(
         fullscreen.fullscreen,
@@ -1005,9 +1006,21 @@ fn the_startup_mode_reaches_the_attributes_the_window_is_built_with() {
         "a terminal must never change the display's video mode"
     );
 
-    let remembered = startup_attributes(WindowAttributes::default(), StartupMode::Remember);
+    let remembered = startup_attributes(WindowAttributes::default(), StartupMode::Remember, true);
     assert!(!remembered.maximized);
     assert!(remembered.fullscreen.is_none());
+}
+
+#[test]
+fn the_startup_attributes_carry_the_configured_decorations() {
+    let undecorated =
+        startup_attributes(WindowAttributes::default(), StartupMode::Maximized, false);
+    assert!(undecorated.maximized);
+    assert!(!undecorated.decorations);
+
+    let decorated = startup_attributes(WindowAttributes::default(), StartupMode::Maximized, true);
+    assert!(decorated.maximized);
+    assert!(decorated.decorations);
 }
 
 fn remembering(harness: &mut Harness) -> tempfile::TempDir {

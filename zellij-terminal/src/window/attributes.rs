@@ -36,7 +36,9 @@ pub(super) fn popup_attributes(
 pub(crate) fn startup_attributes(
     attributes: WindowAttributes,
     mode: StartupMode,
+    decorations: bool,
 ) -> WindowAttributes {
+    let attributes = attributes.with_decorations(decorations);
     match mode {
         StartupMode::Windowed | StartupMode::Remember => attributes,
         StartupMode::Maximized => attributes.with_maximized(true),

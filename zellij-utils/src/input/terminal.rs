@@ -483,6 +483,7 @@ pub struct TerminalConfig {
     pub opacity: Option<f32>,
     pub opacity_mode: Option<OpacityMode>,
     pub blur: Option<bool>,
+    pub decorations: Option<bool>,
     pub macos_option_as_alt: Option<OptionAsAlt>,
     pub theme: Option<TerminalTheme>,
     pub padding: Option<f32>,
@@ -584,6 +585,9 @@ impl TerminalConfig {
         }
         if let Some(blur) = kdl_get_child_entry_bool_value!(kdl, "blur") {
             window.blur = Some(blur);
+        }
+        if let Some(decorations) = kdl_get_child_entry_bool_value!(kdl, "decorations") {
+            window.decorations = Some(decorations);
         }
         if let Some(option_as_alt) = kdl_get_child!(kdl, "macos_option_as_alt") {
             window.macos_option_as_alt = Some(OptionAsAlt::from_kdl(option_as_alt)?);
@@ -774,6 +778,11 @@ impl TerminalConfig {
             blur_node.push(KdlValue::Bool(blur));
             children.nodes_mut().push(blur_node);
         }
+        if let Some(decorations) = self.decorations {
+            let mut decorations_node = KdlNode::new("decorations");
+            decorations_node.push(KdlValue::Bool(decorations));
+            children.nodes_mut().push(decorations_node);
+        }
         if let Some(option_as_alt) = self.macos_option_as_alt {
             children.nodes_mut().push(option_as_alt.to_kdl());
         }
@@ -920,6 +929,7 @@ impl TerminalConfig {
         merged.opacity = other.opacity.or(merged.opacity);
         merged.opacity_mode = other.opacity_mode.or(merged.opacity_mode);
         merged.blur = other.blur.or(merged.blur);
+        merged.decorations = other.decorations.or(merged.decorations);
         merged.macos_option_as_alt = other.macos_option_as_alt.or(merged.macos_option_as_alt);
         merged.theme = match (merged.theme, other.theme) {
             (Some(mine), Some(theirs)) => Some(mine.merge(theirs)),
@@ -1327,6 +1337,7 @@ mod tests {
                 opacity 0.85
                 opacity_mode "everything"
                 blur true
+                decorations false
                 macos_option_as_alt "right"
                 theme {
                     foreground "#e5e5e5"
@@ -1385,6 +1396,7 @@ mod tests {
         assert_eq!(parsed.opacity, Some(0.85));
         assert_eq!(parsed.opacity_mode, Some(OpacityMode::Everything));
         assert_eq!(parsed.blur, Some(true));
+        assert_eq!(parsed.decorations, Some(false));
         assert_eq!(parsed.macos_option_as_alt, Some(OptionAsAlt::Right));
         let theme = parsed.theme.clone().unwrap();
         assert_eq!(theme.foreground, Some(PaletteColor::Rgb((229, 229, 229))));
