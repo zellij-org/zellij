@@ -473,7 +473,7 @@ impl Pane for TerminalPane {
                 }
             }
         } else {
-            if self.grid.supports_kitty_keyboard_protocol {
+            if self.grid.supports_kitty_keyboard_protocol() {
                 self.adjust_input_to_terminal_with_kitty_keyboard_protocol(
                     key_with_modifier,
                     raw_input_bytes,

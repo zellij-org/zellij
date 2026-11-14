@@ -1844,6 +1844,63 @@ pub(super) struct ScrollResult {
     pub(super) found_something: bool,
 }
 
+/// The kitty keyboard protocol keeps a bounded stack of enhancement flags.
+/// Zellij implements the first progressive enhancement layer
+/// (`DISAMBIGUATE_ESCAPE_CODES`); the other bits are accepted syntactically
+/// but never activate a feature on their own.
+const KITTY_KEYBOARD_FLAG_DISAMBIGUATE_ESCAPE_CODES: u32 = 0b1;
+const KITTY_KEYBOARD_SUPPORTED_FLAGS: u32 = KITTY_KEYBOARD_FLAG_DISAMBIGUATE_ESCAPE_CODES;
+const KITTY_KEYBOARD_MAX_STACK_DEPTH: usize = 32;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct KittyKeyboardState {
+    flags: u32,
+    stack: Vec<u32>,
+}
+
+impl KittyKeyboardState {
+    pub fn flags(&self) -> u32 {
+        self.flags
+    }
+
+    pub fn supports_disambiguate_escape_codes(&self) -> bool {
+        self.flags & KITTY_KEYBOARD_FLAG_DISAMBIGUATE_ESCAPE_CODES != 0
+    }
+
+    /// `CSI > flags u`: save the current state, then apply `flags`.
+    fn push(&mut self, flags: u32) {
+        if self.stack.len() >= KITTY_KEYBOARD_MAX_STACK_DEPTH {
+            self.stack.remove(0);
+        }
+        self.stack.push(self.flags);
+        self.flags = flags & KITTY_KEYBOARD_SUPPORTED_FLAGS;
+    }
+
+    /// `CSI < count u`: restore `count` saved states, or the default state
+    /// when the stack is exhausted.
+    fn pop(&mut self, count: usize) {
+        for _ in 0..count {
+            match self.stack.pop() {
+                Some(flags) => self.flags = flags,
+                None => {
+                    self.flags = 0;
+                    break;
+                },
+            }
+        }
+    }
+
+    /// `CSI = flags ; mode u`: mode 1 replaces, 2 adds, 3 removes.
+    fn set(&mut self, flags: u32, mode: usize) {
+        let flags = flags & KITTY_KEYBOARD_SUPPORTED_FLAGS;
+        match mode {
+            2 => self.flags |= flags,
+            3 => self.flags &= !flags,
+            _ => self.flags = flags,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
@@ -1957,7 +2014,7 @@ pub struct Grid {
     arrow_fonts: bool,
     styled_underlines: bool,
     osc8_hyperlinks: bool,
-    pub supports_kitty_keyboard_protocol: bool, // has the app requested kitty keyboard support?
+    kitty_keyboard_state: KittyKeyboardState,
     explicitly_disable_kitty_keyboard_protocol: bool, // has kitty keyboard support been explicitly
     // disabled by user config?
     click: Click,
@@ -2527,7 +2584,7 @@ impl Grid {
             osc8_hyperlinks,
             lock_renders: false,
             render_lock_opened_at: None,
-            supports_kitty_keyboard_protocol: false,
+            kitty_keyboard_state: KittyKeyboardState::default(),
             explicitly_disable_kitty_keyboard_protocol,
             click: Click::default(),
             pane_default_fg: None,
@@ -2571,6 +2628,19 @@ impl Grid {
     pub fn render_full_viewport(&mut self) {
         self.output_buffer.update_all_lines();
     }
+    pub fn supports_kitty_keyboard_protocol(&self) -> bool {
+        !self.explicitly_disable_kitty_keyboard_protocol
+            && self
+                .kitty_keyboard_state
+                .supports_disambiguate_escape_codes()
+    }
+    pub fn kitty_keyboard_flags(&self) -> u32 {
+        if self.explicitly_disable_kitty_keyboard_protocol {
+            0
+        } else {
+            self.kitty_keyboard_state.flags()
+        }
+    }
     pub fn reset_input_modes_left_by_lost_guest(&mut self) {
         if self.alternate_screen_state.is_none() {
             return;
@@ -2578,7 +2648,7 @@ impl Grid {
         self.mouse_mode = MouseMode::NoEncoding;
         self.mouse_tracking = MouseTracking::Off;
         self.focus_event_tracking = false;
-        self.supports_kitty_keyboard_protocol = false;
+        self.kitty_keyboard_state = KittyKeyboardState::default();
         self.color_palette_notification_enabled = false;
     }
     pub fn update_line_for_rendering(&mut self, line_index: usize) {
@@ -5576,7 +5646,7 @@ impl Grid {
         self.mouse_tracking = MouseTracking::Off;
         self.focus_event_tracking = false;
         self.cursor_is_hidden = false;
-        self.supports_kitty_keyboard_protocol = false;
+        self.kitty_keyboard_state = KittyKeyboardState::default();
         self.set_scroll_region_to_viewport_size();
         self.pane_default_fg = None;
         self.pane_default_bg = None;
@@ -8787,7 +8857,7 @@ impl Handler for Grid {
                                     &mut self.cursor,
                                     &mut self.sixel_grid,
                                     &mut self.kitty_grid,
-                                    &mut self.supports_kitty_keyboard_protocol,
+                                    &mut self.kitty_keyboard_state,
                                     &mut self.lines_below,
                                     &mut self.is_scrolled,
                                 );
@@ -8890,55 +8960,64 @@ impl Handler for Grid {
                             self.bracketed_paste_mode = true;
                         },
                         1049 => {
-                            // enter alternate buffer
-                            // The parked view is part of the primary screen.
-                            // Save that screen, not the live window alone.
-                            self.unpark_live_bottom();
-                            let current_lines_above =
-                                std::mem::replace(&mut self.lines_above, VecDeque::new());
-                            self.line_index.clear();
-                            let current_lines_below = std::mem::take(&mut self.lines_below);
-                            self.lines_below_cells = None;
-                            let was_scrolled = self.is_scrolled;
-                            self.is_scrolled = false;
-                            self.scrollback_cells = 0;
-                            let current_viewport = std::mem::replace(
-                                &mut self.viewport,
-                                VecDeque::from(vec![Row::new().canonical()]),
-                            );
-                            let current_cursor = std::mem::replace(
-                                &mut self.cursor,
-                                Cursor::new(0, 0, self.styled_underlines),
-                            );
-                            let current_supports_kitty_keyboard_protocol = std::mem::replace(
-                                &mut self.supports_kitty_keyboard_protocol,
-                                false,
-                            );
-                            let sixel_image_store = self.sixel_grid.sixel_image_store.clone();
-                            let alternate_sixelgrid = std::mem::replace(
-                                &mut self.sixel_grid,
-                                SixelGrid::new(self.character_cell_size.clone(), sixel_image_store),
-                            );
-                            let kitty_image_store = self.kitty_grid.kitty_image_store.clone();
-                            let alternate_kittygrid = std::mem::replace(
-                                &mut self.kitty_grid,
-                                KittyGrid::new(self.character_cell_size.clone(), kitty_image_store),
-                            );
-                            self.invalidate_scroll_offset();
-                            self.alternate_screen_state = Some(AlternateScreenState::new(
-                                current_lines_above,
-                                current_viewport,
-                                current_cursor,
-                                alternate_sixelgrid,
-                                alternate_kittygrid,
-                                current_supports_kitty_keyboard_protocol,
-                                current_lines_below,
-                                was_scrolled,
-                            ));
-                            self.shell_reports
-                                .push(crate::attention::signals::PaneSignal::AlternateScreen(true));
-                            self.clear_viewport_before_rendering = true;
-                            self.output_buffer.update_all_lines(); // make sure the screen gets cleared in the next render
+                            // Entering the alternate screen again must not replace the saved
+                            // main-screen snapshot with the current alternate-screen state.
+                            if self.alternate_screen_state.is_none() {
+                                // enter alternate buffer
+                                // The parked view is part of the primary screen.
+                                // Save that screen, not the live window alone.
+                                self.unpark_live_bottom();
+                                let current_lines_above =
+                                    std::mem::replace(&mut self.lines_above, VecDeque::new());
+                                self.line_index.clear();
+                                let current_lines_below = std::mem::take(&mut self.lines_below);
+                                self.lines_below_cells = None;
+                                let was_scrolled = self.is_scrolled;
+                                self.is_scrolled = false;
+                                self.scrollback_cells = 0;
+                                let current_viewport = std::mem::replace(
+                                    &mut self.viewport,
+                                    VecDeque::from(vec![Row::new().canonical()]),
+                                );
+                                let current_cursor = std::mem::replace(
+                                    &mut self.cursor,
+                                    Cursor::new(0, 0, self.styled_underlines),
+                                );
+                                let current_kitty_keyboard_state =
+                                    std::mem::take(&mut self.kitty_keyboard_state);
+                                let sixel_image_store = self.sixel_grid.sixel_image_store.clone();
+                                let alternate_sixelgrid = std::mem::replace(
+                                    &mut self.sixel_grid,
+                                    SixelGrid::new(
+                                        self.character_cell_size.clone(),
+                                        sixel_image_store,
+                                    ),
+                                );
+                                let kitty_image_store = self.kitty_grid.kitty_image_store.clone();
+                                let alternate_kittygrid = std::mem::replace(
+                                    &mut self.kitty_grid,
+                                    KittyGrid::new(
+                                        self.character_cell_size.clone(),
+                                        kitty_image_store,
+                                    ),
+                                );
+                                self.invalidate_scroll_offset();
+                                self.alternate_screen_state = Some(AlternateScreenState::new(
+                                    current_lines_above,
+                                    current_viewport,
+                                    current_cursor,
+                                    alternate_sixelgrid,
+                                    alternate_kittygrid,
+                                    current_kitty_keyboard_state,
+                                    current_lines_below,
+                                    was_scrolled,
+                                ));
+                                self.shell_reports.push(
+                                    crate::attention::signals::PaneSignal::AlternateScreen(true),
+                                );
+                                self.clear_viewport_before_rendering = true;
+                                self.output_buffer.update_all_lines(); // make sure the screen gets cleared in the next render
+                            }
                         },
                         1 => {
                             self.cursor_key_mode = true;
@@ -9143,42 +9222,27 @@ impl Handler for Grid {
         } else if c == 's' {
             self.save_cursor_position();
         } else if c == 'u' && intermediates == &[b'>'] {
-            // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
-            // protocol
-            // 0 disables, everything else enables.
-            let count = next_param_or(0);
+            // Push the current keyboard state and apply the requested flags.
+            let flags = next_param_or(0) as u32;
             if !self.explicitly_disable_kitty_keyboard_protocol {
-                if count > 0 {
-                    self.supports_kitty_keyboard_protocol = true;
-                } else {
-                    self.supports_kitty_keyboard_protocol = false;
-                }
+                self.kitty_keyboard_state.push(flags);
             }
         } else if c == 'u' && intermediates == &[b'<'] {
-            // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
-            // protocol
+            // Pop the requested number of saved keyboard states (default one).
+            let count = next_param_or(1);
             if !self.explicitly_disable_kitty_keyboard_protocol {
-                self.supports_kitty_keyboard_protocol = false;
+                self.kitty_keyboard_state.pop(count);
             }
         } else if c == 'u' && intermediates == &[b'?'] {
-            // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
-            // protocol
-            let reply = if self.supports_kitty_keyboard_protocol {
-                "\u{1b}[?1u"
-            } else {
-                "\u{1b}[?0u"
-            };
-            self.pending_messages_to_pty.push(reply.as_bytes().to_vec());
+            let reply = format!("\u{1b}[?{}u", self.kitty_keyboard_flags());
+            self.pending_messages_to_pty.push(reply.into_bytes());
         } else if c == 'u' && intermediates == &[b'='] {
-            // kitty keyboard protocol without the stack, just setting.
-            // 0 disables, everything else enables.
-            let count = next_param_or(0);
+            // Set keyboard flags without touching the stack.
+            // The second parameter selects replace (1), add (2) or remove (3).
+            let flags = next_param_or(0) as u32;
+            let mode = next_param_or(1);
             if !self.explicitly_disable_kitty_keyboard_protocol {
-                if count > 0 {
-                    self.supports_kitty_keyboard_protocol = true;
-                } else {
-                    self.supports_kitty_keyboard_protocol = false;
-                }
+                self.kitty_keyboard_state.set(flags, mode);
             }
         } else if c == 'u' {
             self.restore_cursor_position();
@@ -9534,7 +9598,7 @@ pub struct AlternateScreenState {
     cursor: Cursor,
     sixel_grid: SixelGrid,
     kitty_grid: KittyGrid,
-    supports_kitty_keyboard_protocol: bool,
+    kitty_keyboard_state: KittyKeyboardState,
     lines_below: VecDeque<Row>,
     is_scrolled: bool,
 }
@@ -9545,7 +9609,7 @@ impl AlternateScreenState {
         cursor: Cursor,
         sixel_grid: SixelGrid,
         kitty_grid: KittyGrid,
-        supports_kitty_keyboard_protocol: bool,
+        kitty_keyboard_state: KittyKeyboardState,
         lines_below: VecDeque<Row>,
         is_scrolled: bool,
     ) -> Self {
@@ -9555,7 +9619,7 @@ impl AlternateScreenState {
             cursor,
             sixel_grid,
             kitty_grid,
-            supports_kitty_keyboard_protocol,
+            kitty_keyboard_state,
             lines_below,
             is_scrolled,
         }
@@ -9567,7 +9631,7 @@ impl AlternateScreenState {
         cursor: &mut Cursor,
         sixel_grid: &mut SixelGrid,
         kitty_grid: &mut KittyGrid,
-        supports_kitty_keyboard_protocol: &mut bool,
+        kitty_keyboard_state: &mut KittyKeyboardState,
         lines_below: &mut VecDeque<Row>,
         is_scrolled: &mut bool,
     ) {
@@ -9576,10 +9640,7 @@ impl AlternateScreenState {
         std::mem::swap(&mut self.cursor, cursor);
         std::mem::swap(&mut self.sixel_grid, sixel_grid);
         std::mem::swap(&mut self.kitty_grid, kitty_grid);
-        std::mem::swap(
-            &mut self.supports_kitty_keyboard_protocol,
-            supports_kitty_keyboard_protocol,
-        );
+        std::mem::swap(&mut self.kitty_keyboard_state, kitty_keyboard_state);
         std::mem::swap(&mut self.lines_below, lines_below);
         std::mem::swap(&mut self.is_scrolled, is_scrolled);
     }

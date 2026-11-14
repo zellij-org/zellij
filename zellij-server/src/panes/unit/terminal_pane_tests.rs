@@ -1577,6 +1577,46 @@ pub fn guest_modal_no_modal_passes_input_through() {
     ));
 }
 
+#[test]
+pub fn clearing_enhanced_keyboard_mode_restores_a_raw_interrupt_byte() {
+    use crate::tab::AdjustedInput;
+    use zellij_utils::data::{BareKey, KeyWithModifier};
+
+    let mut pane = terminal_pane_with_size(24, 80);
+    let ctrl_c = KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier();
+
+    pane.handle_pty_bytes(b"\x1b[>1u".to_vec());
+    let outcome = pane.adjust_input_to_terminal(&Some(ctrl_c.clone()), vec![3], false, Some(1));
+    match outcome {
+        Some(AdjustedInput::WriteBytesToTerminal(bytes)) => {
+            assert_eq!(bytes, b"\x1b[99;5u");
+        },
+        _ => panic!("expected Ctrl-C to be serialized for the kitty keyboard protocol"),
+    }
+
+    // A valid remove-mode request must restore the raw byte too.
+    pane.handle_pty_bytes(b"\x1b[=1;3u".to_vec());
+    let outcome = pane.adjust_input_to_terminal(&Some(ctrl_c.clone()), vec![3], false, Some(1));
+    match outcome {
+        Some(AdjustedInput::WriteBytesToTerminal(bytes)) => {
+            assert_eq!(bytes, vec![3]);
+        },
+        _ => panic!("expected remove-mode to disable the kitty keyboard protocol"),
+    }
+
+    // A full reset clears both the active flags and the saved stack.
+    pane.handle_pty_bytes(b"\x1b[=1u".to_vec());
+    pane.handle_pty_bytes(b"\x1b[>1u".to_vec());
+    pane.handle_pty_bytes(b"\x1bc".to_vec());
+    let outcome = pane.adjust_input_to_terminal(&Some(ctrl_c), vec![3], false, Some(1));
+    match outcome {
+        Some(AdjustedInput::WriteBytesToTerminal(bytes)) => {
+            assert_eq!(bytes, vec![3]);
+        },
+        _ => panic!("expected Ctrl-C to reach the terminal as a raw interrupt byte"),
+    }
+}
+
 fn mirror_source_pane(cols: usize, rows: usize) -> TerminalPane {
     let mut geom = PaneGeom::default();
     geom.cols.set_inner(cols);

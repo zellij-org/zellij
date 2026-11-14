@@ -15926,3 +15926,148 @@ fn newlines_with_a_kitty_placement_do_not_rescan_history() {
     let after = grid.kitty_placements()[0].display_rect.y;
     assert!(after <= before);
 }
+
+fn query_kitty_keyboard_flags(grid: &mut Grid) -> u32 {
+    grid.pending_messages_to_pty.clear();
+    feed_bytes(grid, b"\x1b[?u");
+    let reply = grid
+        .pending_messages_to_pty
+        .pop()
+        .expect("kitty keyboard query reply");
+    let reply = String::from_utf8(reply).expect("utf-8 kitty keyboard reply");
+    reply
+        .strip_prefix("\x1b[?")
+        .and_then(|reply| reply.strip_suffix('u'))
+        .expect("kitty keyboard query reply")
+        .parse()
+        .expect("numeric kitty keyboard flags")
+}
+
+#[test]
+fn kitty_keyboard_push_and_pop_restores_nested_state() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+    assert!(grid.supports_kitty_keyboard_protocol());
+
+    feed_bytes(&mut grid, b"\x1b[>0u");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+    assert!(!grid.supports_kitty_keyboard_protocol());
+
+    feed_bytes(&mut grid, b"\x1b[<u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+    assert_eq!(query_kitty_keyboard_flags(&mut grid), 1);
+}
+
+#[test]
+fn kitty_keyboard_pop_honors_its_count() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[=1u");
+    feed_bytes(&mut grid, b"\x1b[>0u");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+
+    feed_bytes(&mut grid, b"\x1b[<2u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+
+    feed_bytes(&mut grid, b"\x1b[<5u");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+}
+
+#[test]
+fn kitty_keyboard_set_supports_add_and_remove_modes() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[=1u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+
+    feed_bytes(&mut grid, b"\x1b[=1;3u");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+
+    feed_bytes(&mut grid, b"\x1b[=1u");
+    feed_bytes(&mut grid, b"\x1b[=0;2u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+
+    feed_bytes(&mut grid, b"\x1b[=2;2u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+}
+
+#[test]
+fn unsupported_kitty_keyboard_flags_do_not_enable_disambiguation() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[>2u");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+    assert!(!grid.supports_kitty_keyboard_protocol());
+    assert_eq!(query_kitty_keyboard_flags(&mut grid), 0);
+
+    feed_bytes(&mut grid, b"\x1b[=4u");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+}
+
+#[test]
+fn kitty_keyboard_state_is_separate_on_the_alternate_screen() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"main");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+
+    feed_bytes(&mut grid, b"\x1b[?1049h");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+
+    feed_bytes(&mut grid, b"\x1b[?1049l");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+    assert_eq!(viewport_texts(&grid)[0], "main");
+}
+
+#[test]
+fn repeated_alternate_screen_entry_keeps_the_saved_main_screen() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"main");
+    feed_bytes(&mut grid, b"\x1b[?1049h");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    feed_bytes(&mut grid, b"alt");
+
+    // A second enter must not replace the saved main-screen snapshot with the
+    // alternate-screen state.
+    feed_bytes(&mut grid, b"\x1b[?1049h");
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+
+    feed_bytes(&mut grid, b"\x1b[?1049l");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+    assert_eq!(viewport_texts(&grid)[0], "main");
+}
+
+#[test]
+fn repeated_alternate_screen_cycles_do_not_accumulate_keyboard_stack() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    for _ in 0..10 {
+        feed_bytes(&mut grid, b"\x1b[?1049h");
+        feed_bytes(&mut grid, b"\x1b[>1u");
+        feed_bytes(&mut grid, b"\x1b[?1049l");
+    }
+    assert_eq!(grid.kitty_keyboard_state.stack.len(), 1);
+    assert_eq!(grid.kitty_keyboard_flags(), 1);
+}
+
+#[test]
+fn kitty_keyboard_stack_is_bounded() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    for _ in 0..super::KITTY_KEYBOARD_MAX_STACK_DEPTH + 10 {
+        feed_bytes(&mut grid, b"\x1b[>1u");
+    }
+    assert_eq!(
+        grid.kitty_keyboard_state.stack.len(),
+        super::KITTY_KEYBOARD_MAX_STACK_DEPTH
+    );
+}
+
+#[test]
+fn reset_terminal_state_clears_the_kitty_keyboard_stack() {
+    let mut grid = create_grid_with_size_and_raw(3, 20, b"");
+    feed_bytes(&mut grid, b"\x1b[>1u");
+    feed_bytes(&mut grid, b"\x1b[>0u");
+
+    grid.reset_terminal_state();
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+    assert!(!grid.supports_kitty_keyboard_protocol());
+
+    feed_bytes(&mut grid, b"\x1b[<u");
+    assert_eq!(grid.kitty_keyboard_flags(), 0);
+}
