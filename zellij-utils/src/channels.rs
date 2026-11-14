@@ -29,6 +29,13 @@ impl<T: Clone> SenderWithContext<T> {
         let err_ctx = get_current_ctx();
         self.sender.send((event, err_ctx))
     }
+
+    /// Attempts to send an event, along with the current [`ErrorContext`], on
+    /// this [`SenderWithContext`]'s channel without blocking.
+    pub fn try_send(&self, event: T) -> Result<(), TrySendError<(T, ErrorContext)>> {
+        let err_ctx = get_current_ctx();
+        self.sender.try_send((event, err_ctx))
+    }
 }
 
 thread_local!(

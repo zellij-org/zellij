@@ -18,10 +18,10 @@ use std::path::PathBuf;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    bar_role_label, bar_shows_mode, BareKey, BorderStyle, BorderStyleOverride, Direction,
-    HiddenBars, KeyModifier, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus,
-    PermissionType, PluginPermission, RegexHighlight, ResizeStrategy, Style, StyledText,
-    WebSharing,
+    bar_role_label, bar_shows_mode, BareKey, BorderStyle, BorderStyleOverride, CopyDestination,
+    Direction, HiddenBars, KeyModifier, KeyWithModifier, NewPanePlacement, PaneInfo,
+    PermissionStatus, PermissionType, PluginPermission, RegexHighlight, ResizeStrategy, Style,
+    StyledText, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -1306,7 +1306,11 @@ impl Tab {
         );
 
         let clipboard_provider = match copy_options.command {
-            Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
+            Some(command) => ClipboardProvider::command_with_completion(
+                CopyCommand::new(command),
+                senders.clone(),
+                CopyDestination::Command,
+            ),
             None => ClipboardProvider::Osc52(copy_options.clipboard),
         };
         let swap_layouts = SwapLayouts::new(swap_layouts, display_area.clone());
@@ -8047,30 +8051,36 @@ impl Tab {
                 .with_context(|| {
                     format!("failed to write selection to clipboard for client {client_id}")
                 })?;
-            self.senders
-                .send_to_plugin(PluginInstruction::Update(vec![(
-                    None,
-                    None,
-                    Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
-                )]))
-                .with_context(|| {
-                    format!("failed to inform plugins about copy selection for client {client_id}")
-                })
-                .non_fatal();
+            if !self.clipboard_provider.reports_completion_asynchronously() {
+                self.senders
+                    .send_to_plugin(PluginInstruction::Update(vec![(
+                        None,
+                        None,
+                        Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
+                    )]))
+                    .with_context(|| {
+                        format!(
+                            "failed to inform plugins about copy selection for client {client_id}"
+                        )
+                    })
+                    .non_fatal();
+            }
         }
         Ok(())
     }
     pub fn copy_text_to_clipboard(&self, text: &str) -> Result<()> {
         self.write_selection_to_clipboard(text)
             .with_context(|| format!("failed to write text to clipboard"))?;
-        self.senders
-            .send_to_plugin(PluginInstruction::Update(vec![(
-                None,
-                None,
-                Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
-            )]))
-            .with_context(|| "failed to inform plugins about clipboard copy")
-            .non_fatal();
+        if !self.clipboard_provider.reports_completion_asynchronously() {
+            self.senders
+                .send_to_plugin(PluginInstruction::Update(vec![(
+                    None,
+                    None,
+                    Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
+                )]))
+                .with_context(|| "failed to inform plugins about clipboard copy")
+                .non_fatal();
+        }
         Ok(())
     }
 
@@ -8080,7 +8090,7 @@ impl Tab {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         let clipboard_event = match self.clipboard_provider.set_content(selection) {
-            Ok(None) => Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
+            Ok(None) => return Ok(()),
             Ok(Some(vte_instruction)) => self
                 .senders
                 .send_to_screen(ScreenInstruction::SendVteInstructionToClients(
@@ -9351,7 +9361,11 @@ impl Tab {
     }
     pub fn update_copy_options(&mut self, copy_options: &CopyOptions) {
         self.clipboard_provider = match &copy_options.command {
-            Some(command) => ClipboardProvider::Command(CopyCommand::new(command.clone())),
+            Some(command) => ClipboardProvider::command_with_completion(
+                CopyCommand::new(command.clone()),
+                self.senders.clone(),
+                CopyDestination::Command,
+            ),
             None => ClipboardProvider::Osc52(copy_options.clipboard),
         };
         self.copy_on_select = copy_options.copy_on_select;
