@@ -6848,6 +6848,56 @@ fn a_synchronized_update_held_past_the_cap_releases_on_the_next_paint() {
 }
 
 #[test]
+fn repeated_synchronized_begins_do_not_renew_the_hard_deadline() {
+    let mut parser = vt_parser::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    parser.feed(&mut grid, b"\x1b[?2026hfirst");
+    let opened_at = grid
+        .render_lock_opened_at
+        .expect("the first begin opens the render lock");
+
+    parser.feed(&mut grid, b"\x1b[?2026h\x1b[?2026hsecond");
+    assert_eq!(
+        grid.render_lock_opened_at,
+        Some(opened_at),
+        "later begins must not postpone the hard deadline"
+    );
+    assert_eq!(
+        grid.render_lock_deadline(),
+        Some(opened_at + super::SYNCHRONIZED_UPDATE_CAP)
+    );
+
+    parser.feed(&mut grid, b"\x1b[?2026l");
+    assert!(grid.render_lock_deadline().is_none());
+    parser.feed(&mut grid, b"\x1b[?2026hnew");
+    assert!(
+        grid.render_lock_opened_at > Some(opened_at),
+        "a new interval gets a new deadline"
+    );
+}
+
+#[test]
+fn a_full_terminal_reset_clears_a_synchronized_update_lock() {
+    let mut parser = vt_parser::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    parser.feed(&mut grid, b"\x1b[?2026hhello");
+    assert!(grid.is_mid_frame());
+    assert!(grid.render_lock_deadline().is_some());
+
+    parser.feed(&mut grid, b"\x1bc");
+
+    assert!(!grid.is_mid_frame(), "reset must release the render lock");
+    assert!(
+        grid.render_lock_deadline().is_none(),
+        "reset must clear the hard deadline instead of waiting for it"
+    );
+    assert!(
+        grid.render(0, 0, &Style::default()).unwrap().is_some(),
+        "a paint after reset must not stay suppressed"
+    );
+}
+
+#[test]
 fn csi_2031_dollar_p_when_disabled_replies_reset() {
     // DECRQM mode 2031 (Application Theme Reporting) is per-pane state
     // tracked locally by Zellij. With no prior `CSI ? 2031 h`, the mode

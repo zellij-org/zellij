@@ -5677,6 +5677,8 @@ impl Grid {
         self.origin_mode = false;
         self.disable_linewrap = false;
         self.new_line_mode = false;
+        self.lock_renders = false;
+        self.render_lock_opened_at = None;
         self.cursor.change_shape(CursorShape::Initial);
         self.output_buffer.update_all_lines();
         self.changed_colors = None;
@@ -7664,8 +7666,10 @@ impl Grid {
         }
     }
     pub fn lock_renders(&mut self) {
+        if !self.lock_renders || self.render_lock_opened_at.is_none() {
+            self.render_lock_opened_at = Some(std::time::Instant::now());
+        }
         self.lock_renders = true;
-        self.render_lock_opened_at = Some(std::time::Instant::now());
     }
     pub fn unlock_renders(&mut self) {
         self.lock_renders = false;
@@ -7675,6 +7679,10 @@ impl Grid {
         self.render_lock_opened_at
             .map(|opened_at| opened_at.elapsed() >= SYNCHRONIZED_UPDATE_CAP)
             .unwrap_or(false)
+    }
+    pub(crate) fn render_lock_deadline(&self) -> Option<std::time::Instant> {
+        self.render_lock_opened_at
+            .map(|opened_at| opened_at + SYNCHRONIZED_UPDATE_CAP)
     }
     pub fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme.clone();

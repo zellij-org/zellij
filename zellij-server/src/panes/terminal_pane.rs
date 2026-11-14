@@ -1212,6 +1212,9 @@ impl Pane for TerminalPane {
     fn is_forward_paused(&self) -> bool {
         self.forward_paused
     }
+    fn render_lock_deadline(&self) -> Option<std::time::Instant> {
+        self.grid.render_lock_deadline()
+    }
 
     fn push_color_palette_dsr(&mut self, mode: zellij_utils::data::HostTerminalThemeMode) {
         self.grid.push_color_palette_dsr(mode);
