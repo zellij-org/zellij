@@ -874,16 +874,16 @@ impl Pane for TerminalPane {
     fn drain_forwarded_queries(&mut self) -> Vec<HostQuery> {
         self.batch_pending_palette_queries();
         let queries: Vec<HostQuery> = self.grid.pending_forwarded_queries.drain(..).collect();
-        if queries.len() < 2 || !queries.iter().all(is_palette_register) {
-            return queries;
-        }
-        let registers = queries
-            .into_iter()
+        let registers: Vec<_> = queries
+            .iter()
             .filter_map(|query| match query {
-                HostQuery::PaletteRegister { index, terminator } => Some((index, terminator)),
+                HostQuery::PaletteRegister { index, terminator } => Some((*index, *terminator)),
                 _ => None,
             })
             .collect();
+        if registers.len() < 2 || registers.len() < queries.len() {
+            return queries;
+        }
         vec![HostQuery::PaletteRegisters { registers }]
     }
 
@@ -1589,10 +1589,6 @@ impl Pane for TerminalPane {
     }
 }
 
-fn is_palette_register(query: &HostQuery) -> bool {
-    matches!(query, HostQuery::PaletteRegister { .. })
-}
-
 /// Length of a complete `OSC 4 ; N ; ?` getter (BEL or ST terminated) at
 /// the start of `bytes`, if there is one.
 fn palette_query_len(bytes: &[u8]) -> Option<usize> {
@@ -1629,14 +1625,6 @@ impl TerminalPane {
         else {
             return;
         };
-        if !self
-            .grid
-            .pending_forwarded_queries
-            .iter()
-            .all(is_palette_register)
-        {
-            return;
-        }
         let ends_with_st = *terminator == OscTerminator::St;
         let bytes = self.pending_pty_input.make_contiguous();
         let mut consumed = 0;
