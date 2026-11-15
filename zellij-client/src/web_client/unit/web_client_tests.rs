@@ -3956,7 +3956,10 @@ mod web_client_tests {
         let (port, server_handle) = spawn_test_server_with_config(Config::default()).await;
 
         let login_url = format!("http://127.0.0.1:{}/command/login", port);
-        let oversized = serde_json::json!({ "auth_token": "a".repeat(100 * 1024) }).to_string();
+        let oversized = serde_json::json!({
+            "auth_token": "a".repeat(crate::web_client::MAX_REQUEST_BODY_BYTES + 1024)
+        })
+        .to_string();
         let response = timeout(
             Duration::from_secs(5),
             tokio::task::spawn_blocking(move || {
@@ -4107,7 +4110,12 @@ mod web_client_tests {
                 .unwrap()
             }
         };
-        assert_eq!(post_session("a".repeat(100 * 1024)).await.status(), 413);
+        assert_eq!(
+            post_session("a".repeat(crate::web_client::MAX_REQUEST_BODY_BYTES + 1024))
+                .await
+                .status(),
+            413
+        );
         assert!(post_session("{}".to_string()).await.status().is_success());
 
         server_handle.abort();
