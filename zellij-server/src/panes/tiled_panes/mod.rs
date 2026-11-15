@@ -3016,7 +3016,7 @@ impl TiledPanes {
         self.resize(display_area);
     }
 
-    fn reenter_active_pane_fullscreen(&mut self, client_id: ClientId, covers_ui: bool) {
+    pub(crate) fn reenter_active_pane_fullscreen(&mut self, client_id: ClientId, covers_ui: bool) {
         if covers_ui {
             self.toggle_active_pane_no_ui_fullscreen(client_id);
         } else {
