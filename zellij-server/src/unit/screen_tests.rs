@@ -10055,6 +10055,37 @@ fn empty_reply_falls_back_to_cached_palette_register() {
 }
 
 #[test]
+fn partial_palette_batch_reply_is_completed_from_cache() {
+    // The client gives up on a forward after a fixed deadline; a host
+    // answering one register per frame only gets through part of a batch.
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(1);
+    screen.update_terminal_color_registers(vec![
+        (1, "rgb:1111/1111/1111".to_string()),
+        (2, "rgb:2222/2222/2222".to_string()),
+    ]);
+    let batch = HostQuery::PaletteRegisters {
+        registers: vec![(1, OscTerminator::St), (2, OscTerminator::Bel)],
+    };
+    let token = screen.forward_host_query(pane, batch);
+    let _ = capture.drain_forward_queries();
+
+    let host_reply = b"\x1b]4;1;rgb:abab/abab/abab\x1b\\".to_vec();
+    screen
+        .handle_forwarded_reply_from_host(token, host_reply)
+        .expect("ok");
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        std::str::from_utf8(&writes[0].0).unwrap(),
+        "\u{1b}]4;1;rgb:abab/abab/abab\u{1b}\\\u{1b}]4;2;rgb:2222/2222/2222\u{7}",
+        "the host's answer is kept; the missing register comes from the cache"
+    );
+}
+
+#[test]
 fn empty_reply_with_no_cache_writes_empty() {
     // No background override, no palette, no pixel dims: synthesis
     // returns empty and the pane receives an empty write — the app
