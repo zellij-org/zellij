@@ -179,7 +179,9 @@ impl FsEntry {
             FsEntry::Dir(p) => p,
             FsEntry::File(p, _) => p,
         };
-        path.file_name().unwrap().to_string_lossy().into_owned()
+        path.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.display().to_string())
     }
 
     pub fn size(&self) -> Option<u64> {

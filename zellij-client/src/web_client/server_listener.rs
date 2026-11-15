@@ -6,13 +6,14 @@ use crate::web_client::session_management::{
 };
 use crate::web_client::types::{
     take_pending_welcome_session, ClientConnectionBus, ConnectionTable, PendingWelcomeSessions,
-    SessionManager,
+    SessionManager, WEB_IPC_WRITE_BUDGET,
 };
 use crate::web_client::utils::terminal_init_messages;
 
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 use zellij_utils::{
     cli::CliArgs,
@@ -38,6 +39,7 @@ pub fn zellij_server_listener(
     client_pixel_dims: Option<SizeInPixels>,
     pending_welcome_sessions: PendingWelcomeSessions,
     is_structured_client: bool,
+    attach_budget: Duration,
 ) {
     let _server_listener_thread = std::thread::Builder::new()
         .name("server_listener".to_string())
@@ -54,13 +56,28 @@ pub fn zellij_server_listener(
                         Ok(initial_session_connection) => initial_session_connection,
                         Err(e) => {
                             log::error!("{}", e);
+                            client_connection_bus.close_connection();
                             return;
                         },
                     };
+                let deliver = |msg: ClientToServerMsg, deadline: Instant| -> bool {
+                    match os_input.try_send_to_server_until(msg, deadline) {
+                        Ok(()) => true,
+                        Err(error) => {
+                            log::warn!("web session write was not delivered: {error}");
+                            false
+                        },
+                    }
+                };
                 let mut attachment_complete_tx = attachment_complete_tx;
                 let mut host_query_seed_msgs: Option<Vec<ClientToServerMsg>> = None;
                 let mut switched_from_previous_session = false;
                 'reconnect_loop: loop {
+                    if os_input.session_ipc_cancelled() {
+                        client_connection_bus.close_connection();
+                        return;
+                    }
+                    let connect_deadline = Instant::now() + attach_budget;
                     let reconnect_info = reconnect_to_session.take();
                     let initial_layout = reconnect_info.as_ref().and_then(|r| r.layout.clone());
                     let switch_context =
@@ -113,11 +130,23 @@ pub fn zellij_server_listener(
                     // Look up read-only status from connection table
                     let is_read_only = connection_table
                         .lock()
-                        .unwrap()
+                        .unwrap_or_else(|p| p.into_inner())
                         .is_client_read_only(&web_client_id);
 
 
-                    let session_exists = session_manager.session_exists(&session_name).unwrap_or(false);
+                    let session_exists = match session_manager.session_exists(&session_name) {
+                        Ok(exists) => exists,
+                        Err(error) => {
+                            log::error!(
+                                "Could not determine whether session {:?} exists: {}; \
+                                 refusing to create a replacement session",
+                                session_name,
+                                error
+                            );
+                            client_connection_bus.close_connection();
+                            return;
+                        },
+                    };
 
                     if is_read_only && !session_exists {
                         log::error!("Read only tokens cannot create new sessions.");
@@ -125,33 +154,107 @@ pub fn zellij_server_listener(
                         return;
                     }
 
-                    let should_create_new_session = !session_exists;
-                    let first_message = create_first_message(is_read_only, config_file_path.clone(), client_attributes.clone(), config_options.clone(), should_create_new_session, &session_name, initial_layout, switch_context, focus);
-                    let zellij_ipc_pipe = create_ipc_pipe(&session_name, session_exists);
+                    let zellij_ipc_pipe = match create_ipc_pipe(&session_name, session_exists) {
+                        Ok(pipe) => pipe,
+                        Err(e) => {
+                            log::error!(
+                                "Failed to prepare IPC pipe for session {:?}: {}",
+                                session_name,
+                                e
+                            );
+                            client_connection_bus.close_connection();
+                            return;
+                        },
+                    };
+                    let create_message = match create_first_message(
+                        is_read_only,
+                        config_file_path.clone(),
+                        client_attributes.clone(),
+                        config_options.clone(),
+                        true,
+                        &session_name,
+                        initial_layout.clone(),
+                        switch_context.clone(),
+                        focus,
+                    ) {
+                        Ok(message) => message,
+                        Err(error) => {
+                            log::error!(
+                                "Failed to build the create message for session {:?}: {}. \
+                                 Not using the display name as the session folder.",
+                                session_name,
+                                error
+                            );
+                            client_connection_bus.close_connection();
+                            return;
+                        },
+                    };
+                    let attach_message = match create_first_message(
+                        is_read_only,
+                        config_file_path.clone(),
+                        client_attributes.clone(),
+                        config_options.clone(),
+                        false,
+                        &session_name,
+                        initial_layout,
+                        switch_context,
+                        focus,
+                    ) {
+                        Ok(message) => message,
+                        Err(error) => {
+                            log::error!(
+                                "Failed to build the attach message for session {:?}: {}. \
+                                 Not using the display name as the session folder.",
+                                session_name,
+                                error
+                            );
+                            client_connection_bus.close_connection();
+                            return;
+                        },
+                    };
 
-                    session_manager.spawn_session_if_needed(
+                    if let Err(error) = session_manager.spawn_session_if_needed(
                         &session_name,
                         os_input.clone(),
                         session_exists,
                         &zellij_ipc_pipe,
-                        first_message,
-                    );
+                        create_message,
+                        attach_message,
+                        connect_deadline,
+                    ) {
+                        log::error!(
+                            "Failed to ensure session {:?}: {}; closing web client",
+                            session_name,
+                            error
+                        );
+                        client_connection_bus.close_connection();
+                        return;
+                    }
 
                     if let Some(pixel_dims) = client_pixel_dims {
-                        os_input.send_to_server(ClientToServerMsg::TerminalPixelDimensions {
-                            pixel_dimensions: PixelDimensions {
-                                text_area_size: client_size.map(|size| SizeInPixels {
-                                    width: size.cols * pixel_dims.width,
-                                    height: size.rows * pixel_dims.height,
-                                }),
-                                character_cell_size: Some(pixel_dims),
+                        if !deliver(
+                            ClientToServerMsg::TerminalPixelDimensions {
+                                pixel_dimensions: PixelDimensions {
+                                    text_area_size: client_size.map(|size| SizeInPixels {
+                                        width: size.cols * pixel_dims.width,
+                                        height: size.rows * pixel_dims.height,
+                                    }),
+                                    character_cell_size: Some(pixel_dims),
+                                },
                             },
-                        });
+                            connect_deadline,
+                        ) {
+                            client_connection_bus.close_connection();
+                            return;
+                        }
                     }
 
                     if is_structured_client {
                         for declaration in structured_client_declarations() {
-                            os_input.send_to_server(declaration);
+                            if !deliver(declaration, connect_deadline) {
+                                client_connection_bus.close_connection();
+                                return;
+                            }
                         }
                     }
 
@@ -166,10 +269,17 @@ pub fn zellij_server_listener(
                         let seeds = host_query_seed_msgs
                             .get_or_insert_with(|| build_host_query_seed_msgs(&config, &config_options));
                         for seed in seeds.iter().cloned() {
-                            os_input.send_to_server(seed);
+                            if !deliver(seed, connect_deadline) {
+                                client_connection_bus.close_connection();
+                                return;
+                            }
                         }
                     }
 
+                    if os_input.session_ipc_cancelled() {
+                        client_connection_bus.close_connection();
+                        return;
+                    }
                     if let Some(tx) = attachment_complete_tx.take() {
                         let _ = tx.send(());
                     }
@@ -183,7 +293,7 @@ pub fn zellij_server_listener(
                     }
 
                     let mut unknown_message_count = 0;
-                    loop {
+                    'recv_loop: loop {
                         let msg = os_input.recv_from_server();
                         if msg.is_some() {
                             unknown_message_count = 0;
@@ -208,7 +318,10 @@ pub fn zellij_server_listener(
                             Some(ServerToClientMsg::StartWebServer { .. } ) => {},
                             Some(ServerToClientMsg::Exit{exit_reason}) => {
                                 handle_exit_reason(&mut client_connection_bus, exit_reason, is_structured_client);
-                                os_input.send_to_server(ClientToServerMsg::ClientExited);
+                                let _ = deliver(
+                                    ClientToServerMsg::ClientExited,
+                                    Instant::now() + WEB_IPC_WRITE_BUDGET,
+                                );
                                 break;
                             },
                             Some(ServerToClientMsg::Render{content: bytes}) => {
@@ -267,7 +380,11 @@ pub fn zellij_server_listener(
                                     // so OSC 10/11/4 replies follow the new theme.
                                     if !is_structured_client {
                                         for seed in build_host_query_seed_msgs(&new_config, &config_options) {
-                                            os_input.send_to_server(seed);
+                                            if !deliver(seed, Instant::now() + WEB_IPC_WRITE_BUDGET) {
+                                                client_connection_bus.close_connection();
+                                                reconnect_to_session = None;
+                                                break 'recv_loop;
+                                            }
                                         }
                                     }
                                     let set_config_payload = SetConfigPayload::from(&new_config);
@@ -313,12 +430,17 @@ pub fn zellij_server_listener(
                                 // seeded from the browser/config, returning a
                                 // real answer rather than waiting for the
                                 // 1000ms forward timeout.
-                                os_input.send_to_server(
+                                if !deliver(
                                     ClientToServerMsg::ForwardedReplyFromHost {
                                         token,
                                         reply_bytes: Vec::new(),
                                     },
-                                );
+                                    Instant::now() + WEB_IPC_WRITE_BUDGET,
+                                ) {
+                                    client_connection_bus.close_connection();
+                                    reconnect_to_session = None;
+                                    break 'recv_loop;
+                                }
                             },
                             None => {
                                 if unknown_message_count >= 1000 {

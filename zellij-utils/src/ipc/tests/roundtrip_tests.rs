@@ -4038,6 +4038,20 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ResetPaneInputModes {
+            pane_id: Some(PaneId::Terminal(1)),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ResetPaneInputModes { pane_id: None },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::EditScrollbackByPaneId {
             pane_id: PaneId::Terminal(1),
             ansi: false,

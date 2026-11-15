@@ -64,7 +64,7 @@ impl Stores {
             true,
             false,
         );
-        grid.ui_components_enabled = true;
+        grid.enable_ui_components();
         grid
     }
 }
@@ -325,6 +325,10 @@ impl Emitter {
 
     pub fn scrollback_len(&self) -> usize {
         self.grid.scrollback_position_and_length().1
+    }
+
+    pub fn scrollback_stored_rows(&self) -> usize {
+        self.grid.scrollback_stored_rows()
     }
 
     pub fn scroll_up(&mut self, rows: usize) -> usize {

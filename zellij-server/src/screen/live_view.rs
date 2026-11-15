@@ -493,6 +493,14 @@ impl Screen {
         outcome == LiveViewKeyOutcome::Sent
     }
 
+    pub(crate) fn write_paste_to_live_view(&mut self, client_id: ClientId, bytes: Vec<u8>) -> bool {
+        self.release_live_view_if_unreachable(client_id);
+        if self.client_is_in_a_prompt(client_id) {
+            return false;
+        }
+        self.live_views.borrow_mut().send_paste(client_id, bytes)
+    }
+
     pub(crate) fn handle_live_view_mouse_event(
         &mut self,
         event: &MouseEvent,
@@ -621,5 +629,6 @@ impl Screen {
                 }
             },
         }
+        crate::route::settle(completion);
     }
 }

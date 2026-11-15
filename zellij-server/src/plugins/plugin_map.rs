@@ -5,7 +5,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
 };
@@ -14,7 +14,7 @@ use wasmi_wasi::WasiCtx;
 
 use crate::{thread_bus::ThreadSenders, ClientId, SharedKeybinds};
 
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
 use zellij_utils::{
     data::InputMode,
     data::{Event, EventType, RenderResponse, SlotKind},
@@ -33,7 +33,7 @@ pub type PluginKey = (PluginId, ClientId);
 pub type PluginAssets = (
     Arc<Mutex<RunningPlugin>>,
     Arc<Mutex<Subscriptions>>,
-    HashMap<String, UnboundedSender<MessageToWorker>>,
+    HashMap<String, Sender<MessageToWorker>>,
 );
 pub type RemovedPluginAssets = HashMap<PluginKey, PluginAssets>;
 
@@ -47,21 +47,89 @@ pub struct PluginMetadata {
     pub is_background: bool,
 }
 
-#[derive(Default)]
 pub struct PluginMap {
     plugin_assets: HashMap<PluginKey, PluginAssets>,
+    plugin_quarantine_flags: HashMap<PluginKey, Arc<AtomicBool>>,
+    /// Retirement handles captured when an instance is published, before its
+    /// guest execution starts. Replacing an instance can therefore revoke the
+    /// old load without taking the old execution mutex.
+    plugin_load_alives: HashMap<PluginKey, Arc<AtomicBool>>,
     plugin_metadata: HashMap<PluginId, PluginMetadata>,
     shared_assets: HashMap<PluginId, PluginAssets>,
+    shared_quarantine_flags: HashMap<PluginId, Arc<AtomicBool>>,
     shared_blocking_calls: HashMap<PluginId, Arc<AtomicBool>>,
+    // plugins whose loader is still publishing instances, and which of those were unloaded
+    // meanwhile
+    loads_in_progress: HashSet<PluginId>,
+    unloaded_during_load: HashSet<PluginId>,
+    /// Distinguishes this server from another server in the same process.
+    /// Plugin ids restart at 0 in each server. Process-global load tables
+    /// include this so one server cannot retire the other's load.
+    session_scope: u64,
+}
+
+static NEXT_SESSION_SCOPE: AtomicU64 = AtomicU64::new(1);
+
+impl Default for PluginMap {
+    fn default() -> Self {
+        Self {
+            plugin_assets: HashMap::new(),
+            plugin_quarantine_flags: HashMap::new(),
+            plugin_load_alives: HashMap::new(),
+            plugin_metadata: HashMap::new(),
+            shared_assets: HashMap::new(),
+            shared_quarantine_flags: HashMap::new(),
+            shared_blocking_calls: HashMap::new(),
+            loads_in_progress: HashSet::new(),
+            unloaded_during_load: HashSet::new(),
+            session_scope: NEXT_SESSION_SCOPE.fetch_add(1, Ordering::Relaxed),
+        }
+    }
 }
 
 impl PluginMap {
+    pub fn session_scope(&self) -> u64 {
+        self.session_scope
+    }
+
+    /// Remove a single (plugin, client) instance, returning its assets
+    /// so the caller can retire workers. Used to roll back a provisional
+    /// registration after a failed _start/load.
+    pub fn remove_plugin_instance(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+    ) -> Option<PluginAssets> {
+        self.plugin_quarantine_flags.remove(&(plugin_id, client_id));
+        self.plugin_load_alives.remove(&(plugin_id, client_id));
+        self.plugin_assets.remove(&(plugin_id, client_id))
+    }
+    /// A loader starts publishing instances of the plugin.
+    pub fn begin_load(&mut self, pid: PluginId) {
+        self.loads_in_progress.insert(pid);
+        self.unloaded_during_load.remove(&pid);
+    }
+    pub fn end_load(&mut self, pid: PluginId) {
+        self.loads_in_progress.remove(&pid);
+        self.unloaded_during_load.remove(&pid);
+    }
+    /// Whether the plugin was unloaded after its loader started. Instances published after that
+    /// point are not part of what the unload collected for cleanup, so the loader must not
+    /// publish them.
+    pub fn unloaded_during_load(&self, pid: PluginId) -> bool {
+        self.unloaded_during_load.contains(&pid)
+    }
     pub fn remove_plugins(&mut self, pid: PluginId) -> RemovedPluginAssets {
+        if self.loads_in_progress.contains(&pid) {
+            self.unloaded_during_load.insert(pid);
+        }
         self.plugin_metadata.remove(&pid);
         let mut removed = HashMap::new();
         let ids_in_plugin_map: Vec<PluginKey> = self.plugin_assets.keys().copied().collect();
         for (plugin_id, client_id) in ids_in_plugin_map {
             if pid == plugin_id {
+                self.plugin_quarantine_flags.remove(&(plugin_id, client_id));
+                self.plugin_load_alives.remove(&(plugin_id, client_id));
                 if let Some(plugin_asset) = self.plugin_assets.remove(&(plugin_id, client_id)) {
                     removed.insert((plugin_id, client_id), plugin_asset);
                 }
@@ -74,6 +142,8 @@ impl PluginMap {
         let ids_in_plugin_map: Vec<PluginKey> = self.plugin_assets.keys().copied().collect();
         for key in ids_in_plugin_map {
             if key.1 == client_id {
+                self.plugin_quarantine_flags.remove(&key);
+                self.plugin_load_alives.remove(&key);
                 if let Some(plugin_asset) = self.plugin_assets.remove(&key) {
                     removed.insert(key, plugin_asset);
                 }
@@ -87,6 +157,8 @@ impl PluginMap {
         assets: PluginAssets,
         in_blocking_call: Option<Arc<AtomicBool>>,
     ) {
+        self.shared_quarantine_flags
+            .insert(instance_id, assets.0.lock().unwrap().quarantine_flag());
         self.shared_assets.insert(instance_id, assets);
         match in_blocking_call {
             Some(in_blocking_call) => {
@@ -99,8 +171,22 @@ impl PluginMap {
         }
     }
     pub fn remove_shared(&mut self, instance_id: PluginId) -> Option<PluginAssets> {
+        self.shared_quarantine_flags.remove(&instance_id);
         self.shared_blocking_calls.remove(&instance_id);
         self.shared_assets.remove(&instance_id)
+    }
+    pub fn mark_quarantined(&mut self, plugin_id: PluginId) {
+        for ((pid, _), flag) in &self.plugin_quarantine_flags {
+            if *pid == plugin_id {
+                flag.store(true, Ordering::SeqCst);
+            }
+        }
+        if let Some(flag) = self.shared_quarantine_flags.get(&plugin_id) {
+            flag.store(true, Ordering::SeqCst);
+        }
+    }
+    pub fn has_instance_of(&self, plugin_id: PluginId) -> bool {
+        self.plugin_assets.keys().any(|(pid, _)| *pid == plugin_id)
     }
     pub fn shared_instance_in_blocking_call(&self, instance_id: PluginId) -> bool {
         self.shared_blocking_calls
@@ -117,6 +203,9 @@ impl PluginMap {
             .map(|(running_plugin, subscriptions, _)| {
                 (running_plugin.clone(), subscriptions.clone())
             })
+    }
+    pub fn shared_plugin_assets(&self, instance_id: PluginId) -> Option<PluginAssets> {
+        self.shared_assets.get(&instance_id).cloned()
     }
     pub fn remove_metadata(&mut self, plugin_id: PluginId) {
         self.plugin_metadata.remove(&plugin_id);
@@ -211,7 +300,7 @@ impl PluginMap {
         plugin_id: PluginId,
         client_id: ClientId,
         worker_name: &str,
-    ) -> Option<UnboundedSender<MessageToWorker>> {
+    ) -> Option<Sender<MessageToWorker>> {
         if let Some((_, _, workers)) = self.shared_assets.get(&plugin_id) {
             return workers.get(&format!("{}_worker", worker_name)).cloned();
         }
@@ -252,24 +341,33 @@ impl PluginMap {
         &self,
     ) -> HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>
     {
+        self.plugin_assets_index_from_keys(self.plugin_assets.keys().copied())
+    }
+    fn plugin_assets_index_from_keys(
+        &self,
+        keys: impl Iterator<Item = PluginKey>,
+    ) -> HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>
+    {
         let mut cloned_plugin_assets: HashMap<
             RunPluginLocation,
             HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>,
         > = HashMap::new();
-        for ((plugin_id, client_id), (running_plugin, _, _)) in self.plugin_assets.iter() {
-            let running_plugin = running_plugin.lock().unwrap();
-            let plugin_config = &running_plugin.store.data().plugin;
+        for (plugin_id, client_id) in keys {
+            let Some(metadata) = self.plugin_metadata.get(&plugin_id) else {
+                continue;
+            };
+            let plugin_config = &metadata.plugin_config;
             let running_plugin_location = &plugin_config.location;
             let running_plugin_configuration = &plugin_config.initial_userspace_configuration;
             match cloned_plugin_assets.get_mut(running_plugin_location) {
                 Some(location_map) => match location_map.get_mut(running_plugin_configuration) {
                     Some(plugin_instances_info) => {
-                        plugin_instances_info.push((*plugin_id, *client_id));
+                        plugin_instances_info.push((plugin_id, client_id));
                     },
                     None => {
                         location_map.insert(
                             running_plugin_configuration.clone(),
-                            vec![(*plugin_id, *client_id)],
+                            vec![(plugin_id, client_id)],
                         );
                     },
                 },
@@ -277,7 +375,7 @@ impl PluginMap {
                     let mut location_map = HashMap::new();
                     location_map.insert(
                         running_plugin_configuration.clone(),
-                        vec![(*plugin_id, *client_id)],
+                        vec![(plugin_id, client_id)],
                     );
                     cloned_plugin_assets.insert(running_plugin_location.clone(), location_map);
                 },
@@ -300,12 +398,35 @@ impl PluginMap {
         client_id: ClientId,
         running_plugin: Arc<Mutex<RunningPlugin>>,
         subscriptions: Arc<Mutex<Subscriptions>>,
-        running_workers: HashMap<String, UnboundedSender<MessageToWorker>>,
+        running_workers: HashMap<String, Sender<MessageToWorker>>,
     ) {
-        self.plugin_assets.insert(
+        let (quarantine_flag, load_alive) = {
+            let running_plugin = running_plugin.lock().unwrap();
+            (
+                running_plugin.quarantine_flag(),
+                running_plugin.load_alive_handle(),
+            )
+        };
+        self.plugin_quarantine_flags
+            .insert((plugin_id, client_id), quarantine_flag);
+        let replaced_load_alive = self
+            .plugin_load_alives
+            .insert((plugin_id, client_id), load_alive);
+        let replaced = self.plugin_assets.insert(
             (plugin_id, client_id),
             (running_plugin, subscriptions, running_workers),
         );
+        if let Some((_replaced_plugin, _subscriptions, workers)) = replaced {
+            // A new instance for this (plugin, client) replaces the old one. Retire the old load
+            // before any queued callback can reach it, and stop its workers so they do not keep
+            // running against a PluginEnv that no longer owns this key.
+            if let Some(load_alive) = replaced_load_alive {
+                crate::plugins::shared::retire_load_alive(&load_alive);
+            }
+            for (_worker_name, worker_sender) in workers {
+                let _ = worker_sender.try_send(MessageToWorker::Exit);
+            }
+        }
     }
     pub fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<RunPlugin> {
         self.plugin_metadata
@@ -337,10 +458,39 @@ impl PluginMap {
 
 pub type Subscriptions = HashSet<EventType>;
 
+static NEXT_PLUGIN_GENERATION: AtomicU64 = AtomicU64::new(1);
+
+/// Numbers each plugin load; later loads get larger numbers. Instances carry theirs so that
+/// errors they report can be told apart from those of the instance that replaced them.
+pub fn next_plugin_generation() -> u64 {
+    NEXT_PLUGIN_GENERATION.fetch_add(1, Ordering::Relaxed)
+}
+
+static NEXT_PERMISSION_PROMPT_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Opaque id for one permission prompt. Zero is never issued.
+pub fn next_permission_prompt_id() -> u64 {
+    loop {
+        let id = NEXT_PERMISSION_PROMPT_ID.fetch_add(1, Ordering::Relaxed);
+        if id != 0 {
+            return id;
+        }
+    }
+}
+
 pub struct PluginEnv {
     pub plugin_id: PluginId,
+    pub generation: u64,
+    /// `PluginMap::session_scope` of the server that loaded this instance.
+    pub session_scope: u64,
+    /// Cleared when this load instance is retired (unload / client remove /
+    /// reload). Async host work scheduled by this instance (timers) must check
+    /// it before delivering into a possibly-replaced `(plugin_id, client_id)`.
+    pub load_alive: Arc<AtomicBool>,
     pub plugin: PluginConfig,
+    pub plugin_digest: String,
     pub permissions: Arc<Mutex<Option<HashSet<PermissionType>>>>,
+    pub quarantined: Arc<AtomicBool>,
     pub senders: ThreadSenders,
     pub wasi_ctx: WasiCtx,
     pub client_id: ClientId,
@@ -480,6 +630,15 @@ impl PluginEnv {
         )
     }
 
+    pub fn retire_load(&self) {
+        self.load_alive.store(false, Ordering::Release);
+    }
+
+    /// Whether this load may still execute guest callbacks and host commands.
+    pub fn is_alive(&self) -> bool {
+        self.load_alive.load(Ordering::Acquire) && !self.quarantined.load(Ordering::SeqCst)
+    }
+
     pub fn set_permissions(&mut self, permissions: HashSet<PermissionType>) {
         self.permissions.lock().unwrap().replace(permissions);
     }
@@ -510,6 +669,7 @@ pub struct RunningPlugin {
     pub instance: Instance,
     pub rows: usize,
     pub columns: usize,
+    quarantined: Arc<AtomicBool>,
     next_event_ids: HashMap<AtomicEvent, usize>,
     last_applied_event_ids: HashMap<AtomicEvent, usize>,
     pub built_against_0_45: bool,
@@ -518,11 +678,13 @@ pub struct RunningPlugin {
 impl RunningPlugin {
     pub fn new(store: Store<PluginEnv>, instance: Instance, rows: usize, columns: usize) -> Self {
         let built_against_0_45 = built_against_0_45(&store, &instance);
+        let quarantined = store.data().quarantined.clone();
         RunningPlugin {
             store,
             instance,
             rows,
             columns,
+            quarantined,
             next_event_ids: HashMap::new(),
             last_applied_event_ids: HashMap::new(),
             built_against_0_45,
@@ -564,6 +726,21 @@ impl RunningPlugin {
     }
     pub fn intercepting_key_presses(&self) -> bool {
         self.store.data().intercepting_key_presses
+    }
+    pub fn quarantine_flag(&self) -> Arc<AtomicBool> {
+        self.quarantined.clone()
+    }
+    pub fn load_alive_handle(&self) -> Arc<AtomicBool> {
+        self.store.data().load_alive.clone()
+    }
+    pub fn mark_quarantined(&self) {
+        self.quarantined.store(true, Ordering::SeqCst);
+    }
+    pub fn is_quarantined(&self) -> bool {
+        self.quarantined.load(Ordering::SeqCst)
+    }
+    pub fn is_active(&self) -> bool {
+        self.store.data().is_alive()
     }
 }
 
@@ -626,5 +803,66 @@ mod released_contract_detection_tests {
     fn built_in_plugins_are_never_treated_as_built_against_0_45() {
         let built_in = RunPluginLocation::Zellij(PluginTag::new("status-bar"));
         assert!(!lacks_marker(built_in, &["load", "update", "render"]));
+    }
+}
+
+#[cfg(test)]
+mod discovery_index_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn metadata(location: PathBuf, configuration: &str) -> PluginMetadata {
+        PluginMetadata {
+            plugin_config: PluginConfig {
+                path: location.clone(),
+                _allow_exec_host_cmd: false,
+                location: RunPluginLocation::File(location),
+                initial_userspace_configuration: PluginUserConfiguration::new(BTreeMap::from([(
+                    "scope".to_owned(),
+                    configuration.to_owned(),
+                )])),
+                initial_cwd: None,
+            },
+            tab_index: None,
+            rows: 0,
+            columns: 0,
+            cwd: PathBuf::new(),
+            is_background: true,
+        }
+    }
+
+    #[test]
+    fn discovery_index_uses_metadata_and_keeps_configurations_distinct() {
+        let mut map = PluginMap::default();
+        map.insert_metadata(1, metadata(PathBuf::from("/a.wasm"), "one"));
+        map.insert_metadata(2, metadata(PathBuf::from("/a.wasm"), "two"));
+        map.insert_metadata(3, metadata(PathBuf::from("/b.wasm"), "one"));
+
+        let index = map.plugin_assets_index_from_keys([(1, 10), (2, 20), (3, 30)].into_iter());
+
+        assert_eq!(
+            index[&RunPluginLocation::File(PathBuf::from("/a.wasm"))]
+                [&PluginUserConfiguration::new(BTreeMap::from([(
+                    "scope".to_owned(),
+                    "one".to_owned()
+                )]))],
+            vec![(1, 10)]
+        );
+        assert_eq!(
+            index[&RunPluginLocation::File(PathBuf::from("/a.wasm"))]
+                [&PluginUserConfiguration::new(BTreeMap::from([(
+                    "scope".to_owned(),
+                    "two".to_owned()
+                )]))],
+            vec![(2, 20)]
+        );
+        assert_eq!(
+            index[&RunPluginLocation::File(PathBuf::from("/b.wasm"))]
+                [&PluginUserConfiguration::new(BTreeMap::from([(
+                    "scope".to_owned(),
+                    "one".to_owned()
+                )]))],
+            vec![(3, 30)]
+        );
     }
 }

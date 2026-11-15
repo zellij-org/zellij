@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(unix)]
+use zellij_utils::input::command::OpenFilePayload;
 use zellij_utils::input::command::RunCommand;
 
 fn make_server() -> ServerOsInputOutput {
@@ -60,6 +62,23 @@ fn stdin_reader_cmd() -> Command {
     cmd.stdin(std::process::Stdio::piped());
     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     cmd
+}
+
+#[cfg(unix)]
+#[test]
+fn opening_a_non_utf8_path_does_not_panic() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let path = PathBuf::from(OsString::from_vec(b"/tmp/zellij-\xff".to_vec()));
+    let (command, _) = build_command(
+        TerminalAction::OpenFile(OpenFilePayload::new(path, None, None)),
+        Some(PathBuf::from("vi")),
+        &PaneEnv::new(),
+    );
+
+    assert_eq!(command.args.len(), 1);
+    assert!(command.args[0].contains("zellij-"));
 }
 
 #[test]
@@ -151,7 +170,7 @@ fn spawn_and_read_output() {
     let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> =
         Box::new(|_pane_id, _exit_status, _run_command| {});
 
-    let (_terminal_id, mut reader, _child_pid) = server
+    let (_terminal_id, mut reader, _child_pid, _child_pidfd) = server
         .spawn_terminal(action, quit_cb, None, &Default::default())
         .expect("spawn_terminal should succeed");
 
@@ -204,6 +223,134 @@ fn spawn_and_read_output() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn a_script_with_a_missing_interpreter_reports_spawn_failure() {
+    use crate::panes::PaneId;
+    use std::os::unix::fs::PermissionsExt;
+    use zellij_utils::input::command::TerminalAction;
+
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("missing-interpreter");
+    std::fs::write(&script, b"#!/zellij-exec-status-does-not-exist\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+    let server = make_server();
+    let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> =
+        Box::new(|_pane_id, _exit_status, _run_command| {});
+    let result = server.spawn_terminal(
+        TerminalAction::RunCommand(RunCommand {
+            command: script,
+            ..Default::default()
+        }),
+        quit_cb,
+        None,
+        &Default::default(),
+    );
+    let error = match result {
+        Ok(_) => panic!("a failed exec was reported as a successful spawn"),
+        Err(error) => error,
+    };
+    let message = format!("{error:#}");
+    assert!(
+        message.contains("No such file") || message.contains("os error 2"),
+        "the exec failure must reach the caller: {message}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn the_post_command_hook_runs_before_returning_the_command() {
+    let started_at = std::time::Instant::now();
+    let command = crate::os_input_output::apply_post_command_hook(
+        vec!["original".to_owned()],
+        &Some("sleep 1; echo $RESURRECT_COMMAND".to_owned()),
+    );
+    assert!(
+        started_at.elapsed() >= std::time::Duration::from_millis(900),
+        "the hook must be allowed to finish"
+    );
+    assert_eq!(command, vec!["original".to_owned()]);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_successful_exec_does_not_inherit_a_nonstdio_descriptor() {
+    use crate::panes::PaneId;
+    use std::os::fd::AsRawFd;
+    use zellij_utils::input::command::TerminalAction;
+
+    let dir = tempfile::tempdir().unwrap();
+    let marker = dir.path().join("marker");
+    std::fs::write(&marker, b"sentinel").unwrap();
+    let file = std::fs::File::open(&marker).unwrap();
+    // Pick a descriptor above the range the shell or runtime normally opens,
+    // and make it inheritable so only Zellij's pre-exec sweep can exclude it.
+    let sentinel = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_DUPFD, 200) };
+    assert!(sentinel >= 0, "failed to duplicate the sentinel descriptor");
+    let flags = unsafe { libc::fcntl(sentinel, libc::F_GETFD) };
+    assert!(flags >= 0);
+    assert!(
+        unsafe { libc::fcntl(sentinel, libc::F_SETFD, flags & !libc::FD_CLOEXEC) } >= 0,
+        "failed to clear close-on-exec on the sentinel"
+    );
+
+    let server = make_server();
+    let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> =
+        Box::new(|_pane_id, _exit_status, _run_command| {});
+    let (_terminal_id, mut reader, _child_pid, _child_pidfd) = server
+        .spawn_terminal(
+            TerminalAction::RunCommand(RunCommand {
+                command: PathBuf::from("sh"),
+                args: vec![
+                    "-c".to_owned(),
+                    format!(
+                        "if [ -e /proc/self/fd/{sentinel} ]; then echo leaked; else echo clean; fi"
+                    ),
+                ],
+                ..Default::default()
+            }),
+            quit_cb,
+            None,
+            &Default::default(),
+        )
+        .expect("spawn_terminal should succeed");
+    unsafe { libc::close(sentinel) };
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let output = rt.block_on(async {
+        let mut output = Vec::new();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            let text = String::from_utf8_lossy(&output);
+            if text.contains("leaked") || text.contains("clean") {
+                break;
+            }
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(500),
+                reader.read_chunk(4096),
+            )
+            .await
+            {
+                Ok(Ok(bytes)) if bytes.is_empty() => break,
+                Ok(Ok(bytes)) => output.extend_from_slice(&bytes),
+                Ok(Err(_)) => break,
+                Err(_) => {},
+            }
+        }
+        output
+    });
+    let text = String::from_utf8_lossy(&output);
+    assert!(text.contains("clean"), "sentinel descriptor leaked: {text}");
+    assert!(
+        !text.contains("leaked"),
+        "sentinel descriptor leaked: {text}"
+    );
+}
+
 // Run with this process's stdin redirected to NUL by the test below, the way a server started
 // by the zellij-terminal launcher runs: a pane's shell must still read the pseudo console.
 #[cfg(windows)]
@@ -225,7 +372,7 @@ fn an_interactive_shell_in_a_pane_waits_for_input() {
         command: PathBuf::from("cmd"),
         ..Default::default()
     };
-    let (_terminal_id, _reader, child_pid) = server
+    let (_terminal_id, _reader, child_pid, _child_pidfd) = server
         .spawn_terminal(
             TerminalAction::RunCommand(cmd),
             quit_cb,
@@ -285,7 +432,7 @@ fn tcgetpgrp_returns_foreground_group() {
         ..Default::default()
     };
     let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> = Box::new(|_, _, _| {});
-    let (terminal_id, _reader, child_pid) = server
+    let (terminal_id, _reader, child_pid, _child_pidfd) = server
         .spawn_terminal(
             TerminalAction::RunCommand(cmd),
             quit_cb,
@@ -330,7 +477,7 @@ fn tcgetpgrp_returns_foreground_group() {
 
 #[test]
 fn client_buffer_refuses_messages_when_limit_is_reached() {
-    let (buffer, receiver) = client_buffer(CLIENT_BUFFER_LIMIT);
+    let (buffer, receiver) = client_buffer(CLIENT_BUFFER_LIMIT, CLIENT_BUFFER_BYTE_LIMIT);
     let msg = || ServerToClientMsg::Exit {
         exit_reason: ExitReason::Normal,
     };
@@ -345,8 +492,54 @@ fn client_buffer_refuses_messages_when_limit_is_reached() {
 }
 
 #[test]
+fn client_buffer_refuses_payloads_over_the_byte_limit() {
+    // A handful of large frames must trip the byte budget long before
+    // the message-count cap — the queue retains payload bytes, not
+    // just envelopes.
+    let byte_limit = 1024;
+    let (buffer, receiver) = client_buffer(CLIENT_BUFFER_LIMIT, byte_limit);
+    let frame = |bytes: usize| ServerToClientMsg::RenderFrame {
+        frame: vec![0u8; bytes],
+    };
+    assert!(buffer.try_send(frame(600)).is_ok());
+    assert!(matches!(
+        buffer.try_send(frame(600)),
+        Err(TrySendError::Full(_))
+    ));
+    // A small payload still fits inside the remaining byte budget.
+    assert!(buffer.try_send(frame(400)).is_ok());
+    assert!(matches!(
+        buffer.try_send(frame(100)),
+        Err(TrySendError::Full(_))
+    ));
+    // Draining returns budget: after the receiver takes both frames,
+    // another full frame is admitted.
+    assert!(receiver.recv().is_some());
+    assert!(receiver.recv().is_some());
+    assert!(buffer.try_send(frame(1024)).is_ok());
+}
+
+#[test]
+fn client_buffer_admits_an_oversized_message_into_an_empty_queue() {
+    // A single message larger than the budget (e.g. a pane's initial
+    // scrollback) must not disconnect a client that is keeping up.
+    let byte_limit = 1024;
+    let (buffer, receiver) = client_buffer(CLIENT_BUFFER_LIMIT, byte_limit);
+    let frame = |bytes: usize| ServerToClientMsg::RenderFrame {
+        frame: vec![0u8; bytes],
+    };
+    assert!(buffer.try_send(frame(4096)).is_ok());
+    assert!(matches!(
+        buffer.try_send(frame(1)),
+        Err(TrySendError::Full(_))
+    ));
+    assert!(receiver.recv().is_some());
+    assert!(buffer.try_send(frame(4096)).is_ok());
+}
+
+#[test]
 fn client_buffer_reports_disconnect_when_receiver_is_gone() {
-    let (buffer, receiver) = client_buffer(CLIENT_BUFFER_LIMIT);
+    let (buffer, receiver) = client_buffer(CLIENT_BUFFER_LIMIT, CLIENT_BUFFER_BYTE_LIMIT);
     drop(receiver);
     let result = buffer.try_send(ServerToClientMsg::Exit {
         exit_reason: ExitReason::Normal,
@@ -378,7 +571,7 @@ fn the_pane_environment_is_added_to_and_removed_from_the_child_environment() {
     );
     pane_env.insert("HOME".to_owned(), None);
     let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> = Box::new(|_, _, _| {});
-    let (_terminal_id, mut reader, _child_pid) = server
+    let (_terminal_id, mut reader, _child_pid, _child_pidfd) = server
         .spawn_terminal(TerminalAction::RunCommand(cmd), quit_cb, None, &pane_env)
         .expect("spawn_terminal should succeed");
     let expected = "start:from the config:unset:end";
@@ -408,4 +601,588 @@ fn the_pane_environment_is_added_to_and_removed_from_the_child_environment() {
     });
     assert!(output.contains(expected), "got: '{}'", output);
     assert!(std::env::var("ZELLIJ_PANE_ENV_TEST").is_err());
+}
+
+// --- Client writer ---
+
+#[cfg(unix)]
+mod client_writer {
+    use super::*;
+    use interprocess::os::unix::uds_local_socket::Stream as UdsStream;
+    use std::io::Read;
+    use std::os::unix::net::UnixStream;
+    use std::time::{Duration, Instant};
+
+    fn local_socket(stream: UnixStream) -> LocalSocketStream {
+        LocalSocketStream::UdSocket(UdsStream::from(stream))
+    }
+
+    /// A server side sender and the raw socket of the client at the other end.
+    fn connected_pair() -> (IpcSenderWithContext<ServerToClientMsg>, UnixStream) {
+        let (server_end, client_end) = UnixStream::pair().unwrap();
+        (
+            IpcSenderWithContext::new(local_socket(server_end)),
+            client_end,
+        )
+    }
+
+    fn big_message() -> ServerToClientMsg {
+        ServerToClientMsg::RenderFrame {
+            frame: vec![7u8; 64 * 1024],
+        }
+    }
+
+    fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !done() {
+            assert!(Instant::now() < deadline, "timed out waiting for {what}");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// Without reading anything: once the server shut its end down, writing
+    /// to it fails. Merely abandoning the queue would not show here before
+    /// the client reads, since the writer is stuck holding the socket.
+    fn assert_socket_was_shut_down_by_server(client_end: &mut UnixStream) {
+        use std::io::{ErrorKind, Write};
+        client_end.set_nonblocking(true).unwrap();
+        wait_until("the server to shut the socket down", || {
+            matches!(
+                client_end.write(&[0u8]),
+                Err(error) if matches!(
+                    error.kind(),
+                    ErrorKind::BrokenPipe | ErrorKind::ConnectionReset
+                )
+            )
+        });
+        client_end.set_nonblocking(false).unwrap();
+    }
+
+    /// Reads until the end of the stream, returning how many bytes arrived.
+    fn read_to_end_of_stream(client_end: &mut UnixStream, timeout: Duration) -> usize {
+        client_end.set_nonblocking(true).unwrap();
+        let deadline = Instant::now() + timeout;
+        let mut received = 0;
+        let mut buffer = vec![0u8; 64 * 1024];
+        loop {
+            match client_end.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(read) => received += read,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(
+                        Instant::now() < deadline,
+                        "the client never reached the end of its stream"
+                    );
+                    std::thread::sleep(Duration::from_millis(1));
+                },
+                // A reset also ends the stream.
+                Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => break,
+                Err(error) => panic!("the client never reached the end of its stream: {error}"),
+            }
+        }
+        let _ = client_end.set_nonblocking(false);
+        received
+    }
+
+    #[test]
+    fn removing_a_client_that_is_not_reading_stops_its_writer_and_drops_its_queue() {
+        let (sender, mut client_end) = connected_pair();
+        let client_sender = ClientSender::new(1, sender);
+        // Far more than the socket buffers hold, so the writer ends up
+        // blocked in a write while the rest of the messages sit in its queue.
+        let queued_messages = 300;
+        for _ in 0..queued_messages {
+            client_sender.send_or_buffer(big_message()).unwrap();
+        }
+
+        let removal = client_sender.remove(Duration::from_millis(200));
+
+        // The client has not read a byte. The writer is blocked in a write
+        // to it and can only get out because the socket is shut down.
+        assert!(
+            removal.join().unwrap(),
+            "the writer of a removed client that is not reading never exited"
+        );
+        assert_socket_was_shut_down_by_server(&mut client_end);
+        // The socket was shut down, so the client reaches the end of the
+        // stream. What it can read is only what fitted in the socket
+        // buffers, not the whole queue.
+        let received = read_to_end_of_stream(&mut client_end, Duration::from_secs(5));
+        assert!(
+            received < queued_messages * 64 * 1024 / 2,
+            "the queue of the removed client was still written to it ({received} bytes)"
+        );
+    }
+
+    #[test]
+    fn exit_notice_sent_just_before_removing_a_client_is_delivered() {
+        let (sender, client_end) = connected_pair();
+        let client_sender = ClientSender::new(1, sender);
+        client_sender
+            .send_or_buffer(ServerToClientMsg::Render {
+                content: "last frame".to_owned(),
+            })
+            .unwrap();
+        client_sender
+            .send_or_buffer(ServerToClientMsg::Exit {
+                exit_reason: ExitReason::Normal,
+            })
+            .unwrap();
+        // The client has not read anything yet when the server removes it.
+        let removal = client_sender.remove(Duration::from_secs(5));
+
+        let mut receiver =
+            IpcReceiverWithContext::<ServerToClientMsg>::new(local_socket(client_end));
+        let mut received = Vec::new();
+        while let Some((msg, _)) = receiver.recv_server_msg() {
+            received.push(msg);
+        }
+        removal.join().unwrap();
+
+        assert!(
+            matches!(
+                received.as_slice(),
+                [
+                    ServerToClientMsg::Render { .. },
+                    ServerToClientMsg::Exit {
+                        exit_reason: ExitReason::Normal
+                    },
+                    ..
+                ]
+            ),
+            "the frame and the exit notice queued before the removal must reach the client, got {} messages",
+            received.len()
+        );
+    }
+
+    #[test]
+    fn remove_client_stops_the_writer_of_a_client_that_is_not_reading() {
+        let mut server = make_server();
+        let (server_end, mut client_end) = UnixStream::pair().unwrap();
+        server
+            .register_client_with_reply(1, local_socket(server_end))
+            .unwrap();
+        let queued_messages = 300;
+        for _ in 0..queued_messages {
+            server.send_to_client(1, big_message()).unwrap();
+        }
+
+        server.remove_client(1).unwrap();
+
+        // The client still does not read. Once the grace period for
+        // flushing is over the queue is dropped and the socket shut down.
+        std::thread::sleep(REMOVED_CLIENT_FLUSH_GRACE + Duration::from_secs(1));
+        assert_socket_was_shut_down_by_server(&mut client_end);
+        let received = read_to_end_of_stream(&mut client_end, Duration::from_secs(5));
+        assert!(received < queued_messages * 64 * 1024 / 2);
+    }
+}
+
+// --- Client byte budget accounting ---
+
+mod payload_accounting {
+    use super::*;
+    use zellij_utils::attention::{AttentionItem, PaneAttention, SessionAttention};
+    use zellij_utils::data::{
+        ConnectToSession, PaneId as DataPaneId, SessionPreview, SessionPreviewPane,
+        SessionPreviewTab,
+    };
+    use zellij_utils::input::terminal::TerminalSettings;
+    use zellij_utils::ipc::{
+        MobilePanePayload, MobileSessionPayload, MobileStatePayload, MobileTabPayload,
+    };
+
+    #[test]
+    fn many_short_scrollback_lines_are_charged_for_their_string_headers() {
+        let lines = 10_000;
+        let msg = ServerToClientMsg::PaneRenderUpdate {
+            pane_id: DataPaneId::Terminal(1),
+            viewport: vec![],
+            scrollback: Some(vec!["x".to_owned(); lines]),
+            is_initial: true,
+        };
+        assert!(
+            server_msg_payload_bytes(&msg) >= lines * (std::mem::size_of::<String>() + 1),
+            "a Vec<String> costs its 24-byte headers, not only the text"
+        );
+    }
+
+    #[test]
+    fn session_preview_charges_tabs_and_pane_titles() {
+        let title = "t".repeat(1024 * 1024);
+        let msg = ServerToClientMsg::SessionPreview {
+            preview: Some(SessionPreview {
+                tabs: vec![SessionPreviewTab {
+                    name: "tab".to_owned(),
+                    active: true,
+                    panes: vec![SessionPreviewPane {
+                        id: 1,
+                        title: title.clone(),
+                        contents: Some("c".repeat(4096)),
+                        ..Default::default()
+                    }],
+                }],
+                error: Some("e".repeat(512)),
+                ..Default::default()
+            }),
+        };
+        assert!(server_msg_payload_bytes(&msg) >= title.len() + 4096 + 512);
+    }
+
+    #[test]
+    fn mobile_state_charges_its_titles_names_and_sessions() {
+        let msg = ServerToClientMsg::MobileState {
+            payload: MobileStatePayload {
+                session_name: "s".repeat(100),
+                tabs: vec![MobileTabPayload {
+                    position: 0,
+                    name: "n".repeat(200),
+                    active: true,
+                }],
+                panes: vec![MobilePanePayload {
+                    tab_position: 0,
+                    pane_id: 1,
+                    is_plugin: false,
+                    title: "p".repeat(1024 * 1024),
+                    is_floating: false,
+                    last_activity_secs_ago: 0,
+                }],
+                sessions: vec![MobileSessionPayload {
+                    name: "m".repeat(300),
+                    web_clients_allowed: false,
+                    tab_count: 1,
+                    pane_count: 1,
+                    connected_clients: 0,
+                    creation_secs_ago: 0,
+                }],
+                ..Default::default()
+            },
+        };
+        assert!(server_msg_payload_bytes(&msg) >= 1024 * 1024 + 100 + 200 + 300);
+    }
+
+    /// Every variant that owns heap data must be charged for it. The
+    /// accounting function is an exhaustive match, so a new variant cannot
+    /// be added without deciding what it is charged; this makes sure that
+    /// the decision is not "nothing" for one that carries heap data.
+    #[test]
+    fn every_message_carrying_heap_data_is_charged() {
+        let big = || "z".repeat(10_000);
+        let with_heap = vec![
+            ServerToClientMsg::Render { content: big() },
+            ServerToClientMsg::RenderFrame {
+                frame: vec![0; 10_000],
+            },
+            ServerToClientMsg::Exit {
+                exit_reason: ExitReason::Error(big()),
+            },
+            ServerToClientMsg::Log { lines: vec![big()] },
+            ServerToClientMsg::LogError { lines: vec![big()] },
+            ServerToClientMsg::SwitchSession {
+                connect_to_session: ConnectToSession {
+                    name: Some(big()),
+                    cwd: Some(PathBuf::from(big())),
+                    ..Default::default()
+                },
+            },
+            ServerToClientMsg::UnblockCliPipeInput {
+                pipe_name: big(),
+                exit_code: None,
+            },
+            ServerToClientMsg::CliPipeOutput {
+                pipe_name: big(),
+                output: String::new(),
+            },
+            ServerToClientMsg::RenamedSession { name: big() },
+            ServerToClientMsg::PaneRenderUpdate {
+                pane_id: DataPaneId::Terminal(1),
+                viewport: vec![big()],
+                scrollback: None,
+                is_initial: false,
+            },
+            ServerToClientMsg::ForwardQueryToHost {
+                token: 1,
+                query_bytes: vec![0; 10_000],
+                resolve_async: false,
+            },
+            ServerToClientMsg::EmitNestedSessionFrame {
+                payload_bytes: vec![0; 10_000],
+            },
+            ServerToClientMsg::MobileState {
+                payload: MobileStatePayload {
+                    session_name: big(),
+                    ..Default::default()
+                },
+            },
+            ServerToClientMsg::HostProgramStatus {
+                status: Some(zellij_utils::attention::HostProgramStatus {
+                    state: big(),
+                    kind: None,
+                    progress: None,
+                    msg: String::new(),
+                }),
+            },
+            ServerToClientMsg::SessionAttention {
+                attention: SessionAttention {
+                    items: vec![AttentionItem {
+                        pane_id: DataPaneId::Terminal(1).into(),
+                        tab_id: 0,
+                        tab_name: big(),
+                        pane_title: String::new(),
+                        attention: PaneAttention::default(),
+                    }],
+                    ..Default::default()
+                },
+            },
+            ServerToClientMsg::SessionPreview {
+                preview: Some(SessionPreview {
+                    session_name: big(),
+                    ..Default::default()
+                }),
+            },
+            ServerToClientMsg::PaneMirror {
+                payload: vec![0; 10_000],
+            },
+        ];
+        for msg in with_heap {
+            assert!(
+                server_msg_payload_bytes(&msg) >= 10_000,
+                "{:?} carries heap data but is charged too little",
+                std::mem::discriminant(&msg)
+            );
+        }
+        // The terminal settings come from the server's own configuration:
+        // they still cost at least their own size.
+        assert!(
+            server_msg_payload_bytes(&ServerToClientMsg::TerminalSettingsChanged {
+                settings: Box::new(TerminalSettings::default()),
+            }) >= std::mem::size_of::<TerminalSettings>()
+        );
+    }
+}
+
+#[cfg(not(windows))]
+mod bounded_command_tests {
+    use super::super::{run_bounded_with, BoundedOutput};
+    use std::process::Command;
+    use std::time::{Duration, Instant};
+
+    // Every test gets its own reader thread budget so that the threads one
+    // test leaves behind cannot make another one refuse to run.
+    fn run_bounded(
+        command: Command,
+        timeout: Duration,
+        max_output: usize,
+    ) -> std::io::Result<BoundedOutput> {
+        run_bounded_with(
+            command,
+            timeout,
+            max_output,
+            leaked_counter(0),
+            &real_spawner,
+        )
+    }
+
+    fn sh(script: &str) -> Command {
+        let mut command = Command::new("sh");
+        command.arg("-c").arg(script);
+        command
+    }
+
+    #[test]
+    fn output_and_status_are_returned() {
+        let output = run_bounded(
+            sh("printf out; printf err >&2; exit 3"),
+            Duration::from_secs(5),
+            1024,
+        )
+        .expect("completes");
+        assert_eq!(output.status.code(), Some(3));
+        assert_eq!(output.stdout, b"out");
+        assert_eq!(output.stderr, b"err");
+    }
+
+    #[test]
+    fn retained_output_is_capped_while_the_child_runs_to_completion() {
+        let output = run_bounded(
+            sh("head -c 1000000 /dev/zero; printf done >&2"),
+            Duration::from_secs(10),
+            4096,
+        )
+        .expect("completes");
+        assert!(output.status.success());
+        assert_eq!(output.stdout.len(), 4096);
+        assert_eq!(output.stderr, b"done");
+    }
+
+    #[test]
+    fn a_hanging_child_is_killed_at_the_deadline() {
+        let started = Instant::now();
+        let error = run_bounded(sh("sleep 30"), Duration::from_millis(200), 1024)
+            .err()
+            .expect("times out");
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn a_background_process_holding_the_pipes_cannot_outlast_the_deadline() {
+        // The hook exits at once, but a background process inherits its
+        // stdout and keeps it open; collecting output must still give up at
+        // the deadline instead of blocking until the background job ends.
+        let started = Instant::now();
+        let error = run_bounded(
+            sh("sleep 3 & printf early"),
+            Duration::from_millis(300),
+            1024,
+        )
+        .err()
+        .expect("times out");
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn processes_left_behind_by_a_timed_out_command_are_killed() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("still-running");
+        let script = format!("(sleep 1; touch '{}') & printf early", marker.display());
+        let error = run_bounded(sh(&script), Duration::from_millis(300), 1024)
+            .err()
+            .expect("times out");
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        std::thread::sleep(Duration::from_secs(2));
+        assert!(
+            !marker.exists(),
+            "the background process must be killed with the command's group"
+        );
+    }
+
+    fn leaked_counter(initial: usize) -> &'static std::sync::atomic::AtomicUsize {
+        Box::leak(Box::new(std::sync::atomic::AtomicUsize::new(initial)))
+    }
+
+    fn real_spawner(name: &str, work: Box<dyn FnOnce() + Send + 'static>) -> std::io::Result<()> {
+        std::thread::Builder::new()
+            .name(name.to_owned())
+            .spawn(work)
+            .map(|_| ())
+    }
+
+    fn wait_for_count(counter: &std::sync::atomic::AtomicUsize, expected: usize) {
+        let started = Instant::now();
+        while counter.load(std::sync::atomic::Ordering::Acquire) != expected {
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "reader threads were not released"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn reader_threads_are_released_when_a_run_completes() {
+        let counter = leaked_counter(0);
+        let output = run_bounded_with(
+            sh("printf out"),
+            Duration::from_secs(5),
+            1024,
+            counter,
+            &real_spawner,
+        )
+        .expect("completes");
+        assert_eq!(output.stdout, b"out");
+        wait_for_count(counter, 0);
+    }
+
+    #[test]
+    fn a_run_is_refused_without_starting_the_command_when_the_reader_cap_is_reached() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("ran");
+        let at_cap = super::super::MAX_OUTSTANDING_HOOK_READER_THREADS - 1;
+        let counter = leaked_counter(at_cap);
+        let script = format!("touch '{}'", marker.display());
+        let error = run_bounded_with(
+            sh(&script),
+            Duration::from_secs(5),
+            1024,
+            counter,
+            &real_spawner,
+        )
+        .err()
+        .expect("refused");
+        assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
+        assert!(!marker.exists(), "the command must not have been started");
+        assert_eq!(counter.load(std::sync::atomic::Ordering::Acquire), at_cap);
+    }
+
+    #[test]
+    fn leaked_readers_of_a_process_outside_the_group_are_capped() {
+        // `setsid` puts the background process out of reach of the group
+        // kill, so it keeps both pipes (and both reader threads) open.
+        if Command::new("setsid").arg("--version").output().is_err() {
+            return;
+        }
+        let max = super::super::MAX_OUTSTANDING_HOOK_READER_THREADS;
+        let counter = leaked_counter(0);
+        let mut refused = 0;
+        let mut timed_out = 0;
+        for _ in 0..(max / 2 + 2) {
+            match run_bounded_with(
+                sh("setsid sleep 4 & printf early"),
+                Duration::from_millis(200),
+                1024,
+                counter,
+                &real_spawner,
+            ) {
+                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => timed_out += 1,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => refused += 1,
+                other => panic!("unexpected result: {:?}", other.map(|o| o.stdout)),
+            }
+            assert!(counter.load(std::sync::atomic::Ordering::Acquire) <= max);
+        }
+        assert_eq!(timed_out, max / 2);
+        assert_eq!(refused, 2);
+        // The stragglers end with the background processes.
+        wait_for_count(counter, 0);
+    }
+
+    #[test]
+    fn a_reader_thread_that_cannot_be_started_is_an_error_not_a_panic() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("still-running");
+        for fail_on_call in [0usize, 1] {
+            let counter = leaked_counter(0);
+            let calls = std::sync::atomic::AtomicUsize::new(0);
+            let spawner = |name: &str, work: Box<dyn FnOnce() + Send + 'static>| {
+                if calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == fail_on_call {
+                    // Dropping `work` releases its slot, as a failed
+                    // Builder::spawn does.
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::WouldBlock,
+                        "no threads",
+                    ))
+                } else {
+                    real_spawner(name, work)
+                }
+            };
+            let script = format!("(sleep 1; touch '{}') & sleep 30", marker.display());
+            let started = Instant::now();
+            let error = run_bounded_with(
+                sh(&script),
+                Duration::from_secs(20),
+                1024,
+                counter,
+                &spawner,
+            )
+            .err()
+            .expect("fails");
+            assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
+            assert!(started.elapsed() < Duration::from_secs(10));
+            // The command is killed with its group, and every slot comes back.
+            wait_for_count(counter, 0);
+        }
+        std::thread::sleep(Duration::from_secs(2));
+        assert!(!marker.exists(), "the command's group must be killed");
+    }
 }

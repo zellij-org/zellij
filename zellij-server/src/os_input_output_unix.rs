@@ -1,11 +1,14 @@
-use crate::os_input_output::{command_exists, AsyncReader, PaneEnv};
+use crate::os_input_output::{
+    command_exists, AsyncReader, ChildPidFd, ForegroundSignal, PaneEnv,
+    TerminalRunChangedBeforeWrite,
+};
 use crate::panes::PaneId;
 
 use nix::{
     fcntl::{fcntl, FcntlArg, OFlag},
     pty::{openpty, OpenptyResult, Winsize},
     sys::{
-        signal::{kill, Signal},
+        signal::{kill, killpg, Signal},
         termios,
     },
     unistd,
@@ -13,16 +16,19 @@ use nix::{
 use tokio::io::unix::AsyncFd;
 
 use libc::{self, ioctl, TIOCSWINSZ};
-use signal_hook;
-use signal_hook::consts::*;
+use signal_hook::{
+    consts::{SIGINT, SIGTERM},
+    iterator::{backend::SignalDelivery, exfiltrator::SignalOnly},
+};
 
 use std::{
     collections::BTreeMap,
     fs::File,
     io,
-    os::fd::{BorrowedFd, FromRawFd, IntoRawFd},
+    os::fd::{AsFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd},
     os::unix::{
         io::{AsRawFd, RawFd},
+        net::UnixStream,
         process::CommandExt,
     },
     process::{Child, Command},
@@ -31,17 +37,29 @@ use std::{
         Arc, Mutex,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use zellij_utils::{errors::prelude::*, input::command::RunCommand};
 
 pub use async_trait::async_trait;
 
+/// Send `signal` to `pid` and keep the syscall result.
+///
+/// `ESRCH` means the process is already gone, which is the outcome the
+/// caller wanted. Every other failure is returned.
+fn signal_pid(pid: u32, signal: Signal) -> Result<()> {
+    match kill(unistd::Pid::from_raw(pid as i32), Some(signal)) {
+        Ok(()) => Ok(()),
+        Err(nix::errno::Errno::ESRCH) => Ok(()),
+        Err(errno) => Err(anyhow!("failed to send {signal} to pid {pid}: {errno}")),
+    }
+}
+
 /// An `AsyncReader` that wraps a `RawFd` using epoll via `AsyncFd`.
 ///
 /// Construction sets O_NONBLOCK but defers `AsyncFd` registration to the first
-/// `read()` call, because `AsyncFd::new()` requires a live Tokio reactor and
+/// `read()` call, because `AsyncFd::register()` requires a live Tokio reactor and
 /// `spawn_terminal` runs on the plain PTY thread (outside the runtime).
 struct RawFdAsyncReader {
     /// Holds the file before reactor registration; `None` after promotion.
@@ -75,20 +93,32 @@ impl RawFdAsyncReader {
                 .pending
                 .take()
                 .expect("RawFdAsyncReader used after init");
-            self.async_fd = Some(AsyncFd::new(file)?);
+            // SAFETY: `file` owns this descriptor for as long as the AsyncFd
+            // exists, and nothing else re-registers or replaces it.
+            self.async_fd = Some(unsafe { AsyncFd::register(file)? });
         }
+        // SAFETY: initialized above when None; otherwise already Some
         Ok(self.async_fd.as_mut().unwrap())
     }
 }
 
 fn read_available(fd: RawFd, max: usize) -> Result<Vec<u8>, io::Error> {
     let mut buf: Vec<u8> = Vec::with_capacity(max);
-    let ret = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.capacity()) };
-    if ret < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    unsafe { buf.set_len(ret as usize) };
-    while ret > 0 && buf.len() < buf.capacity() {
+    let ret = loop {
+        let ret = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.capacity()) };
+        if ret < 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error);
+        }
+        break ret;
+    };
+    // `set_len` past capacity is undefined. A correct `read` never reports
+    // more bytes than it was asked for; refuse that result instead.
+    accept_read(&mut buf, 0, ret)?;
+    while !buf.is_empty() && buf.len() < buf.capacity() {
         let filled = buf.len();
         let more = unsafe {
             libc::read(
@@ -97,13 +127,39 @@ fn read_available(fd: RawFd, max: usize) -> Result<Vec<u8>, io::Error> {
                 buf.capacity() - filled,
             )
         };
-        if more <= 0 {
+        if more < 0 {
+            if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
             break;
         }
-        unsafe { buf.set_len(filled + more as usize) };
+        if more == 0 {
+            break;
+        }
+        if accept_read(&mut buf, filled, more).is_err() {
+            break;
+        }
     }
     buf.shrink_to_fit();
     Ok(buf)
+}
+
+fn accept_read(buf: &mut Vec<u8>, filled: usize, got: isize) -> Result<(), io::Error> {
+    let got = got as usize;
+    let Some(end) = filled.checked_add(got) else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "read returned more bytes than requested",
+        ));
+    };
+    if end > buf.capacity() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "read returned more bytes than requested",
+        ));
+    }
+    unsafe { buf.set_len(end) };
+    Ok(())
 }
 
 #[async_trait]
@@ -145,58 +201,263 @@ fn set_terminal_size_using_fd(
     };
 }
 
+/// SIGTERMs forwarded after a shutdown signal, then `child.kill()`.
+const SIGTERM_ATTEMPTS: u8 = 3;
+
+/// Gap between those SIGTERMs. The previous loop slept 10ms per attempt.
+const SHUTDOWN_STEP: Duration = Duration::from_millis(10);
+
+/// Wait used only when `pidfd_open` is unavailable. Not the steady-state path.
+const COARSE_EXIT_POLL_MS: i32 = 500;
+
+/// `Signals` in signal-hook 0.3 keeps its self-pipe private. `SignalDelivery`
+/// is the pipe `Signals::new` builds, and its read end implements `AsRawFd`.
+struct ShutdownWatch {
+    delivery: SignalDelivery<UnixStream, SignalOnly>,
+}
+
+impl ShutdownWatch {
+    fn arm() -> io::Result<Self> {
+        let (read, write) = UnixStream::pair()?;
+        let delivery = SignalDelivery::with_pipe(read, write, SignalOnly, [SIGINT, SIGTERM])?;
+        Ok(Self { delivery })
+    }
+
+    fn read_fd(&self) -> RawFd {
+        self.delivery.get_read().as_raw_fd()
+    }
+
+    /// Drain the self-pipe. `true` when SIGINT or SIGTERM was pending.
+    fn saw_shutdown(&mut self) -> bool {
+        let mut saw = false;
+        for signal in self.delivery.pending() {
+            if signal == SIGINT || signal == SIGTERM {
+                saw = true;
+            }
+        }
+        saw
+    }
+}
+
+enum Reaped {
+    Running,
+    Done(Option<i32>),
+}
+
+fn reap_if_exited(child: &mut Child) -> io::Result<Reaped> {
+    match child.try_wait() {
+        Ok(Some(status)) => Ok(Reaped::Done(status.code())),
+        Ok(None) => Ok(Reaped::Running),
+        Err(error) if error.raw_os_error() == Some(libc::ECHILD) => Ok(Reaped::Done(None)),
+        Err(error) => Err(error),
+    }
+}
+
+/// Poll outcome. `Child` wins over `Signal` so a dead child is reaped and
+/// not signaled.
+enum ExitWake {
+    Child,
+    Signal,
+    Timeout,
+    /// Readable for a reason other than child exit or a signal byte.
+    Other,
+}
+
+fn poll_child_or_signal(
+    pidfd: Option<RawFd>,
+    signal_fd: RawFd,
+    timeout_ms: i32,
+) -> io::Result<ExitWake> {
+    let mut fds = [
+        libc::pollfd {
+            fd: pidfd.unwrap_or(-1),
+            events: libc::POLLIN,
+            revents: 0,
+        },
+        libc::pollfd {
+            fd: signal_fd,
+            events: libc::POLLIN,
+            revents: 0,
+        },
+    ];
+    let ready = loop {
+        // SAFETY: `fds` is a live array of two pollfds. A negative pidfd
+        // is ignored by poll, which is the coarse-wait path.
+        let rc = unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, timeout_ms) };
+        if rc < 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error);
+        }
+        break rc;
+    };
+    if ready == 0 {
+        return Ok(ExitWake::Timeout);
+    }
+    let child_bits = fds[0].revents;
+    let child_ready =
+        pidfd.is_some() && (child_bits & (libc::POLLIN | libc::POLLHUP | libc::POLLERR)) != 0;
+    if child_ready {
+        return Ok(ExitWake::Child);
+    }
+    if (fds[1].revents & libc::POLLIN) != 0 {
+        return Ok(ExitWake::Signal);
+    }
+    Ok(ExitWake::Other)
+}
+
+fn poll_timeout_ms(deadline: Option<Instant>, waiting_on_pidfd: bool) -> i32 {
+    match deadline {
+        Some(deadline) => {
+            let left = deadline.saturating_duration_since(Instant::now());
+            left.as_millis().min(i32::MAX as u128) as i32
+        },
+        None if waiting_on_pidfd => -1,
+        None => COARSE_EXIT_POLL_MS,
+    }
+}
+
+/// Turn the spawn-time pidfd into the type the server API returns.
+/// On non-Linux there is no pidfd, and `open_exit_pidfd` already returned `None`.
+#[cfg(target_os = "linux")]
+fn child_pidfd_for_caller(pidfd: Option<OwnedFd>) -> Option<ChildPidFd> {
+    pidfd
+}
+
+/// Turn the spawn-time pidfd into the type the server API returns.
+/// On non-Linux there is no pidfd, and `open_exit_pidfd` already returned `None`.
+#[cfg(not(target_os = "linux"))]
+fn child_pidfd_for_caller(pidfd: Option<OwnedFd>) -> Option<ChildPidFd> {
+    let _ = pidfd;
+    None
+}
+
+/// Linux pidfd for `pid`, or `None` when the syscall is missing or fails.
+///
+/// Dropping the fd does not signal the task. Callers still `wait` to reap.
+fn open_exit_pidfd(pid: u32) -> Option<OwnedFd> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        None
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: pidfd_open returns a new fd owned by this process, or -1.
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0u32) };
+        if fd < 0 {
+            log::warn!(
+                "pidfd_open failed for pid {pid}: {}; the exit watcher will poll every {COARSE_EXIT_POLL_MS}ms and close will not signal this pid",
+                io::Error::last_os_error()
+            );
+            None
+        } else {
+            // SAFETY: the syscall just created this fd and no one else owns it.
+            Some(unsafe { OwnedFd::from_raw_fd(fd as RawFd) })
+        }
+    }
+}
+
+/// Block until `child` exits. With a pidfd, `poll` waits on that fd and the
+/// shutdown self-pipe. Without one, the same pipe is polled at
+/// `COARSE_EXIT_POLL_MS` so a missing pidfd does not spin at 10ms.
+///
+/// A reaped pid is not signaled. `child.kill` runs only while `try_wait`
+/// still reports the child running, and the pidfd is not a kill by itself.
+fn drive_child_exit(
+    child: &mut Child,
+    pid: u32,
+    watch: &mut ShutdownWatch,
+    mut pidfd: Option<OwnedFd>,
+) -> Result<Option<i32>> {
+    let mut sigterms_left = SIGTERM_ATTEMPTS;
+    let mut shutdown_deadline: Option<Instant> = None;
+
+    loop {
+        if let Reaped::Done(code) = reap_if_exited(child)? {
+            return Ok(code);
+        }
+
+        let timeout_ms = poll_timeout_ms(shutdown_deadline, pidfd.is_some());
+        match poll_child_or_signal(
+            pidfd.as_ref().map(|fd| fd.as_raw_fd()),
+            watch.read_fd(),
+            timeout_ms,
+        )? {
+            ExitWake::Child => match reap_if_exited(child)? {
+                Reaped::Done(code) => return Ok(code),
+                Reaped::Running => {
+                    // Level-triggered readiness without a waitable child
+                    // would spin. Closing the pidfd is not a kill.
+                    drop(pidfd.take());
+                },
+            },
+            ExitWake::Signal => {
+                if watch.saw_shutdown() && shutdown_deadline.is_none() {
+                    shutdown_deadline = Some(Instant::now() + SHUTDOWN_STEP);
+                }
+            },
+            ExitWake::Timeout => {},
+            ExitWake::Other => {
+                thread::sleep(Duration::from_millis(COARSE_EXIT_POLL_MS as u64));
+            },
+        }
+
+        let shutdown_due = shutdown_deadline.is_some_and(|when| Instant::now() >= when);
+        if !shutdown_due {
+            continue;
+        }
+        // The child may have exited during the wait. Reap first; do not
+        // signal a pid this function has already collected.
+        if let Reaped::Done(code) = reap_if_exited(child)? {
+            return Ok(code);
+        }
+        if sigterms_left > 0 {
+            sigterms_left -= 1;
+            kill(unistd::Pid::from_raw(pid as i32), Some(Signal::SIGTERM))?;
+            shutdown_deadline = Some(Instant::now() + SHUTDOWN_STEP);
+            continue;
+        }
+        if let Err(err) = child.kill() {
+            log::warn!("failed to kill child {pid}: {err}");
+        }
+        // This function owns the wait, so reap before returning.
+        let _ = child.wait();
+        return Ok(None);
+    }
+}
+
 /// Handle some signals for the child process. This will loop until the child
 /// process exits.
-fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
-    let id = child.id();
+fn handle_command_exit(mut child: Child, pidfd: Option<OwnedFd>) -> Result<Option<i32>> {
+    let pid = child.id();
     let err_context = || {
         format!(
             "failed to handle signals and command exit for child process pid {}",
-            id
+            pid
         )
     };
 
-    // returns the exit status, if any
-    let mut should_exit = false;
-    let mut attempts = 3;
-    let mut signals =
-        signal_hook::iterator::Signals::new(&[SIGINT, SIGTERM]).with_context(err_context)?;
-    'handle_exit: loop {
-        // test whether the child process has exited
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                // if the child process has exited, break outside of the loop
-                // and exit this function
-                // TODO: handle errors?
-                break 'handle_exit Ok(status.code());
-            },
-            Ok(None) => {
-                thread::sleep(Duration::from_millis(10));
-            },
-            Err(e) => panic!("error attempting to wait: {}", e),
-        }
+    let mut watch = match ShutdownWatch::arm() {
+        Ok(watch) => watch,
+        Err(error) => {
+            // Without a signal iterator we cannot forward shutdown signals.
+            // Fall back to a plain wait instead of failing the pane's exit
+            // watcher, which would panic the PTY thread.
+            log::warn!("failed to install signal handler for child process pid {pid}: {error}");
+            return child
+                .wait()
+                .map(|status| status.code())
+                .with_context(err_context);
+        },
+    };
 
-        if !should_exit {
-            for signal in signals.pending() {
-                if signal == SIGINT || signal == SIGTERM {
-                    should_exit = true;
-                }
-            }
-        } else if attempts > 0 {
-            // let's try nicely first...
-            attempts -= 1;
-            kill(
-                unistd::Pid::from_raw(child.id() as i32),
-                Some(Signal::SIGTERM),
-            )
-            .with_context(err_context)?;
-            continue;
-        } else {
-            // when I say whoa, I mean WHOA!
-            let _ = child.kill();
-            break 'handle_exit Ok(None);
-        }
-    }
+    // `pidfd` was opened (and duplicated) before this thread existed, or is
+    // `None` when that open failed. This thread does not call `pidfd_open`:
+    // a second open can name a pid this thread has already reaped.
+    drive_child_exit(&mut child, pid, &mut watch, pidfd).with_context(err_context)
 }
 
 fn handle_openpty(
@@ -205,17 +466,13 @@ fn handle_openpty(
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
     pane_env: &PaneEnv,
-) -> Result<(RawFd, RawFd)> {
+) -> Result<(RawFd, RawFd, Option<ChildPidFd>)> {
     let err_context = |cmd: &RunCommand| {
         format!(
             "failed to open PTY for command '{}'",
             cmd.command.to_string_lossy().to_string()
         )
     };
-
-    // primary side of pty and child fd
-    let pid_primary = open_pty_res.master.into_raw_fd();
-    let pid_secondary = open_pty_res.slave.into_raw_fd();
 
     if !command_exists(&cmd, pane_env) {
         return Err(ZellijError::CommandNotFound {
@@ -225,7 +482,11 @@ fn handle_openpty(
         .with_context(|| err_context(&cmd));
     }
 
-    let mut child = unsafe {
+    // primary side of pty and child fd
+    let pid_primary = open_pty_res.master.into_raw_fd();
+    let pid_secondary = open_pty_res.slave.into_raw_fd();
+
+    let spawn_result = unsafe {
         let cmd = cmd.clone();
         let command = &mut Command::new(cmd.command);
         if let Some(current_dir) = cmd.cwd {
@@ -249,26 +510,59 @@ fn handle_openpty(
             .env("ZELLIJ_PANE_ID", &format!("{}", terminal_id))
             .pre_exec(move || -> io::Result<()> {
                 if libc::login_tty(pid_secondary) != 0 {
-                    panic!("failed to set controlling terminal");
+                    return Err(io::Error::last_os_error());
                 }
-                close_fds::close_open_fds(3, &[]);
+                // Mark non-stdio descriptors close-on-exec instead of closing
+                // them here. Rust's spawn path uses a close-on-exec status
+                // channel to report an exec failure back to the parent; closing
+                // it in `pre_exec` makes that failure look like a successful
+                // exec. Close-on-exec still keeps the descriptors out of the
+                // executed program.
+                close_fds::set_fds_cloexec(3, &[]);
                 Ok(())
             })
             .spawn()
-            .expect("failed to spawn")
+    };
+    let child = match spawn_result {
+        Ok(child) => child,
+        Err(e) => {
+            let _ = unistd::close(pid_primary);
+            let _ = unistd::close(pid_secondary);
+            return Err(e).with_context(|| err_context(&cmd));
+        },
     };
 
     let child_id = child.id();
+    // The child may already be a zombie, but nothing has waited on it yet,
+    // so its pid cannot have been reused. Open before the watcher exists.
+    // The watcher polls a duplicate and does not call pidfd_open itself.
+    let child_pidfd = open_exit_pidfd(child_id);
+    let watcher_pidfd = match child_pidfd.as_ref().map(OwnedFd::try_clone) {
+        Some(Ok(pidfd)) => Some(pidfd),
+        Some(Err(error)) => {
+            log::warn!("failed to duplicate pidfd for pid {child_id}: {error}");
+            None
+        },
+        None => None,
+    };
     thread::spawn(move || {
-        child.wait().with_context(|| err_context(&cmd)).fatal();
-        let exit_status = handle_command_exit(child)
-            .with_context(|| err_context(&cmd))
-            .fatal();
+        let exit_status =
+            match handle_command_exit(child, watcher_pidfd).with_context(|| err_context(&cmd)) {
+                Ok(exit_status) => exit_status,
+                Err(error) => {
+                    log::error!("{:?}", error);
+                    None
+                },
+            };
         let _ = unistd::close(pid_secondary);
         quit_cb(PaneId::Terminal(terminal_id), exit_status, cmd);
     });
 
-    Ok((pid_primary, child_id as RawFd))
+    Ok((
+        pid_primary,
+        child_id as RawFd,
+        child_pidfd_for_caller(child_pidfd),
+    ))
 }
 
 /// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
@@ -277,27 +571,28 @@ fn handle_terminal(
     cmd: RunCommand,
     failover_cmd: Option<RunCommand>,
     orig_termios: Option<termios::Termios>,
+    winsize: Option<Winsize>,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
     pane_env: &PaneEnv,
-) -> Result<(RawFd, RawFd)> {
+) -> Result<(RawFd, RawFd, Option<ChildPidFd>)> {
     let err_context = || "failed to spawn child terminal".to_string();
 
-    // Create a pipe to allow the child the communicate the shell's pid to its
-    // parent.
-    match openpty(None, &orig_termios) {
+    // Seed winsize before exec so the child never observes 0×0.
+    match openpty(winsize.as_ref(), &orig_termios) {
         Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb, terminal_id, pane_env),
         Err(e) => match failover_cmd {
             Some(failover_cmd) => handle_terminal(
                 failover_cmd,
                 None,
                 orig_termios,
+                winsize,
                 quit_cb,
                 terminal_id,
                 pane_env,
             )
             .with_context(err_context),
-            None => Err::<(i32, i32), _>(e)
+            None => Err::<(RawFd, RawFd, Option<ChildPidFd>), _>(e)
                 .context("failed to start pty")
                 .with_context(err_context)
                 .to_log(),
@@ -305,29 +600,70 @@ fn handle_terminal(
     }
 }
 
+/// One open PTY endpoint and the run it was admitted for.
+#[derive(Clone)]
+struct TerminalEndpoint {
+    generation: Option<u64>,
+    fd: Arc<OwnedFd>,
+}
+
 /// The Unix PTY backend. Manages native PTY file descriptors and signals.
 #[derive(Clone)]
 pub(crate) struct UnixPtyBackend {
     orig_termios: Arc<Mutex<Option<termios::Termios>>>,
-    terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<RawFd>>>>,
+    /// Each terminal owns a duplicated descriptor held by the registry;
+    /// a write, resize or drain issued after the original endpoint
+    /// closed still targets the same open file description instead of
+    /// whatever descriptor number the kernel recycled. `generation`
+    /// names the process run that endpoint belongs to. `None` means the
+    /// descriptor is installed and not yet bound, so a stamped write
+    /// is refused until [`Self::bind_terminal_generation`].
+    terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<TerminalEndpoint>>>>,
+    /// Last nonzero winsize applied to each terminal id. Reused when opening a
+    /// replacement PTY for a rerun so the child never starts at 0×0 even when
+    /// the pane's cached geometry is unchanged.
+    last_terminal_sizes: Arc<Mutex<BTreeMap<u32, (u16, u16, Option<u16>, Option<u16>)>>>,
     next_terminal_id_counter: Arc<AtomicU32>,
 }
 
 /// Try to write as many bytes from `buf` as possible to `fd` without blocking.
 ///
 /// Loops on successful short writes and EINTR to drain as much as the kernel
-/// will accept. On EAGAIN (fd buffer full), stops and returns how many bytes
-/// were written so far (which may be 0). The caller is expected to re-queue
-/// any unwritten remainder.
-fn try_write_to_fd(fd: RawFd, buf: &[u8]) -> Result<usize> {
+/// will accept, but issues at most `MAX_WRITE_SYSCALLS_PER_CALL` write(2)
+/// calls (EINTR retries included) so a consumer that takes a few bytes per
+/// call cannot turn one call into hundreds of syscalls. On EAGAIN (fd buffer
+/// full) or when the syscall budget is spent, stops and returns how many
+/// bytes were written so far (which may be 0). The caller is expected to
+/// re-queue any unwritten remainder.
+fn try_write_to_fd(
+    fd: RawFd,
+    buf: &[u8],
+) -> std::result::Result<usize, (usize, nix::errno::Errno)> {
+    write_bounded(buf, MAX_WRITE_SYSCALLS_PER_CALL, |chunk| {
+        unistd::write(unsafe { BorrowedFd::borrow_raw(fd) }, chunk)
+    })
+}
+
+/// Upper bound on write(2) calls made by one `try_write_to_fd` call. Together
+/// with the pty writer's per-turn call limit this bounds the syscalls a
+/// terminal can spend in one turn (calls per turn x this value).
+const MAX_WRITE_SYSCALLS_PER_CALL: usize = 4;
+
+fn write_bounded(
+    buf: &[u8],
+    max_syscalls: usize,
+    mut write: impl FnMut(&[u8]) -> nix::Result<usize>,
+) -> std::result::Result<usize, (usize, nix::errno::Errno)> {
     let mut written = 0;
-    while written < buf.len() {
-        match unistd::write(unsafe { BorrowedFd::borrow_raw(fd) }, &buf[written..]) {
+    let mut syscalls = 0;
+    while written < buf.len() && syscalls < max_syscalls {
+        syscalls += 1;
+        match write(&buf[written..]) {
             Ok(0) => break, // fd returned 0 on non-empty buf; treat like EAGAIN
             Ok(n) => written += n,
             Err(nix::errno::Errno::EINTR) => continue,
             Err(nix::errno::Errno::EAGAIN) => break,
-            Err(e) => return Err(e.into()),
+            Err(e) => return Err((written, e)),
         }
     }
     Ok(written)
@@ -342,8 +678,30 @@ impl UnixPtyBackend {
         Ok(Self {
             orig_termios: Arc::new(Mutex::new(current_termios)),
             terminal_id_to_raw_fd: Arc::new(Mutex::new(BTreeMap::new())),
+            last_terminal_sizes: Arc::new(Mutex::new(BTreeMap::new())),
             next_terminal_id_counter: Arc::new(AtomicU32::new(0)),
         })
+    }
+
+    fn initial_winsize_for(&self, terminal_id: u32) -> Winsize {
+        if let Ok(sizes) = self.last_terminal_sizes.lock() {
+            if let Some((cols, rows, width_in_pixels, height_in_pixels)) = sizes.get(&terminal_id) {
+                if *cols > 0 && *rows > 0 {
+                    return Winsize {
+                        ws_col: *cols,
+                        ws_row: *rows,
+                        ws_xpixel: width_in_pixels.unwrap_or(0),
+                        ws_ypixel: height_in_pixels.unwrap_or(0),
+                    };
+                }
+            }
+        }
+        Winsize {
+            ws_col: 80,
+            ws_row: 24,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        }
     }
 
     pub fn spawn_terminal(
@@ -353,29 +711,95 @@ impl UnixPtyBackend {
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         terminal_id: u32,
         pane_env: &PaneEnv,
-    ) -> Result<(Box<dyn AsyncReader>, RawFd)> {
+    ) -> Result<(Box<dyn AsyncReader>, RawFd, Option<ChildPidFd>)> {
         let orig_termios = self
             .orig_termios
             .lock()
             .to_anyhow()
             .context("failed to lock orig_termios")?;
-        let (pid_primary, child_fd) = handle_terminal(
+        let winsize = self.initial_winsize_for(terminal_id);
+        if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
+            sizes.insert(
+                terminal_id,
+                (
+                    winsize.ws_col,
+                    winsize.ws_row,
+                    Some(winsize.ws_xpixel).filter(|v| *v > 0),
+                    Some(winsize.ws_ypixel).filter(|v| *v > 0),
+                ),
+            );
+        }
+        let (pid_primary, child_fd, child_pidfd) = handle_terminal(
             cmd,
             failover_cmd,
             orig_termios.clone(),
+            Some(winsize),
             quit_cb,
             terminal_id,
             pane_env,
         )?;
-        self.terminal_id_to_raw_fd
-            .lock()
-            .to_anyhow()?
-            .insert(terminal_id, Some(pid_primary));
-        let async_reader = Box::new(
-            RawFdAsyncReader::new(pid_primary)
-                .map_err(|e| anyhow::anyhow!("failed to create async reader: {}", e))?,
-        ) as Box<dyn AsyncReader>;
-        Ok((async_reader, child_fd))
+        // On failure past this point, closing the primary side hangs up the
+        // child's session, so the child exits through its normal watcher
+        // instead of running without a pane.
+        self.retain_primary_handle(terminal_id, pid_primary, |fd| {
+            // try_clone_to_owned duplicates with close-on-exec, so the copy
+            // is not inherited by helper processes spawned without a PTY.
+            unsafe { BorrowedFd::borrow_raw(fd) }.try_clone_to_owned()
+        })?;
+        let async_reader = match RawFdAsyncReader::new(pid_primary) {
+            Ok(async_reader) => Box::new(async_reader) as Box<dyn AsyncReader>,
+            Err(e) => {
+                if let Ok(mut registry) = self.terminal_id_to_raw_fd.lock() {
+                    registry.remove(&terminal_id);
+                }
+                let _ = unistd::close(pid_primary);
+                return Err(anyhow::anyhow!("failed to create async reader: {}", e));
+            },
+        };
+        Ok((async_reader, child_fd, child_pidfd))
+    }
+
+    /// Duplicate the primary side with `duplicate` and register the owned copy
+    /// for `terminal_id`. When duplication fails, drop a reserved placeholder
+    /// but keep a previously bound endpoint: a failed rerun must leave the old
+    /// run addressable. The new primary side is closed before reporting the
+    /// error, so no stale descriptor stays open.
+    fn retain_primary_handle(
+        &self,
+        terminal_id: u32,
+        pid_primary: RawFd,
+        duplicate: impl FnOnce(RawFd) -> io::Result<OwnedFd>,
+    ) -> Result<()> {
+        match duplicate(pid_primary) {
+            Ok(pty_handle) => {
+                // Generation stays unbound until the PTY thread records the
+                // run. A stamped write during that gap cannot land on this
+                // descriptor, and the insert replaces any previous endpoint
+                // before the new one is visible.
+                self.terminal_id_to_raw_fd.lock().to_anyhow()?.insert(
+                    terminal_id,
+                    Some(TerminalEndpoint {
+                        generation: None,
+                        fd: Arc::new(pty_handle),
+                    }),
+                );
+                Ok(())
+            },
+            Err(e) => {
+                if let Ok(mut registry) = self.terminal_id_to_raw_fd.lock() {
+                    // `Some(Some(_))` is the previous run's bound endpoint on
+                    // a rerun; only remove a placeholder or a missing entry.
+                    if !matches!(registry.get(&terminal_id), Some(Some(_))) {
+                        registry.remove(&terminal_id);
+                    }
+                }
+                let _ = unistd::close(pid_primary);
+                Err(anyhow::anyhow!(
+                    "failed to retain an owned PTY handle: {}",
+                    e
+                ))
+            },
+        }
     }
 
     pub fn set_terminal_size(
@@ -399,12 +823,31 @@ impl UnixPtyBackend {
             .with_context(err_context)?
             .get(&terminal_id)
         {
-            Some(Some(fd)) => {
+            Some(Some(endpoint)) => {
                 if cols > 0 && rows > 0 {
-                    set_terminal_size_using_fd(*fd, cols, rows, width_in_pixels, height_in_pixels);
+                    // Always apply to the current endpoint. A rerun opens a new
+                    // PTY whose size must be written even when it equals the
+                    // previous run's cached dimensions.
+                    set_terminal_size_using_fd(
+                        endpoint.fd.as_raw_fd(),
+                        cols,
+                        rows,
+                        width_in_pixels,
+                        height_in_pixels,
+                    );
+                    if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
+                        sizes.insert(terminal_id, (cols, rows, width_in_pixels, height_in_pixels));
+                    }
                 }
             },
             _ => {
+                // Remember the intended size even when the endpoint is not yet
+                // open so the next spawn seeds openpty with a nonzero winsize.
+                if cols > 0 && rows > 0 {
+                    if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
+                        sizes.insert(terminal_id, (cols, rows, width_in_pixels, height_in_pixels));
+                    }
+                }
                 Err::<(), _>(anyhow!("failed to find terminal fd for id {terminal_id}"))
                     .with_context(err_context)
                     .non_fatal();
@@ -413,23 +856,81 @@ impl UnixPtyBackend {
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
+        self.write_to_tty_stdin_for_run(terminal_id, None, buf)
+    }
+
+    /// Copy the descriptor only when `generation` is the run bound to it.
+    /// The check and the clone happen under one lock, so a replacement
+    /// cannot swap the endpoint between the check and the handle this
+    /// write will use. The write itself runs after the lock is released.
+    fn terminal_fd_for_run(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+    ) -> Result<Arc<OwnedFd>> {
         let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
 
-        let fd = match self
+        let registry = self
             .terminal_id_to_raw_fd
             .lock()
             .to_anyhow()
-            .with_context(err_context)?
-            .get(&terminal_id)
-        {
-            Some(Some(fd)) => *fd,
-            _ => {
-                return Err(anyhow!("could not find raw file descriptor")).with_context(err_context)
+            .with_context(err_context)?;
+        match registry.get(&terminal_id) {
+            Some(Some(endpoint)) => {
+                if let Some(expected) = generation {
+                    if endpoint.generation != Some(expected) {
+                        return Err(anyhow::Error::new(TerminalRunChangedBeforeWrite));
+                    }
+                }
+                Ok(endpoint.fd.clone())
             },
-        };
+            _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
+        }
+    }
 
-        try_write_to_fd(fd, buf).with_context(err_context)
+    pub fn write_to_tty_stdin_for_run(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> Result<usize> {
+        let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
+        let fd = self.terminal_fd_for_run(terminal_id, generation)?;
+        match try_write_to_fd(fd.as_raw_fd(), buf) {
+            Ok(written) => Ok(written),
+            Err((_written, error)) => Err(anyhow::Error::new(error)).with_context(err_context),
+        }
+    }
+
+    pub fn write_to_tty_stdin_for_run_with_progress(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> (usize, Result<()>) {
+        let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
+        let fd = match self.terminal_fd_for_run(terminal_id, generation) {
+            Ok(fd) => fd,
+            Err(error) => return (0, Err(error)),
+        };
+        match try_write_to_fd(fd.as_raw_fd(), buf) {
+            Ok(written) => (written, Ok(())),
+            Err((written, error)) => (
+                written,
+                Err(anyhow::Error::new(error)).with_context(err_context),
+            ),
+        }
+    }
+
+    pub fn bind_terminal_generation(&self, terminal_id: u32, generation: u64) {
+        let Ok(mut registry) = self.terminal_id_to_raw_fd.lock() else {
+            return;
+        };
+        if let Some(Some(endpoint)) = registry.get_mut(&terminal_id) {
+            endpoint.generation = Some(generation);
+        }
     }
 
     pub fn tcdrain(&self, terminal_id: u32) -> Result<()> {
@@ -442,16 +943,14 @@ impl UnixPtyBackend {
             .with_context(err_context)?
             .get(&terminal_id)
         {
-            Some(Some(fd)) => {
-                termios::tcdrain(unsafe { BorrowedFd::borrow_raw(*fd) }).with_context(err_context)
-            },
+            Some(Some(endpoint)) => termios::tcdrain(endpoint.fd.as_fd()).with_context(err_context),
             _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
         }
     }
 
     pub fn tcgetpgrp(&self, terminal_id: u32) -> Option<i32> {
         match self.terminal_id_to_raw_fd.lock().ok()?.get(&terminal_id) {
-            Some(Some(fd)) => unistd::tcgetpgrp(unsafe { BorrowedFd::borrow_raw(*fd) })
+            Some(Some(endpoint)) => unistd::tcgetpgrp(endpoint.fd.as_fd())
                 .ok()
                 .map(|pgid| pgid.as_raw()),
             _ => None,
@@ -459,33 +958,96 @@ impl UnixPtyBackend {
     }
 
     pub fn kill(&self, pid: u32) -> Result<()> {
-        let _ = kill(unistd::Pid::from_raw(pid as i32), Some(Signal::SIGHUP));
-        Ok(())
+        signal_pid(pid, Signal::SIGHUP)
     }
 
     pub fn force_kill(&self, pid: u32) -> Result<()> {
-        let _ = kill(unistd::Pid::from_raw(pid as i32), Some(Signal::SIGKILL));
-        Ok(())
+        signal_pid(pid, Signal::SIGKILL)
     }
 
     pub fn send_sigint(&self, pid: u32) -> Result<()> {
-        let _ = kill(unistd::Pid::from_raw(pid as i32), Some(Signal::SIGINT));
-        Ok(())
+        signal_pid(pid, Signal::SIGINT)
+    }
+
+    pub fn send_sigint_to_terminal(&self, terminal_id: u32, shell_pid: u32) -> Result<()> {
+        self.signal_terminal_foreground(terminal_id, shell_pid, Signal::SIGINT)
+    }
+
+    pub fn force_kill_terminal(&self, terminal_id: u32, shell_pid: u32) -> Result<()> {
+        self.signal_terminal_foreground(terminal_id, shell_pid, Signal::SIGKILL)
+    }
+
+    pub fn signal_terminal_foreground_group(
+        &self,
+        terminal_id: u32,
+        signal: ForegroundSignal,
+    ) -> Result<bool> {
+        let signal = match signal {
+            ForegroundSignal::Interrupt => Signal::SIGINT,
+            ForegroundSignal::Kill => Signal::SIGKILL,
+        };
+        self.signal_foreground_group(terminal_id, signal)
+    }
+
+    /// `killpg` the foreground group of the PTY master this process owns.
+    /// `Ok(true)` means the signal was delivered or the group is already gone.
+    fn signal_foreground_group(&self, terminal_id: u32, signal: Signal) -> Result<bool> {
+        let Some(pgid) = self.tcgetpgrp(terminal_id).filter(|pgid| *pgid > 0) else {
+            return Ok(false);
+        };
+        match killpg(unistd::Pid::from_raw(pgid), Some(signal)) {
+            Ok(()) | Err(nix::errno::Errno::ESRCH) => Ok(true),
+            Err(error) => {
+                log::debug!(
+                    "failed to send {signal} to foreground process group {pgid} of terminal {terminal_id}: {error}"
+                );
+                Ok(false)
+            },
+        }
+    }
+
+    /// Signal the terminal's foreground process group so applications such
+    /// as `vim` receive it. Non-Linux then falls back to the shell pid.
+    /// Linux does not: the pid may have been reused after the exit watcher
+    /// reaped the child and before this thread drops the stored number.
+    /// The PTY thread signals the spawn-time pidfd in that case.
+    fn signal_terminal_foreground(
+        &self,
+        terminal_id: u32,
+        shell_pid: u32,
+        signal: Signal,
+    ) -> Result<()> {
+        if self.signal_foreground_group(terminal_id, signal)? {
+            return Ok(());
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            signal_pid(shell_pid, signal)
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = shell_pid;
+            Ok(())
+        }
     }
 
     pub fn reserve_terminal_id(&self, terminal_id: u32) {
         self.terminal_id_to_raw_fd
             .lock()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .insert(terminal_id, None);
     }
 
     pub fn clear_terminal_id(&self, terminal_id: u32) {
         self.terminal_id_to_raw_fd
             .lock()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .remove(&terminal_id);
+        if let Ok(mut sizes) = self.last_terminal_sizes.lock() {
+            sizes.remove(&terminal_id);
+        }
     }
+    pub fn cancel_pending_tty_write(&self, _terminal_id: u32) {}
 
     pub fn next_terminal_id(&self) -> Option<u32> {
         Some(
@@ -501,6 +1063,198 @@ mod tests {
     use nix::fcntl::{fcntl, FcntlArg, OFlag};
     use nix::sys::termios;
     use std::io::{Read, Write};
+
+    #[test]
+    fn a_retained_pty_handle_never_targets_a_recycled_descriptor() {
+        // The registry keeps a duplicated OwnedFd per terminal. When the
+        // original descriptor number comes to name an unrelated file, a
+        // write through the registry must still reach the terminal's own
+        // pipe. dup2 replaces the number atomically, so no other thread can
+        // take it in between.
+        let backend = UnixPtyBackend::new().expect("backend");
+        let (terminal_read, terminal_write) = nonblocking_pipe();
+        let (unrelated_read, unrelated_write) = nonblocking_pipe();
+
+        let original = unsafe { OwnedFd::from_raw_fd(terminal_write) };
+        let retained = original.try_clone().expect("dup original");
+        backend.terminal_id_to_raw_fd.lock().unwrap().insert(
+            7,
+            Some(TerminalEndpoint {
+                generation: None,
+                fd: Arc::new(retained),
+            }),
+        );
+
+        // The original number now names the unrelated pipe, as if the
+        // pane's endpoint closed and the number was recycled.
+        assert_eq!(
+            unsafe { libc::dup2(unrelated_write, original.as_raw_fd()) },
+            original.as_raw_fd()
+        );
+
+        let written = backend
+            .write_to_tty_stdin(7, b"pane bytes")
+            .expect("write must reach the retained endpoint");
+        assert_eq!(written, b"pane bytes".len());
+
+        let mut buf = [0u8; 16];
+        let read = unsafe { libc::read(terminal_read, buf.as_mut_ptr() as *mut _, buf.len()) };
+        assert_eq!(read, written as isize);
+        assert_eq!(&buf[..written], b"pane bytes");
+        let leaked = unsafe { libc::read(unrelated_read, buf.as_mut_ptr() as *mut _, buf.len()) };
+        assert_eq!(leaked, -1, "nothing may reach the recycled descriptor");
+
+        drop(original);
+        unsafe {
+            libc::close(terminal_read);
+            libc::close(unrelated_read);
+            libc::close(unrelated_write);
+        }
+    }
+
+    #[test]
+    fn failed_handle_duplication_keeps_the_previous_endpoint_and_closes_the_primary() {
+        let backend = UnixPtyBackend::new().expect("backend");
+        let (read_end, write_end) = nonblocking_pipe();
+
+        // A previous owner is registered, as on a rerun of a command pane.
+        let previous = unsafe { BorrowedFd::borrow_raw(read_end) }
+            .try_clone_to_owned()
+            .expect("dup previous owner");
+        backend.terminal_id_to_raw_fd.lock().unwrap().insert(
+            9,
+            Some(TerminalEndpoint {
+                generation: Some(1),
+                fd: Arc::new(previous),
+            }),
+        );
+        // Another terminal's entry must be left alone.
+        backend.reserve_terminal_id(10);
+
+        let result = backend.retain_primary_handle(9, write_end, |_| {
+            Err(io::Error::from_raw_os_error(libc::EMFILE))
+        });
+        assert!(result.is_err());
+
+        let registry = backend.terminal_id_to_raw_fd.lock().unwrap();
+        assert!(
+            registry.contains_key(&9),
+            "a failed rerun must leave the previous run addressable"
+        );
+        assert!(registry.contains_key(&10));
+        drop(registry);
+        let mut buf = [0u8; 1];
+        assert_eq!(
+            unsafe { libc::read(read_end, buf.as_mut_ptr() as *mut _, buf.len()) },
+            0,
+            "the primary write side must be closed"
+        );
+        unsafe {
+            libc::close(read_end);
+        }
+    }
+
+    #[test]
+    fn a_stamped_write_does_not_follow_a_replaced_endpoint() {
+        // The writer still considers generation 1 adopted. The PTY owner
+        // has already installed generation 2's endpoint. The bytes must
+        // not reach that pipe, or the pipe they were originally for.
+        let backend = UnixPtyBackend::new().expect("backend");
+        let (old_read, old_write) = nonblocking_pipe();
+        let (new_read, new_write) = nonblocking_pipe();
+        let old_fd = unsafe { OwnedFd::from_raw_fd(old_write) };
+        let new_fd = unsafe { OwnedFd::from_raw_fd(new_write) };
+        backend.terminal_id_to_raw_fd.lock().unwrap().insert(
+            3,
+            Some(TerminalEndpoint {
+                generation: Some(1),
+                fd: Arc::new(old_fd),
+            }),
+        );
+        backend.terminal_id_to_raw_fd.lock().unwrap().insert(
+            3,
+            Some(TerminalEndpoint {
+                generation: Some(2),
+                fd: Arc::new(new_fd),
+            }),
+        );
+
+        let error = backend
+            .write_to_tty_stdin_for_run(3, Some(1), b"old-input")
+            .expect_err("generation 1 must not write to the replacement");
+        assert!(
+            error
+                .to_string()
+                .contains("terminal run changed before the write"),
+            "{error}"
+        );
+        let mut buf = [0u8; 16];
+        assert_eq!(
+            unsafe { libc::read(new_read, buf.as_mut_ptr() as *mut _, buf.len()) },
+            -1,
+            "the replacement pipe got bytes"
+        );
+        let retired = unsafe { libc::read(old_read, buf.as_mut_ptr() as *mut _, buf.len()) };
+        assert!(retired <= 0, "the retired pipe got {retired} bytes");
+
+        let written = backend
+            .write_to_tty_stdin_for_run(3, Some(2), b"live")
+            .expect("generation 2 matches the installed endpoint");
+        assert_eq!(written, 4);
+        let read = unsafe { libc::read(new_read, buf.as_mut_ptr() as *mut _, buf.len()) };
+        assert_eq!(read, 4);
+        assert_eq!(&buf[..4], b"live");
+
+        unsafe {
+            libc::close(old_read);
+            libc::close(new_read);
+        }
+    }
+
+    #[test]
+    fn a_stamped_write_waits_until_the_installed_endpoint_is_bound() {
+        let backend = UnixPtyBackend::new().expect("backend");
+        let (read_end, write_end) = nonblocking_pipe();
+        let owned = unsafe { OwnedFd::from_raw_fd(write_end) };
+        backend.terminal_id_to_raw_fd.lock().unwrap().insert(
+            4,
+            Some(TerminalEndpoint {
+                generation: None,
+                fd: Arc::new(owned),
+            }),
+        );
+        let error = backend
+            .write_to_tty_stdin_for_run(4, Some(1), b"early")
+            .expect_err("an unbound endpoint refuses a stamped write");
+        assert!(error
+            .to_string()
+            .contains("terminal run changed before the write"));
+        backend.bind_terminal_generation(4, 1);
+        let written = backend
+            .write_to_tty_stdin_for_run(4, Some(1), b"bound")
+            .expect("bound generation accepts the write");
+        assert_eq!(written, 5);
+        let mut buf = [0u8; 8];
+        let read = unsafe { libc::read(read_end, buf.as_mut_ptr() as *mut _, buf.len()) };
+        assert_eq!(&buf[..read as usize], b"bound");
+        unsafe {
+            libc::close(read_end);
+        }
+    }
+
+    fn nonblocking_pipe() -> (libc::c_int, libc::c_int) {
+        let mut fds = [0 as libc::c_int; 2];
+        assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+        for fd in fds {
+            let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+            assert!(flags >= 0);
+            assert_eq!(
+                unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) },
+                0
+            );
+        }
+        (fds[0], fds[1])
+    }
 
     #[test]
     fn raw_fd_reader_returns_exact_bytes_in_order() {
@@ -571,7 +1325,7 @@ mod tests {
             match super::try_write_to_fd(master_fd, &chunk) {
                 Ok(0) => break,
                 Ok(n) => total_filled += n,
-                Err(e) => panic!("unexpected error filling buffer: {e}"),
+                Err(e) => panic!("unexpected error filling buffer: {e:?}"),
             }
         }
         assert!(
@@ -605,6 +1359,64 @@ mod tests {
         }
     }
 
+    #[test]
+    fn write_bounded_stops_after_the_syscall_budget() {
+        let buf = vec![0u8; 1024 * 1024];
+
+        // A consumer taking 1 KiB per call.
+        let mut calls = 0;
+        let written = write_bounded(&buf, 4, |_| {
+            calls += 1;
+            Ok(1024)
+        })
+        .unwrap();
+        assert_eq!((calls, written), (4, 4096));
+
+        // EINTR retries spend budget too.
+        let mut calls = 0;
+        let written = write_bounded(&buf, 4, |_| {
+            calls += 1;
+            Err(nix::errno::Errno::EINTR)
+        })
+        .unwrap();
+        assert_eq!((calls, written), (4, 0));
+
+        // EAGAIN still ends the call early, and errors still propagate.
+        let mut calls = 0;
+        let written = write_bounded(&buf, 4, |_| {
+            calls += 1;
+            if calls == 1 {
+                Ok(10)
+            } else {
+                Err(nix::errno::Errno::EAGAIN)
+            }
+        })
+        .unwrap();
+        assert_eq!((calls, written), (2, 10));
+        assert!(write_bounded(&buf, 4, |_| Err(nix::errno::Errno::EBADF)).is_err());
+    }
+
+    #[test]
+    fn write_bounded_reports_the_prefix_before_a_fatal_error() {
+        let mut calls = 0;
+        let result = write_bounded(b"abcdef", 4, |_| {
+            calls += 1;
+            if calls == 1 {
+                Ok(2)
+            } else {
+                Err(nix::errno::Errno::EIO)
+            }
+        });
+
+        match result {
+            Err((written, error)) => {
+                assert_eq!(written, 2);
+                assert_eq!(error, nix::errno::Errno::EIO);
+            },
+            Ok(written) => panic!("expected a fatal error after 2 bytes, wrote {written}"),
+        }
+    }
+
     /// Verify that `try_write_to_fd` returns Ok(0) — not an error — when the
     /// fd is completely full and cannot accept any bytes at all.
     #[test]
@@ -631,7 +1443,7 @@ mod tests {
             match super::try_write_to_fd(master_fd, &fill) {
                 Ok(0) => break,
                 Ok(_) => continue,
-                Err(e) => panic!("unexpected error filling buffer: {e}"),
+                Err(e) => panic!("unexpected error filling buffer: {e:?}"),
             }
         }
 
@@ -645,5 +1457,104 @@ mod tests {
             libc::close(master_fd);
             libc::close(slave_fd);
         }
+    }
+
+    #[test]
+    fn initial_winsize_defaults_to_nonzero_geometry() {
+        let backend = UnixPtyBackend::new().expect("backend");
+        let winsize = backend.initial_winsize_for(1);
+        assert!(winsize.ws_col > 0 && winsize.ws_row > 0);
+        assert_eq!((winsize.ws_col, winsize.ws_row), (80, 24));
+    }
+
+    #[test]
+    fn set_terminal_size_remembers_geometry_for_the_next_spawn() {
+        let backend = UnixPtyBackend::new().expect("backend");
+        backend
+            .set_terminal_size(3, 120, 40, Some(960), Some(640))
+            .expect("remember size without an open endpoint");
+        let winsize = backend.initial_winsize_for(3);
+        assert_eq!(
+            (
+                winsize.ws_col,
+                winsize.ws_row,
+                winsize.ws_xpixel,
+                winsize.ws_ypixel
+            ),
+            (120, 40, 960, 640)
+        );
+
+        backend.clear_terminal_id(3);
+        let reset = backend.initial_winsize_for(3);
+        assert_eq!((reset.ws_col, reset.ws_row), (80, 24));
+    }
+
+    #[test]
+    fn openpty_is_seeded_with_the_remembered_nonzero_winsize() {
+        let backend = UnixPtyBackend::new().expect("backend");
+        backend
+            .set_terminal_size(11, 100, 32, None, None)
+            .expect("seed remembered size");
+        let winsize = backend.initial_winsize_for(11);
+        let pty = openpty(Some(&winsize), &None).expect("openpty");
+        let master_fd = pty.master.into_raw_fd();
+        let slave_fd = pty.slave.into_raw_fd();
+        let mut readback = Winsize {
+            ws_row: 0,
+            ws_col: 0,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        #[allow(clippy::useless_conversion)]
+        let rc = unsafe { ioctl(master_fd, libc::TIOCGWINSZ.into(), &mut readback) };
+        assert_eq!(rc, 0, "TIOCGWINSZ must succeed");
+        assert_eq!((readback.ws_col, readback.ws_row), (100, 32));
+        unsafe {
+            libc::close(master_fd);
+            libc::close(slave_fd);
+        }
+    }
+
+    #[test]
+    fn handle_command_exit_reaps_an_exited_child() {
+        let child = Command::new("true").spawn().expect("spawn true");
+        let status = handle_command_exit(child, None).expect("reap");
+        assert_eq!(status, Some(0));
+    }
+
+    #[test]
+    fn handle_command_exit_blocks_until_the_child_exits() {
+        let child = Command::new("sleep")
+            .arg("0.3")
+            .spawn()
+            .expect("spawn sleep");
+        let started = Instant::now();
+        let status = handle_command_exit(child, None).expect("reap");
+        assert_eq!(status, Some(0));
+        assert!(
+            started.elapsed() >= Duration::from_millis(200),
+            "returned before the child exited"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn handle_command_exit_dropping_pidfd_does_not_kill() {
+        let mut child = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep");
+        let pidfd = open_exit_pidfd(child.id());
+        assert!(
+            pidfd.is_some(),
+            "pidfd_open should attach to the live child"
+        );
+        drop(pidfd);
+        match child.try_wait().expect("try_wait") {
+            None => {},
+            Some(status) => panic!("dropping the pidfd killed the child: {status}"),
+        }
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }

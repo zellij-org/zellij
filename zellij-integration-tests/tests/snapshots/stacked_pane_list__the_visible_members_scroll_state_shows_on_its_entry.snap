@@ -5,9 +5,7 @@ expression: normalized(&grid_snapshot)
 ---
  Zellij (test)  Tab #1  + 
                                                        │ Pane #1 │
-                                                     > │ Pane #2 │                                    [ SCROLL: 21/22 ]
-line1
-line2
+                                                     > │ Pane #2 │                                    [ SCROLL: 19/22 ]
 line3
 line4
 line5
@@ -24,5 +22,7 @@ line15
 line16
 line17
 line18
-█ine19
+line19
+line20
+█ine21
  Ctrl + <s> SEARCH   s  Search  ↓|↑|PgDn|PgUp|d|u  Scroll  e  Edit  ENTER  Select  []  Commands 

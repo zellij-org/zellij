@@ -39,6 +39,17 @@ export function build_link_handler() {
     }
     
     function activateLink(event, uri) {
+        // the uri can come from an OSC 8 hyperlink written by anything running
+        // in the terminal, so only open schemes that are safe to hand to the
+        // browser (not javascript:, data: and the like)
+        const allowedProtocols = ['http:', 'https:', 'mailto:', 'file:'];
+        let protocol;
+        try {
+            protocol = new URL(uri).protocol;
+        } catch (e) {
+            return;
+        }
+        if (!allowedProtocols.includes(protocol)) return;
         const newWindow = window.open(uri, '_blank');
         if (newWindow) newWindow.opener = null; // prevent the opened link from gaining access to the terminal instance
     }

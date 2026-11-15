@@ -353,8 +353,15 @@ impl ZellijPlugin for State {
             .get("live_view_fixture")
             .map(|v| v == "true")
             .unwrap_or(false);
+        let watch_filesystem_fixture = configuration
+            .get("watch_filesystem")
+            .map(|v| v == "true")
+            .unwrap_or(false);
         if attention_fixture || live_view_fixture {
             permissions.push(PermissionType::ReadPaneContents);
+        }
+        if watch_filesystem_fixture {
+            permissions.push(PermissionType::FullHdAccess);
         }
         request_permission(&permissions);
         let should_subscribe_initial_keybinds = configuration
@@ -381,6 +388,7 @@ impl ZellijPlugin for State {
             EventType::CustomMessage,
             EventType::FileSystemCreate,
             EventType::FileSystemUpdate,
+            EventType::FileSystemUpdateIncomplete,
             EventType::FileSystemDelete,
             EventType::BeforeClose,
             EventType::PluginConfigurationChanged,
@@ -421,7 +429,9 @@ impl ZellijPlugin for State {
         if should_subscribe_settings_entries {
             subscribe(&[EventType::PluginSettingsEntries]);
         }
-        watch_filesystem();
+        if watch_filesystem_fixture {
+            watch_filesystem();
+        }
     }
 
     fn update(&mut self, event: Event) -> bool {

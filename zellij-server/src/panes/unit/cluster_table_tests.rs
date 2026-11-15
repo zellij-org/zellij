@@ -1,5 +1,7 @@
 use crate::panes::cluster_table;
-use crate::panes::terminal_character::{TerminalCharacter, MAX_CODE_POINTS_PER_CELL};
+use crate::panes::terminal_character::{
+    AnsiCode, TerminalCharacter, DEFAULT_STYLES, MAX_CODE_POINTS_PER_CELL,
+};
 use std::cell::RefCell;
 
 fn cell_with(text: &str) -> TerminalCharacter {
@@ -147,4 +149,19 @@ fn dropping_cells_during_thread_teardown_does_not_panic() {
         });
     });
     assert!(handle.join().is_ok());
+}
+
+#[test]
+fn a_changed_palette_register_is_substituted_into_underline_style_diffs() {
+    let mut previous = DEFAULT_STYLES;
+    let mut next = DEFAULT_STYLES;
+    next.underline_color = Some(AnsiCode::ColorIndex(4));
+    let mut changed_colors = [None; 256];
+    changed_colors[4] = Some(AnsiCode::RgbCode((12, 34, 56)));
+
+    let diff = previous
+        .update_and_return_diff(&next, Some(changed_colors))
+        .expect("the underline color changed");
+
+    assert_eq!(diff.underline_color, Some(AnsiCode::RgbCode((12, 34, 56))));
 }

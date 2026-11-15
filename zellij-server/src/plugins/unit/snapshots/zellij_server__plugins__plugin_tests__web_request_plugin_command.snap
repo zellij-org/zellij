@@ -1,7 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 5494
-expression: "format!(\"{:#?}\", new_tab_event)"
+expression: "normalize_reservation_fields(format!(\"{:#?}\", new_tab_event))"
 ---
 Some(
     WebRequest(
@@ -21,6 +20,17 @@ Some(
         {
             "user_key_1": "user_value1",
             "user_key_2": "user_value2",
+        },
+        <dynamic>,
+        BackgroundOperationReservation {
+            inner: ReservationInner {
+                id: <dynamic>,
+                plugin_id: 0,
+                kind: WebRequest,
+                bytes: <dynamic>,
+                load_alive: false,
+                cancelled: true,
+            },
         },
     ),
 )

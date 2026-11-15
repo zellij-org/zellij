@@ -2,12 +2,12 @@ use super::PluginId;
 use crate::background_jobs::BackgroundJob;
 use crate::plugins::pipes::{pipes_to_block_or_unblock, PipeStateChange};
 use crate::plugins::plugin_loader::PluginLoader;
-use crate::plugins::plugin_map::{PluginMap, RunningPlugin, SharedSlot, Subscriptions};
-use crate::plugins::plugin_worker::MessageToWorker;
+use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, SharedSlot, Subscriptions};
+use crate::plugins::plugin_worker::{try_send_to_worker, MessageToWorker};
 use crate::plugins::wasm_bridge::{
-    check_event_permission, handle_plugin_crash, handle_plugin_loading_failure,
-    handle_plugin_successful_loading, subscription_event_type, LoadingContext, PluginCache,
-    PluginRenderAsset,
+    check_event_permission, clear_failed_plugin_load_side_effects, handle_plugin_crash,
+    handle_plugin_loading_failure, handle_plugin_successful_loading, stale_timer_for_load,
+    subscription_event_type, LoadingContext, PluginCache, PluginRenderAsset,
 };
 use crate::plugins::zellij_exports::{wasi_read_bytes, wasi_read_string, wasi_write_object};
 use crate::plugins::PluginInstruction;
@@ -15,9 +15,16 @@ use crate::screen::ScreenInstruction;
 use crate::ui::loading_indication::LoadingIndication;
 use crate::{thread_bus::ThreadSenders, ClientId, SharedKeybinds};
 use prost::Message;
+use std::any::TypeId;
+use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::marker::PhantomData;
+use std::mem;
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 use wasmi::Engine;
 use zellij_utils::data::KeybindsVec;
 use zellij_utils::data::{
@@ -117,11 +124,371 @@ fn set_call_context(
     }
 }
 
+/// Fuel budget granted to each WASM plugin callback. A runaway or
+/// nonterminating callback exhausts it and traps instead of holding
+/// its executor thread forever. Engines without fuel metering (test
+/// fixtures) ignore the refuel.
+///
+/// TODO(plugin-hardening): fuel only meters guest instructions. WASI `poll_oneoff` now uses
+/// the callback host deadline below and does not rewrite guest clocks. Other blocking host
+/// calls still should consult that same deadline later; until they do, a slow read can hold
+/// the executor thread and the execution lock past the budget.
+pub const PLUGIN_CALLBACK_FUEL_BUDGET: u64 = 1_000_000_000;
+
+/// One wall-clock budget for blocking host calls inside a single plugin callback.
+/// Not a per-wait allowance: every host call in the callback shares this deadline.
+pub(crate) const PLUGIN_CALLBACK_HOST_BUDGET: Duration = Duration::from_millis(100);
+
+thread_local! {
+    static CALLBACK_HOST_DEADLINE: Cell<Option<Instant>> = const { Cell::new(None) };
+}
+
+/// Start a fresh callback host budget. The deadline is now plus
+/// `PLUGIN_CALLBACK_HOST_BUDGET`.
+pub(crate) fn begin_callback_host_budget() {
+    CALLBACK_HOST_DEADLINE.with(|slot| {
+        slot.set(Some(Instant::now() + PLUGIN_CALLBACK_HOST_BUDGET));
+    });
+}
+
+/// Arm the budget if this thread does not already have one.
+/// `poll_oneoff` calls this so a callback that never refueled still shares a
+/// single deadline across repeated waits. An armed deadline is left alone.
+pub(crate) fn ensure_callback_host_budget() {
+    CALLBACK_HOST_DEADLINE.with(|slot| {
+        if slot.get().is_none() {
+            slot.set(Some(Instant::now() + PLUGIN_CALLBACK_HOST_BUDGET));
+        }
+    });
+}
+
+/// Time left until the callback host deadline, saturating at zero.
+/// If no deadline is armed, returns the full budget and does not arm one.
+/// An armed callback does not get a fresh budget on each call.
+pub(crate) fn callback_host_budget_remaining() -> Duration {
+    CALLBACK_HOST_DEADLINE.with(|slot| match slot.get() {
+        Some(deadline) => deadline.saturating_duration_since(Instant::now()),
+        None => PLUGIN_CALLBACK_HOST_BUDGET,
+    })
+}
+
+#[cfg(test)]
+fn clear_callback_host_budget() {
+    CALLBACK_HOST_DEADLINE.with(|slot| slot.set(None));
+}
+
+/// Whether a callback failed because it ran out of its fuel budget, as opposed to an ordinary
+/// failure. Contexts around the trap do not hide it.
+pub fn is_out_of_fuel(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<wasmi::Error>()
+            .and_then(|error| error.as_trap_code())
+            == Some(wasmi::TrapCode::OutOfFuel)
+    })
+}
+
+struct PublishedLoad {
+    alive: Arc<AtomicBool>,
+    data_dir: PathBuf,
+}
+
+impl PublishedLoad {
+    fn retire_outside_execution_lock(&self, execution: Option<&Mutex<()>>) {
+        // `execution` stands in for the guest mutex in tests. Never wait on it:
+        // a callback may already hold the real execution lock.
+        if let Some(execution) = execution {
+            match execution.try_lock() {
+                Ok(guard) => drop(guard),
+                Err(std::sync::TryLockError::WouldBlock) => {},
+                Err(std::sync::TryLockError::Poisoned(poisoned)) => {
+                    drop(poisoned.into_inner());
+                },
+            }
+        }
+        self.alive.store(false, Ordering::Release);
+    }
+}
+
+/// `load_alive` handles cloned out of `RunningPlugin` at the first refuel, so
+/// management can retire a load without taking the execution mutex.
+///
+/// The key starts with the server's `session_scope`. Two servers in one
+/// process (a nested guest inside its host) both number plugins from 0, and
+/// retiring by plugin id alone flips the other server's `load_alive`.
+type PublishedLoadKey = (u64, PluginId, ClientId, u64);
+
+static PUBLISHED_LOADS: LazyLock<Mutex<HashMap<PublishedLoadKey, PublishedLoad>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn publish_plugin_load(
+    session_scope: u64,
+    plugin_id: PluginId,
+    client_id: ClientId,
+    generation: u64,
+    alive: Arc<AtomicBool>,
+    data_dir: PathBuf,
+) {
+    let mut loads = PUBLISHED_LOADS.lock().unwrap();
+    loads
+        .entry((session_scope, plugin_id, client_id, generation))
+        .or_insert(PublishedLoad { alive, data_dir });
+}
+
+/// `TypeId` of `T` without a `'static` bound. Same approach as wasmi's store
+/// typeid: the id is only used to recognize `PluginEnv`, which is `'static`.
+fn type_id_of<T: ?Sized>() -> TypeId {
+    trait NonStaticAny {
+        fn get_type_id(&self) -> TypeId
+        where
+            Self: 'static;
+    }
+    impl<T: ?Sized> NonStaticAny for PhantomData<T> {
+        fn get_type_id(&self) -> TypeId
+        where
+            Self: 'static,
+        {
+            TypeId::of::<T>()
+        }
+    }
+    let phantom = PhantomData::<T>;
+    NonStaticAny::get_type_id(unsafe {
+        mem::transmute::<&dyn NonStaticAny, &(dyn NonStaticAny + 'static)>(&phantom)
+    })
+}
+
+fn publish_store_data<T: ?Sized>(data: &T) {
+    if type_id_of::<T>() != type_id_of::<PluginEnv>() {
+        return;
+    }
+    // SAFETY: the TypeId check above is true only when `T` is `PluginEnv`.
+    let env = unsafe { &*(data as *const T as *const PluginEnv) };
+    publish_plugin_load(
+        env.session_scope,
+        env.plugin_id,
+        env.client_id,
+        env.generation,
+        env.load_alive.clone(),
+        env.plugin_own_data_dir.clone(),
+    );
+}
+
+fn retire_matching(session_scope: u64, mut keep: impl FnMut(&PluginId, &ClientId, &u64) -> bool) {
+    {
+        let loads = PUBLISHED_LOADS.lock().unwrap();
+        for ((scope, plugin_id, client_id, generation), load) in loads.iter() {
+            if *scope == session_scope && keep(plugin_id, client_id, generation) {
+                load.retire_outside_execution_lock(None);
+            }
+        }
+    }
+    crate::plugins::reap_retired_operations();
+}
+
+fn take_matching(
+    session_scope: u64,
+    mut keep: impl FnMut(&PluginId, &ClientId, &u64) -> bool,
+) -> Vec<PathBuf> {
+    let dirs = {
+        let mut loads = PUBLISHED_LOADS.lock().unwrap();
+        let keys: Vec<_> = loads
+            .keys()
+            .copied()
+            .filter(|(scope, plugin_id, client_id, generation)| {
+                *scope == session_scope && keep(plugin_id, client_id, generation)
+            })
+            .collect();
+        let mut dirs = Vec::with_capacity(keys.len());
+        for key in keys {
+            if let Some(load) = loads.remove(&key) {
+                load.retire_outside_execution_lock(None);
+                dirs.push(load.data_dir);
+            }
+        }
+        dirs
+    };
+    crate::plugins::reap_retired_operations();
+    dirs
+}
+
+/// Flip every published `load_alive` for `plugin_id` in this server, without
+/// the execution mutex.
+pub fn revoke_plugin_loads(session_scope: u64, plugin_id: PluginId) {
+    retire_matching(session_scope, |id, _, _| *id == plugin_id);
+}
+
+/// Flip this client instance's `load_alive` handles without the execution mutex.
+pub fn revoke_client_loads(session_scope: u64, plugin_id: PluginId, client_id: ClientId) {
+    retire_matching(session_scope, |id, cid, _| {
+        *id == plugin_id && *cid == client_id
+    });
+}
+
+/// Retire loads of `plugin_id` other than the newest generation in this server.
+/// A reload publishes the replacement before this runs, so the blocked previous
+/// guest does not have to be locked. Other servers that reused the plugin id
+/// stay alive.
+pub fn retire_older_published_loads(session_scope: u64, plugin_id: PluginId) {
+    {
+        let loads = PUBLISHED_LOADS.lock().unwrap();
+        let newest = loads
+            .keys()
+            .filter(|(scope, id, _, _)| *scope == session_scope && *id == plugin_id)
+            .map(|(_, _, _, generation)| *generation)
+            .max();
+        let Some(newest) = newest else {
+            return;
+        };
+        for ((scope, id, _, generation), load) in loads.iter() {
+            if *scope == session_scope && *id == plugin_id && *generation < newest {
+                load.retire_outside_execution_lock(None);
+            }
+        }
+    }
+    crate::plugins::reap_retired_operations();
+}
+
+/// Retire a load through the handle captured before its guest began
+/// executing. Used when a `(plugin, client)` instance is replaced.
+pub fn retire_load_alive(alive: &Arc<AtomicBool>) {
+    alive.store(false, Ordering::Release);
+    crate::plugins::reap_retired_operations();
+}
+
+pub fn take_plugin_data_dirs(session_scope: u64, plugin_id: PluginId) -> Vec<PathBuf> {
+    take_matching(session_scope, |id, _, _| *id == plugin_id)
+}
+
+pub fn take_client_data_dirs(
+    session_scope: u64,
+    plugin_id: PluginId,
+    client_id: ClientId,
+) -> Vec<PathBuf> {
+    take_matching(session_scope, |id, cid, _| {
+        *id == plugin_id && *cid == client_id
+    })
+}
+
+/// Host-only slot removals waiting on a guest callback. This is not the
+/// execution mutex: recording a removal must not wait for the guest.
+/// Keyed by session scope for the same reason as `PUBLISHED_LOADS`.
+static PENDING_HOST_SLOT_REMOVALS: LazyLock<Mutex<HashMap<(u64, PluginId), HashSet<PluginId>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn record_pending_host_slot_removal(session_scope: u64, instance_id: PluginId, slot_id: PluginId) {
+    PENDING_HOST_SLOT_REMOVALS
+        .lock()
+        .unwrap()
+        .entry((session_scope, instance_id))
+        .or_default()
+        .insert(slot_id);
+}
+
+/// Copy the ids out and drop the pending mutex before the caller mutates
+/// `shared.slots` under the execution lock.
+fn take_pending_host_slot_removals(session_scope: u64, instance_id: PluginId) -> Vec<PluginId> {
+    PENDING_HOST_SLOT_REMOVALS
+        .lock()
+        .unwrap()
+        .remove(&(session_scope, instance_id))
+        .map(|ids| ids.into_iter().collect())
+        .unwrap_or_default()
+}
+
+/// Delete host slot records queued while the execution mutex was busy.
+/// Caller already holds that mutex. Does not enter the guest.
+pub fn apply_pending_host_slot_removals(running_plugin: &mut RunningPlugin) {
+    if running_plugin.store.data().shared.is_none() {
+        return;
+    }
+    let session_scope = running_plugin.store.data().session_scope;
+    let instance_id = running_plugin.store.data().plugin_id;
+    let slot_ids = take_pending_host_slot_removals(session_scope, instance_id);
+    if slot_ids.is_empty() {
+        return;
+    }
+    let Some(shared) = running_plugin.store.data_mut().shared.as_mut() else {
+        let mut pending = PENDING_HOST_SLOT_REMOVALS.lock().unwrap();
+        pending
+            .entry((session_scope, instance_id))
+            .or_default()
+            .extend(slot_ids);
+        return;
+    };
+    for slot_id in slot_ids {
+        shared.slots.remove(&slot_id);
+        for visible in shared.visible_slots.values_mut() {
+            visible.remove(&slot_id);
+        }
+    }
+}
+
+/// Execution-mutex guard. Pending host slot removals are applied before the
+/// caller does guest work and again just before the mutex is released.
+pub struct RunningPluginLock<'a> {
+    guard: std::sync::MutexGuard<'a, RunningPlugin>,
+}
+
+impl Drop for RunningPluginLock<'_> {
+    fn drop(&mut self) {
+        apply_pending_host_slot_removals(&mut self.guard);
+    }
+}
+
+impl Deref for RunningPluginLock<'_> {
+    type Target = RunningPlugin;
+    fn deref(&self) -> &RunningPlugin {
+        &self.guard
+    }
+}
+
+impl DerefMut for RunningPluginLock<'_> {
+    fn deref_mut(&mut self) -> &mut RunningPlugin {
+        &mut self.guard
+    }
+}
+
+pub fn lock_running(running_plugin: &Mutex<RunningPlugin>) -> RunningPluginLock<'_> {
+    let mut guard = running_plugin.lock().unwrap();
+    apply_pending_host_slot_removals(&mut guard);
+    RunningPluginLock { guard }
+}
+
+/// Lock the guest only when it is free. Unload must not wait out a host call.
+pub fn try_lock_running(running_plugin: &Mutex<RunningPlugin>) -> Option<RunningPluginLock<'_>> {
+    let mut guard = match running_plugin.try_lock() {
+        Ok(guard) => guard,
+        Err(std::sync::TryLockError::WouldBlock) => return None,
+        Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+    };
+    apply_pending_host_slot_removals(&mut guard);
+    Some(RunningPluginLock { guard })
+}
+
+pub fn refuel_for_callback<T>(store: &mut wasmi::Store<T>) {
+    let _ = store.set_fuel(PLUGIN_CALLBACK_FUEL_BUDGET);
+    begin_callback_host_budget();
+    publish_store_data(store.data());
+}
+
+/// Instantiate a plugin module with a fresh callback budget. A new store
+/// starts with no fuel, so a module with a WebAssembly start section
+/// would otherwise trap during instantiation on a metering engine.
+pub fn instantiate_metered<T>(
+    linker: &wasmi::Linker<T>,
+    store: &mut wasmi::Store<T>,
+    module: &wasmi::Module,
+) -> std::result::Result<wasmi::Instance, wasmi::Error> {
+    refuel_for_callback(store);
+    linker.instantiate_and_start(store, module)
+}
+
 fn clear_call_context(running_plugin: &mut RunningPlugin) {
     set_call_context(running_plugin, None, None, false);
 }
 
 fn call_with_i32(running_plugin: &mut RunningPlugin, name: &str, value: i32) -> Result<()> {
+    refuel_for_callback(&mut running_plugin.store);
     let instance = running_plugin.instance.clone();
     instance
         .get_typed_func::<i32, ()>(&mut running_plugin.store, name)
@@ -131,6 +498,7 @@ fn call_with_i32(running_plugin: &mut RunningPlugin, name: &str, value: i32) -> 
 }
 
 fn call_without_args(running_plugin: &mut RunningPlugin, name: &str) -> Result<()> {
+    refuel_for_callback(&mut running_plugin.store);
     let instance = running_plugin.instance.clone();
     instance
         .get_typed_func::<(), ()>(&mut running_plugin.store, name)
@@ -140,6 +508,7 @@ fn call_without_args(running_plugin: &mut RunningPlugin, name: &str) -> Result<(
 }
 
 fn call_returning_i32(running_plugin: &mut RunningPlugin, name: &str) -> Result<i32> {
+    refuel_for_callback(&mut running_plugin.store);
     let instance = running_plugin.instance.clone();
     instance
         .get_typed_func::<(), i32>(&mut running_plugin.store, name)
@@ -319,6 +688,7 @@ pub fn render_targets(
             continue;
         };
         set_call_context(running_plugin, Some(*slot_id), Some(*client_id), true);
+        refuel_for_callback(&mut running_plugin.store);
         let instance = running_plugin.instance.clone();
         let result = instance
             .get_typed_func::<(i32, i32, i32, i32), ()>(&mut running_plugin.store, "shared_render")
@@ -388,18 +758,36 @@ fn report_instance_error(
     running_plugin: &RunningPlugin,
     error: anyhow::Error,
 ) {
+    // An asynchronous Quarantine instruction is not enough: jobs already queued on this
+    // instance's executor must see the flag before they enter the failed guest.
+    running_plugin.mark_quarantined();
     let _ = senders.send_to_plugin(PluginInstruction::UnregisterSettingsEntry(
         running_plugin.store.data().plugin_id,
     ));
-    report_error(senders, pane_slot_ids(running_plugin), error);
+    report_error(
+        senders,
+        running_plugin.store.data().plugin_id,
+        pane_slot_ids(running_plugin),
+        running_plugin.store.data().generation,
+        error,
+    );
 }
 
-fn report_error(senders: &ThreadSenders, pane_slots: Vec<PluginId>, error: anyhow::Error) {
+fn report_error(
+    senders: &ThreadSenders,
+    instance_id: PluginId,
+    pane_slots: Vec<PluginId>,
+    generation: u64,
+    error: anyhow::Error,
+) {
     log::error!("{:?}", error);
     let message = format!("{:?}", error).replace("\n", "\n\r");
     for slot_id in pane_slots {
-        handle_plugin_crash(slot_id, message.clone(), senders.clone());
+        handle_plugin_crash(slot_id, generation, message.clone(), senders.clone());
     }
+    // The instance executes under its own id, which is what shared events and pipes are
+    // dispatched by; quarantining only the pane slots would leave it running.
+    let _ = senders.send_to_plugin(PluginInstruction::Quarantine(instance_id, generation));
 }
 
 fn send_pipe_changes(
@@ -432,6 +820,7 @@ fn lookup(
 ) -> Option<(Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>)> {
     plugin_map
         .lock()
+        // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
         .unwrap()
         .shared_running_plugin(instance_id)
 }
@@ -448,15 +837,26 @@ pub fn apply_events_job(
     plugin_map: Arc<Mutex<PluginMap>>,
     instance_id: PluginId,
     events: Vec<SharedEventBatchEntry>,
+    scheduled_generation: Option<u64>,
 ) {
     let Some((running_plugin, subscriptions)) = lookup(&plugin_map, instance_id) else {
         return;
     };
     let subscriptions = subscriptions.lock().unwrap().clone();
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
+    if !running_plugin.is_active() {
+        return;
+    }
     let mut render = RenderResponse::Nothing;
     let strip_keybinds = subscriptions.contains(&EventType::InitialKeybinds);
     for (mut event, context, mut keybinds) in events {
+        if stale_timer_for_load(
+            &event,
+            scheduled_generation,
+            running_plugin.store.data().generation,
+        ) {
+            continue;
+        }
         let Ok(event_type) = subscription_event_type(&event) else {
             continue;
         };
@@ -527,19 +927,22 @@ pub fn apply_pipes_job(
     senders: ThreadSenders,
     plugin_map: Arc<Mutex<PluginMap>>,
     instance_id: PluginId,
-    messages: Vec<(PipeMessage, EventContext)>,
+    messages: Arc<Vec<(PipeMessage, EventContext)>>,
 ) {
     let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) else {
-        for (pipe_message, _) in &messages {
+        for (pipe_message, _) in messages.iter() {
             release_pipe(&senders, instance_id, pipe_message);
         }
         return;
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
+    if !running_plugin.is_active() {
+        return;
+    }
     let mut render = RenderResponse::Nothing;
-    let mut messages = messages.into_iter();
+    let mut messages = messages.iter();
     while let Some((pipe_message, context)) = messages.next() {
-        match call_pipe(&mut running_plugin, &pipe_message, context) {
+        match call_pipe(&mut running_plugin, pipe_message, context.clone()) {
             Ok(requested) => {
                 render = render.merge(requested);
                 send_pipe_changes(
@@ -550,9 +953,9 @@ pub fn apply_pipes_job(
                 );
             },
             Err(e) => {
-                release_pipe(&senders, instance_id, &pipe_message);
+                release_pipe(&senders, instance_id, pipe_message);
                 for (remaining, _) in messages {
-                    release_pipe(&senders, instance_id, &remaining);
+                    release_pipe(&senders, instance_id, remaining);
                 }
                 report_instance_error(&senders, &running_plugin, e);
                 return;
@@ -583,7 +986,19 @@ pub fn add_slot_job(
         );
         return;
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
+    if !running_plugin.is_active() {
+        let mut loading_indication = LoadingIndication::new(String::new());
+        handle_plugin_loading_failure(
+            &senders,
+            slot_id,
+            &mut loading_indication,
+            "Shared plugin instance is quarantined",
+            None,
+        );
+        let _ = slot_added.send(());
+        return;
+    }
     let added = call_slot_added(&mut running_plugin, slot_id, slot);
     let _ = slot_added.send(());
     let result = added.and_then(|_| {
@@ -595,13 +1010,21 @@ pub fn add_slot_job(
     });
     match result {
         Ok(()) => {
+            drop(running_plugin);
             let plugin_list = plugin_map.lock().unwrap().list_plugins();
             handle_plugin_successful_loading(&senders, slot_id, plugin_list);
         },
         Err(e) => {
             let _ =
                 senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(slot_id));
-            report_error(&senders, vec![slot_id], e);
+            running_plugin.mark_quarantined();
+            report_error(
+                &senders,
+                instance_id,
+                vec![slot_id],
+                running_plugin.store.data().generation,
+                e,
+            );
         },
     }
 }
@@ -612,19 +1035,38 @@ pub fn remove_slot_job(
     instance_id: PluginId,
     slot_id: PluginId,
     tear_down: bool,
+    allow_guest: bool,
 ) {
+    let session_scope = plugin_map.lock().unwrap().session_scope();
     if let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) {
-        let mut running_plugin = running_plugin.lock().unwrap();
-        if let Err(e) = call_slot_removed(&mut running_plugin, slot_id) {
-            log::error!(
-                "Failed to remove slot {} from shared plugin: {:?}",
-                slot_id,
-                e
-            );
+        if allow_guest {
+            if let Some(mut running_plugin) = try_lock_running(&running_plugin) {
+                if running_plugin.is_active() {
+                    if let Err(e) = call_slot_removed(&mut running_plugin, slot_id) {
+                        log::error!(
+                            "Failed to remove slot {} from shared plugin: {:?}",
+                            slot_id,
+                            e
+                        );
+                    }
+                }
+            } else {
+                // The guest holds the execution mutex. Keep the host removal
+                // and apply it when that mutex is free. Do not wait, and do
+                // not call the guest from this thread.
+                record_pending_host_slot_removal(session_scope, instance_id, slot_id);
+            }
+        } else {
+            // Lifecycle admission rejected this job, so it is running on the
+            // management thread. Record the host removal without the execution
+            // mutex, then apply it only when that mutex is free. Do not enter
+            // the guest and do not wait if a callback holds the mutex.
+            record_pending_host_slot_removal(session_scope, instance_id, slot_id);
+            let _running_plugin = try_lock_running(&running_plugin);
         }
     }
     if tear_down {
-        tear_down_instance(&senders, &plugin_map, instance_id);
+        tear_down_instance(&senders, &plugin_map, instance_id, allow_guest);
     }
 }
 
@@ -632,47 +1074,81 @@ fn tear_down_instance(
     senders: &ThreadSenders,
     plugin_map: &Arc<Mutex<PluginMap>>,
     instance_id: PluginId,
+    allow_guest: bool,
 ) {
+    // Revoke before taking the execution mutex. A blocked guest callback may
+    // hold that mutex for the rest of the host call.
+    let session_scope = plugin_map.lock().unwrap().session_scope();
+    revoke_plugin_loads(session_scope, instance_id);
     let removed = plugin_map.lock().unwrap().remove_shared(instance_id);
     let Some((running_plugin, subscriptions, workers)) = removed else {
+        delete_data_dirs(&take_plugin_data_dirs(session_scope, instance_id));
+        let _ = senders.send_to_screen(ScreenInstruction::ClearAllPluginHighlights(instance_id));
         return;
     };
     for (_worker_name, worker_sender) in workers {
-        drop(worker_sender.send(MessageToWorker::Exit));
+        let _ = try_send_to_worker(&worker_sender, MessageToWorker::Exit);
     }
-    let needs_before_close = subscriptions
-        .lock()
-        .unwrap()
-        .contains(&EventType::BeforeClose);
-    let mut running_plugin = running_plugin.lock().unwrap();
-    if needs_before_close {
-        if let Err(e) = call_update(
-            &mut running_plugin,
-            &Event::BeforeClose,
-            None,
-            EventContext::default(),
-        ) {
-            log::error!("Failed to send BeforeClose to shared plugin: {:?}", e);
+    let mut locked_dir = None;
+    if allow_guest {
+        if let Some(mut running_plugin) = try_lock_running(&running_plugin) {
+            let needs_before_close = subscriptions
+                .lock()
+                // SAFETY: Mutex/lock Err only on poison (prior panic); fail-fast is intentional.
+                .unwrap()
+                .contains(&EventType::BeforeClose);
+            if needs_before_close && !running_plugin.is_quarantined() {
+                if let Err(e) =
+                    crate::plugins::pinned_executor::with_before_close_host_calls(|| {
+                        call_update(
+                            &mut running_plugin,
+                            &Event::BeforeClose,
+                            None,
+                            EventContext::default(),
+                        )
+                    })
+                {
+                    log::error!("Failed to send BeforeClose to shared plugin: {:?}", e);
+                }
+                send_pipe_changes(senders, &mut running_plugin, instance_id, None);
+            }
+            running_plugin.store.data().retire_load();
+            if running_plugin.intercepting_key_presses() {
+                let clients: Vec<ClientId> = running_plugin
+                    .store
+                    .data()
+                    .shared
+                    .as_ref()
+                    .map(|shared| shared.clients.iter().copied().collect())
+                    .unwrap_or_default();
+                for client_id in clients {
+                    let _ = senders.send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(
+                        instance_id,
+                        client_id,
+                    ));
+                }
+            }
+            locked_dir = Some(running_plugin.store.data().plugin_own_data_dir.clone());
         }
-        send_pipe_changes(senders, &mut running_plugin, instance_id, None);
     }
-    if running_plugin.intercepting_key_presses() {
-        let clients: Vec<ClientId> = running_plugin
-            .store
-            .data()
-            .shared
-            .as_ref()
-            .map(|shared| shared.clients.iter().copied().collect())
-            .unwrap_or_default();
-        for client_id in clients {
-            let _ = senders.send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(client_id));
+    let mut data_dirs = take_plugin_data_dirs(session_scope, instance_id);
+    if let Some(dir) = locked_dir {
+        if !data_dirs.contains(&dir) {
+            data_dirs.push(dir);
         }
     }
-    let data_dir = running_plugin.store.data().plugin_own_data_dir.clone();
-    if let Err(e) = std::fs::remove_dir_all(&data_dir) {
-        log::error!("Failed to remove data dir for shared plugin: {:?}", e);
-    }
+    delete_data_dirs(&data_dirs);
     let _ = senders.send_to_screen(ScreenInstruction::ClearAllPluginHighlights(instance_id));
+    drop(running_plugin);
+    drop(subscriptions);
+}
+
+fn delete_data_dirs(data_dirs: &[PathBuf]) {
+    for data_dir in data_dirs {
+        if let Err(e) = std::fs::remove_dir_all(data_dir) {
+            log::error!("Failed to remove data dir for shared plugin: {:?}", e);
+        }
+    }
 }
 
 pub fn client_job(
@@ -685,7 +1161,10 @@ pub fn client_job(
     let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) else {
         return;
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
+    if !running_plugin.is_active() {
+        return;
+    }
     let result = if connected {
         call_client_connected(&mut running_plugin, client_id).and_then(|_| {
             render_request(
@@ -713,7 +1192,10 @@ pub fn resize_job(
     let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) else {
         return;
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
+    if !running_plugin.is_active() {
+        return;
+    }
     let changed = match running_plugin.store.data_mut().shared.as_mut() {
         Some(shared) => match shared.slots.get_mut(&slot_id) {
             Some(slot) => {
@@ -746,7 +1228,10 @@ pub fn visibility_job(
     let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) else {
         return;
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
+    if !running_plugin.is_active() {
+        return;
+    }
     let before: HashSet<(PluginId, ClientId)> = targets_for(&running_plugin, &RenderResponse::All)
         .into_iter()
         .collect();
@@ -772,11 +1257,16 @@ pub fn host_settings_job(
     let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) else {
         return;
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
+    if !running_plugin.is_active() {
+        return;
+    }
     running_plugin.update_default_shell(default_shell);
     running_plugin.update_layout_dir(layout_dir);
 }
 
+/// Returns whether the shared instance was published. Callers use this to retire the executor
+/// assignment only when there is no instance left that could run.
 pub fn start_instance_job(
     senders: ThreadSenders,
     plugin_map: Arc<Mutex<PluginMap>>,
@@ -787,45 +1277,74 @@ pub fn start_instance_job(
     skip_cache: bool,
     instance_id: PluginId,
     initial_slots: BTreeMap<PluginId, SharedSlot>,
-) {
+) -> bool {
     let mut initial_slots = initial_slots;
-    let previous = plugin_map.lock().unwrap().remove_shared(instance_id);
-    let previous_visible_slots = match previous {
-        Some((running_plugin, _subscriptions, workers)) => {
-            for (_worker_name, worker_sender) in workers {
-                drop(worker_sender.send(MessageToWorker::Exit));
+    // Keep the previous instance in the map until the replacement has initialized. A failed
+    // reload must leave the running plugin (and its slots) in place; removing it first also hid
+    // it from the loader's snapshot, which then deleted the replacement's data directory.
+    let previous = plugin_map.lock().unwrap().shared_plugin_assets(instance_id);
+    let mut previous_visible_slots = HashMap::new();
+    let mut previous_in_blocking_call = None;
+    if let Some((running_plugin, _subscriptions, _workers)) = previous.as_ref() {
+        let running_plugin = lock_running(&running_plugin);
+        if let Some(shared) = running_plugin.store.data().shared.as_ref() {
+            for (slot_id, slot) in shared.slots.iter() {
+                initial_slots
+                    .entry(*slot_id)
+                    .or_insert_with(|| slot.clone());
             }
-            let running_plugin = running_plugin.lock().unwrap();
-            match running_plugin.store.data().shared.as_ref() {
-                Some(shared) => {
-                    for (slot_id, slot) in shared.slots.iter() {
-                        initial_slots
-                            .entry(*slot_id)
-                            .or_insert_with(|| slot.clone());
-                    }
-                    shared.visible_slots.clone()
-                },
-                None => HashMap::new(),
-            }
-        },
-        None => HashMap::new(),
+            previous_visible_slots = shared.visible_slots.clone();
+            previous_in_blocking_call = Some(shared.in_blocking_call.clone());
+        }
     };
-    let started = {
-        let mut plugin_map = plugin_map.lock().unwrap();
-        PluginLoader::new(
-            skip_cache,
-            loading_context,
-            senders.clone(),
-            engine,
-            plugin_cache,
-            &mut plugin_map,
-            connected_clients.clone(),
-        )
-        .start_shared_plugin()
-    };
+    let started = PluginLoader::new(
+        skip_cache,
+        loading_context,
+        senders.clone(),
+        engine,
+        plugin_cache,
+        plugin_map.clone(),
+        connected_clients.clone(),
+    )
+    .start_shared_plugin();
     let running_plugin = match started {
-        Ok(running_plugin) => running_plugin,
+        Ok(running_plugin) => {
+            // The replacement is published; only now is it safe to retire the old workers.
+            if let Some((previous_plugin, _subscriptions, workers)) = previous {
+                retire_older_published_loads(
+                    plugin_map.lock().unwrap().session_scope(),
+                    instance_id,
+                );
+                // Backup for a load that never refueled. Do not wait if its
+                // guest callback still holds the execution mutex.
+                if let Some(previous_plugin) = try_lock_running(&previous_plugin) {
+                    previous_plugin.store.data().retire_load();
+                }
+                for (_worker_name, worker_sender) in workers {
+                    let _ = try_send_to_worker(&worker_sender, MessageToWorker::Exit);
+                }
+            }
+            running_plugin
+        },
         Err(e) => {
+            if let Some((running_plugin, subscriptions, workers)) = previous {
+                let mut plugin_map = plugin_map.lock().unwrap();
+                // A failure before publication leaves the old entry in place. A failure after
+                // publication removed the replacement, so put back what it displaced.
+                if plugin_map.shared_running_plugin(instance_id).is_none() {
+                    plugin_map.insert_shared(
+                        instance_id,
+                        (running_plugin, subscriptions, workers),
+                        previous_in_blocking_call,
+                    );
+                }
+            } else {
+                let clients = connected_clients.lock().unwrap().clone();
+                clear_failed_plugin_load_side_effects(&senders, instance_id, clients);
+            }
+            // A failed replacement may have registered intercepts or highlights under the same
+            // plugin id before trapping. Clearing them here would also drop the restored
+            // instance's registrations, so they are left for the restored instance to replace.
             for slot_id in initial_slots.keys() {
                 let mut loading_indication = LoadingIndication::new(String::new());
                 handle_plugin_loading_failure(
@@ -836,10 +1355,10 @@ pub fn start_instance_job(
                     None,
                 );
             }
-            return;
+            return false;
         },
     };
-    let mut running_plugin = running_plugin.lock().unwrap();
+    let mut running_plugin = lock_running(&running_plugin);
     if let Some(shared) = running_plugin.store.data_mut().shared.as_mut() {
         shared.visible_slots = previous_visible_slots;
     }
@@ -860,17 +1379,24 @@ pub fn start_instance_job(
     }
     match result {
         Ok(()) => {
+            drop(running_plugin);
             let plugin_list = plugin_map.lock().unwrap().list_plugins();
             for slot_id in initial_slots.keys() {
                 handle_plugin_successful_loading(&senders, *slot_id, plugin_list.clone());
             }
+            true
         },
         Err(e) => {
+            // TODO(plugin-hardening): a reload that publishes successfully but then fails in
+            // these callbacks still retires the previous instance. Restoring it would need
+            // generation-aware quarantine cleanup so the failed replacement's crash report
+            // cannot quarantine the restored instance.
             for slot_id in initial_slots.keys() {
                 let _ = senders
                     .send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(*slot_id));
             }
             report_instance_error(&senders, &running_plugin, e);
+            true
         },
     }
 }
@@ -914,5 +1440,434 @@ mod tests {
             b"not a wasm module",
             SHARED_MARKER_EXPORT
         ));
+    }
+}
+
+#[cfg(test)]
+mod fuel_tests {
+    use super::{instantiate_metered, is_out_of_fuel, refuel_for_callback};
+    use wasmi::{Linker, Module, Store};
+
+    fn plugin_engine_module(wat: &str) -> (wasmi::Engine, Module) {
+        let engine = crate::get_engine();
+        let module = Module::new(&engine, wat::parse_str(wat).unwrap()).unwrap();
+        (engine, module)
+    }
+
+    #[test]
+    fn a_module_with_a_start_section_instantiates_on_the_metered_engine() {
+        let (engine, module) = plugin_engine_module(
+            r#"(module
+                (global $g (mut i32) (i32.const 0))
+                (func $init (global.set $g (i32.add (global.get $g) (i32.const 1))))
+                (start $init))"#,
+        );
+        let mut store = Store::new(&engine, ());
+        let linker = Linker::<()>::new(&engine);
+        assert!(
+            linker.instantiate_and_start(&mut store, &module).is_err(),
+            "witness: a fresh metered store has no fuel for the start section"
+        );
+        let mut store = Store::new(&engine, ());
+        assert!(instantiate_metered(&linker, &mut store, &module).is_ok());
+    }
+
+    #[test]
+    fn running_out_of_fuel_is_told_apart_from_other_failures() {
+        let (engine, module) = plugin_engine_module(
+            r#"(module
+                (func (export "spin") (loop br 0))
+                (func (export "crash") unreachable))"#,
+        );
+        let mut store = Store::new(&engine, ());
+        let linker = Linker::<()>::new(&engine);
+        let instance = instantiate_metered(&linker, &mut store, &module).unwrap();
+        let spin = instance
+            .get_typed_func::<(), ()>(&mut store, "spin")
+            .unwrap();
+        let crash = instance
+            .get_typed_func::<(), ()>(&mut store, "crash")
+            .unwrap();
+        store.set_fuel(10_000).unwrap();
+        let spin_error = anyhow::Error::new(spin.call(&mut store, ()).unwrap_err())
+            .context("failed to call spin on the plugin");
+        assert!(is_out_of_fuel(&spin_error));
+        refuel_for_callback(&mut store);
+        let crash_error = anyhow::Error::new(crash.call(&mut store, ()).unwrap_err())
+            .context("failed to call crash on the plugin");
+        assert!(!is_out_of_fuel(&crash_error));
+        assert!(!is_out_of_fuel(&anyhow::anyhow!("not a wasm error")));
+    }
+
+    #[test]
+    fn a_nonterminating_callback_traps_instead_of_holding_its_thread() {
+        let (engine, module) =
+            plugin_engine_module(r#"(module (func (export "update") (loop br 0)))"#);
+        let mut store = Store::new(&engine, ());
+        let linker = Linker::<()>::new(&engine);
+        let instance = instantiate_metered(&linker, &mut store, &module).unwrap();
+        let update = instance
+            .get_typed_func::<(), ()>(&mut store, "update")
+            .unwrap();
+        // A small budget keeps the test fast; the production budget is the
+        // same mechanism with a larger number.
+        store.set_fuel(10_000).unwrap();
+        let error = update
+            .call(&mut store, ())
+            .expect_err("the loop must exhaust its fuel");
+        assert!(
+            matches!(error.as_trap_code(), Some(wasmi::TrapCode::OutOfFuel))
+                || error.to_string().to_lowercase().contains("fuel"),
+            "unexpected error: {error:?}"
+        );
+        // Each callback gets a fresh budget rather than inheriting what the
+        // previous one left over.
+        refuel_for_callback(&mut store);
+        assert_eq!(
+            store.get_fuel().unwrap(),
+            super::PLUGIN_CALLBACK_FUEL_BUDGET
+        );
+    }
+
+    #[test]
+    fn one_callback_shares_a_single_host_deadline() {
+        super::clear_callback_host_budget();
+        assert_eq!(
+            super::callback_host_budget_remaining(),
+            super::PLUGIN_CALLBACK_HOST_BUDGET,
+            "an unarmed thread reports the full budget"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert_eq!(
+            super::callback_host_budget_remaining(),
+            super::PLUGIN_CALLBACK_HOST_BUDGET,
+            "reading the budget must not arm a deadline"
+        );
+
+        super::ensure_callback_host_budget();
+        let first = super::callback_host_budget_remaining();
+        assert!(first <= super::PLUGIN_CALLBACK_HOST_BUDGET);
+        assert!(first > std::time::Duration::from_millis(50));
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        super::ensure_callback_host_budget();
+        let second = super::callback_host_budget_remaining();
+        assert!(
+            second < first,
+            "a later call in the same callback must keep the same deadline, not a fresh 100ms"
+        );
+
+        let engine = wasmi::Engine::default();
+        let mut store = Store::new(&engine, ());
+        refuel_for_callback(&mut store);
+        let refreshed = super::callback_host_budget_remaining();
+        assert!(refreshed > second);
+        assert!(refreshed <= super::PLUGIN_CALLBACK_HOST_BUDGET);
+    }
+}
+
+#[cfg(test)]
+mod retirement_tests {
+    use super::PublishedLoad;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    #[test]
+    fn retire_load_returns_while_execution_lock_is_held() {
+        let execution = Arc::new(Mutex::new(()));
+        let alive = Arc::new(AtomicBool::new(true));
+        let load = PublishedLoad {
+            alive: alive.clone(),
+            data_dir: PathBuf::from("/tmp/retire-load-does-not-lock"),
+        };
+        // The test thread holds the stand-in for the guest execution mutex.
+        let _guard = execution.lock().unwrap();
+        let execution_for_retire = execution.clone();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            load.retire_outside_execution_lock(Some(&execution_for_retire));
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("retire_load waited on the execution mutex");
+        assert!(
+            !alive.load(Ordering::Acquire),
+            "retirement must clear load_alive without the execution mutex"
+        );
+    }
+
+    #[test]
+    fn one_session_cannot_retire_another_sessions_plugin_load() {
+        // Above anything `PluginMap::default` hands out. The allocator starts at 1.
+        let host_scope = u64::MAX - 4;
+        let guest_scope = u64::MAX - 3;
+        let host_alive = Arc::new(AtomicBool::new(true));
+        let guest_alive = Arc::new(AtomicBool::new(true));
+        let host_dir = PathBuf::from("/tmp/host-session-plugin-load");
+        let guest_dir = PathBuf::from("/tmp/guest-session-plugin-load");
+        super::publish_plugin_load(host_scope, 1, 1, 1, host_alive.clone(), host_dir.clone());
+        super::publish_plugin_load(guest_scope, 1, 1, 1, guest_alive.clone(), guest_dir.clone());
+
+        super::revoke_client_loads(guest_scope, 1, 1);
+        assert!(
+            host_alive.load(Ordering::Acquire),
+            "a guest client unload must not flip the host bars load"
+        );
+        assert!(!guest_alive.load(Ordering::Acquire));
+        assert_eq!(
+            super::take_client_data_dirs(guest_scope, 1, 1),
+            vec![guest_dir]
+        );
+        assert!(
+            host_alive.load(Ordering::Acquire),
+            "taking the guest dir must leave the host load alive"
+        );
+
+        let guest_old = Arc::new(AtomicBool::new(true));
+        let guest_new = Arc::new(AtomicBool::new(true));
+        let guest_old_dir = PathBuf::from("/tmp/guest-session-plugin-load-old");
+        let guest_new_dir = PathBuf::from("/tmp/guest-session-plugin-load-new");
+        super::publish_plugin_load(
+            guest_scope,
+            1,
+            1,
+            2,
+            guest_old.clone(),
+            guest_old_dir.clone(),
+        );
+        super::publish_plugin_load(
+            guest_scope,
+            1,
+            1,
+            9,
+            guest_new.clone(),
+            guest_new_dir.clone(),
+        );
+        super::retire_older_published_loads(guest_scope, 1);
+        assert!(
+            host_alive.load(Ordering::Acquire),
+            "reloading the guest must not retire the host generation"
+        );
+        assert!(!guest_old.load(Ordering::Acquire));
+        assert!(guest_new.load(Ordering::Acquire));
+
+        let mut taken = super::take_plugin_data_dirs(guest_scope, 1);
+        taken.sort();
+        let mut expected = vec![guest_old_dir, guest_new_dir];
+        expected.sort();
+        assert_eq!(taken, expected);
+        assert_eq!(super::take_plugin_data_dirs(host_scope, 1), vec![host_dir]);
+        assert!(!host_alive.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn pending_slot_removal_stays_inside_its_session() {
+        let host_scope = u64::MAX - 2;
+        let guest_scope = u64::MAX - 1;
+        super::record_pending_host_slot_removal(guest_scope, 1, 2);
+        assert!(super::take_pending_host_slot_removals(host_scope, 1).is_empty());
+        assert_eq!(
+            super::take_pending_host_slot_removals(guest_scope, 1),
+            vec![2]
+        );
+    }
+}
+
+#[cfg(test)]
+mod pending_slot_tests {
+    use super::{lock_running, remove_slot_job};
+    use crate::plugins::plugin_loader::PluginLoader;
+    use crate::plugins::plugin_map::{PluginMap, RunningPlugin, SharedSlot};
+    use crate::plugins::wasm_bridge::{LoadingContext, PluginCache};
+    use crate::thread_bus::ThreadSenders;
+    use std::collections::{BTreeMap, HashSet};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+    use zellij_utils::data::{InputMode, SlotKind};
+    use zellij_utils::input::layout::{PluginUserConfiguration, RunPluginLocation};
+    use zellij_utils::input::plugins::PluginConfig;
+    use zellij_utils::pane_size::Size;
+
+    const INSTANCE_ID: u32 = 4_000_111;
+    const SLOT_A: u32 = 4_000_121;
+    const SLOT_B: u32 = 4_000_122;
+    const SLOT_C: u32 = 4_000_123;
+
+    const SHARED_WAT: &str = r#"(module
+        (memory (export "memory") 1)
+        (func (export "_start"))
+        (func (export "load"))
+        (func (export "slot_removed") (param i32)
+            (i32.store (i32.const 0)
+                (i32.add (i32.load (i32.const 0)) (i32.const 1)))))"#;
+
+    fn slot_ids(running: &RunningPlugin) -> Vec<u32> {
+        running
+            .store
+            .data()
+            .shared
+            .as_ref()
+            .unwrap()
+            .slots
+            .keys()
+            .copied()
+            .collect()
+    }
+
+    fn visible_ids(running: &RunningPlugin) -> HashSet<u32> {
+        running
+            .store
+            .data()
+            .shared
+            .as_ref()
+            .unwrap()
+            .visible_slots
+            .get(&1)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn slot_removed_calls(running: &RunningPlugin) -> u32 {
+        let memory = running
+            .instance
+            .get_memory(&running.store, "memory")
+            .unwrap();
+        let mut bytes = [0u8; 4];
+        memory.read(&running.store, 0, &mut bytes).unwrap();
+        u32::from_le_bytes(bytes)
+    }
+
+    fn remove_host_slot(plugin_map: Arc<Mutex<PluginMap>>, slot_id: u32) {
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            remove_slot_job(
+                ThreadSenders {
+                    should_silently_fail: true,
+                    ..Default::default()
+                },
+                plugin_map,
+                INSTANCE_ID,
+                slot_id,
+                false,
+                false,
+            );
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("host slot removal waited on the execution mutex");
+    }
+
+    #[test]
+    fn pending_slot_remove_slot_leaves_the_other_shared_slot() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
+        let plugin_cache: PluginCache = Default::default();
+        let connected_clients = Arc::new(Mutex::new(vec![1]));
+        let path = dir.path().join("shared.wasm");
+        let loading_context = LoadingContext {
+            plugin_id: INSTANCE_ID,
+            client_id: 1,
+            plugin_cwd: dir.path().to_path_buf(),
+            plugin_own_data_dir: dir.path().join("data"),
+            plugin_own_cache_dir: dir.path().join("cache"),
+            plugin_config: PluginConfig {
+                path: path.clone(),
+                _allow_exec_host_cmd: false,
+                location: RunPluginLocation::File(path),
+                initial_userspace_configuration: PluginUserConfiguration::new(BTreeMap::new()),
+                initial_cwd: None,
+            },
+            tab_index: None,
+            path_to_default_shell: "/bin/sh".into(),
+            session_env_vars: BTreeMap::new(),
+            default_shell: None,
+            layout_dir: None,
+            default_mode: InputMode::Normal,
+            keybinds: Arc::new(Vec::new()),
+            plugin_dir: dir.path().to_path_buf(),
+            size: Size { rows: 5, cols: 80 },
+            wasm_bytes: Some(wat::parse_str(SHARED_WAT).unwrap()),
+            generation: 1,
+        };
+        let mut loader = PluginLoader::new(
+            true,
+            loading_context,
+            ThreadSenders {
+                should_silently_fail: true,
+                ..Default::default()
+            },
+            crate::get_engine(),
+            plugin_cache,
+            plugin_map.clone(),
+            connected_clients,
+        );
+        loader.start_shared_plugin().expect("shared plugin loads");
+        let running = plugin_map
+            .lock()
+            .unwrap()
+            .shared_running_plugin(INSTANCE_ID)
+            .unwrap()
+            .0;
+        {
+            let mut running_plugin = running.lock().unwrap();
+            let shared = running_plugin.store.data_mut().shared.as_mut().unwrap();
+            for slot_id in [SLOT_A, SLOT_B, SLOT_C] {
+                shared.slots.insert(
+                    slot_id,
+                    SharedSlot {
+                        kind: SlotKind::Pane,
+                        configuration: BTreeMap::new(),
+                        rows: 2,
+                        columns: 8,
+                    },
+                );
+            }
+            shared
+                .visible_slots
+                .insert(1, HashSet::from([SLOT_A, SLOT_B, SLOT_C]));
+        }
+
+        let hold = running.lock().unwrap();
+        remove_host_slot(plugin_map.clone(), SLOT_A);
+        assert_eq!(
+            slot_ids(&hold),
+            vec![SLOT_A, SLOT_B, SLOT_C],
+            "a non-final removal must not delete the slot while the execution mutex is held"
+        );
+        assert!(visible_ids(&hold).contains(&SLOT_A));
+        drop(hold);
+
+        {
+            let drained = lock_running(&running);
+            assert_eq!(
+                slot_ids(&drained),
+                vec![SLOT_B, SLOT_C],
+                "one drain removes only the pending slot"
+            );
+            let visible = visible_ids(&drained);
+            assert!(!visible.contains(&SLOT_A));
+            assert!(visible.contains(&SLOT_B) && visible.contains(&SLOT_C));
+            assert_eq!(
+                slot_removed_calls(&drained),
+                0,
+                "the deferred path must not call guest slot_removed"
+            );
+        }
+
+        let hold = lock_running(&running);
+        remove_host_slot(plugin_map, SLOT_B);
+        assert_eq!(slot_ids(&hold), vec![SLOT_B, SLOT_C]);
+        drop(hold);
+        let observed = running.lock().unwrap();
+        assert_eq!(
+            slot_ids(&observed),
+            vec![SLOT_C],
+            "releasing the guest lock drains the pending removal and leaves the other slot"
+        );
+        assert_eq!(visible_ids(&observed), HashSet::from([SLOT_C]));
+        assert_eq!(slot_removed_calls(&observed), 0);
     }
 }

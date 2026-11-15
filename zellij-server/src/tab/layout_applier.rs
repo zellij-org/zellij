@@ -8,7 +8,7 @@ use crate::{
     panes::kitty_graphics::KittyImageStore,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
-    panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
+    panes::{PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
     pty::PtyInstruction,
     thread_bus::ThreadSenders,
@@ -29,7 +29,6 @@ pub struct LayoutApplier<'a> {
     senders: ThreadSenders,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     kitty_image_store: Rc<RefCell<KittyImageStore>>,
-    link_handler: Rc<RefCell<LinkHandler>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
@@ -56,7 +55,6 @@ impl<'a> LayoutApplier<'a> {
         senders: &ThreadSenders,
         sixel_image_store: &Rc<RefCell<SixelImageStore>>,
         kitty_image_store: &Rc<RefCell<KittyImageStore>>,
-        link_handler: &Rc<RefCell<LinkHandler>>,
         terminal_emulator_colors: &Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: &Rc<RefCell<HashMap<usize, String>>>,
         character_cell_size: &Rc<RefCell<Option<SizeInPixels>>>,
@@ -79,7 +77,6 @@ impl<'a> LayoutApplier<'a> {
         let senders = senders.clone();
         let sixel_image_store = sixel_image_store.clone();
         let kitty_image_store = kitty_image_store.clone();
-        let link_handler = link_handler.clone();
         let terminal_emulator_colors = terminal_emulator_colors.clone();
         let terminal_emulator_color_codes = terminal_emulator_color_codes.clone();
         let character_cell_size = character_cell_size.clone();
@@ -92,7 +89,6 @@ impl<'a> LayoutApplier<'a> {
             senders,
             sixel_image_store,
             kitty_image_store,
-            link_handler,
             terminal_emulator_colors,
             terminal_emulator_color_codes,
             character_cell_size,
@@ -596,7 +592,6 @@ impl<'a> LayoutApplier<'a> {
             self.kitty_image_store.clone(),
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
-            self.link_handler.clone(),
             self.character_cell_size.clone(),
             self.connected_clients.borrow().keys().copied().collect(),
             self.style,
@@ -647,7 +642,6 @@ impl<'a> LayoutApplier<'a> {
             self.kitty_image_store.clone(),
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
-            self.link_handler.clone(),
             self.character_cell_size.clone(),
             self.connected_clients.borrow().keys().copied().collect(),
             self.style,
@@ -700,7 +694,6 @@ impl<'a> LayoutApplier<'a> {
             self.style,
             next_terminal_position,
             floating_pane_layout.name.clone().unwrap_or_default(),
-            self.link_handler.clone(),
             self.character_cell_size.clone(),
             self.sixel_image_store.clone(),
             self.kitty_image_store.clone(),
@@ -788,7 +781,6 @@ impl<'a> LayoutApplier<'a> {
             self.style,
             next_terminal_position,
             layout.name.clone().unwrap_or_default(),
-            self.link_handler.clone(),
             self.character_cell_size.clone(),
             self.sixel_image_store.clone(),
             self.kitty_image_store.clone(),

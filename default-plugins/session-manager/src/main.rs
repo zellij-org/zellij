@@ -3748,7 +3748,12 @@ impl State {
         if !app_panel::is_enabled() {
             return false;
         }
-        if user_input {
+        // The update that applies the layout's view is the open, not a choice.
+        // A key, scroll, or click after that view is on screen keeps the user
+        // there. Hover and the mouse release that opened the window are not
+        // choices. An empty attention snapshot still cannot switch the view.
+        let applying_initial_view = self.app_panel_initial_view.is_some();
+        if user_input && !applying_initial_view {
             self.app_panel_auto_pending = false;
         }
         if let Some(view) = self.app_panel_initial_view.take() {

@@ -54,6 +54,8 @@ pub mod session_index;
 #[cfg(not(target_family = "wasm"))]
 pub mod session_link;
 #[cfg(not(target_family = "wasm"))]
+pub mod session_socket_claim;
+#[cfg(not(target_family = "wasm"))]
 pub mod sessions;
 #[cfg(all(not(target_family = "wasm"), feature = "web_server_capability"))]
 pub mod web_authentication_tokens;

@@ -97,7 +97,7 @@ glow = { version = "0.17", default-features = false }
 glutin = { version = "0.32", default-features = false, features = ["egl", "x11", "wayland", "libloading"] }
 glutin-winit = { version = "0.5", default-features = false, features = ["egl", "x11", "wayland"] }
 humantime = { version = "2.1.0", default-features = false }
-interprocess = { version = "2.2", default-features = false, features = ["tokio"] }
+interprocess = { version = "2.3.1", default-features = false, features = ["tokio"] }
 isahc = { version = "1.7.2", default-features = false, features = ["http2", "text-decoding"] }
 kdl = { version = "4.5.0", default-features = false, features = ["span"] }
 khronos-egl = { version = "6.0", default-features = false, features = ["1_5", "dynamic"] }
@@ -204,6 +204,11 @@ web_server_capability = ["zellij-client/web_server_capability", "zellij-server/w
 opt-level = 2
 
 [profile.dev.package.png]
+opt-level = 3
+
+# Plugin modules are hashed on every load; unoptimized SHA-256 over a debug-build plugin takes
+# seconds.
+[profile.dev.package.sha2]
 opt-level = 3
 
 [profile.dev.package.alacritty_terminal]

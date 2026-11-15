@@ -442,6 +442,17 @@ function build_link_handler() {
     }
     
     function activateLink(event, uri) {
+        // the uri can come from an OSC 8 hyperlink written by anything running
+        // in the terminal, so only open schemes that are safe to hand to the
+        // browser (not javascript:, data: and the like)
+        const allowedProtocols = ['http:', 'https:', 'mailto:', 'file:'];
+        let protocol;
+        try {
+            protocol = new URL(uri).protocol;
+        } catch (e) {
+            return;
+        }
+        if (!allowedProtocols.includes(protocol)) return;
         const newWindow = window.open(uri, '_blank');
         if (newWindow) newWindow.opener = null; // prevent the opened link from gaining access to the terminal instance
     }
@@ -642,6 +653,13 @@ function installImeBypass(term, sendFunction) {
     };
     attach();
 }
+// Pure helper for the soft-keyboard committed-text contract: only backspace is
+// time-window deduped. Paste / insert / speech must never drop intentional
+// repeated characters merely because they match the previous char (#5826).
+function shouldDedupeCommittedChar(ch, elapsedMs, dedupeMs) {
+    return ch === "\x7f" && elapsedMs < dedupeMs;
+}
+
 function isCoarsePointerDevice() {
     if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
         return true;
@@ -771,19 +789,25 @@ function installSoftKeyboardCapture(term, sendFunction) {
     resetBaseline();
 
     // A single backspace tap fires two deleteContentBackward events ~5 ms apart;
-    // this dedupe window merges them into one \x7f. It must not apply to text: a paste
-    // inserts every character at once, and keystrokes queued behind a busy main thread
-    // are handled back to back, so the second letter of "ss" would be dropped.
-    let lastCh = null;
-    let lastChAt = 0;
-    const DEDUPE_MS = 8;
+    // this dedupe window merges them into one \x7f. It must NOT apply to inserted
+    // text: pastes and intentional repeated characters (e.g. "ssh", "&&") arrive
+    // in one input event and would otherwise lose every other identical char
+    // (#5826 vs the duplication fixes for #4987/#4423/#4840).
+    let lastBackspaceAt = null;
+    const BACKSPACE_DEDUPE_MS = 8;
     const dispatchCh = (ch) => {
-        const now = performance.now();
-        if (ch === "\x7f" && ch === lastCh && now - lastChAt < DEDUPE_MS) {
-            return;
+        if (ch === "\x7f") {
+            const now = performance.now();
+            if (
+                lastBackspaceAt !== null &&
+                shouldDedupeCommittedChar(ch, now - lastBackspaceAt, BACKSPACE_DEDUPE_MS)
+            ) {
+                return;
+            }
+            lastBackspaceAt = now;
+        } else {
+            lastBackspaceAt = null;
         }
-        lastCh = ch;
-        lastChAt = now;
         state.sendFn(ch);
     };
 

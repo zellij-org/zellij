@@ -5608,7 +5608,10 @@ impl TryFrom<ProtobufNewTiledPaneInTabResponse> for NewTiledPaneInTabResponse {
 impl From<NewTiledPaneInTabResponse> for ProtobufNewTiledPaneInTabResponse {
     fn from(response: NewTiledPaneInTabResponse) -> Self {
         ProtobufNewTiledPaneInTabResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5743,7 +5746,10 @@ impl TryFrom<ProtobufOpenFileResponse> for OpenFileResponse {
 impl From<OpenFileResponse> for ProtobufOpenFileResponse {
     fn from(response: OpenFileResponse) -> Self {
         ProtobufOpenFileResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5761,7 +5767,10 @@ impl TryFrom<ProtobufOpenFileFloatingResponse> for OpenFileFloatingResponse {
 impl From<OpenFileFloatingResponse> for ProtobufOpenFileFloatingResponse {
     fn from(response: OpenFileFloatingResponse) -> Self {
         ProtobufOpenFileFloatingResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5779,7 +5788,10 @@ impl TryFrom<ProtobufOpenFileInPlaceResponse> for OpenFileInPlaceResponse {
 impl From<OpenFileInPlaceResponse> for ProtobufOpenFileInPlaceResponse {
     fn from(response: OpenFileInPlaceResponse) -> Self {
         ProtobufOpenFileInPlaceResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5797,7 +5809,10 @@ impl TryFrom<ProtobufOpenFileNearPluginResponse> for OpenFileNearPluginResponse 
 impl From<OpenFileNearPluginResponse> for ProtobufOpenFileNearPluginResponse {
     fn from(response: OpenFileNearPluginResponse) -> Self {
         ProtobufOpenFileNearPluginResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5815,7 +5830,10 @@ impl TryFrom<ProtobufOpenFileFloatingNearPluginResponse> for OpenFileFloatingNea
 impl From<OpenFileFloatingNearPluginResponse> for ProtobufOpenFileFloatingNearPluginResponse {
     fn from(response: OpenFileFloatingNearPluginResponse) -> Self {
         ProtobufOpenFileFloatingNearPluginResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5833,7 +5851,10 @@ impl TryFrom<ProtobufOpenFileInPlaceOfPluginResponse> for OpenFileInPlaceOfPlugi
 impl From<OpenFileInPlaceOfPluginResponse> for ProtobufOpenFileInPlaceOfPluginResponse {
     fn from(response: OpenFileInPlaceOfPluginResponse) -> Self {
         ProtobufOpenFileInPlaceOfPluginResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5851,7 +5872,10 @@ impl TryFrom<ProtobufOpenTerminalResponse> for OpenTerminalResponse {
 impl From<OpenTerminalResponse> for ProtobufOpenTerminalResponse {
     fn from(response: OpenTerminalResponse) -> Self {
         ProtobufOpenTerminalResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5869,7 +5893,10 @@ impl TryFrom<ProtobufOpenTerminalFloatingResponse> for OpenTerminalFloatingRespo
 impl From<OpenTerminalFloatingResponse> for ProtobufOpenTerminalFloatingResponse {
     fn from(response: OpenTerminalFloatingResponse) -> Self {
         ProtobufOpenTerminalFloatingResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5887,7 +5914,10 @@ impl TryFrom<ProtobufOpenTerminalInPlaceResponse> for OpenTerminalInPlaceRespons
 impl From<OpenTerminalInPlaceResponse> for ProtobufOpenTerminalInPlaceResponse {
     fn from(response: OpenTerminalInPlaceResponse) -> Self {
         ProtobufOpenTerminalInPlaceResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5905,7 +5935,10 @@ impl TryFrom<ProtobufOpenTerminalNearPluginResponse> for OpenTerminalNearPluginR
 impl From<OpenTerminalNearPluginResponse> for ProtobufOpenTerminalNearPluginResponse {
     fn from(response: OpenTerminalNearPluginResponse) -> Self {
         ProtobufOpenTerminalNearPluginResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5929,7 +5962,10 @@ impl From<OpenTerminalFloatingNearPluginResponse>
 {
     fn from(response: OpenTerminalFloatingNearPluginResponse) -> Self {
         ProtobufOpenTerminalFloatingNearPluginResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5949,7 +5985,10 @@ impl TryFrom<ProtobufOpenTerminalInPlaceOfPluginResponse> for OpenTerminalInPlac
 impl From<OpenTerminalInPlaceOfPluginResponse> for ProtobufOpenTerminalInPlaceOfPluginResponse {
     fn from(response: OpenTerminalInPlaceOfPluginResponse) -> Self {
         ProtobufOpenTerminalInPlaceOfPluginResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5967,7 +6006,10 @@ impl TryFrom<ProtobufOpenCommandPaneResponse> for OpenCommandPaneResponse {
 impl From<OpenCommandPaneResponse> for ProtobufOpenCommandPaneResponse {
     fn from(response: OpenCommandPaneResponse) -> Self {
         ProtobufOpenCommandPaneResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -5985,7 +6027,10 @@ impl TryFrom<ProtobufOpenCommandPaneFloatingResponse> for OpenCommandPaneFloatin
 impl From<OpenCommandPaneFloatingResponse> for ProtobufOpenCommandPaneFloatingResponse {
     fn from(response: OpenCommandPaneFloatingResponse) -> Self {
         ProtobufOpenCommandPaneFloatingResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -6003,7 +6048,10 @@ impl TryFrom<ProtobufOpenCommandPaneInPlaceResponse> for OpenCommandPaneInPlaceR
 impl From<OpenCommandPaneInPlaceResponse> for ProtobufOpenCommandPaneInPlaceResponse {
     fn from(response: OpenCommandPaneInPlaceResponse) -> Self {
         ProtobufOpenCommandPaneInPlaceResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -6021,7 +6069,10 @@ impl TryFrom<ProtobufOpenCommandPaneNearPluginResponse> for OpenCommandPaneNearP
 impl From<OpenCommandPaneNearPluginResponse> for ProtobufOpenCommandPaneNearPluginResponse {
     fn from(response: OpenCommandPaneNearPluginResponse) -> Self {
         ProtobufOpenCommandPaneNearPluginResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -6045,7 +6096,10 @@ impl From<OpenCommandPaneFloatingNearPluginResponse>
 {
     fn from(response: OpenCommandPaneFloatingNearPluginResponse) -> Self {
         ProtobufOpenCommandPaneFloatingNearPluginResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -6069,7 +6123,10 @@ impl From<OpenCommandPaneInPlaceOfPluginResponse>
 {
     fn from(response: OpenCommandPaneInPlaceOfPluginResponse) -> Self {
         ProtobufOpenCommandPaneInPlaceOfPluginResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -6087,7 +6144,10 @@ impl TryFrom<ProtobufOpenCommandPaneBackgroundResponse> for OpenCommandPaneBackg
 impl From<OpenCommandPaneBackgroundResponse> for ProtobufOpenCommandPaneBackgroundResponse {
     fn from(response: OpenCommandPaneBackgroundResponse) -> Self {
         ProtobufOpenCommandPaneBackgroundResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -6108,7 +6168,10 @@ impl From<OpenPaneInNewTabResponse> for ProtobufOpenPaneInNewTabResponse {
     fn from(response: OpenPaneInNewTabResponse) -> Self {
         ProtobufOpenPaneInNewTabResponse {
             tab_id: response.tab_id.map(|id| id as u64),
-            pane_id: response.pane_id.map(|p| p.try_into().unwrap()),
+            pane_id: response.pane_id.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -6132,7 +6195,10 @@ impl From<OpenCommandPaneInPlaceOfPaneIdResponse>
 {
     fn from(response: OpenCommandPaneInPlaceOfPaneIdResponse) -> Self {
         ProtobufOpenCommandPaneInPlaceOfPaneIdResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -6156,7 +6222,10 @@ impl From<OpenTerminalPaneInPlaceOfPaneIdResponse>
 {
     fn from(response: OpenTerminalPaneInPlaceOfPaneIdResponse) -> Self {
         ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -6176,7 +6245,10 @@ impl TryFrom<ProtobufOpenEditPaneInPlaceOfPaneIdResponse> for OpenEditPaneInPlac
 impl From<OpenEditPaneInPlaceOfPaneIdResponse> for ProtobufOpenEditPaneInPlaceOfPaneIdResponse {
     fn from(response: OpenEditPaneInPlaceOfPaneIdResponse) -> Self {
         ProtobufOpenEditPaneInPlaceOfPaneIdResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }
@@ -6194,7 +6266,10 @@ impl TryFrom<ProtobufOpenPluginPaneFloatingResponse> for OpenPluginPaneFloatingR
 impl From<OpenPluginPaneFloatingResponse> for ProtobufOpenPluginPaneFloatingResponse {
     fn from(response: OpenPluginPaneFloatingResponse) -> Self {
         ProtobufOpenPluginPaneFloatingResponse {
-            pane_id: response.map(|p| p.try_into().unwrap()),
+            pane_id: response.map(|p| {
+                // SAFETY: TryFrom<PaneId> for ProtobufPaneId matches Terminal/Plugin exhaustively and always returns Ok.
+                p.try_into().expect("PaneId → ProtobufPaneId is infallible")
+            }),
         }
     }
 }

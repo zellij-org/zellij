@@ -95,6 +95,8 @@ enum EventType {
     DesktopIntegration = 69;
     LiveViewStateChanged = 71;
     PluginSettingsEntries = 72;
+    PluginActivated = 73;
+    FileSystemUpdateIncomplete = 74;
 }
 
 message EventNameList {
@@ -166,7 +168,15 @@ message Event {
     string desktop_integration_payload = 61;
     LiveViewStateChangedPayload live_view_state_changed_payload = 63;
     PluginSettingsEntriesPayload plugin_settings_entries_payload = 64;
+    PluginActivatedPayload plugin_activated_payload = 65;
+    FileListIncompletePayload file_list_incomplete_payload = 66;
   }
+}
+
+message PluginActivatedPayload {
+  uint32 source_client_id = 1;
+  optional PaneId source_pane_id = 2;
+  optional uint32 source_tab_id = 3;
 }
 
 message PluginSettingsEntry {
@@ -653,6 +663,11 @@ message PermissionRequestResultPayload {
 }
 
 message FileListPayload {
+  repeated string paths = 1;
+  repeated FileMetadata paths_metadata = 2;
+}
+
+message FileListIncompletePayload {
   repeated string paths = 1;
   repeated FileMetadata paths_metadata = 2;
 }

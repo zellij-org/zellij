@@ -79,11 +79,13 @@ pub fn read_shared_context() -> EventContext {
 }
 
 #[doc(hidden)]
-pub fn read_shared_slot() -> Slot {
+pub fn read_shared_slot() -> Option<Slot> {
     use prost::Message;
     use zellij_utils::plugin_api::shared_plugin::ProtobufSlot;
-    let protobuf_bytes: Vec<u8> = shim::protobuf_bytes_from_stdin().unwrap();
-    Slot::from(ProtobufSlot::decode(protobuf_bytes.as_slice()).unwrap())
+    let protobuf_bytes: Vec<u8> = shim::protobuf_bytes_from_stdin().unwrap_or_default();
+    ProtobufSlot::decode(protobuf_bytes.as_slice())
+        .ok()
+        .map(Slot::from)
 }
 
 #[doc(hidden)]
@@ -168,12 +170,19 @@ macro_rules! register_plugin {
             STATE.with(|state| {
                 use std::collections::BTreeMap;
                 use std::convert::TryFrom;
-                use std::convert::TryInto;
                 use zellij_tile::shim::plugin_api::action::ProtobufPluginConfiguration;
                 use zellij_tile::shim::prost::Message;
-                let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
-                let protobuf_configuration: ProtobufPluginConfiguration =
-                    ProtobufPluginConfiguration::decode(protobuf_bytes.as_slice()).unwrap();
+                let Ok(protobuf_bytes) = $crate::shim::object_from_stdin::<Vec<u8>>() else {
+                    eprintln!("Failed to read plugin configuration from stdin");
+                    return;
+                };
+                let Ok(protobuf_configuration) =
+                    ProtobufPluginConfiguration::decode(protobuf_bytes.as_slice())
+                else {
+                    eprintln!("Failed to decode plugin configuration");
+                    return;
+                };
+                // SAFETY: TryFrom<&ProtobufPluginConfiguration> for BTreeMap is infallible.
                 let plugin_configuration: BTreeMap<String, String> =
                     BTreeMap::try_from(&protobuf_configuration).unwrap();
                 state.borrow_mut().load(plugin_configuration);
@@ -183,7 +192,9 @@ macro_rules! register_plugin {
         #[no_mangle]
         pub fn update() -> bool {
             STATE.with(|state| {
-                let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
+                let Ok(protobuf_bytes) = $crate::shim::object_from_stdin::<Vec<u8>>() else {
+                    return false;
+                };
                 let Some((event, mouse_modifiers)) =
                     $crate::shim::plugin_api::event::plugin_event_from_protobuf_bytes(
                         &protobuf_bytes,
@@ -199,7 +210,9 @@ macro_rules! register_plugin {
         #[no_mangle]
         pub fn pipe() -> bool {
             STATE.with(|state| {
-                let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
+                let Ok(protobuf_bytes) = $crate::shim::object_from_stdin::<Vec<u8>>() else {
+                    return false;
+                };
                 let Some(pipe_message) =
                     $crate::shim::plugin_api::pipe_message::pipe_message_from_protobuf_bytes(
                         &protobuf_bytes,
@@ -262,10 +275,14 @@ macro_rules! register_worker {
             use zellij_tile::shim::plugin_api::message::ProtobufMessage;
             use zellij_tile::shim::prost::Message;
             let worker_display_name = std::stringify!($worker_name);
-            let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin()
-                .unwrap();
-            let protobuf_message: ProtobufMessage = ProtobufMessage::decode(protobuf_bytes.as_slice())
-                .unwrap();
+            let Ok(protobuf_bytes) = $crate::shim::object_from_stdin::<Vec<u8>>() else {
+                eprintln!("Failed to read message for worker {}", worker_display_name);
+                return;
+            };
+            let Ok(protobuf_message) = ProtobufMessage::decode(protobuf_bytes.as_slice()) else {
+                eprintln!("Failed to decode message for worker {}", worker_display_name);
+                return;
+            };
             let message = protobuf_message.name;
             let payload = protobuf_message.payload;
             $worker_static_name.with(|worker_instance| {
@@ -299,9 +316,17 @@ macro_rules! register_shared_plugin {
                 use std::convert::TryFrom;
                 use $crate::shim::plugin_api::action::ProtobufPluginConfiguration;
                 use $crate::shim::prost::Message;
-                let protobuf_bytes: Vec<u8> = $crate::shim::protobuf_bytes_from_stdin().unwrap();
-                let protobuf_configuration: ProtobufPluginConfiguration =
-                    ProtobufPluginConfiguration::decode(protobuf_bytes.as_slice()).unwrap();
+                let Ok(protobuf_bytes) = $crate::shim::protobuf_bytes_from_stdin() else {
+                    eprintln!("Failed to read shared plugin configuration from stdin");
+                    return;
+                };
+                let Ok(protobuf_configuration) =
+                    ProtobufPluginConfiguration::decode(protobuf_bytes.as_slice())
+                else {
+                    eprintln!("Failed to decode shared plugin configuration");
+                    return;
+                };
+                // SAFETY: TryFrom<&ProtobufPluginConfiguration> for BTreeMap is infallible.
                 let plugin_configuration: BTreeMap<String, String> =
                     BTreeMap::try_from(&protobuf_configuration).unwrap();
                 <$t as $crate::ZellijSharedPlugin>::load(
@@ -315,7 +340,10 @@ macro_rules! register_shared_plugin {
         pub fn shared_update() -> i32 {
             let context = $crate::read_shared_context();
             let event = {
-                let protobuf_bytes: Vec<u8> = $crate::shim::protobuf_bytes_from_stdin().unwrap();
+                let Ok(protobuf_bytes) = $crate::shim::protobuf_bytes_from_stdin() else {
+                    eprintln!("Skipping an event: failed to read from stdin");
+                    return $crate::write_render_request(Default::default());
+                };
                 match $crate::shim::plugin_api::event::event_from_protobuf_bytes(&protobuf_bytes) {
                     Ok(event) => event,
                     Err(e) => {
@@ -333,7 +361,9 @@ macro_rules! register_shared_plugin {
         #[no_mangle]
         pub fn shared_pipe() -> i32 {
             let context = $crate::read_shared_context();
-            let protobuf_bytes: Vec<u8> = $crate::shim::protobuf_bytes_from_stdin().unwrap();
+            let Ok(protobuf_bytes) = $crate::shim::protobuf_bytes_from_stdin() else {
+                return $crate::write_render_request(Default::default());
+            };
             let Some(pipe_message) =
                 $crate::shim::plugin_api::pipe_message::pipe_message_from_protobuf_bytes(
                     &protobuf_bytes,
@@ -366,7 +396,10 @@ macro_rules! register_shared_plugin {
 
         #[no_mangle]
         pub fn slot_added() {
-            let slot = $crate::read_shared_slot();
+            let Some(slot) = $crate::read_shared_slot() else {
+                eprintln!("Failed to read shared slot");
+                return;
+            };
             STATE.with(|state| {
                 <$t as $crate::ZellijSharedPlugin>::slot_added(&mut *state.borrow_mut(), slot);
             });

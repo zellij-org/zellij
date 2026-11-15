@@ -40,7 +40,6 @@ unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 sha2 = { workspace = true }
-libc = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 base64 = { version = "0.22", default-features = false, features = ["std"] }
@@ -55,17 +54,19 @@ curl-sys = { version = "0.4", default-features = false, features = ["force-syste
 humantime = { workspace = true }
 suggest = { workspace = true }
 names = { workspace = true }
-rusqlite = { version = "0.30", default-features = false, features = ["bundled"] }
+rusqlite = { version = "0.41", default-features = false, features = ["bundled", "cache"] }
 notify = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
-nix = { workspace = true, features = ["user"] }
+nix = { workspace = true, features = ["user", "fs", "hostname", "socket", "poll"] }
 
 [target.'cfg(windows)'.dependencies]
 crossterm = { workspace = true, features = ["events"] }
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
     "Win32_Security_Authorization",
     "Win32_System_Pipes",
     "Win32_System_Registry",

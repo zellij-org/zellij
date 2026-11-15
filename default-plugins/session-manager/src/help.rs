@@ -34,6 +34,7 @@ pub fn footer_lines(hints: &[Hint], more: &Hint, width: usize, max_lines: usize)
     if width == 0 || max_lines == 0 {
         return vec![];
     }
+    // SAFETY: lines starts as vec![vec![]] and only grows; last_mut is always Some.
     let mut lines: Vec<Vec<String>> = vec![vec![]];
     let mut shown = 0;
     for hint in hints {
@@ -53,6 +54,7 @@ pub fn footer_lines(hints: &[Hint], more: &Hint, width: usize, max_lines: usize)
     if shown < hints.len() {
         let more = truncate_plain(&more.text(), width);
         loop {
+            // SAFETY: lines remains non-empty (seeded / only push).
             let current = lines.last_mut().unwrap();
             let mut candidate = current.clone();
             candidate.push(more.clone());
@@ -71,6 +73,7 @@ pub fn footer_lines(hints: &[Hint], more: &Hint, width: usize, max_lines: usize)
 }
 
 fn pack(hints: &[Hint], width: usize, max_lines: usize) -> Vec<String> {
+    // SAFETY: lines starts as vec![vec![]] and only grows; last_mut is always Some.
     let mut lines: Vec<Vec<String>> = vec![vec![]];
     for hint in hints {
         let item = truncate_plain(&hint.text(), width);

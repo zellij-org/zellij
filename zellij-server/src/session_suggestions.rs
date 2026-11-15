@@ -1080,7 +1080,14 @@ fn to_suggestions(
 
 fn live_session_layout(name: &str) -> Option<(Vec<SessionPreviewTab>, usize)> {
     // The session-info cache is keyed by session id (== name for legacy sessions).
-    let id = zellij_utils::sessions::resolve_session_id(name).unwrap_or_else(|| name.to_owned());
+    // A lookup error must not read the display-name folder.
+    let id = match zellij_utils::sessions::session_folder_id(name) {
+        Ok(id) => id,
+        Err(error) => {
+            log::error!("Failed to resolve session {:?}: {}", name, error);
+            return None;
+        },
+    };
     let raw =
         std::fs::read_to_string(zellij_utils::consts::session_info_cache_file_name(&id)).ok()?;
     let info = zellij_utils::data::SessionInfo::from_string(&raw, "").ok()?;
@@ -1357,6 +1364,7 @@ mod tests {
         assert!(!startup_card_should_open(StartupCard::Attention, 0, 5));
     }
 
+    #[cfg(unix)]
     fn service_capturing_screen(
         sock_dir: &Path,
     ) -> (
@@ -1376,6 +1384,7 @@ mod tests {
         (service, screen_receiver)
     }
 
+    #[cfg(unix)]
     fn card_openings(
         screen_receiver: &zellij_utils::channels::Receiver<(
             ScreenInstruction,
@@ -1393,6 +1402,7 @@ mod tests {
             .collect()
     }
 
+    #[cfg(unix)]
     fn configure_startup_card(service: &mut SessionSuggestionsService, startup_card: StartupCard) {
         service.handle(SessionSuggestionsJob::Configure {
             config: SessionSuggestionsConfig::default(),
@@ -1401,6 +1411,7 @@ mod tests {
         });
     }
 
+    #[cfg(unix)]
     fn start(service: &mut SessionSuggestionsService, card_for_client: Option<ClientId>) {
         service.handle(SessionSuggestionsJob::SessionStarted {
             name: "me".to_owned(),

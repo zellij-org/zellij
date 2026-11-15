@@ -5,10 +5,12 @@ use super::super::{
 use crate::panes::kitty_graphics::parser::{
     DecodedImage, KittyAction, KittyCommandParser, KittyFormat,
 };
-use crate::panes::kitty_graphics::store::{InternalImageId, KittyImageStore, ScaledImageKey};
+use crate::panes::kitty_graphics::store::{
+    InternalImageId, KittyImageStore, ScaledImageKey, KITTY_IMAGE_METADATA_BYTES,
+};
 use crate::panes::kitty_graphics::KittyHostCapability;
 use crate::panes::sixel::{PixelRect, SixelImageStore};
-use crate::panes::terminal_character::AnsiCode;
+use crate::panes::terminal_character::{AnsiCode, CharacterStyles, DEFAULT_STYLES};
 use crate::panes::{LinkHandler, PaneId, Row, TerminalCharacter};
 use crate::ClientId;
 use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
@@ -18,6 +20,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size, SizeInPixels};
+use zellij_utils::structured_render::WireColor;
 
 /// Helper to create a simple Output instance for testing
 fn create_test_output() -> Output {
@@ -76,6 +79,29 @@ fn test_output_new() {
     assert!(
         !output.has_rendered_assets(),
         "New output should not have rendered assets"
+    );
+}
+
+#[test]
+fn a_changed_palette_register_is_substituted_into_the_underline_color() {
+    let mut changed_colors = [None; 256];
+    changed_colors[4] = Some(AnsiCode::RgbCode((12, 34, 56)));
+    let styles = CharacterStyles {
+        foreground: Some(AnsiCode::ColorIndex(4)),
+        background: Some(AnsiCode::ColorIndex(4)),
+        underline_color: Some(AnsiCode::ColorIndex(4)),
+        underline: Some(AnsiCode::Underline(None)),
+        ..DEFAULT_STYLES
+    };
+    let cell = TerminalCharacter::new('x');
+
+    let wire = super::super::wire_cell(&cell, styles, Some(&changed_colors), true);
+
+    assert_eq!(WireColor::unpack(wire.fg), WireColor::Rgb(12, 34, 56));
+    assert_eq!(WireColor::unpack(wire.bg), WireColor::Rgb(12, 34, 56));
+    assert_eq!(
+        WireColor::unpack(wire.underline_color),
+        WireColor::Rgb(12, 34, 56)
     );
 }
 
@@ -2336,7 +2362,13 @@ fn kitty_cropped_placements_preserve_pixels_after_cell_resize() {
                 }
             }
             let scaled_bytes = if scaled { 4 * size.0 * size.1 * 4 } else { 0 };
-            assert_eq!(parts.0.borrow().total_bytes(), 20 * 40 * 4 + scaled_bytes);
+            let store = parts.0.borrow();
+            // Cached transmit encodings are accounted as derived bytes on
+            // top of the base raster and retained scaled variants.
+            assert_eq!(
+                store.total_bytes() - store.encoded_cache_bytes(),
+                20 * 40 * 4 + scaled_bytes + KITTY_IMAGE_METADATA_BYTES
+            );
         }
     }
 }
@@ -2461,7 +2493,7 @@ mod links_on_the_wire {
 
         fn detected(&self, uri: &str) -> RcCharacterStyles {
             let mut styles = DEFAULT_STYLES;
-            styles.link_anchor = Some(self.links.borrow_mut().new_link_from_url(uri.to_owned()));
+            styles.link_anchor = self.links.borrow_mut().new_link_from_url(uri.to_owned());
             RcCharacterStyles::from(styles)
         }
 
@@ -2776,6 +2808,46 @@ mod blink_serialization {
     }
 }
 
+mod intensity_style_diff {
+    use crate::panes::terminal_character::{AnsiCode, CharacterStyles, DEFAULT_STYLES};
+
+    fn diff_emitted(from: CharacterStyles, to: CharacterStyles) -> String {
+        let mut current = from;
+        let diff = current
+            .update_and_return_diff(&to, None)
+            .expect("styles changed");
+        format!("{}", diff)
+    }
+
+    #[test]
+    fn sgr22_reapplies_the_remaining_intensity_after_a_shared_reset() {
+        let bold_on = Some(AnsiCode::On);
+        let dim_on = Some(AnsiCode::On);
+        let reset = Some(AnsiCode::Reset);
+        let both_on = DEFAULT_STYLES.bold(bold_on).dim(dim_on);
+
+        let cases: &[(&str, CharacterStyles, CharacterStyles, &str)] = &[
+            // bold+dim → bold off (SGR 22) while dim stays: must re-emit dim.
+            (
+                "bold_resets_dim_remains",
+                both_on,
+                DEFAULT_STYLES.bold(reset).dim(dim_on),
+                "\u{1b}[22m\u{1b}[2m",
+            ),
+            // bold+dim → dim off (SGR 22) while bold stays: must re-emit bold.
+            (
+                "dim_resets_bold_remains",
+                both_on,
+                DEFAULT_STYLES.bold(bold_on).dim(reset),
+                "\u{1b}[1m\u{1b}[22m\u{1b}[1m",
+            ),
+        ];
+        for (label, from, to, expected) in cases {
+            assert_eq!(diff_emitted(*from, *to), *expected, "{label}");
+        }
+    }
+}
+
 mod scroll_hints_on_the_wire {
     use super::super::super::{scroll_hints, PaneScroll, TrackedScroll};
     use crate::panes::PaneId;
@@ -2899,6 +2971,57 @@ fn grouped_chunk(cells: Vec<TerminalCharacter>, x: usize, y: usize) -> Character
     let mut chunk = CharacterChunk::new(cells, x, y);
     chunk.may_have_groups = true;
     chunk
+}
+
+#[test]
+fn clipped_wide_cjk_is_emitted_as_a_single_column_placeholder() {
+    let mut flagged = TerminalCharacter::new('你');
+    flagged.set_width(1);
+    flagged.set_width_was_clipped(true);
+    let flagged_output = ansi_for(CharacterChunk::new(vec![flagged], 0, 0), None);
+    assert_eq!(flagged_output, "\u{1b}[1;1H\u{1b}[m ");
+    assert!(!flagged_output.contains('你'));
+
+    // Stored narrower than the glyph even when the clip flag was cleared.
+    let mut narrow = TerminalCharacter::new('你');
+    narrow.set_width(1);
+    assert!(!narrow.width_was_clipped());
+    let mut grouped = CharacterChunk::new(vec![narrow, TerminalCharacter::new('X')], 0, 0);
+    grouped.may_have_groups = true;
+    let grouped_output = ansi_for(grouped, None);
+    assert_eq!(grouped_output, "\u{1b}[1;1H\u{1b}[m X");
+    assert!(!grouped_output.contains('你'));
+}
+
+#[test]
+fn a_one_column_clipped_cluster_is_not_written_wider_than_its_cell() {
+    // Attached and grouped units go through `write_unit_text`. A one-column cell whose
+    // cluster is two columns wide must not be written before the sentinel: the host paints
+    // that cluster into the next column, and a later cursor move does not undo it.
+    let cases: [&[(&str, usize)]; 2] = [
+        &[("你\u{0301}", 1), ("X", 1)],
+        &[("\u{1F468}\u{200D}\u{1F469}", 1), ("X", 1)],
+    ];
+    for parts in cases {
+        for grouped in [false, true] {
+            let cells = cells_of(parts);
+            let chunk = if grouped {
+                grouped_chunk(cells, 0, 0)
+            } else {
+                CharacterChunk::new(cells, 0, 0)
+            };
+            let output = ansi_for(chunk, None);
+            let sentinel = output.find('X').expect("sentinel");
+            let before = &output[..sentinel];
+            assert!(
+                !before.contains('你')
+                    && !before.contains('\u{1F468}')
+                    && !before.contains('\u{1F469}'),
+                "grouped={grouped} output={output:?}"
+            );
+            assert_eq!(output, "\u{1b}[1;1H\u{1b}[m X", "grouped={grouped}");
+        }
+    }
 }
 
 #[test]
@@ -3183,4 +3306,187 @@ fn graphics_media_files_are_private_and_never_reuse_an_existing_file() {
     }
     assert!(super::super::write_private_media(&path, b"other").is_err());
     assert_eq!(std::fs::read(&path).unwrap(), b"pixels");
+}
+
+mod kitty_variant_eviction {
+    use super::super::super::{
+        flatten_kitty_frame, serialize_kitty_frame, GraphicsRecord, HostKittyState,
+        KittyFrameInput, KittyImageChunk, MAX_FRAME_RASTER_BYTES,
+    };
+    use super::kitty_chunk;
+    use crate::panes::kitty_graphics::parser::{DecodedImage, KittyFormat};
+    use crate::panes::kitty_graphics::store::{InternalImageId, KittyImageStore, ScaledImageKey};
+    use crate::panes::sixel::PixelRect;
+    use crate::panes::PaneId;
+    use std::collections::{HashMap, HashSet};
+
+    fn tiny_image(store: &mut KittyImageStore) -> InternalImageId {
+        store
+            .store_image(DecodedImage {
+                bytes: vec![255u8; 4 * 4 * 4],
+                width: 4,
+                height: 4,
+                format: KittyFormat::Rgba32,
+            })
+            .unwrap()
+    }
+
+    fn variant_key(width: usize, height: usize) -> ScaledImageKey {
+        ScaledImageKey {
+            source: PixelRect {
+                x: 0,
+                y: 0,
+                width: 4,
+                height: 4,
+            },
+            size: (width, height),
+        }
+    }
+
+    fn variant_chunk(
+        internal: InternalImageId,
+        key: ScaledImageKey,
+        placement_uid: u64,
+    ) -> KittyImageChunk {
+        let mut chunk = kitty_chunk(internal, placement_uid, 0, 0);
+        chunk.scaled_image = Some(key);
+        chunk
+    }
+
+    fn frame<'a>(
+        pane_chunks: Vec<(PaneId, Vec<KittyImageChunk>)>,
+        store: &'a mut KittyImageStore,
+        host_state: &'a mut HostKittyState,
+        local_media: bool,
+    ) -> KittyFrameInput<'a> {
+        let rendered_panes: HashSet<PaneId> = pane_chunks.iter().map(|(id, _)| *id).collect();
+        KittyFrameInput {
+            chunks_by_pane: pane_chunks.into_iter().collect::<HashMap<_, _>>(),
+            rendered_panes,
+            visible_panes: None,
+            kitty_image_store: store,
+            host_state,
+            host_display_cleared: false,
+            compressed: false,
+            local_media,
+        }
+    }
+
+    #[test]
+    fn a_frame_of_many_distinct_scaled_variants_is_bounded_in_raster_bytes() {
+        // 100 placements of one tiny image, each with a distinct target size
+        // of about 10 MiB: unbounded, the frame would carry about 1 GiB
+        let mut store = KittyImageStore::default();
+        let mut host_state = HostKittyState::default();
+        let internal = tiny_image(&mut store);
+        let chunks: Vec<KittyImageChunk> = (0..100usize)
+            .map(|n| variant_chunk(internal, variant_key(1300 + n, 2000), n as u64 + 1))
+            .collect();
+        let mut records = Vec::new();
+        let input = frame(
+            vec![(PaneId::Terminal(1), chunks)],
+            &mut store,
+            &mut host_state,
+            false,
+        );
+        flatten_kitty_frame(input, &mut records);
+        let raster_bytes: usize = records
+            .iter()
+            .map(|record| match record {
+                GraphicsRecord::Residency { data, .. } => data.len(),
+                _ => 0,
+            })
+            .sum();
+        assert!(raster_bytes > 0, "some placements must still be sent");
+        assert!(
+            raster_bytes <= MAX_FRAME_RASTER_BYTES,
+            "the frame carried {} raster bytes",
+            raster_bytes
+        );
+        assert!(host_state.transmitted.len() < 100);
+    }
+
+    #[test]
+    fn an_evicted_variant_is_sent_inline_when_local_media_is_off() {
+        let mut store = KittyImageStore::default();
+        let mut host_state = HostKittyState::default();
+        let internal = tiny_image(&mut store);
+        // never cached, as if evicted
+        let key = variant_key(8, 8);
+        assert!(!store.has_scaled_variant(internal, key));
+        let input = frame(
+            vec![(PaneId::Terminal(1), vec![variant_chunk(internal, key, 1)])],
+            &mut store,
+            &mut host_state,
+            false,
+        );
+        let out = serialize_kitty_frame(input).unwrap();
+        assert!(out.contains("a=t"), "no transmission in {:?}", out);
+        assert!(out.contains("a=p"), "no placement in {:?}", out);
+        assert_eq!(host_state.transmitted.len(), 1);
+    }
+
+    #[test]
+    fn the_image_of_an_unchanged_pane_survives_the_eviction_of_its_variant() {
+        let mut store = KittyImageStore::default();
+        let mut host_state = HostKittyState::default();
+        let internal = tiny_image(&mut store);
+        let key = variant_key(8, 8);
+        store.add_scaled_variant(internal, key, vec![9u8; 8 * 8 * 4]);
+
+        let mut records = Vec::new();
+        let input = frame(
+            vec![(PaneId::Terminal(1), vec![variant_chunk(internal, key, 1)])],
+            &mut store,
+            &mut host_state,
+            false,
+        );
+        flatten_kitty_frame(input, &mut records);
+        assert_eq!(host_state.transmitted.len(), 1);
+        assert_eq!(host_state.live_placements.len(), 1);
+
+        // pane 2's activity evicts the variant of pane 1
+        store.clear_scaled_variants(internal);
+        assert!(!store.has_scaled_variant(internal, key));
+
+        // only pane 2 renders; pane 1 is unchanged and contributes nothing
+        let mut records = Vec::new();
+        let input = frame(
+            vec![(PaneId::Terminal(2), vec![])],
+            &mut store,
+            &mut host_state,
+            false,
+        );
+        flatten_kitty_frame(input, &mut records);
+        assert!(
+            !records
+                .iter()
+                .any(|record| matches!(record, GraphicsRecord::DeleteImage { .. })),
+            "the image of the unchanged pane was deleted: {:?}",
+            records
+        );
+        assert_eq!(host_state.transmitted.len(), 1);
+        assert_eq!(host_state.live_placements.len(), 1);
+    }
+
+    #[test]
+    fn an_unused_evicted_variant_is_still_deleted_from_the_host() {
+        let mut store = KittyImageStore::default();
+        let mut host_state = HostKittyState::default();
+        let internal = tiny_image(&mut store);
+        let key = variant_key(8, 8);
+        host_state.transmitted.insert((internal, Some(key)), 7);
+        let mut records = Vec::new();
+        let input = frame(
+            vec![(PaneId::Terminal(1), vec![])],
+            &mut store,
+            &mut host_state,
+            false,
+        );
+        flatten_kitty_frame(input, &mut records);
+        assert!(records
+            .iter()
+            .any(|record| matches!(record, GraphicsRecord::DeleteImage { id: 7 })));
+        assert!(host_state.transmitted.is_empty());
+    }
 }

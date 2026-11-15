@@ -3,16 +3,27 @@ use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
 use crate::os_input_output::ClientOsApi;
 use crate::web_client::types::BRACKETED_PASTE_END;
 use crate::web_client::types::BRACKETED_PASTE_START;
+use crate::web_client::types::WEB_IPC_WRITE_BUDGET;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
 
+use std::time::Instant;
 use zellij_utils::{
     input::{actions::Action, cast_termwiz_key, mouse::MouseEvent},
     ipc::ClientToServerMsg,
     vendored::termwiz::input::{InputEvent, InputParser},
 };
+
+/// Write one client message with the web IPC deadline. `Ok` is the only
+/// delivered state; a blocked or failed write is logged and dropped.
+fn deliver_session_msg(os_input: &dyn ClientOsApi, msg: ClientToServerMsg) {
+    let deadline = Instant::now() + WEB_IPC_WRITE_BUDGET;
+    if let Err(error) = os_input.try_send_to_server_until(msg, deadline) {
+        log::warn!("web client input was not delivered: {error}");
+    }
+}
 
 /// Per-WebSocket-connection parsing state. Owns the Kitty and termwiz
 /// parsers so a CSI / Kitty sequence split across two WebSocket frames
@@ -85,59 +96,80 @@ fn dispatch_termwiz_event(
         InputEvent::Key(key_event) => {
             let raw_bytes_vec = raw_bytes.to_vec();
             let key = cast_termwiz_key(key_event.clone(), &raw_bytes_vec, None);
-            os_input.send_to_server(ClientToServerMsg::Key {
-                key: key.clone(),
-                raw_bytes: raw_bytes_vec,
-                is_kitty_keyboard_protocol: false,
-            });
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::Key {
+                    key: key.clone(),
+                    raw_bytes: raw_bytes_vec,
+                    is_kitty_keyboard_protocol: false,
+                },
+            );
         },
         InputEvent::FocusGained => {
-            os_input.send_to_server(ClientToServerMsg::HostTerminalFocusChanged { focused: true });
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::HostTerminalFocusChanged { focused: true },
+            );
         },
         InputEvent::FocusLost => {
-            os_input.send_to_server(ClientToServerMsg::HostTerminalFocusChanged { focused: false });
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::HostTerminalFocusChanged { focused: false },
+            );
         },
         InputEvent::Mouse(mouse_event) => {
             let mouse_event = from_termwiz(mouse_old_event, mouse_event);
             let action = Action::MouseEvent { event: mouse_event };
-            os_input.send_to_server(ClientToServerMsg::Action {
-                action,
-                terminal_id: None,
-                client_id: None,
-                is_cli_client: false,
-            });
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::Action {
+                    action,
+                    terminal_id: None,
+                    client_id: None,
+                    is_cli_client: false,
+                },
+            );
         },
         InputEvent::Paste(pasted_text) => {
-            os_input.send_to_server(ClientToServerMsg::Action {
-                action: Action::Write {
-                    key_with_modifier: None,
-                    bytes: BRACKETED_PASTE_START.to_vec(),
-                    is_kitty_keyboard_protocol: false,
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::Action {
+                    action: Action::Write {
+                        key_with_modifier: None,
+                        bytes: BRACKETED_PASTE_START.to_vec(),
+                        is_kitty_keyboard_protocol: false,
+                    },
+                    terminal_id: None,
+                    client_id: None,
+                    is_cli_client: false,
                 },
-                terminal_id: None,
-                client_id: None,
-                is_cli_client: false,
-            });
-            os_input.send_to_server(ClientToServerMsg::Action {
-                action: Action::Write {
-                    key_with_modifier: None,
-                    bytes: pasted_text.as_bytes().to_vec(),
-                    is_kitty_keyboard_protocol: false,
+            );
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::Action {
+                    action: Action::Write {
+                        key_with_modifier: None,
+                        bytes: pasted_text.as_bytes().to_vec(),
+                        is_kitty_keyboard_protocol: false,
+                    },
+                    terminal_id: None,
+                    client_id: None,
+                    is_cli_client: false,
                 },
-                terminal_id: None,
-                client_id: None,
-                is_cli_client: false,
-            });
-            os_input.send_to_server(ClientToServerMsg::Action {
-                action: Action::Write {
-                    key_with_modifier: None,
-                    bytes: BRACKETED_PASTE_END.to_vec(),
-                    is_kitty_keyboard_protocol: false,
+            );
+            deliver_session_msg(
+                os_input,
+                ClientToServerMsg::Action {
+                    action: Action::Write {
+                        key_with_modifier: None,
+                        bytes: BRACKETED_PASTE_END.to_vec(),
+                        is_kitty_keyboard_protocol: false,
+                    },
+                    terminal_id: None,
+                    client_id: None,
+                    is_cli_client: false,
                 },
-                terminal_id: None,
-                client_id: None,
-                is_cli_client: false,
-            });
+            );
         },
         _ => {
             log::error!("Unsupported event: {:#?}", input_event);
@@ -147,71 +179,102 @@ fn dispatch_termwiz_event(
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures::{prelude::stream::SplitSink, SinkExt};
-use tokio::sync::mpsc::UnboundedReceiver;
+use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+use crate::web_client::client_channel::ClientReceiver;
+
+/// How long a single websocket write may take before the peer is considered
+/// stuck. Without this a client that stops reading would pin its writer task
+/// (and the socket) forever once the kernel buffers are full.
+const WEBSOCKET_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+
+enum WriteOutcome {
+    Sent,
+    Failed,
+    Cancelled,
+}
+
+async fn write_unless_cancelled(
+    sink: &mut SplitSink<WebSocket, Message>,
+    message: Message,
+    cancellation_token: &CancellationToken,
+) -> WriteOutcome {
+    tokio::select! {
+        biased;
+        _ = cancellation_token.cancelled() => WriteOutcome::Cancelled,
+        result = tokio::time::timeout(WEBSOCKET_WRITE_TIMEOUT, sink.send(message)) => match result {
+            Ok(Ok(())) => WriteOutcome::Sent,
+            _ => WriteOutcome::Failed,
+        },
+    }
+}
+
 pub fn render_to_client(
-    mut stdout_channel_rx: UnboundedReceiver<Message>,
-    mut frame_channel_rx: UnboundedReceiver<Message>,
+    mut stdout_channel_rx: ClientReceiver,
+    mut frame_channel_rx: ClientReceiver,
     mut client_channel_tx: SplitSink<WebSocket, Message>,
     cancellation_token: CancellationToken,
     should_not_reconnect: Arc<AtomicBool>,
 ) {
     tokio::spawn(async move {
         loop {
-            tokio::select! {
+            let message = tokio::select! {
                 biased;
-                _ = cancellation_token.cancelled() => {
-                    let code = if should_not_reconnect.load(Ordering::Relaxed) {
-                        4001u16
-                    } else {
-                        axum::extract::ws::close_code::NORMAL
-                    };
-                    let close_frame = CloseFrame {
-                        code,
-                        reason: "Connection closed".into(),
-                    };
-                    let close_message = Message::Close(Some(close_frame));
-                    if client_channel_tx
-                        .send(close_message)
-                        .await
-                        .is_err()
-                    {
-                        break;
-                    }
+                _ = cancellation_token.cancelled() => None,
+                result = stdout_channel_rx.recv() => match result {
+                    Some(reserved) => Some(reserved),
+                    None => break,
+                },
+                Some(reserved) = frame_channel_rx.recv() => Some(reserved),
+            };
+            // Keep the byte reservation until this write finishes, fails, or is
+            // cancelled. Dequeue alone must not free the budget.
+            let Some(reserved) = message else {
+                let code = if should_not_reconnect.load(Ordering::Relaxed) {
+                    4001u16
+                } else {
+                    axum::extract::ws::close_code::NORMAL
+                };
+                let close_frame = CloseFrame {
+                    code,
+                    reason: "Connection closed".into(),
+                };
+                // the peer may not be reading, do not wait for it forever
+                let _ = tokio::time::timeout(
+                    WEBSOCKET_WRITE_TIMEOUT,
+                    client_channel_tx.send(Message::Close(Some(close_frame))),
+                )
+                .await;
+                break;
+            };
+            let (message, _reservation) = reserved.into_parts();
+            match write_unless_cancelled(&mut client_channel_tx, message, &cancellation_token).await
+            {
+                WriteOutcome::Sent => {},
+                WriteOutcome::Failed => {
+                    cancellation_token.cancel();
                     break;
-                }
-                result = stdout_channel_rx.recv() => {
-                    match result {
-                        Some(message) => {
-                            if client_channel_tx
-                                .send(message)
-                                .await
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
-                        None => break,
-                    }
-                }
-                Some(frame) = frame_channel_rx.recv() => {
-                    if client_channel_tx.send(frame).await.is_err() {
-                        break;
-                    }
-                }
+                },
+                // the next pass round the loop sends the close frame
+                WriteOutcome::Cancelled => continue,
             }
         }
     });
 }
 
 pub fn send_control_messages_to_client(
-    mut control_channel_rx: UnboundedReceiver<Message>,
+    mut control_channel_rx: ClientReceiver,
     mut socket_channel_tx: SplitSink<WebSocket, Message>,
+    cancellation_token: CancellationToken,
 ) {
     tokio::spawn(async move {
-        while let Some(message) = control_channel_rx.recv().await {
-            if socket_channel_tx.send(message).await.is_err() {
+        while let Some(reserved) = control_channel_rx.recv().await {
+            let (message, _reservation) = reserved.into_parts();
+            let write =
+                tokio::time::timeout(WEBSOCKET_WRITE_TIMEOUT, socket_channel_tx.send(message));
+            if !matches!(write.await, Ok(Ok(()))) {
+                cancellation_token.cancel();
                 break;
             }
         }
@@ -227,11 +290,14 @@ pub fn parse_stdin(
     if !session.explicitly_disable_kitty_keyboard_protocol {
         match session.kitty_parser.feed(buf) {
             KittyParseOutcome::Complete(key_with_modifier) => {
-                os_input.send_to_server(ClientToServerMsg::Key {
-                    key: key_with_modifier.clone(),
-                    raw_bytes: buf.to_vec(),
-                    is_kitty_keyboard_protocol: true,
-                });
+                deliver_session_msg(
+                    &*os_input,
+                    ClientToServerMsg::Key {
+                        key: key_with_modifier.clone(),
+                        raw_bytes: buf.to_vec(),
+                        is_kitty_keyboard_protocol: true,
+                    },
+                );
                 return;
             },
             KittyParseOutcome::Incomplete | KittyParseOutcome::NoMatch => {},
@@ -271,11 +337,14 @@ pub fn parse_stdin(
                     }
                 };
                 let key = cast_termwiz_key(key_event.clone(), &raw_bytes, None);
-                os_input.send_to_server(ClientToServerMsg::Key {
-                    key: key.clone(),
-                    raw_bytes,
-                    is_kitty_keyboard_protocol: false,
-                });
+                deliver_session_msg(
+                    &*os_input,
+                    ClientToServerMsg::Key {
+                        key: key.clone(),
+                        raw_bytes,
+                        is_kitty_keyboard_protocol: false,
+                    },
+                );
             },
             other => {
                 dispatch_termwiz_event(&*os_input, mouse_old_event, other, buf);

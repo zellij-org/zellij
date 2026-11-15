@@ -1216,7 +1216,10 @@ impl AttentionTracker {
         };
         let status_changed = resolved != previous;
         let frame_changed = frame != track.frame;
-        let track = self.panes.get_mut(&pane_id).unwrap();
+        // Pane was present at resolve entry; nothing removes it under &mut self.
+        let Some(track) = self.panes.get_mut(&pane_id) else {
+            return;
+        };
         if status_changed {
             track.resolved = resolved.clone();
             let meaningful = resolved.status != previous.status

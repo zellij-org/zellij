@@ -7,6 +7,7 @@ use super::Coordinates;
 use zellij_utils::data::Style;
 
 const MIN_WIDTH: usize = 8;
+const MIN_HEIGHT: usize = 4;
 
 pub fn dialog(
     state: &WidgetState,
@@ -32,8 +33,15 @@ pub fn dialog(
         .skip(1 + button_count)
         .map(|f| decode_text_field(f))
         .collect();
-    let width = coordinates.width.unwrap_or(40).max(MIN_WIDTH);
-    let height = coordinates.height.unwrap_or(lines.len() + 5).max(4);
+    if coordinates.max_width < MIN_WIDTH || coordinates.max_height < MIN_HEIGHT {
+        // there is no room left in the pane for even the smallest dialog
+        return Vec::new();
+    }
+    // (the pane has room for the minimum size, so the minimum cannot take it past the pane)
+    let width = coordinates.width_or_else(|| 40).max(MIN_WIDTH);
+    let height = coordinates
+        .height_or_else(|| lines.len() + 5)
+        .max(MIN_HEIGHT);
     let inner_width = width - 2;
     let hovered = state.number("hb");
     let border_styles = colored(colors.frame_selected.base, None);
@@ -59,7 +67,7 @@ pub fn dialog(
         output.push_str(&paint(title_styles, &title));
         output.push_str(&paint(border_styles, &format!(" {}╮", "─".repeat(rest))));
     }
-    let footer_rows = state.count("fr");
+    let footer_rows = state.number("fr").unwrap_or(0);
     let centered = state.flag("c");
     let buttons_row = height.saturating_sub(2 + footer_rows).max(1);
     for row in 1..height - 1 {
@@ -162,6 +170,8 @@ mod tests {
             y: 0,
             width: Some(20),
             height: Some(6),
+            max_width: usize::MAX,
+            max_height: usize::MAX,
         };
         let output =
             String::from_utf8(dialog(&state, &fields, &Style::default(), &coordinates)).unwrap();
@@ -194,6 +204,8 @@ mod tests {
             y: 0,
             width: Some(20),
             height: Some(5),
+            max_width: usize::MAX,
+            max_height: usize::MAX,
         };
         let style = Style::default();
         let output = String::from_utf8(dialog(&state, &fields, &style, &coordinates)).unwrap();

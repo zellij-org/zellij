@@ -81,7 +81,13 @@ pub(crate) fn serve_mirror_connection(
     #[cfg(windows)]
     let mut sender = IpcSenderWithContext::<ServerToClientMsg>::new(reply_stream);
     #[cfg(not(windows))]
-    let mut sender = receiver.get_sender::<ServerToClientMsg>();
+    let mut sender = match receiver.get_sender::<ServerToClientMsg>() {
+        Ok(sender) => sender,
+        Err(e) => {
+            log::error!("failed to clone pane-mirror IPC sender: {}", e);
+            return;
+        },
+    };
     let attach = match ViewerMessage::decode(&first_payload) {
         Ok(ViewerMessage::Attach(attach)) => MirrorAttach {
             viewer_size: clamp_mirror_size(attach.viewer_size),

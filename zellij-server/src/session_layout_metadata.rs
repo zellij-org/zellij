@@ -266,6 +266,30 @@ impl SessionLayoutMetadata {
         }
         terminal_ids
     }
+
+    /// Terminal panes whose layout metadata already carries a deliberate
+    /// `Run::Command` (from `invoked_with` / layout launch). Observed
+    /// foreground processes must not overwrite these (#5798/#3952/#4873).
+    pub fn terminals_with_deliberate_launch_intent(&self) -> HashMap<u32, ()> {
+        let mut deliberate = HashMap::new();
+        let mut consider = |pane: &PaneLayoutMetadata| {
+            if let PaneId::Terminal(id) = pane.id {
+                if matches!(pane.run, Some(Run::Command(_))) {
+                    deliberate.insert(id, ());
+                }
+            }
+        };
+        for tab in &self.tabs {
+            for pane in &tab.tiled_panes {
+                consider(pane);
+            }
+            for pane in &tab.floating_panes {
+                consider(pane);
+            }
+        }
+        deliberate
+    }
+
     pub fn all_plugin_ids(&self) -> Vec<u32> {
         let mut plugin_ids = vec![];
         for tab in &self.tabs {

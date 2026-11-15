@@ -228,6 +228,10 @@ fn multiple_users_in_different_panes_and_same_tab() {
                 && grid_snapshot.contains("Pane #2")
                 && grid_snapshot.status_bar_appears()
                 && grid_snapshot.cursor_is_at(col(2).row(2))
+                && grid_snapshot
+                    .lines()
+                    .get(2)
+                    .is_some_and(|line| line.contains("│$"))
         },
     );
     assert_snapshot!(normalized(&main_grid));

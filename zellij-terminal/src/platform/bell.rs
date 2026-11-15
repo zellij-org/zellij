@@ -16,7 +16,7 @@ fn announce_once() {
 mod platform {
     use std::ffi::{c_char, c_void};
     use std::ptr;
-    use std::sync::OnceLock;
+    use std::sync::{Mutex, OnceLock};
 
     use libloading::{Library, Symbol};
 
@@ -31,8 +31,9 @@ mod platform {
         flush: Flush,
     }
 
+    // libX11's Display is not thread-safe. Send is sound because `ring` holds
+    // the mutex around every XBell and XFlush.
     unsafe impl Send for Ringer {}
-    unsafe impl Sync for Ringer {}
 
     impl Ringer {
         fn open() -> Option<Self> {
@@ -56,10 +57,13 @@ mod platform {
     }
 
     pub fn ring() -> bool {
-        static RINGER: OnceLock<Option<Ringer>> = OnceLock::new();
-        let Some(ringer) = RINGER.get_or_init(Ringer::open) else {
+        static RINGER: OnceLock<Option<Mutex<Ringer>>> = OnceLock::new();
+        let Some(ringer) = RINGER.get_or_init(|| Ringer::open().map(Mutex::new)) else {
             return false;
         };
+        let ringer = ringer
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         unsafe {
             (ringer.bell)(ringer.display, 0);
             (ringer.flush)(ringer.display);

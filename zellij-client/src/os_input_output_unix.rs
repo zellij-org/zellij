@@ -73,24 +73,38 @@ impl Iterator for BlockingSignalIterator {
     }
 }
 
-/// Set up client IPC channels from a connected socket.
+/// Connects to the server at `path`. One Unix socket is cloned for both directions.
 ///
-/// On Unix a single socket is cloned for both send and receive directions.
-/// Connects to the server at `path`, waiting for it to start listening.
-pub(crate) fn connect_ipc(
+/// One attempt. The caller retries.
+pub(crate) fn setup_ipc(
     path: &Path,
 ) -> std::io::Result<(
     IpcSenderWithContext<zellij_utils::ipc::ClientToServerMsg>,
     IpcReceiverWithContext<zellij_utils::ipc::ServerToClientMsg>,
 )> {
-    let socket = loop {
-        match zellij_utils::consts::ipc_connect(path) {
-            Ok(socket) => break socket,
-            Err(_) => std::thread::sleep(std::time::Duration::from_millis(50)),
-        }
-    };
+    let socket = zellij_utils::consts::ipc_connect(path)?;
+    channels_from_socket(socket)
+}
+
+pub(crate) fn setup_ipc_within(
+    path: &Path,
+    timeout: std::time::Duration,
+) -> std::io::Result<(
+    IpcSenderWithContext<zellij_utils::ipc::ClientToServerMsg>,
+    IpcReceiverWithContext<zellij_utils::ipc::ServerToClientMsg>,
+)> {
+    let socket = zellij_utils::consts::ipc_connect_with_timeout(path, timeout)?;
+    channels_from_socket(socket)
+}
+
+fn channels_from_socket(
+    socket: interprocess::local_socket::Stream,
+) -> std::io::Result<(
+    IpcSenderWithContext<zellij_utils::ipc::ClientToServerMsg>,
+    IpcReceiverWithContext<zellij_utils::ipc::ServerToClientMsg>,
+)> {
     let sender = IpcSenderWithContext::new(socket);
-    let receiver = sender.get_receiver();
+    let receiver = sender.get_receiver()?;
     Ok((sender, receiver))
 }
 

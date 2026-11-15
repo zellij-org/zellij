@@ -1,8 +1,8 @@
 use crate::os_input_output::AsyncReader;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
+use crate::panes::PaneId;
 use crate::panes::{FloatingPanes, TiledPanes};
-use crate::panes::{LinkHandler, PaneId};
 use crate::plugins::PluginInstruction;
 use crate::pty::PtyInstruction;
 use crate::tab::layout_applier::LayoutApplier;
@@ -22,7 +22,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
     input::layout::RunPluginOrAlias,
-    input::layout::{FloatingPaneLayout, Layout, Run, TiledPaneLayout},
+    input::layout::{FloatingPaneLayout, Layout, PercentOrFixed, Run, TiledPaneLayout},
     ipc::{ClientToServerMsg, IpcReceiverWithContext, ServerToClientMsg},
     pane_size::{Size, SizeInPixels, Viewport},
 };
@@ -48,7 +48,12 @@ impl ServerOsApi for FakeInputOutput {
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
         _pane_env: &crate::os_input_output::PaneEnv,
-    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> Result<(
+        u32,
+        Box<dyn AsyncReader>,
+        Option<u32>,
+        Option<crate::os_input_output::ChildPidFd>,
+    )> {
         unimplemented!()
     }
 
@@ -113,7 +118,11 @@ impl ServerOsApi for FakeInputOutput {
         _run_command: RunCommand,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _pane_env: &crate::os_input_output::PaneEnv,
-    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> Result<(
+        Box<dyn AsyncReader>,
+        Option<u32>,
+        Option<crate::os_input_output::ChildPidFd>,
+    )> {
         unimplemented!()
     }
 
@@ -141,7 +150,6 @@ fn create_layout_applier_fixtures(
     Rc<RefCell<Viewport>>,
     ThreadSenders,
     Rc<RefCell<SixelImageStore>>,
-    Rc<RefCell<LinkHandler>>,
     Rc<RefCell<Palette>>,
     Rc<RefCell<HashMap<usize, String>>>,
     Rc<RefCell<Option<SizeInPixels>>>,
@@ -170,7 +178,6 @@ fn create_layout_applier_fixtures(
     let mut senders = ThreadSenders::default().silently_fail_on_send();
     senders.replace_to_plugin(SenderWithContext::new(mock_plugin_sender));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
-    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let character_cell_size = Rc::new(RefCell::new(None));
@@ -243,7 +250,6 @@ fn create_layout_applier_fixtures(
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -271,7 +277,6 @@ fn create_layout_applier_fixtures_with_receivers(
     Rc<RefCell<Viewport>>,
     ThreadSenders,
     Rc<RefCell<SixelImageStore>>,
-    Rc<RefCell<LinkHandler>>,
     Rc<RefCell<Palette>>,
     Rc<RefCell<HashMap<usize, String>>>,
     Rc<RefCell<Option<SizeInPixels>>>,
@@ -308,7 +313,6 @@ fn create_layout_applier_fixtures_with_receivers(
     senders.replace_to_plugin(SenderWithContext::new(mock_plugin_sender));
 
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
-    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let character_cell_size = Rc::new(RefCell::new(None));
@@ -381,7 +385,6 @@ fn create_layout_applier_fixtures_with_receivers(
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -585,7 +588,6 @@ fn test_apply_empty_layout() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -609,7 +611,6 @@ fn test_apply_empty_layout() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -671,7 +672,6 @@ fn test_apply_simple_two_pane_layout() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -695,7 +695,6 @@ fn test_apply_simple_two_pane_layout() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -758,7 +757,6 @@ fn test_apply_three_pane_layout() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -782,7 +780,6 @@ fn test_apply_three_pane_layout() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -844,7 +841,6 @@ fn test_apply_horizontal_split_with_sizes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -868,7 +864,6 @@ fn test_apply_horizontal_split_with_sizes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -930,7 +925,6 @@ fn test_apply_vertical_split_with_sizes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -954,7 +948,6 @@ fn test_apply_vertical_split_with_sizes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -1019,7 +1012,6 @@ fn test_apply_nested_layout() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -1043,7 +1035,6 @@ fn test_apply_nested_layout() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -1104,7 +1095,6 @@ fn test_apply_layout_with_focus() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -1128,7 +1118,6 @@ fn test_apply_layout_with_focus() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -1192,7 +1181,6 @@ fn test_apply_layout_with_commands() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -1216,7 +1204,6 @@ fn test_apply_layout_with_commands() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -1277,7 +1264,6 @@ fn test_apply_layout_with_named_panes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -1301,7 +1287,6 @@ fn test_apply_layout_with_named_panes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -1362,7 +1347,6 @@ fn test_apply_layout_with_borderless_panes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -1386,7 +1370,6 @@ fn test_apply_layout_with_borderless_panes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -1456,7 +1439,6 @@ fn test_apply_layout_with_floating_panes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -1480,7 +1462,6 @@ fn test_apply_layout_with_floating_panes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -1551,7 +1532,6 @@ fn test_apply_layout_with_floating_pane_with_command() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -1575,7 +1555,6 @@ fn test_apply_layout_with_floating_pane_with_command() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -1660,7 +1639,6 @@ fn test_apply_layout_with_mixed_tiled_and_floating_panes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -1684,7 +1662,6 @@ fn test_apply_layout_with_mixed_tiled_and_floating_panes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -1754,7 +1731,6 @@ fn test_reapply_layout_exact_match() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -1778,7 +1754,6 @@ fn test_reapply_layout_exact_match() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -1870,7 +1845,6 @@ fn test_reapply_layout_command_pane_moved_from_last_to_first_preserves_order() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -1894,7 +1868,6 @@ fn test_reapply_layout_command_pane_moved_from_last_to_first_preserves_order() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -1970,7 +1943,6 @@ fn test_reapply_layout_logical_position_match() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -1994,7 +1966,6 @@ fn test_reapply_layout_logical_position_match() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -2075,7 +2046,6 @@ fn test_reapply_layout_with_more_positions() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -2099,7 +2069,6 @@ fn test_reapply_layout_with_more_positions() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -2185,7 +2154,6 @@ fn test_reapply_floating_pane_layout() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -2209,7 +2177,6 @@ fn test_reapply_floating_pane_layout() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -2299,7 +2266,6 @@ fn test_apply_complex_nested_layout() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -2323,7 +2289,6 @@ fn test_apply_complex_nested_layout() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -2389,7 +2354,6 @@ fn test_apply_layout_with_stacked_panes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -2413,7 +2377,6 @@ fn test_apply_layout_with_stacked_panes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -2485,7 +2448,6 @@ fn test_apply_layout_with_multiple_stacks() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -2509,7 +2471,6 @@ fn test_apply_layout_with_multiple_stacks() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -2588,7 +2549,6 @@ fn test_apply_layout_with_plugin_panes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -2612,7 +2572,6 @@ fn test_apply_layout_with_plugin_panes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -2697,7 +2656,6 @@ fn test_apply_layout_with_mixed_plugin_and_terminal_panes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -2721,7 +2679,6 @@ fn test_apply_layout_with_mixed_plugin_and_terminal_panes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -2789,7 +2746,6 @@ fn test_apply_layout_with_missing_plugin_ids() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -2813,7 +2769,6 @@ fn test_apply_layout_with_missing_plugin_ids() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -2868,7 +2823,6 @@ fn test_apply_layout_with_excess_terminal_ids() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -2892,7 +2846,6 @@ fn test_apply_layout_with_excess_terminal_ids() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -2966,7 +2919,6 @@ fn test_override_layout_basic_with_both_tiled_and_floating() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -2992,7 +2944,6 @@ fn test_override_layout_basic_with_both_tiled_and_floating() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -3111,7 +3062,6 @@ fn test_override_layout_hide_floating_panes_true() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -3137,7 +3087,6 @@ fn test_override_layout_hide_floating_panes_true() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -3244,7 +3193,6 @@ fn test_override_layout_show_floating_panes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -3270,7 +3218,6 @@ fn test_override_layout_show_floating_panes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -3383,7 +3330,6 @@ fn test_override_tiled_exact_match_preservation_commands() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -3409,7 +3355,6 @@ fn test_override_tiled_exact_match_preservation_commands() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -3511,7 +3456,6 @@ fn test_override_tiled_exact_match_preservation_plugins() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -3537,7 +3481,6 @@ fn test_override_tiled_exact_match_preservation_plugins() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -3637,7 +3580,6 @@ fn test_override_tiled_all_panes_closed_no_matches() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -3663,7 +3605,6 @@ fn test_override_tiled_all_panes_closed_no_matches() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -3768,7 +3709,6 @@ fn test_override_tiled_mixed_some_matches_some_new() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -3794,7 +3734,6 @@ fn test_override_tiled_mixed_some_matches_some_new() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -3889,7 +3828,6 @@ fn test_override_tiled_new_panes_for_unmatched_positions() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -3913,7 +3851,6 @@ fn test_override_tiled_new_panes_for_unmatched_positions() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -4001,7 +3938,6 @@ fn test_override_tiled_focus_on_new_pane() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -4025,7 +3961,6 @@ fn test_override_tiled_focus_on_new_pane() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -4113,7 +4048,6 @@ fn test_override_tiled_focus_when_focused_pane_closed() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -4139,7 +4073,6 @@ fn test_override_tiled_focus_when_focused_pane_closed() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -4240,7 +4173,6 @@ fn test_override_tiled_empty_layout_closes_all() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -4266,7 +4198,6 @@ fn test_override_tiled_empty_layout_closes_all() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -4380,7 +4311,6 @@ fn test_override_floating_exact_match_preservation() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -4406,7 +4336,6 @@ fn test_override_floating_exact_match_preservation() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -4524,7 +4453,6 @@ fn test_override_floating_all_closed_no_matches() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -4550,7 +4478,6 @@ fn test_override_floating_all_closed_no_matches() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -4670,7 +4597,6 @@ fn test_override_floating_new_panes_created() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -4694,7 +4620,6 @@ fn test_override_floating_new_panes_created() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -4815,7 +4740,6 @@ fn test_override_floating_focus_handling() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -4841,7 +4765,6 @@ fn test_override_floating_focus_handling() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -4949,7 +4872,6 @@ fn test_override_floating_position_and_size_update() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -4973,7 +4895,6 @@ fn test_override_floating_position_and_size_update() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -5063,7 +4984,6 @@ fn test_override_floating_return_value_has_panes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -5087,7 +5007,6 @@ fn test_override_floating_return_value_has_panes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -5187,7 +5106,6 @@ fn test_override_floating_return_value_no_panes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -5213,7 +5131,6 @@ fn test_override_floating_return_value_no_panes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -5329,7 +5246,6 @@ fn test_override_full_tiled_and_floating_together() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -5355,7 +5271,6 @@ fn test_override_full_tiled_and_floating_together() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -5476,7 +5391,6 @@ fn test_override_viewport_adjustment_with_borderless() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -5502,7 +5416,6 @@ fn test_override_viewport_adjustment_with_borderless() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -5601,7 +5514,6 @@ fn test_override_tiled_retain_terminal_panes_partial_match() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -5627,7 +5539,6 @@ fn test_override_tiled_retain_terminal_panes_partial_match() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -5735,7 +5646,6 @@ fn test_override_tiled_retain_terminal_panes_no_matches() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -5761,7 +5671,6 @@ fn test_override_tiled_retain_terminal_panes_no_matches() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -5884,7 +5793,6 @@ fn test_override_floating_retain_terminal_panes_partial_match() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -5910,7 +5818,6 @@ fn test_override_floating_retain_terminal_panes_partial_match() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -6043,7 +5950,6 @@ fn test_override_floating_retain_terminal_panes_no_matches() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -6069,7 +5975,6 @@ fn test_override_floating_retain_terminal_panes_no_matches() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -6208,7 +6113,6 @@ fn test_override_mixed_retain_terminal_panes_both_tiled_and_floating() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -6234,7 +6138,6 @@ fn test_override_mixed_retain_terminal_panes_both_tiled_and_floating() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -6370,7 +6273,6 @@ fn test_override_retain_terminal_but_close_plugin_panes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -6396,7 +6298,6 @@ fn test_override_retain_terminal_but_close_plugin_panes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -6529,7 +6430,6 @@ fn test_override_tiled_retain_plugin_panes_partial_match() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -6555,7 +6455,6 @@ fn test_override_tiled_retain_plugin_panes_partial_match() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -6669,7 +6568,6 @@ fn test_override_tiled_retain_plugin_panes_no_matches() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -6695,7 +6593,6 @@ fn test_override_tiled_retain_plugin_panes_no_matches() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -6824,7 +6721,6 @@ fn test_override_floating_retain_plugin_panes_partial_match() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -6850,7 +6746,6 @@ fn test_override_floating_retain_plugin_panes_partial_match() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -6974,7 +6869,6 @@ fn test_override_floating_retain_plugin_panes_no_matches() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -7000,7 +6894,6 @@ fn test_override_floating_retain_plugin_panes_no_matches() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -7132,7 +7025,6 @@ fn test_override_mixed_retain_plugin_panes_both_tiled_and_floating() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -7158,7 +7050,6 @@ fn test_override_mixed_retain_plugin_panes_both_tiled_and_floating() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -7290,7 +7181,6 @@ fn test_override_retain_plugin_but_close_terminal_panes() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -7316,7 +7206,6 @@ fn test_override_retain_plugin_but_close_terminal_panes() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -7421,7 +7310,6 @@ fn viewport_after_applying_layout_with_plugins(
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -7444,7 +7332,6 @@ fn viewport_after_applying_layout_with_plugins(
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -7638,7 +7525,6 @@ fn test_override_tiled_retained_pane_without_room_is_floated() {
         viewport,
         senders,
         sixel_image_store,
-        link_handler,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         character_cell_size,
@@ -7663,7 +7549,6 @@ fn test_override_tiled_retained_pane_without_room_is_floated() {
         &senders,
         &sixel_image_store,
         &Rc::new(RefCell::new(KittyImageStore::default())),
-        &link_handler,
         &terminal_emulator_colors,
         &terminal_emulator_color_codes,
         &character_cell_size,
@@ -7738,10 +7623,10 @@ fn run_with_layout_applier_and_viewport(
 ) {
     let fixtures = create_layout_applier_fixtures_with_receivers(size);
     adjust_viewport(&mut fixtures.0.borrow_mut());
-    let pty_receiver = fixtures.20;
-    let mut tiled_panes = fixtures.10;
-    let mut floating_panes = fixtures.11;
-    let mut focus_pane_id = fixtures.13;
+    let pty_receiver = fixtures.19;
+    let mut tiled_panes = fixtures.9;
+    let mut floating_panes = fixtures.10;
+    let mut focus_pane_id = fixtures.12;
     {
         let mut applier = LayoutApplier::new(
             &fixtures.0,
@@ -7754,17 +7639,16 @@ fn run_with_layout_applier_and_viewport(
             &fixtures.6,
             &fixtures.7,
             &fixtures.8,
-            &fixtures.9,
             &mut tiled_panes,
             &mut floating_panes,
-            fixtures.12,
+            fixtures.11,
             &mut focus_pane_id,
-            &fixtures.14,
+            &fixtures.13,
+            fixtures.14,
             fixtures.15,
             fixtures.16,
             fixtures.17,
             fixtures.18,
-            fixtures.19,
             None,
         );
         f(&mut applier);
@@ -7935,9 +7819,9 @@ fn test_overriding_away_a_fullscreen_floating_pane_leaves_no_fullscreen_or_stale
         cols: 120,
         rows: 40,
     });
-    let pty_receiver = fixtures.20;
-    let mut tiled_panes = fixtures.10;
-    let mut focus_pane_id = fixtures.13;
+    let pty_receiver = fixtures.19;
+    let mut tiled_panes = fixtures.9;
+    let mut focus_pane_id = fixtures.12;
     {
         let mut applier = LayoutApplier::new(
             &fixtures.0,
@@ -7950,17 +7834,16 @@ fn test_overriding_away_a_fullscreen_floating_pane_leaves_no_fullscreen_or_stale
             &fixtures.6,
             &fixtures.7,
             &fixtures.8,
-            &fixtures.9,
             &mut tiled_panes,
             &mut floating_panes,
-            fixtures.12,
+            fixtures.11,
             &mut focus_pane_id,
-            &fixtures.14,
+            &fixtures.13,
+            fixtures.14,
             fixtures.15,
             fixtures.16,
             fixtures.17,
             fixtures.18,
-            fixtures.19,
             None,
         );
         applier
@@ -8106,10 +7989,10 @@ fn test_unused_layout_plugin_ids_are_unloaded() {
         cols: 120,
         rows: 40,
     });
-    let plugin_receiver = fixtures.21;
-    let mut tiled_panes = fixtures.10;
-    let mut floating_panes = fixtures.11;
-    let mut focus_pane_id = fixtures.13;
+    let plugin_receiver = fixtures.20;
+    let mut tiled_panes = fixtures.9;
+    let mut floating_panes = fixtures.10;
+    let mut focus_pane_id = fixtures.12;
     {
         let mut applier = LayoutApplier::new(
             &fixtures.0,
@@ -8122,17 +8005,16 @@ fn test_unused_layout_plugin_ids_are_unloaded() {
             &fixtures.6,
             &fixtures.7,
             &fixtures.8,
-            &fixtures.9,
             &mut tiled_panes,
             &mut floating_panes,
-            fixtures.12,
+            fixtures.11,
             &mut focus_pane_id,
-            &fixtures.14,
+            &fixtures.13,
+            fixtures.14,
             fixtures.15,
             fixtures.16,
             fixtures.17,
             fixtures.18,
-            fixtures.19,
             None,
         );
         let mut new_plugin_ids = HashMap::new();
@@ -8189,4 +8071,244 @@ fn test_terminals_of_a_tiled_layout_that_fails_are_closed() {
     expected.sort();
     assert!(!expected.is_empty());
     assert_eq!(closed, expected);
+}
+
+/// Same floating geometry as `layout_for_resurrection.kdl` on a 120x24 terminal:
+/// tab bar on row 0, status bar on rows 22-23, three staggered floating frames.
+const RESURRECTION_FLOATING_LAYOUT: &str = r#"
+    layout {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane split_direction="vertical" {
+            pane
+            pane {
+                pane
+                pane
+            }
+        }
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+        floating_panes {
+            pane {
+                height 10
+                width 58
+                x 29
+                y 6
+            }
+            pane {
+                height 10
+                width 58
+                x 31
+                y 8
+            }
+            pane {
+                height 10
+                width 58
+                x 33
+                y 10
+            }
+        }
+    }
+"#;
+
+struct FloatingFrame {
+    x: usize,
+    y: usize,
+    cols: usize,
+    rows: usize,
+    content_x: usize,
+    content_y: usize,
+    logical_position: Option<usize>,
+}
+
+fn floating_frames(floating_panes: &FloatingPanes) -> Vec<FloatingFrame> {
+    let mut frames: Vec<_> = floating_panes
+        .get_panes()
+        .map(|(_, pane)| {
+            let geom = pane.position_and_size();
+            FloatingFrame {
+                x: geom.x,
+                y: geom.y,
+                cols: geom.cols.as_usize(),
+                rows: geom.rows.as_usize(),
+                content_x: pane.get_content_x(),
+                content_y: pane.get_content_y(),
+                logical_position: geom.logical_position,
+            }
+        })
+        .collect();
+    frames.sort_by_key(|frame| (frame.logical_position, frame.y, frame.x));
+    frames
+}
+
+fn assert_resurrection_floating_frames(frames: &[FloatingFrame]) {
+    assert_eq!(
+        frames.len(),
+        3,
+        "expected the three staggered floating panes"
+    );
+    let expected = [(29, 6, 58, 10), (31, 8, 58, 10), (33, 10, 58, 10)];
+    for (frame, (x, y, cols, rows)) in frames.iter().zip(expected) {
+        assert_eq!(
+            (frame.x, frame.y, frame.cols, frame.rows),
+            (x, y, cols, rows)
+        );
+        // Framed floating panes draw the title on the frame row and the
+        // content one row and one column inside it.
+        assert_eq!((frame.content_x, frame.content_y), (x + 1, y + 1));
+    }
+    let top = &frames[1];
+    let neighbour = &frames[2];
+    let top_right = top.x + top.cols - 1;
+    let neighbour_corner_x = neighbour.x + neighbour.cols - 1;
+    // Snapshot row 10: the "top" frame's right edge and pane #3's `┐`
+    // meet with #3's corner two columns further right, on #3's top row.
+    assert_eq!(neighbour_corner_x, top_right + 2);
+    assert_eq!(neighbour.y, top.y + 2);
+    assert!(neighbour.y < top.y + top.rows);
+    // #3 ends on row 19, leaving the two blank rows above the status bar.
+    assert_eq!(neighbour.y + neighbour.rows, 20);
+}
+
+#[test]
+fn resurrected_floating_layout_keeps_terminal_coordinates_and_neighbour_junction() {
+    let (tiled_layout, floating_layout) = parse_kdl_layout(RESURRECTION_FLOATING_LAYOUT);
+    let mut new_plugin_ids = HashMap::new();
+    let tab_bar = RunPluginOrAlias::from_url("zellij:tab-bar", &None, None, None).unwrap();
+    let status_bar = RunPluginOrAlias::from_url("zellij:status-bar", &None, None, None).unwrap();
+    new_plugin_ids.insert(tab_bar, vec![100]);
+    new_plugin_ids.insert(status_bar, vec![101]);
+
+    let size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+    ) = create_layout_applier_fixtures(size);
+
+    {
+        let mut applier = LayoutApplier::new(
+            &viewport,
+            &senders,
+            &sixel_image_store,
+            &Rc::new(RefCell::new(KittyImageStore::default())),
+            &terminal_emulator_colors,
+            &terminal_emulator_color_codes,
+            &character_cell_size,
+            &connected_clients,
+            &style,
+            &display_area,
+            &mut tiled_panes,
+            &mut floating_panes,
+            draw_pane_frames,
+            &mut focus_pane_id,
+            &os_api,
+            debug,
+            arrow_fonts,
+            styled_underlines,
+            osc8_hyperlinks,
+            explicitly_disable_kitty_keyboard_protocol,
+            None,
+        );
+        applier
+            .apply_layout(
+                tiled_layout,
+                floating_layout,
+                vec![(1, None), (2, None), (3, None)],
+                vec![(4, None), (5, None), (6, None)],
+                new_plugin_ids,
+                1,
+            )
+            .unwrap();
+    }
+
+    let viewport_state = viewport.borrow().clone();
+    assert_eq!(
+        (
+            viewport_state.x,
+            viewport_state.y,
+            viewport_state.cols,
+            viewport_state.rows
+        ),
+        (0, 1, 120, 21),
+        "tab bar and status bar must shrink the viewport before floating panes are placed"
+    );
+    let mut ui_edges: Vec<(usize, usize)> = tiled_panes
+        .get_panes()
+        .filter(|(_, pane)| pane.borderless())
+        .map(|(_, pane)| {
+            let geom = pane.position_and_size();
+            (geom.y, geom.rows.as_usize())
+        })
+        .collect();
+    ui_edges.sort();
+    assert_eq!(ui_edges, vec![(0, 1), (22, 2)]);
+
+    let frames = floating_frames(&floating_panes);
+    assert_resurrection_floating_frames(&frames);
+
+    // Resurrection writes the live geom back as fixed x/y. Reloading those
+    // cells must not add the viewport origin a second time.
+    let serialized: Vec<FloatingPaneLayout> = frames
+        .iter()
+        .map(|frame| {
+            let mut layout = FloatingPaneLayout::new();
+            layout.x = Some(PercentOrFixed::Fixed(frame.x));
+            layout.y = Some(PercentOrFixed::Fixed(frame.y));
+            layout.width = Some(PercentOrFixed::Fixed(frame.cols));
+            layout.height = Some(PercentOrFixed::Fixed(frame.rows));
+            layout.logical_position = frame.logical_position;
+            layout
+        })
+        .collect();
+    {
+        let mut applier = LayoutApplier::new(
+            &viewport,
+            &senders,
+            &sixel_image_store,
+            &Rc::new(RefCell::new(KittyImageStore::default())),
+            &terminal_emulator_colors,
+            &terminal_emulator_color_codes,
+            &character_cell_size,
+            &connected_clients,
+            &style,
+            &display_area,
+            &mut tiled_panes,
+            &mut floating_panes,
+            draw_pane_frames,
+            &mut focus_pane_id,
+            &os_api,
+            debug,
+            arrow_fonts,
+            styled_underlines,
+            osc8_hyperlinks,
+            explicitly_disable_kitty_keyboard_protocol,
+            None,
+        );
+        applier
+            .apply_floating_panes_layout_to_existing_panes(&serialized)
+            .unwrap();
+    }
+    assert_resurrection_floating_frames(&floating_frames(&floating_panes));
 }

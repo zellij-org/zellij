@@ -597,18 +597,24 @@ impl App {
             if self.tab_columns != prev_tab_columns || self.tab_rows != prev_tab_rows {
                 let desired_x_coords = self.tab_columns.saturating_sub(UI_COLUMNS) / 2;
                 let desired_y_coords = self.tab_rows.saturating_sub(UI_ROWS) / 2;
-                change_floating_panes_coordinates(vec![(
-                    PaneId::Plugin(self.own_plugin_id.unwrap()),
-                    FloatingPaneCoordinates::new(
+                // own_plugin_id is set in load(); skip recenter if TabUpdate arrives earlier.
+                if let Some(own_plugin_id) = self.own_plugin_id {
+                    // FloatingPaneCoordinates::new is None only when all components are None;
+                    // UI_* constants always supply Some width/height/x/y.
+                    if let Some(coords) = FloatingPaneCoordinates::new(
                         Some(desired_x_coords.to_string()),
                         Some(desired_y_coords.to_string()),
                         Some(UI_COLUMNS.to_string()),
                         Some(UI_ROWS.to_string()),
                         None,
                         Some(false),
-                    )
-                    .unwrap(),
-                )]);
+                    ) {
+                        change_floating_panes_coordinates(vec![(
+                            PaneId::Plugin(own_plugin_id),
+                            coords,
+                        )]);
+                    }
+                }
             }
         }
     }

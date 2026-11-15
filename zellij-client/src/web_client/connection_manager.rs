@@ -1,61 +1,125 @@
 use crate::os_input_output::ClientOsApi;
+use crate::web_client::client_channel::{ClientSender, SendFailure};
 use crate::web_client::control_message::WebServerToWebClientControlMessage;
-use crate::web_client::types::{ClientChannels, ClientConnectionBus, ConnectionTable};
+use crate::web_client::types::{
+    ClientChannels, ClientConnectionBus, ClientLimitExceeded, ConnectionTable,
+    MAX_UNATTACHED_WEB_CLIENTS_PER_SESSION, MAX_WEB_CLIENTS, UNATTACHED_WEB_CLIENT_TTL,
+};
 use axum::extract::ws::{CloseFrame, Message};
 use std::sync::{atomic::AtomicBool, Arc};
-use tokio::sync::mpsc::UnboundedSender;
+use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 
+/// The result of a terminal websocket trying to claim a client id.
+pub enum TerminalAttachOutcome {
+    Attached(Box<dyn ClientOsApi>),
+    AlreadyAttached,
+    UnknownClient,
+}
+
 impl ConnectionTable {
-    pub fn add_new_client(
+    pub fn try_add_new_client(
         &mut self,
         client_id: String,
         client_os_api: Box<dyn ClientOsApi>,
         is_read_only: bool,
         session_token_hash: String,
-    ) {
-        self.client_id_to_channels
-            .insert(client_id.clone(), ClientChannels::new(client_os_api));
-        self.client_read_only_status
-            .insert(client_id.clone(), is_read_only);
-        self.client_session_token_hash
-            .insert(client_id, session_token_hash);
+    ) -> Result<(), ClientLimitExceeded> {
+        self.try_add_new_client_at(
+            Instant::now(),
+            client_id,
+            client_os_api,
+            is_read_only,
+            session_token_hash,
+        )
+    }
+
+    fn try_add_new_client_at(
+        &mut self,
+        now: Instant,
+        client_id: String,
+        client_os_api: Box<dyn ClientOsApi>,
+        is_read_only: bool,
+        session_token_hash: String,
+    ) -> Result<(), ClientLimitExceeded> {
+        // ids nobody came back for do not count against anyone
+        self.remove_expired_unattached_clients(now);
+        if self.client_id_to_channels.len() >= MAX_WEB_CLIENTS {
+            return Err(ClientLimitExceeded::TooManyClients);
+        }
+        let unattached_for_this_session = self
+            .client_id_to_channels
+            .values()
+            .filter(|channels| {
+                !channels.is_attached() && channels.session_token_hash == session_token_hash
+            })
+            .count();
+        if unattached_for_this_session >= MAX_UNATTACHED_WEB_CLIENTS_PER_SESSION {
+            return Err(ClientLimitExceeded::TooManyUnattachedClients);
+        }
+        let mut channels = ClientChannels::new(client_os_api);
+        channels.created_at = now;
+        channels.read_only = is_read_only;
+        channels.session_token_hash = session_token_hash;
+        self.client_id_to_channels.insert(client_id, channels);
+        Ok(())
+    }
+
+    /// Forgets the clients that were handed an id but never opened their
+    /// terminal websocket within `UNATTACHED_WEB_CLIENT_TTL`.
+    pub fn remove_expired_unattached_clients(&mut self, now: Instant) -> usize {
+        let expired: Vec<String> = self
+            .client_id_to_channels
+            .iter()
+            .filter(|(_, channels)| {
+                !channels.is_attached()
+                    && now.saturating_duration_since(channels.created_at)
+                        >= UNATTACHED_WEB_CLIENT_TTL
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for client_id in &expired {
+            self.remove_client(client_id);
+        }
+        expired.len()
     }
 
     pub fn verify_client_ownership(&self, client_id: &str, session_token_hash: &str) -> bool {
-        self.client_session_token_hash
+        self.client_id_to_channels
             .get(client_id)
-            .map(|hash| hash == session_token_hash)
+            .map(|channels| channels.session_token_hash == session_token_hash)
             .unwrap_or(false)
     }
 
     pub fn is_client_read_only(&self, client_id: &str) -> bool {
-        self.client_read_only_status
+        self.client_id_to_channels
             .get(client_id)
-            .copied()
+            .map(|channels| channels.read_only)
             .unwrap_or(false)
-    }
-
-    pub fn declare_client_structured(&mut self, client_id: &str, is_structured: bool) {
-        self.client_structured_status
-            .insert(client_id.to_owned(), is_structured);
     }
 
     pub fn is_client_structured(&self, client_id: &str) -> bool {
-        self.client_structured_status
+        self.client_id_to_channels
             .get(client_id)
-            .copied()
+            .map(|channels| channels.is_structured())
             .unwrap_or(false)
     }
 
+    /// Registers the control websocket of a client, replacing (and cancelling)
+    /// the one it had. Returns false if there is no such client any more.
     pub fn add_client_control_tx(
         &mut self,
         client_id: &str,
-        control_channel_tx: UnboundedSender<Message>,
-    ) {
-        self.client_id_to_channels
-            .get_mut(client_id)
-            .map(|c| c.add_control_tx(control_channel_tx));
+        control_channel_tx: ClientSender,
+        cancellation_token: CancellationToken,
+    ) -> bool {
+        match self.client_id_to_channels.get_mut(client_id) {
+            Some(channels) => {
+                channels.add_control_tx(control_channel_tx, cancellation_token);
+                true
+            },
+            None => false,
+        }
     }
 
     pub fn queue_client_control_message(&mut self, client_id: &str, message: Message) {
@@ -64,11 +128,29 @@ impl ConnectionTable {
             .map(|c| c.queue_control_message(message));
     }
 
-    pub fn add_client_terminal_tx(
+    /// Claims the client id for a terminal websocket, atomically: only the
+    /// first one gets the client's os api (and with it the right to start a
+    /// session connection for it).
+    pub fn attach_terminal(
         &mut self,
         client_id: &str,
-        terminal_channel_tx: UnboundedSender<Message>,
-    ) {
+        is_structured: bool,
+        terminal_channel_tx: ClientSender,
+    ) -> TerminalAttachOutcome {
+        match self.client_id_to_channels.get_mut(client_id) {
+            None => TerminalAttachOutcome::UnknownClient,
+            Some(channels) if channels.is_attached() => TerminalAttachOutcome::AlreadyAttached,
+            Some(channels) => {
+                channels.add_terminal_tx(terminal_channel_tx);
+                channels.record_structured(is_structured);
+                let os_api = channels.os_api.clone();
+                TerminalAttachOutcome::Attached(os_api)
+            },
+        }
+    }
+
+    #[cfg(test)]
+    pub fn add_client_terminal_tx(&mut self, client_id: &str, terminal_channel_tx: ClientSender) {
         self.client_id_to_channels
             .get_mut(client_id)
             .map(|c| c.add_terminal_tx(terminal_channel_tx));
@@ -88,13 +170,13 @@ impl ConnectionTable {
         self.client_id_to_channels.get(client_id).map(|c| &c.os_api)
     }
 
-    pub fn get_client_terminal_tx(&self, client_id: &str) -> Option<UnboundedSender<Message>> {
+    pub fn get_client_terminal_tx(&self, client_id: &str) -> Option<ClientSender> {
         self.client_id_to_channels
             .get(client_id)
             .and_then(|c| c.terminal_channel_tx.clone())
     }
 
-    pub fn get_client_control_tx(&self, client_id: &str) -> Option<UnboundedSender<Message>> {
+    pub fn get_client_control_tx(&self, client_id: &str) -> Option<ClientSender> {
         self.client_id_to_channels
             .get(client_id)
             .and_then(|c| c.control_channel_tx.clone())
@@ -104,9 +186,6 @@ impl ConnectionTable {
         if let Some(mut client_channels) = self.client_id_to_channels.remove(client_id).take() {
             client_channels.cleanup();
         }
-        self.client_read_only_status.remove(client_id);
-        self.client_session_token_hash.remove(client_id);
-        self.client_structured_status.remove(client_id);
     }
 
     pub fn get_should_not_reconnect_flag(&self, client_id: &str) -> Option<Arc<AtomicBool>> {
@@ -126,37 +205,66 @@ impl ClientConnectionBus {
     }
 
     fn send_terminal_message(&mut self, message: Message) {
+        if self.stdout_channel_tx.is_none() {
+            self.get_stdout_channel_tx();
+        }
         match self.stdout_channel_tx.as_ref() {
             Some(stdout_channel_tx) => {
-                let _ = stdout_channel_tx.send(message);
-            },
-            None => {
-                self.get_stdout_channel_tx();
-                if let Some(stdout_channel_tx) = self.stdout_channel_tx.as_ref() {
-                    let _ = stdout_channel_tx.send(message);
-                } else {
-                    log::error!("Failed to send STDOUT message to client");
+                if let Err(failure) = stdout_channel_tx.try_send(message) {
+                    self.disconnect_after_send_failure("terminal output", failure);
                 }
             },
+            None => log::error!("Failed to send STDOUT message to client"),
         }
     }
 
+    fn disconnect_after_send_failure(&mut self, what: &str, failure: SendFailure) {
+        let reason = match failure {
+            SendFailure::Full => "is not keeping up with its",
+            SendFailure::Closed => "closed its",
+        };
+        log::warn!(
+            "Web client {} {} {} queue, disconnecting it",
+            self.web_client_id,
+            reason,
+            what,
+        );
+        self.close_connection();
+    }
+
     pub fn send_control(&mut self, message: WebServerToWebClientControlMessage) {
-        let message = Message::Text(serde_json::to_string(&message).unwrap().into());
-        match self.control_channel_tx.as_ref() {
-            Some(control_channel_tx) => {
-                let _ = control_channel_tx.send(message);
-            },
-            None => {
-                self.get_control_channel_tx();
-                if let Some(control_channel_tx) = self.control_channel_tx.as_ref() {
-                    let _ = control_channel_tx.send(message);
-                } else {
+        let Ok(serialized) = serde_json::to_string(&message) else {
+            log::error!(
+                "Failed to serialize control message for web client {}",
+                self.web_client_id
+            );
+            self.close_connection();
+            return;
+        };
+        let message = Message::Text(serialized.into());
+        let control_channel_tx = self
+            .connection_table
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get_client_control_tx(&self.web_client_id);
+        match control_channel_tx {
+            Some(control_channel_tx) => match control_channel_tx.try_send(message.clone()) {
+                Ok(()) => {},
+                Err(SendFailure::Full) => {
+                    self.disconnect_after_send_failure("control message", SendFailure::Full);
+                },
+                Err(SendFailure::Closed) => {
                     self.connection_table
                         .lock()
-                        .unwrap()
+                        .unwrap_or_else(|p| p.into_inner())
                         .queue_client_control_message(&self.web_client_id, message);
-                }
+                },
+            },
+            None => {
+                self.connection_table
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .queue_client_control_message(&self.web_client_id, message);
             },
         }
     }
@@ -164,7 +272,7 @@ impl ClientConnectionBus {
         let should_not_reconnect = self
             .connection_table
             .lock()
-            .unwrap()
+            .unwrap_or_else(|p| p.into_inner())
             .get_should_not_reconnect_flag(&self.web_client_id)
             .map(|f| f.load(std::sync::atomic::Ordering::Relaxed))
             .unwrap_or(false);
@@ -178,22 +286,21 @@ impl ClientConnectionBus {
             reason: "Connection closed".into(),
         };
         let close_message = Message::Close(Some(close_frame));
-        match self.control_channel_tx.as_ref() {
+        let control_channel_tx = self
+            .connection_table
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get_client_control_tx(&self.web_client_id);
+        match control_channel_tx {
+            // if the queue is full the client is being dropped anyway
             Some(control_channel_tx) => {
-                let _ = control_channel_tx.send(close_message);
+                let _ = control_channel_tx.try_send(close_message);
             },
-            None => {
-                self.get_control_channel_tx();
-                if let Some(control_channel_tx) = self.control_channel_tx.as_ref() {
-                    let _ = control_channel_tx.send(close_message);
-                } else {
-                    log::error!("Failed to send close message to client");
-                }
-            },
+            None => log::error!("Failed to send close message to client"),
         }
         self.connection_table
             .lock()
-            .unwrap()
+            .unwrap_or_else(|p| p.into_inner())
             .remove_client(&self.web_client_id);
     }
 
@@ -207,17 +314,6 @@ impl ClientConnectionBus {
             flag.store(true, std::sync::atomic::Ordering::Relaxed);
         }
         self.close_connection();
-    }
-
-    fn get_control_channel_tx(&mut self) {
-        if let Some(control_channel_tx) = self
-            .connection_table
-            .lock()
-            .unwrap()
-            .get_client_control_tx(&self.web_client_id)
-        {
-            self.control_channel_tx = Some(control_channel_tx);
-        }
     }
 
     fn get_stdout_channel_tx(&mut self) {
@@ -236,6 +332,7 @@ impl ClientConnectionBus {
 mod tests {
     use super::*;
     use crate::os_input_output::ClientOsApi;
+    use crate::web_client::client_channel::client_channel;
     use std::io::{BufRead, Cursor, Write};
     use std::path::Path;
     use std::sync::Mutex;
@@ -297,12 +394,16 @@ mod tests {
 
     fn connection_table_with_client(client_id: &str) -> Arc<Mutex<ConnectionTable>> {
         let connection_table = Arc::new(Mutex::new(ConnectionTable::default()));
-        connection_table.lock().unwrap().add_new_client(
-            client_id.to_owned(),
-            Box::new(StubOsInput::default()),
-            false,
-            "token".to_owned(),
-        );
+        connection_table
+            .lock()
+            .unwrap()
+            .try_add_new_client(
+                client_id.to_owned(),
+                Box::new(StubOsInput::default()),
+                false,
+                "token".to_owned(),
+            )
+            .unwrap();
         connection_table
     }
 
@@ -321,18 +422,21 @@ mod tests {
         bus.send_control(WebServerToWebClientControlMessage::QueryTerminalSize);
         bus.send_control(WebServerToWebClientControlMessage::SetSoftKeyboard { on: true });
 
-        let (control_channel_tx, mut control_channel_rx) = tokio::sync::mpsc::unbounded_channel();
-        connection_table
-            .lock()
-            .unwrap()
-            .add_client_control_tx("client", control_channel_tx);
+        let (control_channel_tx, mut control_channel_rx) = client_channel(256, 1024 * 1024);
+        connection_table.lock().unwrap().add_client_control_tx(
+            "client",
+            control_channel_tx,
+            CancellationToken::new(),
+        );
 
-        let first = control_channel_rx
+        let (first, _first_reservation) = control_channel_rx
             .try_recv()
-            .expect("the first buffered control message must be flushed on registration");
-        let second = control_channel_rx
+            .expect("the first buffered control message must be flushed on registration")
+            .into_parts();
+        let (second, _second_reservation) = control_channel_rx
             .try_recv()
-            .expect("the second buffered control message must be flushed on registration");
+            .expect("the second buffered control message must be flushed on registration")
+            .into_parts();
 
         assert!(message_text(&first).contains("QueryTerminalSize"));
         assert!(message_text(&second).contains("SetSoftKeyboard"));
@@ -342,19 +446,231 @@ mod tests {
     #[test]
     fn control_messages_are_delivered_directly_once_registered() {
         let connection_table = connection_table_with_client("client");
-        let (control_channel_tx, mut control_channel_rx) = tokio::sync::mpsc::unbounded_channel();
-        connection_table
-            .lock()
-            .unwrap()
-            .add_client_control_tx("client", control_channel_tx);
+        let (control_channel_tx, mut control_channel_rx) = client_channel(256, 1024 * 1024);
+        connection_table.lock().unwrap().add_client_control_tx(
+            "client",
+            control_channel_tx,
+            CancellationToken::new(),
+        );
 
         let mut bus = ClientConnectionBus::new("client", &connection_table);
         bus.send_control(WebServerToWebClientControlMessage::QueryTerminalSize);
 
-        let message = control_channel_rx
+        let (message, _reservation) = control_channel_rx
             .try_recv()
-            .expect("a registered control channel must receive messages directly");
+            .expect("a registered control channel must receive messages directly")
+            .into_parts();
         assert!(message_text(&message).contains("QueryTerminalSize"));
+    }
+
+    #[test]
+    fn control_messages_follow_a_replaced_control_channel() {
+        let connection_table = connection_table_with_client("client");
+        let (first_tx, mut first_rx) = client_channel(256, 1024 * 1024);
+        connection_table.lock().unwrap().add_client_control_tx(
+            "client",
+            first_tx,
+            CancellationToken::new(),
+        );
+        let mut bus = ClientConnectionBus::new("client", &connection_table);
+        bus.send_control(WebServerToWebClientControlMessage::QueryTerminalSize);
+        assert!(first_rx.try_recv().is_ok());
+
+        let (second_tx, mut second_rx) = client_channel(256, 1024 * 1024);
+        connection_table.lock().unwrap().add_client_control_tx(
+            "client",
+            second_tx,
+            CancellationToken::new(),
+        );
+        bus.send_control(WebServerToWebClientControlMessage::SetSoftKeyboard { on: true });
+
+        let (message, _reservation) = second_rx
+            .try_recv()
+            .expect("the replacement control channel receives the next message")
+            .into_parts();
+        assert!(message_text(&message).contains("SetSoftKeyboard"));
+        assert!(first_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_closed_control_channel_is_replaced_and_queued_messages_are_flushed() {
+        let connection_table = connection_table_with_client("client");
+        let (closed_tx, closed_rx) = client_channel(256, 1024 * 1024);
+        connection_table.lock().unwrap().add_client_control_tx(
+            "client",
+            closed_tx,
+            CancellationToken::new(),
+        );
+        drop(closed_rx);
+        let mut bus = ClientConnectionBus::new("client", &connection_table);
+        bus.send_control(WebServerToWebClientControlMessage::QueryTerminalSize);
+
+        let (replacement_tx, mut replacement_rx) = client_channel(256, 1024 * 1024);
+        connection_table.lock().unwrap().add_client_control_tx(
+            "client",
+            replacement_tx,
+            CancellationToken::new(),
+        );
+        let (message, _reservation) = replacement_rx
+            .try_recv()
+            .expect("the queued message is flushed to the replacement channel")
+            .into_parts();
+        assert!(message_text(&message).contains("QueryTerminalSize"));
+    }
+
+    #[test]
+    fn a_client_that_stops_reading_terminal_output_is_disconnected_not_buffered() {
+        let connection_table = connection_table_with_client("client");
+        // the receiving end stays alive but is never read from
+        let (stdout_channel_tx, _stdout_channel_rx) = client_channel(4, 1024);
+        connection_table
+            .lock()
+            .unwrap()
+            .add_client_terminal_tx("client", stdout_channel_tx);
+        let mut bus = ClientConnectionBus::new("client", &connection_table);
+
+        for _ in 0..4 {
+            bus.send_stdout("output".to_owned());
+        }
+        assert!(
+            connection_table
+                .lock()
+                .unwrap()
+                .get_client_os_api("client")
+                .is_some(),
+            "a client within its queue limit stays connected"
+        );
+
+        bus.send_stdout("one too many".to_owned());
+        assert!(
+            connection_table
+                .lock()
+                .unwrap()
+                .get_client_os_api("client")
+                .is_none(),
+            "a client past its queue limit is dropped"
+        );
+    }
+
+    #[test]
+    fn a_client_that_stops_reading_control_messages_is_disconnected_not_buffered() {
+        let connection_table = connection_table_with_client("client");
+        let (control_channel_tx, _control_channel_rx) = client_channel(2, 1024);
+        connection_table.lock().unwrap().add_client_control_tx(
+            "client",
+            control_channel_tx,
+            CancellationToken::new(),
+        );
+        let mut bus = ClientConnectionBus::new("client", &connection_table);
+
+        bus.send_control(WebServerToWebClientControlMessage::QueryTerminalSize);
+        bus.send_control(WebServerToWebClientControlMessage::QueryTerminalSize);
+        assert!(connection_table
+            .lock()
+            .unwrap()
+            .get_client_os_api("client")
+            .is_some());
+        bus.send_control(WebServerToWebClientControlMessage::QueryTerminalSize);
+        assert!(connection_table
+            .lock()
+            .unwrap()
+            .get_client_os_api("client")
+            .is_none());
+    }
+
+    fn add_client_for_session(
+        table: &mut ConnectionTable,
+        now: Instant,
+        client_id: &str,
+        session_token_hash: &str,
+    ) -> Result<(), ClientLimitExceeded> {
+        table.try_add_new_client_at(
+            now,
+            client_id.to_owned(),
+            Box::new(StubOsInput::default()),
+            false,
+            session_token_hash.to_owned(),
+        )
+    }
+
+    #[test]
+    fn a_session_can_only_hold_so_many_unattached_client_ids() {
+        let mut table = ConnectionTable::default();
+        let now = Instant::now();
+        for n in 0..MAX_UNATTACHED_WEB_CLIENTS_PER_SESSION {
+            add_client_for_session(&mut table, now, &format!("greedy-{n}"), "greedy").unwrap();
+        }
+        assert_eq!(
+            add_client_for_session(&mut table, now, "one-more", "greedy"),
+            Err(ClientLimitExceeded::TooManyUnattachedClients)
+        );
+        // other sessions are not affected by it
+        assert_eq!(
+            add_client_for_session(&mut table, now, "other", "someone-else"),
+            Ok(())
+        );
+        // and once a client attaches it no longer counts as unattached
+        let (terminal_tx, _terminal_rx) = client_channel(4, 1024);
+        table.add_client_terminal_tx("greedy-0", terminal_tx);
+        assert_eq!(
+            add_client_for_session(&mut table, now, "now-it-fits", "greedy"),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn the_total_number_of_clients_is_capped() {
+        let mut table = ConnectionTable::default();
+        let now = Instant::now();
+        for n in 0..MAX_WEB_CLIENTS {
+            // spread over sessions so that only the total cap can trigger
+            let session = format!("session-{}", n / MAX_UNATTACHED_WEB_CLIENTS_PER_SESSION);
+            add_client_for_session(&mut table, now, &format!("client-{n}"), &session).unwrap();
+        }
+        assert_eq!(
+            add_client_for_session(&mut table, now, "one-more", "fresh-session"),
+            Err(ClientLimitExceeded::TooManyClients)
+        );
+        table.remove_client("client-0");
+        assert_eq!(
+            add_client_for_session(&mut table, now, "one-more", "fresh-session"),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn unattached_client_ids_expire_but_attached_clients_do_not() {
+        let mut table = ConnectionTable::default();
+        let start = Instant::now();
+        add_client_for_session(&mut table, start, "never-attached", "token").unwrap();
+        add_client_for_session(&mut table, start, "attached", "token").unwrap();
+        let (terminal_tx, _terminal_rx) = client_channel(4, 1024);
+        table.add_client_terminal_tx("attached", terminal_tx);
+
+        let just_before = start + UNATTACHED_WEB_CLIENT_TTL - std::time::Duration::from_secs(1);
+        assert_eq!(table.remove_expired_unattached_clients(just_before), 0);
+        assert!(table.verify_client_ownership("never-attached", "token"));
+
+        let after = start + UNATTACHED_WEB_CLIENT_TTL;
+        assert_eq!(table.remove_expired_unattached_clients(after), 1);
+        assert!(!table.verify_client_ownership("never-attached", "token"));
+        assert!(table.get_client_os_api("never-attached").is_none());
+        assert!(table.verify_client_ownership("attached", "token"));
+    }
+
+    #[test]
+    fn expired_ids_free_up_room_for_new_ones() {
+        let mut table = ConnectionTable::default();
+        let start = Instant::now();
+        for n in 0..MAX_UNATTACHED_WEB_CLIENTS_PER_SESSION {
+            add_client_for_session(&mut table, start, &format!("c-{n}"), "token").unwrap();
+        }
+        assert!(add_client_for_session(&mut table, start, "extra", "token").is_err());
+        let later = start + UNATTACHED_WEB_CLIENT_TTL;
+        assert_eq!(
+            add_client_for_session(&mut table, later, "extra", "token"),
+            Ok(())
+        );
     }
 
     #[test]
@@ -366,16 +682,101 @@ mod tests {
             bus.send_control(WebServerToWebClientControlMessage::QueryTerminalSize);
         }
 
-        let (control_channel_tx, mut control_channel_rx) = tokio::sync::mpsc::unbounded_channel();
-        connection_table
-            .lock()
-            .unwrap()
-            .add_client_control_tx("client", control_channel_tx);
+        let (control_channel_tx, mut control_channel_rx) = client_channel(256, 1024 * 1024);
+        connection_table.lock().unwrap().add_client_control_tx(
+            "client",
+            control_channel_tx,
+            CancellationToken::new(),
+        );
 
         let mut flushed = 0;
         while control_channel_rx.try_recv().is_ok() {
             flushed += 1;
         }
         assert_eq!(flushed, 64);
+    }
+
+    #[test]
+    fn removing_a_client_cancels_both_of_its_websockets() {
+        let connection_table = connection_table_with_client("client");
+        let (control_channel_tx, _control_channel_rx) = client_channel(256, 1024 * 1024);
+        let control_token = CancellationToken::new();
+        let terminal_token = CancellationToken::new();
+        {
+            let mut table = connection_table.lock().unwrap();
+            assert!(table.add_client_control_tx(
+                "client",
+                control_channel_tx,
+                control_token.clone()
+            ));
+            table.add_client_terminal_channel_cancellation_token("client", terminal_token.clone());
+        }
+        assert!(!control_token.is_cancelled());
+        assert!(!terminal_token.is_cancelled());
+
+        connection_table.lock().unwrap().remove_client("client");
+        assert!(control_token.is_cancelled());
+        assert!(
+            terminal_token.is_cancelled(),
+            "the reader of a dropped client has to be told, not only its writer"
+        );
+    }
+
+    #[test]
+    fn a_client_dropped_for_not_reading_has_its_websockets_cancelled() {
+        let connection_table = connection_table_with_client("client");
+        let (stdout_channel_tx, _stdout_channel_rx) = client_channel(1, 1024);
+        let terminal_token = CancellationToken::new();
+        {
+            let mut table = connection_table.lock().unwrap();
+            table.add_client_terminal_tx("client", stdout_channel_tx);
+            table.add_client_terminal_channel_cancellation_token("client", terminal_token.clone());
+        }
+        let mut bus = ClientConnectionBus::new("client", &connection_table);
+        bus.send_stdout("one".to_owned());
+        assert!(!terminal_token.is_cancelled());
+        bus.send_stdout("two".to_owned());
+        assert!(terminal_token.is_cancelled());
+    }
+
+    #[test]
+    fn a_second_control_channel_replaces_and_cancels_the_first() {
+        let connection_table = connection_table_with_client("client");
+        let first_token = CancellationToken::new();
+        let second_token = CancellationToken::new();
+        let (first_tx, _first_rx) = client_channel(256, 1024 * 1024);
+        let (second_tx, _second_rx) = client_channel(256, 1024 * 1024);
+        let mut table = connection_table.lock().unwrap();
+        assert!(table.add_client_control_tx("client", first_tx, first_token.clone()));
+        assert!(table.add_client_control_tx("client", second_tx, second_token.clone()));
+        assert!(first_token.is_cancelled());
+        assert!(!second_token.is_cancelled());
+        // and a client that is not there cannot be given one
+        let (third_tx, _third_rx) = client_channel(256, 1024 * 1024);
+        assert!(!table.add_client_control_tx("nobody", third_tx, CancellationToken::new()));
+    }
+
+    #[test]
+    fn only_the_first_terminal_websocket_can_claim_a_client_id() {
+        let connection_table = connection_table_with_client("client");
+        let mut table = connection_table.lock().unwrap();
+        let (first_tx, _first_rx) = client_channel(4, 1024);
+        let (second_tx, _second_rx) = client_channel(4, 1024);
+        assert!(matches!(
+            table.attach_terminal("client", true, first_tx),
+            TerminalAttachOutcome::Attached(_)
+        ));
+        assert!(table.is_client_structured("client"));
+        assert!(matches!(
+            table.attach_terminal("client", false, second_tx),
+            TerminalAttachOutcome::AlreadyAttached
+        ));
+        // the refused one did not change anything
+        assert!(table.is_client_structured("client"));
+        let (third_tx, _third_rx) = client_channel(4, 1024);
+        assert!(matches!(
+            table.attach_terminal("nobody", false, third_tx),
+            TerminalAttachOutcome::UnknownClient
+        ));
     }
 }

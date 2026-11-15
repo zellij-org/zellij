@@ -17,8 +17,8 @@ use zellij_utils::{
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
     ipc::{
-        ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext,
-        ServerToClientMsg,
+        BlockingIoCancel, ClientToServerMsg, ExitReason, IpcReceiverWithContext,
+        IpcSenderWithContext, IpcStream, ServerToClientMsg,
     },
     shared::default_palette,
 };
@@ -31,10 +31,25 @@ use std::{
     path::PathBuf,
     process::Command,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        mpsc::RecvTimeoutError,
         Arc, Mutex,
     },
+    time::Duration,
 };
+
+/// Pidfd opened in the spawning thread, before the exit watcher can reap.
+/// Other targets have no pidfd; callers return `None`.
+#[cfg(target_os = "linux")]
+pub type ChildPidFd = std::os::fd::OwnedFd;
+
+/// Pidfd opened in the spawning thread, before the exit watcher can reap.
+/// Other targets have no pidfd; callers return `None`.
+#[cfg(not(target_os = "linux"))]
+#[derive(Debug)]
+pub struct ChildPidFd {
+    _private: (),
+}
 
 pub use async_trait::async_trait;
 
@@ -173,11 +188,9 @@ fn build_command(
             if !command.is_dir() {
                 separate_command_arguments(&mut command, &mut args);
             }
-            let file_to_open = payload
-                .path
-                .into_os_string()
-                .into_string()
-                .expect("Not valid Utf8 Encoding");
+            // `RunCommand::args` is UTF-8, so a non-UTF-8 path can only be
+            // passed lossily here. Never panic the PTY thread on such a path.
+            let file_to_open = payload.path.to_string_lossy().into_owned();
             if let Some(line_number) = payload.line_number {
                 if command.ends_with("vim")
                     || command.ends_with("nvim")
@@ -230,57 +243,254 @@ fn build_command(
 // If the client ever becomes responsive again, we'll send one final "Buffer full" message so it
 // knows what happened.
 const CLIENT_BUFFER_LIMIT: usize = 5000;
+// A message-count cap does not bound retained payload: 5000 render
+// frames can hold gigabytes. The queue is therefore also bounded by
+// buffered payload bytes. A message is always admitted into a queue that
+// holds no payload, so a single large message cannot disconnect a client.
+const CLIENT_BUFFER_BYTE_LIMIT: usize = 256 * 1024 * 1024;
+
+/// Heap overhead charged per `String` held in a `Vec<String>`: the 24-byte
+/// header in the vector's backing allocation, plus allocator rounding. A
+/// message of many short lines is dominated by this, not by the text.
+const STRING_OVERHEAD: usize = std::mem::size_of::<String>() + 16;
+
+fn strings_bytes(strings: &[String]) -> usize {
+    strings
+        .iter()
+        .map(|string| string.len().saturating_add(STRING_OVERHEAD))
+        .sum()
+}
+
+fn opt_str_bytes(string: &Option<String>) -> usize {
+    string.as_ref().map(String::len).unwrap_or(0)
+}
+
+/// Size of the JSON form of a value, as an estimate for deeply nested
+/// types that are not worth walking by hand. Never less than the size of
+/// the value itself.
+fn serialized_bytes<T: serde::Serialize>(value: &T) -> usize {
+    struct Counter(usize);
+    impl std::io::Write for Counter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.saturating_add(buf.len());
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = Counter(0);
+    let _ = serde_json::to_writer(&mut counter, value);
+    counter.0.max(std::mem::size_of::<T>())
+}
+
+fn session_preview_bytes(preview: &zellij_utils::data::SessionPreview) -> usize {
+    use zellij_utils::data::{SessionPreviewPane, SessionPreviewTab};
+    let panes_bytes = |panes: &[SessionPreviewPane]| -> usize {
+        panes
+            .iter()
+            .map(|pane| {
+                std::mem::size_of::<SessionPreviewPane>()
+                    .saturating_add(pane.title.len())
+                    .saturating_add(opt_str_bytes(&pane.contents))
+            })
+            .sum()
+    };
+    let tabs_bytes: usize = preview
+        .tabs
+        .iter()
+        .map(|tab| {
+            std::mem::size_of::<SessionPreviewTab>()
+                .saturating_add(tab.name.len())
+                .saturating_add(panes_bytes(&tab.panes))
+        })
+        .sum();
+    preview
+        .contents
+        .len()
+        .saturating_add(preview.session_name.len())
+        .saturating_add(strings_bytes(&preview.tab_names))
+        .saturating_add(opt_str_bytes(&preview.error))
+        .saturating_add(tabs_bytes)
+}
+
+fn mobile_state_bytes(payload: &zellij_utils::ipc::MobileStatePayload) -> usize {
+    use zellij_utils::ipc::{MobilePanePayload, MobileSessionPayload, MobileTabPayload};
+    payload
+        .session_name
+        .len()
+        .saturating_add(
+            payload
+                .tabs
+                .iter()
+                .map(|tab| std::mem::size_of::<MobileTabPayload>() + tab.name.len())
+                .sum::<usize>(),
+        )
+        .saturating_add(
+            payload
+                .panes
+                .iter()
+                .map(|pane| std::mem::size_of::<MobilePanePayload>() + pane.title.len())
+                .sum::<usize>(),
+        )
+        .saturating_add(
+            payload
+                .sessions
+                .iter()
+                .map(|session| std::mem::size_of::<MobileSessionPayload>() + session.name.len())
+                .sum::<usize>(),
+        )
+}
+
+/// Approximate heap payload of a client-bound message, so the queue byte
+/// budget accounts for what it retains and not just message envelopes.
+/// Deliberately exhaustive: a new variant must decide what it is charged.
+fn server_msg_payload_bytes(msg: &ServerToClientMsg) -> usize {
+    match msg {
+        ServerToClientMsg::Render { content } => content.len(),
+        ServerToClientMsg::RenderFrame { frame } => frame.len(),
+        ServerToClientMsg::Log { lines } | ServerToClientMsg::LogError { lines } => {
+            strings_bytes(lines)
+        },
+        ServerToClientMsg::CliPipeOutput { pipe_name, output } => {
+            pipe_name.len().saturating_add(output.len())
+        },
+        ServerToClientMsg::UnblockCliPipeInput { pipe_name, .. } => pipe_name.len(),
+        ServerToClientMsg::PaneRenderUpdate {
+            viewport,
+            scrollback,
+            ..
+        } => strings_bytes(viewport).saturating_add(
+            scrollback
+                .as_ref()
+                .map(|scrollback| strings_bytes(scrollback))
+                .unwrap_or(0),
+        ),
+        ServerToClientMsg::EmitNestedSessionFrame { payload_bytes } => payload_bytes.len(),
+        ServerToClientMsg::PaneMirror { payload } => payload.len(),
+        ServerToClientMsg::ForwardQueryToHost { query_bytes, .. } => query_bytes.len(),
+        ServerToClientMsg::RenamedSession { name } => name.len(),
+        ServerToClientMsg::SessionPreview { preview } => {
+            preview.as_ref().map(session_preview_bytes).unwrap_or(0)
+        },
+        ServerToClientMsg::MobileState { payload } => mobile_state_bytes(payload),
+        ServerToClientMsg::Exit { exit_reason } => match exit_reason {
+            ExitReason::Error(error) => error.len(),
+            _ => 0,
+        },
+        ServerToClientMsg::SwitchSession { connect_to_session } => {
+            serialized_bytes(connect_to_session)
+        },
+        ServerToClientMsg::TerminalSettingsChanged { settings } => serialized_bytes(&**settings),
+        ServerToClientMsg::SessionAttention { attention } => serialized_bytes(attention),
+        ServerToClientMsg::HostProgramStatus { status } => status
+            .as_ref()
+            .map(|status| {
+                status
+                    .state
+                    .len()
+                    .saturating_add(opt_str_bytes(&status.kind))
+                    .saturating_add(status.msg.len())
+            })
+            .unwrap_or(0),
+        // No owned heap data.
+        ServerToClientMsg::UnblockInputThread
+        | ServerToClientMsg::Connected
+        | ServerToClientMsg::QueryTerminalSize
+        | ServerToClientMsg::SetSoftKeyboard { .. }
+        | ServerToClientMsg::PasteFromClipboard { .. }
+        | ServerToClientMsg::StartWebServer
+        | ServerToClientMsg::ConfigFileUpdated
+        | ServerToClientMsg::HostTerminalThemeChanged { .. }
+        | ServerToClientMsg::SubscribedPaneClosed { .. } => 0,
+    }
+}
 
 #[derive(Clone)]
 struct ClientBuffer {
-    sender: channels::Sender<ServerToClientMsg>,
+    sender: channels::Sender<(ServerToClientMsg, usize)>,
     queued: Arc<AtomicUsize>,
+    queued_bytes: Arc<AtomicUsize>,
     limit: usize,
+    byte_limit: usize,
 }
 
 struct ClientBufferReceiver {
-    receiver: channels::Receiver<ServerToClientMsg>,
+    receiver: channels::Receiver<(ServerToClientMsg, usize)>,
     queued: Arc<AtomicUsize>,
+    queued_bytes: Arc<AtomicUsize>,
 }
 
-fn client_buffer(limit: usize) -> (ClientBuffer, ClientBufferReceiver) {
+fn client_buffer(limit: usize, byte_limit: usize) -> (ClientBuffer, ClientBufferReceiver) {
     let (sender, receiver) = channels::unbounded();
     let queued = Arc::new(AtomicUsize::new(0));
+    let queued_bytes = Arc::new(AtomicUsize::new(0));
     (
         ClientBuffer {
             sender,
             queued: queued.clone(),
+            queued_bytes: queued_bytes.clone(),
             limit,
+            byte_limit,
         },
-        ClientBufferReceiver { receiver, queued },
+        ClientBufferReceiver {
+            receiver,
+            queued,
+            queued_bytes,
+        },
     )
 }
 
 impl ClientBuffer {
     fn try_send(&self, msg: ServerToClientMsg) -> Result<(), TrySendError<ServerToClientMsg>> {
+        let payload = server_msg_payload_bytes(&msg);
         if self.queued.fetch_add(1, Ordering::AcqRel) >= self.limit {
             self.queued.fetch_sub(1, Ordering::AcqRel);
             return Err(TrySendError::Full(msg));
         }
-        self.sender.send(msg).map_err(|err| {
+        let queued_bytes = self.queued_bytes.fetch_add(payload, Ordering::AcqRel);
+        if queued_bytes > 0 && queued_bytes.saturating_add(payload) > self.byte_limit {
+            self.queued_bytes.fetch_sub(payload, Ordering::AcqRel);
             self.queued.fetch_sub(1, Ordering::AcqRel);
-            TrySendError::Disconnected(err.0)
+            return Err(TrySendError::Full(msg));
+        }
+        self.sender.send((msg, payload)).map_err(|err| {
+            self.queued.fetch_sub(1, Ordering::AcqRel);
+            self.queued_bytes.fetch_sub(payload, Ordering::AcqRel);
+            TrySendError::Disconnected(err.0 .0)
         })
     }
 }
 
 impl ClientBufferReceiver {
     fn recv(&self) -> Option<ServerToClientMsg> {
-        let msg = self.receiver.recv().ok()?;
+        let (msg, payload) = self.receiver.recv().ok()?;
         self.queued.fetch_sub(1, Ordering::AcqRel);
+        self.queued_bytes.fetch_sub(payload, Ordering::AcqRel);
         Some(msg)
     }
 }
 
-#[derive(Clone)]
+/// How long the writer of a removed client gets to flush what is already
+/// queued for it, such as the exit notice the server sends right before
+/// removing the client. If it is still stuck in a socket write after
+/// that, its queue is dropped and the socket shut down.
+const REMOVED_CLIENT_FLUSH_GRACE: Duration = Duration::from_secs(2);
+/// How long, after the socket was shut down, the writer gets to notice and
+/// exit before the removal gives up waiting for it.
+const REMOVED_CLIENT_WRITER_EXIT_GRACE: Duration = Duration::from_secs(5);
+
 struct ClientSender {
     client_id: ClientId,
     client_buffer_sender: ClientBuffer,
+    // Dropped by the writer thread when it exits.
+    writer_done: std::sync::mpsc::Receiver<()>,
+    // Set to make the writer drop whatever is still queued.
+    abandon_queue: Arc<AtomicBool>,
+    // Another handle to the client's socket, to unblock a stuck write.
+    shutdown_handle: Option<Box<dyn IpcStream>>,
+    // Cancels a synchronous Windows pipe write blocked on the writer thread.
+    blocking_io_cancel: Arc<Mutex<Option<BlockingIoCancel>>>,
 }
 
 impl ClientSender {
@@ -295,23 +505,116 @@ impl ClientSender {
         // We, the zellij maintainers, have decided against an unbounded
         // queue for the time being because we want to prevent e.g. the whole session being killed
         // (by OOM-killers or some other mechanism) just because a single client doesn't respond.
-        let (client_buffer_sender, client_buffer_receiver) = client_buffer(CLIENT_BUFFER_LIMIT);
+        let (client_buffer_sender, client_buffer_receiver) =
+            client_buffer(CLIENT_BUFFER_LIMIT, CLIENT_BUFFER_BYTE_LIMIT);
+        let (writer_done_sender, writer_done) = std::sync::mpsc::channel::<()>();
+        let abandon_queue = Arc::new(AtomicBool::new(false));
+        let shutdown_handle = sender.try_clone_stream().ok();
+        let blocking_io_cancel = Arc::new(Mutex::new(None));
+        let writer_abandon_queue = abandon_queue.clone();
+        let writer_blocking_io_cancel = Arc::clone(&blocking_io_cancel);
         std::thread::spawn(move || {
-            let err_context = || format!("failed to send message to client {client_id}");
-            while let Some(msg) = client_buffer_receiver.recv() {
-                sender
-                    .send_server_msg(msg)
-                    .with_context(err_context)
-                    .non_fatal();
+            let _writer_done_sender = writer_done_sender;
+            if let Ok(cancel) = BlockingIoCancel::for_current_thread() {
+                *writer_blocking_io_cancel
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(cancel);
             }
-            let _ = sender.send_server_msg(ServerToClientMsg::Exit {
-                exit_reason: ExitReason::Disconnect,
-            });
+            let err_context = || format!("failed to send message to client {client_id}");
+            let mut stream_failed = false;
+            while let Some(msg) = client_buffer_receiver.recv() {
+                if writer_abandon_queue.load(Ordering::Acquire) {
+                    // The client was removed while this writer was stuck;
+                    // drop the queue instead of sending it to a socket
+                    // that nobody is reading.
+                    break;
+                }
+                if let Err(error) = sender.send_server_msg(msg).with_context(err_context) {
+                    if writer_abandon_queue.load(Ordering::Acquire) {
+                        log::warn!(
+                            "abandoned the queue of removed client {client_id} that was not reading"
+                        );
+                    } else {
+                        log::error!("{:?}; stopping client writer", error);
+                    }
+                    stream_failed = true;
+                    sender.abandon();
+                    break;
+                }
+            }
+            if !stream_failed && !writer_abandon_queue.load(Ordering::Acquire) {
+                let _ = sender.send_server_msg(ServerToClientMsg::Exit {
+                    exit_reason: ExitReason::Disconnect,
+                });
+            }
+            writer_blocking_io_cancel
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
         });
         ClientSender {
             client_id,
             client_buffer_sender,
+            writer_done,
+            abandon_queue,
+            shutdown_handle,
+            blocking_io_cancel,
         }
+    }
+    /// Called when the client is removed. The writer keeps flushing what is
+    /// already queued, so that a final message sent just before the removal
+    /// still goes out. If it has not finished within `grace` it is stuck
+    /// writing to a client that is not reading: have it drop its queue and
+    /// shut the socket down to fail the write it is blocked in. The
+    /// returned handle finishes once the writer is done, or once it is
+    /// given up on, and yields whether the writer actually exited.
+    ///
+    /// A stuck write is unblocked by `IpcStream::shutdown_stream` on Unix and
+    /// by cancelling the writer thread's synchronous named-pipe I/O on
+    /// Windows. If cancellation does not release it, the writer keeps its
+    /// slot until it actually ends and this handle yields `false`.
+    fn remove(self, grace: Duration) -> std::thread::JoinHandle<bool> {
+        let ClientSender {
+            client_id,
+            client_buffer_sender,
+            writer_done,
+            abandon_queue,
+            shutdown_handle,
+            blocking_io_cancel,
+        } = self;
+        // With the sending half gone, the writer ends once the queue is empty.
+        drop(client_buffer_sender);
+        std::thread::spawn(move || {
+            // Nothing is ever sent: this returns once the writer drops its half.
+            match writer_done.recv_timeout(grace) {
+                Err(RecvTimeoutError::Timeout) => {},
+                _ => return true,
+            }
+            log::warn!("client {client_id} was removed while not reading; dropping its queue");
+            abandon_queue.store(true, Ordering::Release);
+            if let Some(cancel) = blocking_io_cancel
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+            {
+                if let Err(error) = cancel.cancel_blocking_io() {
+                    log::error!("failed to cancel blocked io of client {client_id}: {error}");
+                }
+            }
+            if let Some(Err(error)) = shutdown_handle.map(|handle| handle.shutdown_stream()) {
+                log::error!("failed to shut down the socket of client {client_id}: {error}");
+            }
+            match writer_done.recv_timeout(REMOVED_CLIENT_WRITER_EXIT_GRACE) {
+                Err(RecvTimeoutError::Timeout) => {
+                    log::warn!(
+                        "the writer of removed client {client_id} is still blocked in a write; \
+                         it exits when the client reads or closes its end"
+                    );
+                    false
+                },
+                _ => true,
+            }
+        })
     }
     pub fn send_or_buffer(&self, msg: ServerToClientMsg) -> Result<()> {
         let err_context = || {
@@ -360,6 +663,27 @@ impl AsyncReader for NullAsyncReader {
     }
 }
 
+/// The endpoint was replaced before a stamped write reached it. The writer
+/// keeps the queued bytes and retries until the matching `AdoptRun` settles
+/// the queue, instead of treating it as a fatal write error.
+#[derive(Debug)]
+pub(crate) struct TerminalRunChangedBeforeWrite;
+
+impl std::fmt::Display for TerminalRunChangedBeforeWrite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "terminal run changed before the write")
+    }
+}
+
+impl std::error::Error for TerminalRunChangedBeforeWrite {}
+
+/// A signal for a terminal's foreground process group, not a numeric pid.
+#[derive(Clone, Copy, Debug)]
+pub enum ForegroundSignal {
+    Interrupt,
+    Kill,
+}
+
 /// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij server requires.
 pub trait ServerOsApi: Send + Sync {
@@ -375,19 +699,56 @@ pub trait ServerOsApi: Send + Sync {
     /// - terminal_id (u32)
     /// - an async reader for the PTY output
     /// - the child process PID, if available (Option<u32>)
+    /// - the pidfd opened before the exit watcher can reap, if available
     fn spawn_terminal(
         &self,
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         default_editor: Option<PathBuf>,
         pane_env: &PaneEnv,
-    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)>;
+    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>, Option<ChildPidFd>)>;
     // reserves a terminal id without actually opening a terminal
     fn reserve_terminal_id(&self) -> Result<u32> {
         unimplemented!()
     }
     /// Write bytes to the standard input of the virtual terminal referred to by `terminal_id`.
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize>;
+    /// Write `buf` only if `terminal_id` still has `generation`.
+    ///
+    /// `None` is an unstamped write from before any run was adopted. A
+    /// `Some` that does not match the endpoint is not written: the
+    /// descriptor currently registered for the id may already belong to
+    /// a later process. The default ignores the generation so test
+    /// doubles keep compiling; the real server backend overrides it.
+    fn write_to_tty_stdin_for_run(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> Result<usize> {
+        let _ = generation;
+        self.write_to_tty_stdin(terminal_id, buf)
+    }
+    /// Like [`Self::write_to_tty_stdin_for_run`], but also reports a prefix
+    /// that reached the terminal before a later fatal error.
+    fn write_to_tty_stdin_for_run_with_progress(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> (usize, Result<()>) {
+        match self.write_to_tty_stdin_for_run(terminal_id, generation, buf) {
+            Ok(written) => (written, Ok(())),
+            Err(error) => (0, Err(error)),
+        }
+    }
+    /// Cancel an asynchronous write whose queued bytes are being discarded.
+    /// Backends without asynchronous writes do nothing.
+    fn cancel_pending_tty_write(&self, _terminal_id: u32) {}
+    /// Record `generation` on the endpoint already registered for `terminal_id`.
+    /// A missing endpoint is left missing. Stamped writes fail until this
+    /// matches the generation they were admitted with.
+    fn bind_terminal_generation(&self, _terminal_id: u32, _generation: u64) {}
     /// Wait until all output written to the terminal has been transmitted.
     fn tcdrain(&self, terminal_id: u32) -> Result<()>;
     /// Terminate the process with process ID `pid`. (SIGHUP)
@@ -396,6 +757,30 @@ pub trait ServerOsApi: Send + Sync {
     fn force_kill(&self, pid: u32) -> Result<()>;
     /// Send SIGINT to the process with process ID `pid`
     fn send_sigint(&self, pid: u32) -> Result<()>;
+    /// Send SIGINT to the terminal's foreground process group, falling back
+    /// to `pid` when the group cannot be determined. The default signals the
+    /// pid directly so backends without terminal introspection still work.
+    fn send_sigint_to_terminal(&self, _terminal_id: u32, pid: u32) -> Result<()> {
+        self.send_sigint(pid)
+    }
+    /// Force-kill the terminal's foreground process group, falling back to
+    /// `pid` when the group cannot be determined.
+    fn force_kill_terminal(&self, _terminal_id: u32, pid: u32) -> Result<()> {
+        self.force_kill(pid)
+    }
+    /// `killpg` the terminal's foreground group.
+    ///
+    /// `Ok(true)` when the group was signaled or is already gone (`ESRCH`).
+    /// `Ok(false)` when `tcgetpgrp` finds no positive group or `killpg` fails
+    /// for another reason. Does not signal a numeric pid. The default reports
+    /// no group so callers can choose their own fallback.
+    fn signal_terminal_foreground_group(
+        &self,
+        _terminal_id: u32,
+        _signal: ForegroundSignal,
+    ) -> Result<bool> {
+        Ok(false)
+    }
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()>;
@@ -439,10 +824,27 @@ pub trait ServerOsApi: Send + Sync {
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         pane_env: &PaneEnv,
-    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)>;
+    ) -> Result<(Box<dyn AsyncReader>, Option<u32>, Option<ChildPidFd>)>;
     fn clear_terminal_id(&self, terminal_id: u32) -> Result<()>;
     fn cache_resizes(&mut self) {}
     fn apply_cached_resizes(&mut self) {}
+}
+
+impl ServerOsInputOutput {
+    fn replace_client_sender(&self, client_id: ClientId, sender: ClientSender) -> Result<()> {
+        let previous = self
+            .client_senders
+            .lock()
+            .to_anyhow()
+            .with_context(|| format!("failed to create new client {client_id}"))?
+            .insert(client_id, sender);
+        if let Some(previous) = previous {
+            // A new connection under the same id must not leave the old
+            // writer behind.
+            previous.remove(REMOVED_CLIENT_FLUSH_GRACE);
+        }
+        Ok(())
+    }
 }
 
 impl ServerOsApi for ServerOsInputOutput {
@@ -467,7 +869,7 @@ impl ServerOsApi for ServerOsInputOutput {
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         default_editor: Option<PathBuf>,
         pane_env: &PaneEnv,
-    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>, Option<ChildPidFd>)> {
         let err_context = || "failed to spawn terminal".to_string();
 
         let terminal_id = self
@@ -476,15 +878,32 @@ impl ServerOsApi for ServerOsInputOutput {
             .context("no more terminal IDs left to allocate")?;
 
         self.pty_backend.reserve_terminal_id(terminal_id);
+        if !crate::screen::try_admit_uninstalled_terminal(terminal_id) {
+            self.pty_backend.clear_terminal_id(terminal_id);
+            return Err(anyhow!("too many panes are still opening"));
+        }
 
         let (cmd, failover_cmd) = build_command(terminal_action, default_editor, pane_env);
 
-        let (async_reader, child_fd) = self
-            .pty_backend
-            .spawn_terminal(cmd, failover_cmd, quit_cb, terminal_id, pane_env)
-            .with_context(err_context)?;
+        let (async_reader, child_fd, child_pidfd) =
+            match self
+                .pty_backend
+                .spawn_terminal(cmd, failover_cmd, quit_cb, terminal_id, pane_env)
+            {
+                Ok(spawned) => spawned,
+                Err(err) => {
+                    self.pty_backend.clear_terminal_id(terminal_id);
+                    crate::screen::release_uninstalled_terminal(terminal_id);
+                    return Err(err).with_context(err_context);
+                },
+            };
 
-        Ok((terminal_id, async_reader, Some(child_fd as u32)))
+        Ok((
+            terminal_id,
+            async_reader,
+            Some(child_fd as u32),
+            child_pidfd,
+        ))
     }
     fn reserve_terminal_id(&self) -> Result<u32> {
         let terminal_id = self
@@ -492,10 +911,40 @@ impl ServerOsApi for ServerOsInputOutput {
             .next_terminal_id()
             .context("no more terminal IDs available")?;
         self.pty_backend.reserve_terminal_id(terminal_id);
+        if !crate::screen::try_admit_uninstalled_terminal(terminal_id) {
+            self.pty_backend.clear_terminal_id(terminal_id);
+            return Err(anyhow!("too many panes are still opening"));
+        }
         Ok(terminal_id)
     }
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
-        self.pty_backend.write_to_tty_stdin(terminal_id, buf)
+        self.pty_backend
+            .write_to_tty_stdin_for_run(terminal_id, None, buf)
+    }
+    fn write_to_tty_stdin_for_run(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> Result<usize> {
+        self.pty_backend
+            .write_to_tty_stdin_for_run(terminal_id, generation, buf)
+    }
+    fn write_to_tty_stdin_for_run_with_progress(
+        &self,
+        terminal_id: u32,
+        generation: Option<u64>,
+        buf: &[u8],
+    ) -> (usize, Result<()>) {
+        self.pty_backend
+            .write_to_tty_stdin_for_run_with_progress(terminal_id, generation, buf)
+    }
+    fn cancel_pending_tty_write(&self, terminal_id: u32) {
+        self.pty_backend.cancel_pending_tty_write(terminal_id);
+    }
+    fn bind_terminal_generation(&self, terminal_id: u32, generation: u64) {
+        self.pty_backend
+            .bind_terminal_generation(terminal_id, generation);
     }
     fn tcdrain(&self, terminal_id: u32) -> Result<()> {
         self.pty_backend.tcdrain(terminal_id)
@@ -511,6 +960,23 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     fn send_sigint(&self, pid: u32) -> Result<()> {
         self.pty_backend.send_sigint(pid)
+    }
+    #[cfg(unix)]
+    fn send_sigint_to_terminal(&self, terminal_id: u32, pid: u32) -> Result<()> {
+        self.pty_backend.send_sigint_to_terminal(terminal_id, pid)
+    }
+    #[cfg(unix)]
+    fn force_kill_terminal(&self, terminal_id: u32, pid: u32) -> Result<()> {
+        self.pty_backend.force_kill_terminal(terminal_id, pid)
+    }
+    #[cfg(unix)]
+    fn signal_terminal_foreground_group(
+        &self,
+        terminal_id: u32,
+        signal: ForegroundSignal,
+    ) -> Result<bool> {
+        self.pty_backend
+            .signal_terminal_foreground_group(terminal_id, signal)
     }
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()> {
         let err_context = || format!("failed to send message to client {client_id}");
@@ -533,13 +999,13 @@ impl ServerOsApi for ServerOsInputOutput {
         client_id: ClientId,
         receiver: &IpcReceiverWithContext<ClientToServerMsg>,
     ) -> Result<()> {
-        let sender = ClientSender::new(client_id, receiver.get_sender());
-        self.client_senders
-            .lock()
-            .to_anyhow()
-            .with_context(|| format!("failed to create new client {client_id}"))?
-            .insert(client_id, sender);
-        Ok(())
+        let sender = ClientSender::new(
+            client_id,
+            receiver
+                .get_sender()
+                .with_context(|| format!("failed to clone IPC sender for client {client_id}"))?,
+        );
+        self.replace_client_sender(client_id, sender)
     }
 
     fn register_client_with_reply(
@@ -548,12 +1014,7 @@ impl ServerOsApi for ServerOsInputOutput {
         reply_stream: LocalSocketStream,
     ) -> Result<()> {
         let sender = ClientSender::new(client_id, IpcSenderWithContext::new(reply_stream));
-        self.client_senders
-            .lock()
-            .to_anyhow()
-            .with_context(|| format!("failed to create new client {client_id}"))?
-            .insert(client_id, sender);
-        Ok(())
+        self.replace_client_sender(client_id, sender)
     }
 
     fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
@@ -562,8 +1023,8 @@ impl ServerOsApi for ServerOsInputOutput {
             .lock()
             .to_anyhow()
             .with_context(|| format!("failed to remove client {client_id}"))?;
-        if client_senders.contains_key(&client_id) {
-            client_senders.remove(&client_id);
+        if let Some(sender) = client_senders.remove(&client_id) {
+            sender.remove(REMOVED_CLIENT_FLUSH_GRACE);
         }
         Ok(())
     }
@@ -732,11 +1193,11 @@ impl ServerOsApi for ServerOsInputOutput {
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         pane_env: &PaneEnv,
-    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
-        let (async_reader, child_fd) =
+    ) -> Result<(Box<dyn AsyncReader>, Option<u32>, Option<ChildPidFd>)> {
+        let (async_reader, child_fd, child_pidfd) =
             self.pty_backend
                 .spawn_terminal(run_command, None, quit_cb, terminal_id, pane_env)?;
-        Ok((async_reader, Some(child_fd as u32)))
+        Ok((async_reader, Some(child_fd as u32), child_pidfd))
     }
     fn clear_terminal_id(&self, terminal_id: u32) -> Result<()> {
         self.pty_backend.clear_terminal_id(terminal_id);
@@ -807,7 +1268,10 @@ impl Drop for ResizeCache {
     }
 }
 
-fn apply_post_command_hook(command: Vec<String>, post_hook: &Option<String>) -> Vec<String> {
+pub(crate) fn apply_post_command_hook(
+    command: Vec<String>,
+    post_hook: &Option<String>,
+) -> Vec<String> {
     let Some(post_hook) = post_hook else {
         return command;
     };
@@ -825,37 +1289,244 @@ fn apply_post_command_hook(command: Vec<String>, post_hook: &Option<String>) -> 
         .collect()
 }
 
-#[cfg(not(windows))]
+/// The post-command discovery hook runs synchronously on the PTY thread for
+/// every foreground command lookup. A hook that hangs, or that leaves a
+/// background process holding its output open, must not wedge that thread,
+/// and its output must not grow without limit.
+const COMMAND_HOOK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const COMMAND_HOOK_MAX_OUTPUT: usize = 64 * 1024;
+
 fn run_command_hook(
     original_command: &str,
     hook_script: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let output = Command::new("sh")
-        .arg("-c")
+    #[cfg(not(windows))]
+    let mut command = {
+        let mut command = Command::new("sh");
+        command.arg("-c");
+        command
+    };
+    #[cfg(windows)]
+    let mut command = {
+        let mut command = Command::new("cmd");
+        command.arg("/C");
+        command
+    };
+    command
         .arg(hook_script)
-        .env("RESURRECT_COMMAND", original_command)
-        .output()?;
-
+        .env("RESURRECT_COMMAND", original_command);
+    let output = run_bounded(command, COMMAND_HOOK_TIMEOUT, COMMAND_HOOK_MAX_OUTPUT)?;
     if !output.status.success() {
         return Err(format!("Hook failed: {}", String::from_utf8_lossy(&output.stderr)).into());
     }
     Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
 
-#[cfg(windows)]
-fn run_command_hook(
-    original_command: &str,
-    hook_script: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let output = Command::new("cmd")
-        .arg("/C")
-        .arg(hook_script)
-        .env("RESURRECT_COMMAND", original_command)
-        .output()?;
-    if !output.status.success() {
-        return Err(format!("Hook failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+struct BoundedOutput {
+    status: std::process::ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+/// Run `command` to completion within `timeout`, keeping at most
+/// `max_output` bytes of each output stream.
+///
+/// On Unix the child runs in its own process group, and the whole group is
+/// killed if the child is still running at the deadline. Its output pipes
+/// are drained on helper threads so a chatty child cannot block on a full
+/// pipe; both streams must also reach end-of-file before the deadline,
+/// since a background process that inherited them can keep them open after
+/// the child itself exits. Such a process is killed with the group. One
+/// that left the group (e.g. with `setsid`) keeps the helper threads alive
+/// until it closes the pipes, and the run reports a timeout either way. The
+/// number of such threads that exist at once is capped globally; a run that
+/// would exceed the cap fails without starting the command.
+fn run_bounded(
+    command: Command,
+    timeout: std::time::Duration,
+    max_output: usize,
+) -> io::Result<BoundedOutput> {
+    run_bounded_with(
+        command,
+        timeout,
+        max_output,
+        &HOOK_READER_THREADS,
+        &|name, work| {
+            std::thread::Builder::new()
+                .name(name.to_owned())
+                .spawn(work)
+                .map(|_| ())
+        },
+    )
+}
+
+/// Upper bound on hook output reader threads that have not finished yet.
+///
+/// A process that left the hook's process group (e.g. via `setsid`) cannot
+/// be killed on timeout and keeps the output pipes, and with them the two
+/// reader threads of that run, alive for as long as it likes. Without a
+/// bound, a hook that does this on every lookup would leak two threads per
+/// lookup. Lookups that would exceed the bound skip the hook instead.
+const MAX_OUTSTANDING_HOOK_READER_THREADS: usize = 8;
+const HOOK_READER_THREADS_PER_RUN: usize = 2;
+
+static HOOK_READER_THREADS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// One unit of the reader thread budget. Released when dropped, which
+/// happens when the thread finishes, or at once if it could not be started.
+struct ReaderSlot(&'static std::sync::atomic::AtomicUsize);
+
+impl ReaderSlot {
+    fn acquire_many(
+        counter: &'static std::sync::atomic::AtomicUsize,
+        count: usize,
+        max: usize,
+    ) -> Option<Vec<ReaderSlot>> {
+        use std::sync::atomic::Ordering;
+        counter
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                (current + count <= max).then_some(current + count)
+            })
+            .ok()?;
+        Some((0..count).map(|_| ReaderSlot(counter)).collect())
     }
-    Ok(String::from_utf8(output.stdout)?.trim().to_string())
+}
+
+impl Drop for ReaderSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+    }
+}
+
+type ReaderSpawner<'a> = &'a dyn Fn(&str, Box<dyn FnOnce() + Send + 'static>) -> io::Result<()>;
+
+fn run_bounded_with(
+    mut command: Command,
+    timeout: std::time::Duration,
+    max_output: usize,
+    reader_threads: &'static std::sync::atomic::AtomicUsize,
+    spawn_reader: ReaderSpawner,
+) -> io::Result<BoundedOutput> {
+    use std::io::Read;
+    use std::process::Stdio;
+    use std::sync::mpsc;
+    use std::time::Instant;
+
+    let deadline = Instant::now() + timeout;
+    let mut slots = ReaderSlot::acquire_many(
+        reader_threads,
+        HOOK_READER_THREADS_PER_RUN,
+        MAX_OUTSTANDING_HOOK_READER_THREADS,
+    )
+    .ok_or_else(|| {
+        log::warn!(
+            "Skipping command hook: {} of its output reader threads are still blocked",
+            MAX_OUTSTANDING_HOOK_READER_THREADS
+        );
+        io::Error::new(
+            io::ErrorKind::WouldBlock,
+            "too many earlier hook runs still hold output pipes open",
+        )
+    })?;
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let (output_tx, output_rx) = mpsc::channel::<(bool, Vec<u8>)>();
+    let mut drain = |mut stream: Box<dyn Read + Send>, is_stdout: bool| -> io::Result<()> {
+        let output_tx = output_tx.clone();
+        let slot = slots.pop();
+        spawn_reader(
+            "command-hook-reader",
+            Box::new(move || {
+                let _slot = slot;
+                let mut retained = Vec::new();
+                let mut chunk = [0u8; 8192];
+                loop {
+                    match stream.read(&mut chunk) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            let room = max_output.saturating_sub(retained.len());
+                            retained.extend_from_slice(&chunk[..n.min(room)]);
+                        },
+                        Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                        Err(_) => break,
+                    }
+                }
+                let _ = output_tx.send((is_stdout, retained));
+            }),
+        )
+    };
+    let started = match child.stdout.take() {
+        Some(stdout) => drain(Box::new(stdout), true),
+        None => Ok(()),
+    }
+    .and_then(|_| match child.stderr.take() {
+        Some(stderr) => drain(Box::new(stderr), false),
+        None => Ok(()),
+    });
+    drop(output_tx);
+    if let Err(e) = started {
+        // Without both readers the output cannot be collected, and a child
+        // that fills a pipe nobody reads would hang until the deadline.
+        kill_process_group(&mut child);
+        let _ = child.wait();
+        return Err(e);
+    }
+
+    let timed_out = || io::Error::new(io::ErrorKind::TimedOut, "command timed out");
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            kill_process_group(&mut child);
+            let _ = child.wait();
+            return Err(timed_out());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
+
+    let (mut stdout, mut stderr) = (None, None);
+    while stdout.is_none() || stderr.is_none() {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        match output_rx.recv_timeout(remaining) {
+            Ok((true, bytes)) => stdout = Some(bytes),
+            Ok((false, bytes)) => stderr = Some(bytes),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // The child has exited, but processes it left behind still
+                // hold its output open; the group outlives its leader. (If
+                // all of them left the group, its id is unused and could only
+                // have been reused if the pid space wrapped within the
+                // deadline.)
+                kill_process_group(&mut child);
+                return Err(timed_out());
+            },
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    Ok(BoundedOutput {
+        status,
+        stdout: stdout.unwrap_or_default(),
+        stderr: stderr.unwrap_or_default(),
+    })
+}
+
+/// Kill `child` together with any processes it started in its group.
+fn kill_process_group(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::{killpg, Signal};
+        use nix::unistd::Pid;
+        if let Ok(pgid) = i32::try_from(child.id()) {
+            let _ = killpg(Pid::from_raw(pgid), Signal::SIGKILL);
+        }
+    }
+    let _ = child.kill();
 }
 
 #[cfg(test)]

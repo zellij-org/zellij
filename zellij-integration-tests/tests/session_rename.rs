@@ -8,6 +8,14 @@ use zellij_integration_tests::{
 use zellij_utils::cli::CliAction;
 use zellij_utils::sessions::resolve_session_socket_path;
 
+/// `Ok(None)` is "the index does not know this name". A database error is not that.
+fn resolved_socket(name: &str) -> Option<std::path::PathBuf> {
+    match resolve_session_socket_path(name) {
+        Ok(path) => path,
+        Err(error) => panic!("session index lookup failed for {name:?}: {error}"),
+    }
+}
+
 /// Renaming a session must not move its socket / named pipe — named pipes cannot
 /// be renamed on Windows, which is the bug session ids exist to fix. Instead
 /// the session index maps the new display name onto the same, unchanged
@@ -20,7 +28,7 @@ fn rename_keeps_socket_and_reattaches_by_new_name() {
     claim_first_terminal_and_wait_for_prompt(&zellij);
 
     let old_name = zellij.session_name().to_string();
-    let pipe_before = resolve_session_socket_path(&old_name)
+    let pipe_before = resolved_socket(&old_name)
         .expect("the running session should resolve to a socket path before rename");
 
     let new_name = "renamed-by-integration-test";
@@ -35,7 +43,7 @@ fn rename_keeps_socket_and_reattaches_by_new_name() {
     // The server processes the rename asynchronously; wait for the index to
     // reflect it (the new name resolving to a running session).
     let deadline = Instant::now() + default_timeout();
-    while resolve_session_socket_path(new_name).is_none() {
+    while resolved_socket(new_name).is_none() {
         assert!(
             Instant::now() < deadline,
             "timed out waiting for the session to be renamed to {:?}",
@@ -46,8 +54,8 @@ fn rename_keeps_socket_and_reattaches_by_new_name() {
 
     // The socket / pipe was NOT renamed: the new name resolves to the exact same
     // path the old name did.
-    let pipe_after = resolve_session_socket_path(new_name)
-        .expect("the new name should resolve after the rename");
+    let pipe_after =
+        resolved_socket(new_name).expect("the new name should resolve after the rename");
     assert_eq!(
         pipe_before, pipe_after,
         "renaming a session must not move its socket/pipe"
@@ -55,7 +63,7 @@ fn rename_keeps_socket_and_reattaches_by_new_name() {
 
     // The old name no longer refers to a running session.
     assert!(
-        resolve_session_socket_path(&old_name).is_none(),
+        resolved_socket(&old_name).is_none(),
         "the old session name should no longer resolve to a running session"
     );
 
@@ -73,7 +81,7 @@ fn rename_keeps_socket_and_reattaches_by_new_name() {
 
 fn wait_for_session_name(name: &str) {
     let deadline = Instant::now() + default_timeout();
-    while resolve_session_socket_path(name).is_none() {
+    while resolved_socket(name).is_none() {
         assert!(
             Instant::now() < deadline,
             "timed out waiting for the session to be renamed to {:?}",
@@ -114,7 +122,7 @@ fn rename_from_session_mode_shows_the_draft_live_and_applies_it_on_enter() {
         grid_snapshot.contains(&format!("({})", old_name))
     });
     assert!(
-        resolve_session_socket_path(&old_name).is_some(),
+        resolved_socket(&old_name).is_some(),
         "the session must not be renamed while typing"
     );
 
@@ -156,8 +164,8 @@ fn escape_cancels_a_session_rename() {
     zellij.wait_until("the old name is back", |grid_snapshot| {
         grid_snapshot.contains(&format!("({})", old_name))
     });
-    assert!(resolve_session_socket_path("never-applied").is_none());
-    assert!(resolve_session_socket_path(&old_name).is_some());
+    assert!(resolved_socket("never-applied").is_none());
+    assert!(resolved_socket(&old_name).is_some());
 }
 
 #[test]
@@ -182,7 +190,7 @@ fn a_rejected_session_rename_shows_why_and_restores_the_name() {
                 && grid_snapshot.contains(&format!("({})", old_name))
         },
     );
-    assert!(resolve_session_socket_path(&old_name).is_some());
+    assert!(resolved_socket(&old_name).is_some());
 }
 
 #[test]
@@ -220,6 +228,6 @@ fn renaming_to_the_name_of_another_running_session_is_rejected() {
                 && grid_snapshot.contains(&format!("({})", old_name))
         },
     );
-    assert!(resolve_session_socket_path(&old_name).is_some());
+    assert!(resolved_socket(&old_name).is_some());
     drop(other);
 }

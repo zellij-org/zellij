@@ -5,8 +5,9 @@ use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
 use crate::plugins::PluginInstruction;
 use crate::pty::PtyInstruction;
+use crate::pty_ingress::{PtyIngressBudget, PER_TERMINAL_LIMIT};
 use crate::pty_writer::PtyWriteInstruction;
-use crate::route::{ActionCompletionResult, NotificationEnd};
+use crate::route::{ActionCompletionKind, ActionCompletionResult, NotificationEnd};
 use crate::screen::CopyOptions;
 use crate::screen::ScreenInstruction;
 use crate::ServerInstruction;
@@ -15,7 +16,10 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use tokio::sync::oneshot;
 use zellij_utils::channels::{unbounded, ChannelWithContext, Receiver, SenderWithContext};
-use zellij_utils::data::{Direction, Event, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
+use zellij_utils::data::{
+    BareKey, Direction, Event, KeyWithModifier, NewPanePlacement, Resize, ResizeStrategy,
+    WebSharing,
+};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
@@ -28,6 +32,7 @@ use crate::os_input_output::AsyncReader;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use interprocess::local_socket::Stream as LocalSocketStream;
 use zellij_utils::{
@@ -35,6 +40,324 @@ use zellij_utils::{
     input::command::{RunCommand, TerminalAction},
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
+
+// Input must retain its recipient, client audience, and kind across adapters.
+mod input_scope_regressions {
+    use super::*;
+
+    fn plugin_tab() -> (Tab, Receiver<(PluginInstruction, ErrorContext)>) {
+        let (mut tab, receiver) =
+            create_new_tab_with_plugin_receiver(Size { rows: 24, cols: 80 }, true);
+        tab.new_no_preference_pane(
+            PaneId::Plugin(2),
+            None,
+            None,
+            false,
+            true,
+            Some(1),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(tab.get_active_pane_id(1), Some(PaneId::Plugin(2)));
+        receiver.try_iter().for_each(drop);
+        (tab, receiver)
+    }
+
+    fn updates(
+        receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+    ) -> Vec<(Option<u32>, Option<ClientId>, Event)> {
+        receiver
+            .try_iter()
+            .flat_map(|(instruction, _)| match instruction {
+                PluginInstruction::Update(events) => events,
+                _ => vec![],
+            })
+            .collect()
+    }
+
+    #[test]
+    fn direct_write_is_not_filtered_by_sync_exclusion() {
+        let (mut tab, receiver) = plugin_tab();
+        tab.synchronize_is_active = true;
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .set_exclude_from_sync(true);
+        tab.write_to_pane_id(&None, b"x".to_vec(), false, PaneId::Plugin(2), None, None)
+            .unwrap();
+        assert!(updates(&receiver)
+            .iter()
+            .any(|(pid, _, event)| { *pid == Some(2) && matches!(event, Event::Key(_)) }));
+    }
+
+    #[test]
+    fn synchronized_fanout_still_honors_exclusion() {
+        let (mut tab, receiver) = plugin_tab();
+        tab.synchronize_is_active = true;
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .set_exclude_from_sync(true);
+        tab.write_to_terminals_on_current_tab(&None, b"x".to_vec(), false, 1)
+            .unwrap();
+        assert!(!updates(&receiver)
+            .iter()
+            .any(|(pid, _, event)| { *pid == Some(2) && matches!(event, Event::Key(_)) }));
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .set_exclude_from_sync(false);
+        tab.write_to_terminals_on_current_tab(&None, b"x".to_vec(), false, 1)
+            .unwrap();
+        assert!(updates(&receiver)
+            .iter()
+            .any(|(pid, _, event)| { *pid == Some(2) && matches!(event, Event::Key(_)) }));
+    }
+
+    #[test]
+    fn focused_plugin_paste_keeps_the_originating_client() {
+        let (mut tab, receiver) = plugin_tab();
+        tab.paste_to_active_terminal(b"scope".to_vec(), 1, None)
+            .unwrap();
+        let pasted: Vec<_> = updates(&receiver)
+            .into_iter()
+            .filter_map(|(pid, cid, event)| match event {
+                Event::PastedText(text) => Some((pid, cid, text)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(pasted, vec![(Some(2), Some(1), "scope".to_owned())]);
+    }
+
+    #[test]
+    fn explicitly_clientless_plugin_paste_keeps_its_existing_audience() {
+        let (mut tab, receiver) = plugin_tab();
+        tab.paste_to_pane_id(b"scope".to_vec(), PaneId::Plugin(2), None)
+            .unwrap();
+        let pasted: Vec<_> = updates(&receiver)
+            .into_iter()
+            .filter_map(|(pid, cid, event)| match event {
+                Event::PastedText(text) => Some((pid, cid, text)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(pasted, vec![(Some(2), None, "scope".to_owned())]);
+    }
+
+    #[test]
+    fn targeted_plugin_paste_falls_back_to_the_clientless_audience() {
+        let (mut tab, receiver) = plugin_tab();
+        tab.paste_to_pane_id_for_client(b"scope".to_vec(), PaneId::Plugin(2), Some(99), None)
+            .unwrap();
+        let pasted: Vec<_> = updates(&receiver)
+            .into_iter()
+            .filter_map(|(pid, cid, event)| match event {
+                Event::PastedText(text) => Some((pid, cid, text)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(pasted, vec![(Some(2), None, "scope".to_owned())]);
+    }
+
+    #[test]
+    fn targeted_plugin_input_falls_back_to_the_clientless_audience() {
+        let (mut tab, receiver) = plugin_tab();
+        let enter = Some(KeyWithModifier::new(BareKey::Enter));
+        tab.write_to_pane_id(&enter, Vec::new(), true, PaneId::Plugin(2), Some(1), None)
+            .unwrap();
+        tab.write_to_pane_id(&enter, Vec::new(), true, PaneId::Plugin(2), Some(99), None)
+            .unwrap();
+        let audiences: Vec<_> = updates(&receiver)
+            .into_iter()
+            .filter_map(|(pid, client_id, event)| {
+                (pid == Some(2) && matches!(event, Event::Key(_))).then_some(client_id)
+            })
+            .collect();
+        assert_eq!(
+            audiences,
+            vec![Some(1), None],
+            "a client with an instance stays targeted; a control client without one addresses the pane"
+        );
+    }
+
+    #[test]
+    fn paste_cannot_answer_a_permission_prompt_but_a_keypress_can() {
+        use zellij_utils::data::{PermissionStatus, PermissionType, PluginPermission};
+        let (mut tab, receiver) = plugin_tab();
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .request_permissions_from_user(Some(PluginPermission {
+                name: "input-scope-fixture".to_owned(),
+                permissions: vec![PermissionType::FullHdAccess],
+                prompt_id: 7,
+            }));
+        receiver.try_iter().for_each(drop);
+        assert!(tab
+            .paste_to_pane_id(b"y".to_vec(), PaneId::Plugin(2), None)
+            .is_err());
+        assert!(tab
+            .paste_to_active_terminal(b"y".to_vec(), 1, None)
+            .is_err());
+        assert!(tab
+            .get_pane_with_id(PaneId::Plugin(2))
+            .unwrap()
+            .is_requesting_permissions());
+        assert!(!receiver.try_iter().any(|(instruction, _)| {
+            matches!(instruction, PluginInstruction::PermissionRequestResult(..))
+        }));
+        tab.write_to_pane_id(
+            &None,
+            b"y".to_vec(),
+            false,
+            PaneId::Plugin(2),
+            Some(1),
+            None,
+        )
+        .unwrap();
+        assert!(receiver.try_iter().any(|(instruction, _)| {
+            matches!(
+                instruction,
+                PluginInstruction::PermissionRequestResult(
+                    2,
+                    Some(1),
+                    _,
+                    PermissionStatus::Granted,
+                    _,
+                    7
+                )
+            )
+        }));
+    }
+
+    #[test]
+    fn synchronized_paste_honors_exclusion_and_delivers_pasted_text() {
+        let (mut tab, receiver) = plugin_tab();
+        tab.synchronize_is_active = true;
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .set_exclude_from_sync(true);
+        tab.paste_to_terminals_on_current_tab(b"scope".to_vec(), 1, None)
+            .unwrap();
+        assert!(!updates(&receiver)
+            .iter()
+            .any(|(_, _, event)| matches!(event, Event::PastedText(_))));
+
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .set_exclude_from_sync(false);
+        tab.paste_to_terminals_on_current_tab(b"scope".to_vec(), 1, None)
+            .unwrap();
+        assert!(updates(&receiver).iter().any(|(pid, cid, event)| {
+            *pid == Some(2)
+                && *cid == Some(1)
+                && matches!(event, Event::PastedText(text) if text == "scope")
+        }));
+    }
+
+    #[test]
+    fn synchronized_paste_preflights_every_permission_prompt() {
+        use zellij_utils::data::{PermissionType, PluginPermission};
+        let (mut tab, receiver) = plugin_tab();
+        tab.synchronize_is_active = true;
+        tab.get_pane_with_id_mut(PaneId::Plugin(2))
+            .unwrap()
+            .request_permissions_from_user(Some(PluginPermission {
+                name: "input-scope-fixture".to_owned(),
+                permissions: vec![PermissionType::FullHdAccess],
+                prompt_id: 7,
+            }));
+        receiver.try_iter().for_each(drop);
+
+        assert!(tab
+            .paste_to_terminals_on_current_tab(b"y".to_vec(), 1, None)
+            .is_err());
+        assert!(tab
+            .get_pane_with_id(PaneId::Plugin(2))
+            .unwrap()
+            .is_requesting_permissions());
+        assert!(!updates(&receiver)
+            .iter()
+            .any(|(_, _, event)| matches!(event, Event::PastedText(_))));
+        assert!(!receiver.try_iter().any(|(instruction, _)| {
+            matches!(instruction, PluginInstruction::PermissionRequestResult(..))
+        }));
+    }
+
+    #[test]
+    fn synchronized_paste_reports_a_failure_from_a_later_recipient() {
+        let size = Size {
+            cols: 121,
+            rows: 20,
+        };
+        let mut tab = create_new_tab(size, true);
+        new_tiled_pane_in_tab(&mut tab, 2);
+        tab.toggle_sync_panes_is_active();
+        let budget = Arc::new(PtyIngressBudget::new());
+        budget.try_reserve(2, PER_TERMINAL_LIMIT).unwrap();
+        let _rx = install_budgeted_pty_writer(&mut tab, budget);
+        let (completion, mut receiver) = completion_and_receiver();
+
+        let error = tab
+            .paste_to_terminals_on_current_tab(b"p".to_vec(), 1, Some(completion))
+            .expect_err("the later recipient rejects the paste");
+        assert!(format!("{error:#}").contains("rejected"));
+        let result = receiver
+            .try_recv()
+            .expect("the caller receives the later recipient's failure");
+        assert_eq!(result.kind, ActionCompletionKind::Finished);
+        assert_eq!(result.exit_status, Some(1));
+        assert!(result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("rejected")));
+    }
+
+    #[test]
+    fn selected_plugin_text_does_not_consume_the_paste_begin_marker() {
+        let (mut tab, receiver) = plugin_tab();
+        {
+            let pane = tab.get_pane_with_id_mut(PaneId::Plugin(2)).unwrap();
+            pane.handle_plugin_bytes(1, b"selected text".to_vec());
+            pane.set_mouse_selection_support(true);
+            pane.start_selection(&Position::new(0, 0), 1);
+            pane.end_selection(&Position::new(0, 3), 1);
+            assert!(pane.get_selected_text(1).is_some());
+        }
+        receiver.try_iter().for_each(drop);
+        tab.paste_to_active_terminal(b"scope".to_vec(), 1, None)
+            .unwrap();
+        let events = updates(&receiver);
+        assert!(events.iter().any(|(pid, cid, event)| {
+            *pid == Some(2)
+                && *cid == Some(1)
+                && matches!(event, Event::PastedText(text) if text == "scope")
+        }));
+        assert!(!events
+            .iter()
+            .any(|(_, _, event)| matches!(event, Event::Key(_))));
+    }
+
+    #[test]
+    fn plugin_cursor_is_clipped_before_adding_frame_offsets() {
+        use zellij_utils::pane_size::Offset;
+        let (mut tab, _receiver) = plugin_tab();
+        let pane = tab.get_pane_with_id_mut(PaneId::Plugin(2)).unwrap();
+        for offset in [Offset::frame(1), Offset::default()] {
+            pane.set_content_offset(offset);
+            let cols = pane.get_content_columns();
+            let rows = pane.get_content_rows();
+            assert!(cols > 0 && rows > 0);
+            let offset = pane.get_content_offset();
+            pane.show_cursor(1, Some((cols - 1, rows - 1)));
+            assert_eq!(
+                pane.cursor_coordinates(Some(1)),
+                Some((cols - 1 + offset.left, rows - 1 + offset.top, true)),
+            );
+            pane.show_cursor(1, Some((cols, 0)));
+            assert_eq!(pane.cursor_coordinates(Some(1)), None);
+            pane.show_cursor(1, Some((0, rows)));
+            assert_eq!(pane.cursor_coordinates(Some(1)), None);
+        }
+    }
+}
 
 #[derive(Clone)]
 struct FakeInputOutput {}
@@ -57,7 +380,12 @@ impl ServerOsApi for FakeInputOutput {
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
         _pane_env: &crate::os_input_output::PaneEnv,
-    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> Result<(
+        u32,
+        Box<dyn AsyncReader>,
+        Option<u32>,
+        Option<crate::os_input_output::ChildPidFd>,
+    )> {
         unimplemented!()
     }
     fn write_to_tty_stdin(&self, _id: u32, _buf: &[u8]) -> Result<usize> {
@@ -111,7 +439,11 @@ impl ServerOsApi for FakeInputOutput {
         _run_command: RunCommand,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _pane_env: &crate::os_input_output::PaneEnv,
-    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> Result<(
+        Box<dyn AsyncReader>,
+        Option<u32>,
+        Option<crate::os_input_output::ChildPidFd>,
+    )> {
         unimplemented!()
     }
     fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
@@ -17158,7 +17490,165 @@ pub fn scroll_up_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.scroll_up_by_pane_id(pane_id);
+    tab.scroll_up_by_pane_id(pane_id, 1);
+}
+
+#[test]
+pub fn pending_vte_bytes_are_bounded_while_scrolled() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    for line in 0..30 {
+        tab.handle_pty_bytes(1, format!("line {line}\r\n").into_bytes())
+            .unwrap();
+    }
+    tab.scroll_up_by_pane_id(pane_id, 1);
+    assert!(tab.get_pane_with_id(pane_id).unwrap().is_scrolled());
+
+    // The ceiling rejects the pane's whole unparsed queue so the suffix can
+    // never complete a sequence from before the gap.
+    let overflow = 1000usize;
+    tab.handle_pty_bytes(1, vec![b'x'; super::MAX_PENDING_VTE_BYTES + overflow])
+        .unwrap();
+
+    assert!(tab.get_pane_with_id(pane_id).unwrap().is_scrolled());
+    assert_eq!(
+        tab.pending_vte_bytes_dropped(1),
+        (super::MAX_PENDING_VTE_BYTES + overflow) as u64
+    );
+    assert_eq!(tab.pending_vte_len(1), 0);
+    assert!(tab
+        .get_pane_with_id(pane_id)
+        .unwrap()
+        .current_title()
+        .contains("[output cut off]"));
+}
+
+#[test]
+pub fn pre_layout_pty_output_is_coalesced_and_bounded() {
+    let mut tab = create_new_tab(Size { rows: 24, cols: 80 }, false);
+    tab.is_pending = true;
+    tab.buffer_pending_pty_bytes(1, vec![b'a'; super::MAX_PENDING_VTE_BYTES], None);
+    tab.buffer_pending_pty_bytes(1, b"dropped".to_vec(), None);
+    tab.buffer_pending_pty_bytes(2, b"other".to_vec(), None);
+
+    assert_eq!(tab.pending_instructions.len(), 3);
+    match &tab.pending_instructions[0] {
+        super::BufferedTabInstruction::NoteOutputTruncated(pid) => assert_eq!(*pid, 1),
+        _ => panic!("expected a truncation marker"),
+    }
+    match &tab.pending_instructions[1] {
+        super::BufferedTabInstruction::HandlePtyBytes(pid, _, bytes) => {
+            assert_eq!(*pid, 1);
+            assert_eq!(bytes, b"dropped");
+        },
+        _ => panic!("expected the post-gap bytes"),
+    }
+    assert_eq!(tab.pending_pty_bytes.get(&1).copied(), Some(7));
+    assert_eq!(tab.pending_pty_bytes.get(&2).copied(), Some(5));
+}
+
+#[test]
+pub fn scrolled_pending_vte_quanta_let_another_pane_run() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_a = PaneId::Terminal(1);
+    let pane_b = PaneId::Terminal(2);
+    for line in 0..40 {
+        tab.handle_pty_bytes(1, format!("hist {line}\r\n").into_bytes())
+            .unwrap();
+    }
+    tab.horizontal_split(pane_b, None, 1, None, None).unwrap();
+    tab.scroll_up_by_pane_id(pane_a, 1);
+    assert!(tab.get_pane_with_id(pane_a).unwrap().is_scrolled());
+    let viewport_before = tab
+        .get_pane_with_id(pane_a)
+        .unwrap()
+        .dump_screen(false, None);
+    assert!(
+        viewport_before.contains("hist"),
+        "scrolled viewport should show earlier output, got {viewport_before:?}"
+    );
+
+    let mut payload = Vec::new();
+    let mut ordered_lines = Vec::new();
+    let mut index = 0u32;
+    while payload.len() <= super::SCROLLED_PTY_QUANTUM_BYTES {
+        let line = format!("L{index:05}");
+        ordered_lines.push(line.clone());
+        payload.extend_from_slice(line.as_bytes());
+        payload.extend_from_slice(b"\r\n");
+        index += 1;
+    }
+    assert!(payload.len() > super::SCROLLED_PTY_QUANTUM_BYTES);
+
+    tab.handle_pty_bytes(1, payload.clone()).unwrap();
+    let pending_after_first = tab.pending_vte_len(1);
+    assert_eq!(
+        pending_after_first,
+        payload.len() - super::SCROLLED_PTY_QUANTUM_BYTES
+    );
+    assert!(tab.get_pane_with_id(pane_a).unwrap().is_scrolled());
+    assert_eq!(
+        tab.get_pane_with_id(pane_a)
+            .unwrap()
+            .dump_screen(false, None),
+        viewport_before
+    );
+
+    // Pane B is handled while most of A's backlog is still unparsed.
+    let pending_before_b = tab.pending_vte_len(1);
+    tab.handle_pty_bytes(2, b"PANE-B-MARKER\r\n".to_vec())
+        .unwrap();
+    assert_eq!(tab.pending_vte_len(1), pending_before_b);
+    assert!(tab
+        .get_pane_with_id(pane_b)
+        .unwrap()
+        .dump_screen(true, None)
+        .contains("PANE-B-MARKER"));
+
+    let mut steps = 0;
+    while tab.pending_vte_len(1) > 0 {
+        let before = tab.pending_vte_len(1);
+        tab.apply_pending_vte_quanta().unwrap();
+        let after = tab.pending_vte_len(1);
+        assert!(before - after <= super::SCROLLED_PTY_QUANTUM_BYTES);
+        assert!(after < before);
+        assert!(tab.get_pane_with_id(pane_a).unwrap().is_scrolled());
+        assert_eq!(
+            tab.get_pane_with_id(pane_a)
+                .unwrap()
+                .dump_screen(false, None),
+            viewport_before
+        );
+        steps += 1;
+        assert!(steps < 8, "backlog should drain in a handful of quanta");
+    }
+    assert!(steps >= 1);
+    assert_eq!(tab.pending_vte_bytes_dropped(1), 0);
+
+    tab.scroll_to_bottom_by_pane_id(pane_a).unwrap();
+    let mut scroll_guard = 0;
+    while tab.get_pane_with_id(pane_a).unwrap().is_scrolled() {
+        tab.advance_deferred_pane_work();
+        scroll_guard += 1;
+        assert!(scroll_guard < 10_000, "scroll to bottom did not finish");
+    }
+    assert_eq!(tab.pending_vte_len(1), 0);
+    let full = tab
+        .get_pane_with_id(pane_a)
+        .unwrap()
+        .dump_screen(true, None);
+    let mut previous = 0;
+    for line in &ordered_lines {
+        let found = full[previous..]
+            .find(line.as_str())
+            .unwrap_or_else(|| panic!("{line} missing from scrolled output"));
+        previous += found + line.len();
+    }
 }
 
 #[test]
@@ -17170,7 +17660,7 @@ pub fn scroll_down_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    let _ = tab.scroll_down_by_pane_id(pane_id);
+    let _ = tab.scroll_down_by_pane_id(pane_id, 1);
 }
 
 #[test]
@@ -17206,7 +17696,7 @@ pub fn page_scroll_up_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.page_scroll_up_by_pane_id(pane_id);
+    tab.page_scroll_up_by_pane_id(pane_id, 1);
 }
 
 #[test]
@@ -17218,7 +17708,7 @@ pub fn page_scroll_down_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    let _ = tab.page_scroll_down_by_pane_id(pane_id);
+    let _ = tab.page_scroll_down_by_pane_id(pane_id, 1);
 }
 
 #[test]
@@ -17230,7 +17720,7 @@ pub fn half_page_scroll_up_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    tab.half_page_scroll_up_by_pane_id(pane_id);
+    tab.half_page_scroll_up_by_pane_id(pane_id, 1);
 }
 
 #[test]
@@ -17242,7 +17732,101 @@ pub fn half_page_scroll_down_by_pane_id() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
     assert!(tab.has_pane_with_pid(&pane_id));
-    let _ = tab.half_page_scroll_down_by_pane_id(pane_id);
+    let _ = tab.half_page_scroll_down_by_pane_id(pane_id, 1);
+}
+
+fn lines_below(tab: &Tab, pane_id: PaneId) -> usize {
+    tab.get_pane_with_id(pane_id)
+        .unwrap()
+        .viewport_scroll_state()
+        .unwrap()
+        .0
+}
+
+fn framed_pane_with_scrollback(rows: usize) -> (Tab, PaneId, usize) {
+    let size = Size { cols: 40, rows };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    {
+        let pane = tab.get_pane_with_id_mut(pane_id).unwrap();
+        let mut geom = pane.position_and_size();
+        geom.rows.set_inner(rows);
+        pane.set_geom(geom);
+        pane.set_borderless(false);
+    }
+    let (pane_rows, content_rows) = {
+        let pane = tab.get_pane_with_id(pane_id).unwrap();
+        (pane.rows(), pane.get_content_rows())
+    };
+    assert!(
+        pane_rows > content_rows,
+        "a frame makes rows() larger than the content height"
+    );
+    for line in 0..80 {
+        tab.handle_pty_bytes(1, format!("line {line}\r\n").into_bytes())
+            .unwrap();
+    }
+    assert_eq!(lines_below(&tab, pane_id), 0);
+    (tab, pane_id, content_rows)
+}
+
+#[test]
+pub fn targeted_page_and_half_page_scrolls_use_content_rows() {
+    let (mut tab, pane_id, content_rows) = framed_pane_with_scrollback(21);
+    let pane_rows = tab.get_pane_with_id(pane_id).unwrap().rows();
+    let rows_minus_one = pane_rows.saturating_sub(1);
+    assert_ne!(content_rows, rows_minus_one);
+    assert_ne!(content_rows / 2, rows_minus_one / 2);
+
+    tab.page_scroll_up_by_pane_id(pane_id, 1);
+    assert_eq!(lines_below(&tab, pane_id), content_rows);
+
+    tab.get_pane_with_id_mut(pane_id)
+        .unwrap()
+        .scroll_down(content_rows, 1);
+    assert_eq!(lines_below(&tab, pane_id), 0);
+
+    tab.half_page_scroll_up_by_pane_id(pane_id, 1);
+    let half = content_rows / 2;
+    assert_eq!(lines_below(&tab, pane_id), half);
+    tab.half_page_scroll_down_by_pane_id(pane_id, 1).unwrap();
+    assert_eq!(lines_below(&tab, pane_id), 0);
+}
+
+#[test]
+fn clearing_one_panes_scroll_does_not_reset_another_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let scrolled_pane = PaneId::Terminal(1);
+    let written_pane = PaneId::Terminal(2);
+    tab.vertical_split(written_pane, None, 1, None, None)
+        .unwrap();
+    for line in 0..40 {
+        tab.handle_pty_bytes(1, format!("line {line}\r\n").into_bytes())
+            .unwrap();
+    }
+    tab.scroll_up_by_pane_id(scrolled_pane, 1);
+    assert!(tab.get_pane_with_id(scrolled_pane).unwrap().is_scrolled());
+
+    // This is the preparation performed by a targeted write before delivery.
+    tab.scroll_to_bottom_by_pane_id(written_pane).unwrap();
+
+    assert!(
+        tab.get_pane_with_id(scrolled_pane).unwrap().is_scrolled(),
+        "clearing the write target's scroll must not reset another pane"
+    );
+}
+
+#[test]
+pub fn page_scroll_rows_use_content_height_and_always_move() {
+    assert_eq!(super::terminal_page_scroll_rows(0), 1);
+    assert_eq!(super::terminal_page_scroll_rows(8), 8);
+    assert_eq!(super::terminal_half_page_scroll_rows(0), 1);
+    assert_eq!(super::terminal_half_page_scroll_rows(1), 1);
+    assert_eq!(super::terminal_half_page_scroll_rows(8), 4);
 }
 
 #[test]
@@ -17391,7 +17975,7 @@ pub fn scroll_up_nonexistent_pane_id_does_not_panic() {
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(999);
     assert!(!tab.has_pane_with_pid(&pane_id));
-    tab.scroll_up_by_pane_id(pane_id);
+    tab.scroll_up_by_pane_id(pane_id, 1);
 }
 
 #[test]
@@ -17849,6 +18433,9 @@ fn install_pty_writer_capture(
     let (tx, rx) = unbounded();
     tab.senders
         .replace_to_pty_writer(SenderWithContext::new(tx));
+    tab.senders.set_pty_write_budget(std::sync::Arc::new(
+        crate::pty_ingress::PtyIngressBudget::new(),
+    ));
     rx
 }
 
@@ -17860,6 +18447,245 @@ fn drain_pty_writer(
         out.push(msg);
     }
     out
+}
+
+fn install_budgeted_pty_writer(
+    tab: &mut Tab,
+    budget: Arc<PtyIngressBudget>,
+) -> Receiver<(PtyWriteInstruction, zellij_utils::errors::ErrorContext)> {
+    let (tx, rx) = unbounded();
+    tab.senders
+        .replace_to_pty_writer(SenderWithContext::new(tx));
+    tab.senders.set_pty_write_budget(budget);
+    rx
+}
+
+fn pty_write_bytes(instruction: &PtyWriteInstruction) -> Option<(u32, &[u8])> {
+    match instruction {
+        PtyWriteInstruction::Write(write) => Some((write.terminal_id(), write.bytes())),
+        _ => None,
+    }
+}
+
+#[test]
+fn rejected_bracketed_paste_does_not_submit_a_begin_marker_alone() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let pane_id = PaneId::Terminal(1);
+    tab.handle_pty_bytes(1, b"\x1b[?2004h".to_vec()).unwrap();
+    let budget = Arc::new(PtyIngressBudget::new());
+    let rx = install_budgeted_pty_writer(&mut tab, Arc::clone(&budget));
+    let body = b"hello".to_vec();
+    let begin = b"\x1b[200~";
+    let end = b"\x1b[201~";
+
+    tab.paste_to_pane_id(body.clone(), pane_id, None).unwrap();
+    let admitted: Vec<_> = drain_pty_writer(&rx)
+        .iter()
+        .filter_map(pty_write_bytes)
+        .map(|(terminal_id, bytes)| (terminal_id, bytes.to_vec()))
+        .collect();
+    assert_eq!(admitted.len(), 1, "a paste is one write, got {admitted:?}");
+    assert_eq!(admitted[0].0, 1);
+    let mut expected = begin.to_vec();
+    expected.extend_from_slice(&body);
+    expected.extend_from_slice(end);
+    assert_eq!(admitted[0].1, expected);
+    assert_eq!(
+        budget.terminal_reserved(1),
+        0,
+        "dropping the write releases it"
+    );
+
+    let begin_only = begin.len();
+    budget
+        .try_reserve(1, PER_TERMINAL_LIMIT - begin_only)
+        .unwrap();
+    let (completion, mut receiver) = completion_and_receiver();
+    let error = tab
+        .paste_to_pane_id(body, pane_id, Some(completion))
+        .expect_err("the combined paste does not fit");
+    let error = format!("{error:#}");
+    assert!(
+        error.contains("rejected"),
+        "the caller sees the admission failure: {error}"
+    );
+    let queued: Vec<_> = drain_pty_writer(&rx)
+        .iter()
+        .filter_map(pty_write_bytes)
+        .map(|(terminal_id, bytes)| (terminal_id, bytes.to_vec()))
+        .collect();
+    assert!(
+        queued.is_empty(),
+        "rejection must not leave a begin marker queued, got {queued:?}"
+    );
+    assert_eq!(budget.terminal_reserved(1), PER_TERMINAL_LIMIT - begin_only);
+    let result = receiver
+        .try_recv()
+        .expect("the paste completion is published");
+    assert_eq!(result.kind, ActionCompletionKind::Finished);
+    assert_eq!(result.exit_status, Some(1));
+    let message = result.error_message.expect("admission error is recorded");
+    assert!(message.contains("rejected"), "{message}");
+}
+
+#[test]
+fn synchronized_input_continues_after_a_pane_rejects() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.toggle_sync_panes_is_active();
+    assert_eq!(
+        tab.get_static_and_floating_pane_ids().first().copied(),
+        Some(PaneId::Terminal(1)),
+        "the rejected pane has to be first or this does not prove later panes still run"
+    );
+    let budget = Arc::new(PtyIngressBudget::new());
+    budget.try_reserve(1, PER_TERMINAL_LIMIT).unwrap();
+    let rx = install_budgeted_pty_writer(&mut tab, budget);
+    let error = tab
+        .write_to_terminals_on_current_tab(&None, b"x".to_vec(), false, 1)
+        .expect_err("a rejected recipient fails the fan-out");
+    let error = format!("{error:#}");
+    assert!(
+        error.contains("rejected"),
+        "the caller sees the admission failure: {error}"
+    );
+    let writes: Vec<_> = drain_pty_writer(&rx)
+        .iter()
+        .filter_map(pty_write_bytes)
+        .map(|(terminal_id, bytes)| (terminal_id, bytes.to_vec()))
+        .collect();
+    assert_eq!(
+        writes,
+        vec![(2, b"x".to_vec())],
+        "the healthy pane still receives the byte"
+    );
+}
+
+#[test]
+fn refused_forwarded_reply_still_clears_the_pause() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let (screen_tx, _screen_rx) = unbounded();
+    tab.senders.to_screen = Some(SenderWithContext::new(screen_tx));
+    let budget = Arc::new(PtyIngressBudget::new());
+    budget.try_reserve(1, PER_TERMINAL_LIMIT).unwrap();
+    let _rx = install_budgeted_pty_writer(&mut tab, budget);
+
+    tab.handle_pty_bytes(1, b"\x1b]11;?\x1b\\buffered".to_vec())
+        .unwrap();
+    assert!(tab
+        .get_pane_with_id(PaneId::Terminal(1))
+        .unwrap()
+        .is_forward_paused());
+
+    tab.resume_pane_after_forward(1, b"reply".to_vec(), None)
+        .expect("an admission refusal must contain itself and settle the pause");
+    assert!(!tab
+        .get_pane_with_id(PaneId::Terminal(1))
+        .unwrap()
+        .is_forward_paused());
+}
+
+#[test]
+fn refused_synchronous_reply_does_not_skip_the_forwarded_query() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let (screen_tx, screen_rx) = unbounded();
+    tab.senders.to_screen = Some(SenderWithContext::new(screen_tx));
+    let budget = Arc::new(PtyIngressBudget::new());
+    budget.try_reserve(1, PER_TERMINAL_LIMIT).unwrap();
+    let _rx = install_budgeted_pty_writer(&mut tab, budget);
+
+    tab.handle_pty_bytes(1, b"\x1b[5n\x1b]11;?\x1b\\".to_vec())
+        .expect("a refused local reply must not abort pty processing");
+
+    assert!(screen_rx.try_iter().any(|(instruction, _)| {
+        matches!(
+            instruction,
+            ScreenInstruction::ForwardHostQuery {
+                pane_id: PaneId::Terminal(1),
+                ..
+            }
+        )
+    }));
+    assert!(tab
+        .get_pane_with_id(PaneId::Terminal(1))
+        .unwrap()
+        .is_forward_paused());
+}
+
+#[test]
+fn editing_a_missing_pane_reports_failure() {
+    let mut tab = create_new_tab(Size { cols: 80, rows: 20 }, false);
+    let (completion, mut receiver) = completion_and_receiver();
+
+    let error = tab
+        .edit_scrollback_for_pane_with_id(PaneId::Terminal(99), Some(completion))
+        .expect_err("editing a missing pane cannot succeed");
+    assert!(format!("{error:#}").contains("not found"));
+
+    let result = receiver
+        .try_recv()
+        .expect("the requester receives the failure");
+    assert_eq!(result.kind, ActionCompletionKind::Finished);
+    assert_eq!(result.exit_status, Some(1));
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("not found")),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn editing_plugin_scrollback_reports_failure() {
+    let (mut tab, _plugin_receiver) =
+        create_new_tab_with_plugin_receiver(Size { cols: 80, rows: 20 }, true);
+    tab.new_no_preference_pane(
+        PaneId::Plugin(2),
+        None,
+        None,
+        false,
+        true,
+        Some(1),
+        None,
+        None,
+    )
+    .unwrap();
+    let (completion, mut receiver) = completion_and_receiver();
+
+    let error = tab
+        .edit_scrollback_raw_for_pane_with_id(PaneId::Plugin(2), Some(completion))
+        .expect_err("plugin scrollback editing is unsupported");
+    assert!(format!("{error:#}").contains("unsupported"));
+
+    let result = receiver
+        .try_recv()
+        .expect("the requester receives the failure");
+    assert_eq!(result.kind, ActionCompletionKind::Finished);
+    assert_eq!(result.exit_status, Some(1));
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("unsupported")),
+        "{result:?}"
+    );
 }
 
 #[test]
@@ -17878,9 +18704,9 @@ pub fn scroll_terminal_up_forwards_sgr_when_pane_tracks_mouse() {
     let writes = drain_pty_writer(&rx);
     assert!(!writes.is_empty(), "expected at least one pty write");
     match &writes[0] {
-        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
-            assert_eq!(*terminal_id, 1);
-            let s = String::from_utf8_lossy(bytes);
+        PtyWriteInstruction::Write(write) => {
+            assert_eq!(write.terminal_id(), 1);
+            let s = String::from_utf8_lossy(write.bytes());
             assert!(
                 s.starts_with("\u{1b}[<64;"),
                 "expected SGR wheel-up (button 64) prefix, got {s:?}"
@@ -17906,9 +18732,9 @@ pub fn scroll_terminal_down_forwards_sgr_when_pane_tracks_mouse() {
     let writes = drain_pty_writer(&rx);
     assert!(!writes.is_empty(), "expected at least one pty write");
     match &writes[0] {
-        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
-            assert_eq!(*terminal_id, 1);
-            let s = String::from_utf8_lossy(bytes);
+        PtyWriteInstruction::Write(write) => {
+            assert_eq!(write.terminal_id(), 1);
+            let s = String::from_utf8_lossy(write.bytes());
             assert!(
                 s.starts_with("\u{1b}[<65;"),
                 "expected SGR wheel-down (button 65) prefix, got {s:?}"
@@ -17933,9 +18759,9 @@ pub fn scroll_terminal_up_emits_arrow_up_in_alt_mode_without_mouse() {
     let writes = drain_pty_writer(&rx);
     assert!(!writes.is_empty(), "expected at least one pty write");
     match &writes[0] {
-        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
-            assert_eq!(*terminal_id, 1);
-            assert_eq!(bytes.as_slice(), b"\x1b[A");
+        PtyWriteInstruction::Write(write) => {
+            assert_eq!(write.terminal_id(), 1);
+            assert_eq!(write.bytes(), b"\x1b[A");
         },
         other => panic!("expected PtyWriteInstruction::Write, got {other:?}"),
     }
@@ -17956,9 +18782,9 @@ pub fn scroll_terminal_down_emits_arrow_down_in_alt_mode_without_mouse() {
     let writes = drain_pty_writer(&rx);
     assert!(!writes.is_empty(), "expected at least one pty write");
     match &writes[0] {
-        PtyWriteInstruction::Write(bytes, terminal_id, _) => {
-            assert_eq!(*terminal_id, 1);
-            assert_eq!(bytes.as_slice(), b"\x1b[B");
+        PtyWriteInstruction::Write(write) => {
+            assert_eq!(write.terminal_id(), 1);
+            assert_eq!(write.bytes(), b"\x1b[B");
         },
         other => panic!("expected PtyWriteInstruction::Write, got {other:?}"),
     }
@@ -18298,7 +19124,12 @@ fn create_tab_with_receivers_without_layout(
         to_pty: Some(SenderWithContext::new(to_pty)),
         to_plugin: Some(SenderWithContext::new(to_plugin)),
         to_server: Some(SenderWithContext::new(to_server)),
-        to_pty_writer: Some(SenderWithContext::new(to_pty_writer)),
+        to_pty_writer: Some(crate::thread_bus::PtyWriteSender::new(
+            SenderWithContext::new(to_pty_writer),
+            Some(std::sync::Arc::new(
+                crate::pty_ingress::PtyIngressBudget::new(),
+            )),
+        )),
         to_background_jobs: Some(SenderWithContext::new(to_background_jobs)),
         should_silently_fail,
     };
@@ -19270,6 +20101,46 @@ pub fn editor_pane_that_cannot_replace_its_target_is_closed() {
 }
 
 #[test]
+pub fn editing_a_nested_suppressed_pane_unwinds_its_restoration_chain() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(2))
+        .unwrap();
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(6), PaneId::Terminal(5))
+        .unwrap();
+
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(7), PaneId::Terminal(5))
+        .unwrap();
+
+    assert!(
+        tab.tiled_panes.panes_contain(&PaneId::Terminal(7)),
+        "the new editor must replace the addressed pane after restoring it"
+    );
+    assert_eq!(
+        tab.suppressed_panes
+            .get(&PaneId::Terminal(7))
+            .map(|(_, pane)| pane.pid()),
+        Some(PaneId::Terminal(5)),
+        "the edited pane is restored when this editor closes"
+    );
+    assert_eq!(
+        tab.suppressed_panes
+            .get(&PaneId::Terminal(5))
+            .map(|(_, pane)| pane.pid()),
+        Some(PaneId::Terminal(2)),
+        "the outer restoration entry must remain intact"
+    );
+    assert!(
+        closed_pane_ids(&receivers).contains(&PaneId::Terminal(6)),
+        "the superseded editor must be closed"
+    );
+}
+
+#[test]
 pub fn in_place_pane_that_cannot_replace_its_target_is_closed_and_reported_as_failed() {
     let size = Size {
         cols: 121,
@@ -19732,6 +20603,45 @@ pub fn background_tab_reports_the_remembered_floating_focus() {
     assert_eq!(focused, vec![3]);
 }
 
+/// #5468: after a second client detaches, list-panes focus must not keep
+/// reporting that client's pane as FOCUSED while another client remains.
+#[test]
+pub fn detached_clients_focus_is_not_reported_while_others_remain() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.floating_panes.focus_pane(PaneId::Terminal(3), 1);
+    tab.add_client(2, None).unwrap();
+    // Seed a stale per-client focus after live focus settles. `focus_pane`
+    // mirrors to all clients, so set client 2's leftover entry explicitly.
+    tab.floating_panes
+        .force_active_pane_for_test(2, PaneId::Terminal(2));
+    assert_eq!(
+        tab.floating_panes.active_pane_id(1),
+        Some(PaneId::Terminal(3))
+    );
+    assert_eq!(
+        tab.floating_panes.active_pane_id(2),
+        Some(PaneId::Terminal(2))
+    );
+    tab.remove_client(2);
+    assert_eq!(
+        tab.floating_panes.active_pane_id(2),
+        Some(PaneId::Terminal(2)),
+        "active_panes may still remember the detached client's focus"
+    );
+    let focused_after: Vec<_> = tab
+        .floating_panes
+        .pane_info(&HashMap::new())
+        .into_iter()
+        .filter(|p| p.is_focused)
+        .map(|p| p.id)
+        .collect();
+    assert_eq!(
+        focused_after,
+        vec![3],
+        "disconnected client 2 must not keep pane 2 FOCUSED while client 1 remains"
+    );
+}
+
 #[test]
 pub fn moving_a_missing_floating_pane_reports_no_move() {
     let mut tab = tab_with_two_floating_panes();
@@ -19765,6 +20675,8 @@ pub fn mouse_resize_of_a_closed_floating_pane_releases_the_mouse() {
         .position_and_size();
     tab.pane_being_resized_with_mouse = Some(super::PaneResizeState {
         pane_id: PaneId::Terminal(3),
+        client_id: 1,
+        button: zellij_utils::data::MouseButton::Left,
         edge: super::PaneEdge::Right,
         start_position: zellij_utils::position::Position::new(10, 10),
         start_geom,
@@ -19778,6 +20690,8 @@ pub fn mouse_resize_of_a_closed_floating_pane_releases_the_mouse() {
     assert!(tab.pane_being_resized_with_mouse.is_none());
     tab.pane_being_resized_with_mouse = Some(super::PaneResizeState {
         pane_id: PaneId::Terminal(99),
+        client_id: 1,
+        button: zellij_utils::data::MouseButton::Left,
         edge: super::PaneEdge::Right,
         start_position: zellij_utils::position::Position::new(10, 10),
         start_geom,
@@ -19787,6 +20701,53 @@ pub fn mouse_resize_of_a_closed_floating_pane_releases_the_mouse() {
         zellij_utils::position::Position::new(12, 14),
     );
     assert!(tab.handle_mouse_event(&release, 1).is_ok());
+    assert!(tab.pane_being_resized_with_mouse.is_none());
+}
+
+#[test]
+pub fn buttonless_mouse_motion_cancels_a_resize_gesture() {
+    let mut tab = tab_with_two_floating_panes();
+    let start_geom = tab
+        .floating_panes
+        .get_pane(PaneId::Terminal(3))
+        .unwrap()
+        .position_and_size();
+    tab.pane_being_resized_with_mouse = Some(super::PaneResizeState {
+        pane_id: PaneId::Terminal(3),
+        client_id: 1,
+        button: zellij_utils::data::MouseButton::Left,
+        edge: super::PaneEdge::Right,
+        start_position: zellij_utils::position::Position::new(10, 10),
+        start_geom,
+        is_floating: true,
+    });
+
+    let motion = zellij_utils::input::mouse::MouseEvent::new_buttonless_motion(
+        zellij_utils::position::Position::new(12, 14),
+    );
+    assert!(tab.handle_mouse_event(&motion, 1).is_ok());
+    assert!(tab.pane_being_resized_with_mouse.is_none());
+}
+
+#[test]
+pub fn removing_a_client_cancels_its_resize_gesture() {
+    let mut tab = tab_with_two_floating_panes();
+    let start_geom = tab
+        .floating_panes
+        .get_pane(PaneId::Terminal(3))
+        .unwrap()
+        .position_and_size();
+    tab.pane_being_resized_with_mouse = Some(super::PaneResizeState {
+        pane_id: PaneId::Terminal(3),
+        client_id: 1,
+        button: zellij_utils::data::MouseButton::Left,
+        edge: super::PaneEdge::Right,
+        start_position: zellij_utils::position::Position::new(10, 10),
+        start_geom,
+        is_floating: true,
+    });
+
+    tab.remove_client(1);
     assert!(tab.pane_being_resized_with_mouse.is_none());
 }
 
@@ -19970,7 +20931,12 @@ impl ServerOsApi for RecordingOsApi {
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
         _pane_env: &crate::os_input_output::PaneEnv,
-    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> Result<(
+        u32,
+        Box<dyn AsyncReader>,
+        Option<u32>,
+        Option<crate::os_input_output::ChildPidFd>,
+    )> {
         unimplemented!()
     }
     fn write_to_tty_stdin(&self, id: u32, buf: &[u8]) -> Result<usize> {
@@ -20027,7 +20993,11 @@ impl ServerOsApi for RecordingOsApi {
         _run_command: RunCommand,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _pane_env: &crate::os_input_output::PaneEnv,
-    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> Result<(
+        Box<dyn AsyncReader>,
+        Option<u32>,
+        Option<crate::os_input_output::ChildPidFd>,
+    )> {
         unimplemented!()
     }
     fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
@@ -20453,6 +21423,128 @@ pub fn focusing_a_suppressed_pane_prefers_the_entry_stored_under_its_own_id() {
     assert!(tab.floating_panes.panes_contain(&PaneId::Terminal(6)));
     assert!(tab.has_pane_with_pid(&PaneId::Terminal(2)));
     assert!(!tab.has_non_suppressed_pane_with_pid(&PaneId::Terminal(2)));
+}
+
+#[test]
+pub fn explicit_lookup_resolves_nested_suppressed_pane_identity() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(2))
+        .unwrap();
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(6), PaneId::Terminal(5))
+        .unwrap();
+
+    tab.rename_pane_by_pane_id(PaneId::Terminal(2), b"A".to_vec())
+        .unwrap();
+    tab.rename_pane_by_pane_id(PaneId::Terminal(5), b"B".to_vec())
+        .unwrap();
+
+    assert_eq!(
+        tab.get_pane_with_id(PaneId::Terminal(2))
+            .map(|pane| (pane.pid(), pane.current_title())),
+        Some((PaneId::Terminal(2), "A".to_owned()))
+    );
+    assert_eq!(
+        tab.get_pane_with_id(PaneId::Terminal(5))
+            .map(|pane| (pane.pid(), pane.current_title())),
+        Some((PaneId::Terminal(5), "B".to_owned()))
+    );
+    assert_eq!(
+        tab.get_pane_with_id_mut(PaneId::Terminal(5))
+            .map(|pane| (pane.pid(), pane.current_title())),
+        Some((PaneId::Terminal(5), "B".to_owned()))
+    );
+    assert!(tab.get_pane_with_id(PaneId::Terminal(99)).is_none());
+}
+
+#[test]
+pub fn explicit_operations_use_the_actual_identity_of_a_nested_suppressed_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(2))
+        .unwrap();
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(6), PaneId::Terminal(5))
+        .unwrap();
+
+    tab.rename_pane(b"A".to_vec(), PaneId::Terminal(2)).unwrap();
+    tab.rename_pane(b"B".to_vec(), PaneId::Terminal(5)).unwrap();
+
+    let hidden_b = tab.get_pane_with_id(PaneId::Terminal(5)).unwrap();
+    assert_eq!(hidden_b.current_title(), "B");
+    let hidden_a = tab.get_pane_with_id(PaneId::Terminal(2)).unwrap();
+    assert_eq!(hidden_a.current_title(), "A");
+    let info = tab.get_pane_info(PaneId::Terminal(5)).unwrap();
+    assert_eq!(info.title, "B");
+    assert!(info.is_suppressed);
+
+    tab.set_pane_borderless(&PaneId::Terminal(5), true).unwrap();
+    assert!(tab
+        .get_pane_with_id(PaneId::Terminal(5))
+        .unwrap()
+        .borderless());
+    assert!(!tab
+        .get_pane_with_id(PaneId::Terminal(2))
+        .unwrap()
+        .borderless());
+
+    tab.replace_pane_with_suppressed_pane(PaneId::Terminal(6))
+        .unwrap();
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(5)));
+    assert_eq!(
+        tab.get_pane_with_id(PaneId::Terminal(5))
+            .map(|pane| pane.current_title()),
+        Some("B".to_owned())
+    );
+
+    tab.replace_pane_with_suppressed_pane(PaneId::Terminal(5))
+        .unwrap();
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(2)));
+    assert_eq!(
+        tab.get_pane_with_id(PaneId::Terminal(2))
+            .map(|pane| pane.current_title()),
+        Some("A".to_owned())
+    );
+}
+
+#[test]
+pub fn closing_a_nested_suppressed_pane_targets_its_own_entry() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(2))
+        .unwrap();
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(6), PaneId::Terminal(5))
+        .unwrap();
+    tab.rename_pane(b"A".to_vec(), PaneId::Terminal(2)).unwrap();
+    tab.rename_pane(b"B".to_vec(), PaneId::Terminal(5)).unwrap();
+
+    tab.close_pane(PaneId::Terminal(5), false, Some(0));
+
+    assert!(
+        tab.get_pane_with_id(PaneId::Terminal(5)).is_none(),
+        "the addressed hidden pane must be the one closed"
+    );
+    assert_eq!(
+        tab.get_pane_with_id(PaneId::Terminal(2))
+            .map(|pane| pane.current_title()),
+        Some("A".to_owned()),
+        "the pane stored under the same restoration key must remain intact"
+    );
+    assert!(
+        tab.tiled_panes.panes_contain(&PaneId::Terminal(6)),
+        "the visible replacement pane must not be removed"
+    );
 }
 
 #[test]
@@ -21202,10 +22294,68 @@ pub fn a_click_reaches_a_program_that_asked_for_the_mouse() {
     assert!(
         writes.iter().any(|write| matches!(
             write,
-            PtyWriteInstruction::Write(bytes, _, _)
-                if String::from_utf8_lossy(bytes).starts_with("\u{1b}[<0;")
+            PtyWriteInstruction::Write(write)
+                if String::from_utf8_lossy(write.bytes()).starts_with("\u{1b}[<0;")
         )),
         "expected the click to be forwarded, got {writes:?}"
+    );
+}
+
+#[test]
+pub fn a_captured_mouse_release_survives_a_focus_change() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    tab.tiled_panes.focus_pane(PaneId::Terminal(1), 1);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+    tab.handle_pty_bytes(2, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+
+    let position = zellij_utils::position::Position::new(5, 5);
+    tab.handle_mouse_event(
+        &zellij_utils::input::mouse::MouseEvent::new_left_press_event(position),
+        1,
+    )
+    .unwrap();
+    assert!(matches!(
+        tab.mouse_press_owner.get(&1),
+        Some(super::mouse_handler::MousePressOwner::App(
+            PaneId::Terminal(1)
+        ))
+    ));
+    let _ = drain_pty_writer(&rx);
+
+    tab.tiled_panes.focus_pane(PaneId::Terminal(2), 1);
+    // Release over the captured pane's frame after focus moved: the app that
+    // captured the press must still receive the release.
+    let release_position = zellij_utils::position::Position::new(0, 0);
+    tab.handle_mouse_event(
+        &zellij_utils::input::mouse::MouseEvent::new_left_release_event(release_position),
+        1,
+    )
+    .unwrap();
+
+    let writes: Vec<(u32, Vec<u8>)> = drain_pty_writer(&rx)
+        .into_iter()
+        .filter_map(|instruction| {
+            pty_write_bytes(&instruction).map(|(terminal_id, bytes)| (terminal_id, bytes.to_vec()))
+        })
+        .collect();
+    assert!(
+        writes
+            .iter()
+            .any(|(terminal_id, bytes)| *terminal_id == 1 && bytes.starts_with(b"\x1b[<")),
+        "the release should reach the pane that captured the press: {writes:?}"
+    );
+    assert!(
+        !writes.iter().any(|(terminal_id, _)| *terminal_id == 2),
+        "the release must not go to the newly focused pane: {writes:?}"
     );
 }
 
@@ -21227,8 +22377,8 @@ pub fn a_shift_click_bypasses_a_program_that_asked_for_the_mouse() {
     assert!(
         !writes.iter().any(|write| matches!(
             write,
-            PtyWriteInstruction::Write(bytes, _, _)
-                if String::from_utf8_lossy(bytes).starts_with("\u{1b}[<")
+            PtyWriteInstruction::Write(write)
+                if String::from_utf8_lossy(write.bytes()).starts_with("\u{1b}[<")
         )),
         "shift must hold the click back from the program so the terminal can use it, got {writes:?}"
     );
@@ -21258,8 +22408,8 @@ pub fn a_shift_right_click_opens_the_context_menu_instead_of_going_to_the_progra
     assert!(
         !writes.iter().any(|write| matches!(
             write,
-            PtyWriteInstruction::Write(bytes, _, _)
-                if String::from_utf8_lossy(bytes).starts_with("\u{1b}[<")
+            PtyWriteInstruction::Write(write)
+                if String::from_utf8_lossy(write.bytes()).starts_with("\u{1b}[<")
         )),
         "shift must hold the right click back from the program, got {writes:?}"
     );
@@ -21301,6 +22451,88 @@ fn tab_with_scrollback() -> Tab {
     tab
 }
 
+#[test]
+fn rep_paused_output_is_admitted_through_the_bounded_backlog() {
+    let mut tab = create_new_tab(Size { cols: 20, rows: 5 }, true);
+    tab.handle_pty_bytes(1, b"a\x1b[65535b".to_vec()).unwrap();
+    assert!(tab.has_pending_output(1));
+    assert!(tab.pending_vte_len(1) == 0);
+
+    for _ in 0..8 {
+        tab.handle_pty_bytes(1, vec![b'x'; 200_000]).unwrap();
+    }
+    assert!(tab.pending_vte_len(1) <= crate::tab::MAX_PENDING_VTE_BYTES);
+    assert!(tab.has_pending_output(1));
+
+    let mut steps = 0;
+    while tab.has_pending_output(1) {
+        tab.apply_pending_vte_quanta().unwrap();
+        tab.advance_deferred_pane_work();
+        steps += 1;
+        assert!(steps < 100_000, "REP and admitted backlog did not settle");
+    }
+    assert!(!tab.has_pending_output(1));
+}
+
+#[test]
+fn suppressed_scrollback_editor_pane_advances_rep_and_reports_pending_output() {
+    let mut tab = create_new_tab(Size { cols: 40, rows: 8 }, false);
+    tab.replace_active_pane_with_editor_pane(PaneId::Terminal(99), 1)
+        .unwrap();
+    tab.handle_pty_bytes(1, b"a\x1b[65535b".to_vec()).unwrap();
+    assert!(
+        tab.has_pending_output(1),
+        "settlement must see the suppressed pane by its terminal id"
+    );
+
+    let mut steps = 0;
+    while tab.has_pending_output(1) {
+        tab.advance_deferred_pane_work();
+        steps += 1;
+        assert!(steps < 100_000, "suppressed pane REP did not settle");
+    }
+    assert!(!tab.has_pending_output(1));
+}
+
+#[test]
+fn nested_suppression_resolves_terminal_identity_by_pid_not_map_key() {
+    let mut tab = create_new_tab(Size { cols: 40, rows: 8 }, false);
+    // Simulate {E -> P, P -> Q}: the pane stored under key P has pid Q, while
+    // the pane whose pid is P is stored under E.
+    let pane_p = tab.new_scrollback_editor_pane(10);
+    let pane_q = tab.new_scrollback_editor_pane(20);
+    tab.suppressed_panes
+        .insert(PaneId::Terminal(10), (true, Box::new(pane_q)));
+    tab.suppressed_panes
+        .insert(PaneId::Terminal(99), (true, Box::new(pane_p)));
+
+    let resolved = tab
+        .get_pane_by_pid(PaneId::Terminal(10))
+        .expect("pid identity resolves");
+    assert_eq!(resolved.pid(), PaneId::Terminal(10));
+    let resolved_mut = tab
+        .get_pane_by_pid_mut(PaneId::Terminal(10))
+        .expect("mutable pid identity resolves");
+    assert_eq!(resolved_mut.pid(), PaneId::Terminal(10));
+}
+
+#[test]
+fn deferred_rep_suffix_forwards_its_host_query() {
+    let mut tab = create_new_tab(Size { cols: 20, rows: 5 }, true);
+    tab.handle_pty_bytes(1, b"a\x1b[1025b\x1b]11;?\x1b\\".to_vec())
+        .unwrap();
+    assert!(tab.has_pending_output(1));
+
+    tab.advance_deferred_pane_work();
+    let pane = tab
+        .get_pane_with_id(PaneId::Terminal(1))
+        .expect("terminal pane");
+    assert!(
+        pane.is_forward_paused(),
+        "the query produced after the repeat must be forwarded and pause the pane"
+    );
+}
+
 fn scrolled_lines(tab: &Tab) -> usize {
     tab.get_pane_with_id(PaneId::Terminal(1))
         .unwrap()
@@ -21314,8 +22546,8 @@ fn written_strings(
     drain_pty_writer(rx)
         .into_iter()
         .filter_map(|instruction| match instruction {
-            PtyWriteInstruction::Write(bytes, _, _) => {
-                Some(String::from_utf8_lossy(&bytes).into_owned())
+            PtyWriteInstruction::Write(write) => {
+                Some(String::from_utf8_lossy(write.bytes()).into_owned())
             },
             _ => None,
         })
@@ -21438,6 +22670,49 @@ fn ctrl_wheel_resizes_and_alt_wheel_jumps_prompts_regardless_of_the_line_count()
     alt.wheel_lines = 9;
     tab.handle_mouse_event(&alt, 1).unwrap();
     assert_ne!(scrolled_lines(&tab), 9);
+}
+
+#[test]
+fn ctrl_wheel_resize_targets_the_hovered_tiled_pane_not_the_active_one() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, true);
+    let left_pane = PaneId::Terminal(1);
+    let right_pane = PaneId::Terminal(2);
+    tab.vertical_split(right_pane, None, client_id, None, None)
+        .unwrap();
+    tab.focus_pane_with_id(left_pane, false, false, client_id)
+        .unwrap();
+    assert_eq!(tab.get_active_pane_id(client_id), Some(left_pane));
+
+    let left_before = geom_of(&tab, left_pane);
+    let right_before = geom_of(&tab, right_pane);
+    let hovered = {
+        let pane = tab.get_pane_with_id(right_pane).unwrap();
+        zellij_utils::position::Position::new(
+            (pane.y() + pane.rows() / 2) as i32,
+            (pane.x() + pane.cols() / 2) as u16,
+        )
+    };
+    tab.handle_mouse_event(
+        &zellij_utils::input::mouse::MouseEvent::new_ctrl_scroll_up_event(hovered),
+        client_id,
+    )
+    .unwrap();
+
+    let left_after = geom_of(&tab, left_pane);
+    let right_after = geom_of(&tab, right_pane);
+    assert!(
+        right_after.cols.as_usize() > right_before.cols.as_usize(),
+        "the pane under the pointer grows"
+    );
+    assert!(
+        left_after.cols.as_usize() < left_before.cols.as_usize(),
+        "the active pane gives space to the hovered pane"
+    );
 }
 
 #[test]
@@ -21630,4 +22905,88 @@ pub fn making_a_pane_tiled_by_pane_id_hides_floating_panes_and_focuses_it() {
     assert!(tab.pane_id_is_floating(&other_floating_pane_id));
     assert!(!tab.are_floating_panes_visible());
     assert_eq!(tab.get_active_pane_id(client_id), Some(new_pane_id));
+}
+
+fn rendered_ansi(tab: &mut Tab) -> String {
+    let mut output = crate::output::Output::new(
+        Default::default(),
+        Default::default(),
+        false,
+        true,
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        Default::default(),
+    );
+    tab.render(&mut output, None).unwrap();
+    output
+        .serialize()
+        .unwrap()
+        .get(&1)
+        .unwrap()
+        .ansi()
+        .to_string()
+}
+
+#[test]
+fn a_moved_pane_keeps_resolving_its_hyperlinks_to_its_own_targets() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    // Both tabs hand out link id 0 first, to different targets, so an id
+    // resolved through the wrong tab's table shows the other tab's target.
+    let mut source_tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut source_tab, 2);
+    source_tab
+        .handle_pty_bytes(
+            2,
+            b"\x1b]8;;https://moved.example/own\x1b\\moved-text\x1b]8;;\x1b\\".to_vec(),
+        )
+        .unwrap();
+
+    let mut destination_tab = create_new_tab(size, false);
+    destination_tab
+        .handle_pty_bytes(
+            1,
+            b"\x1b]8;;https://other.example/first\x1b\\first\x1b]8;;\x1b\\\
+              \x1b]8;;https://other.example/second\x1b\\second\x1b]8;;\x1b\\"
+                .to_vec(),
+        )
+        .unwrap();
+
+    let pane = source_tab
+        .extract_pane(PaneId::Terminal(2), true)
+        .expect("the pane is in the source tab");
+    destination_tab
+        .add_tiled_pane(pane, PaneId::Terminal(2), false, Some(1))
+        .unwrap();
+
+    let after_move = rendered_ansi(&mut destination_tab);
+    assert!(after_move.contains("moved-text"), "the moved pane is drawn");
+    assert!(
+        after_move.contains("https://moved.example/own"),
+        "the moved pane's link still resolves to its own target"
+    );
+    assert!(after_move.contains("https://other.example/first"));
+    assert!(after_move.contains("https://other.example/second"));
+}
+
+#[test]
+fn rerunning_a_missing_terminal_pane_finishes_as_an_error() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    let (tx, rx) = oneshot::channel();
+    tab.rerun_terminal_pane_with_id(7, Some(NotificationEnd::new(tx)));
+    let result = rx.blocking_recv().unwrap();
+    assert_eq!(result.kind, ActionCompletionKind::Finished);
+    assert_eq!(result.exit_status, Some(1));
+    let message = result.error_message.expect("missing pane is an error");
+    assert!(message.contains('7'), "{message}");
+    assert!(message.contains("Failed to find"), "{message}");
 }

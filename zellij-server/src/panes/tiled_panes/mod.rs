@@ -56,18 +56,55 @@ fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (us
     // if the pane is not on the bottom or right edge on the screen, we need to reserve one space
     // from its content to leave room for the boundary between it and the next pane (if it doesn't
     // draw its own frame)
-    let columns_offset = if position_and_size.x + position_and_size.cols.as_usize() < viewport.cols
-    {
-        1
-    } else {
-        0
-    };
-    let rows_offset = if position_and_size.y + position_and_size.rows.as_usize() < viewport.rows {
-        1
-    } else {
-        0
-    };
+    let pane_right = position_and_size.x + position_and_size.cols.as_usize();
+    let pane_bottom = position_and_size.y + position_and_size.rows.as_usize();
+    let viewport_right = viewport.x + viewport.cols;
+    let viewport_bottom = viewport.y + viewport.rows;
+    let columns_offset = usize::from(pane_right > viewport.x && pane_right < viewport_right);
+    let rows_offset = usize::from(pane_bottom > viewport.y && pane_bottom < viewport_bottom);
     (columns_offset, rows_offset)
+}
+
+#[cfg(test)]
+mod pane_content_offset_tests {
+    use super::*;
+    use zellij_utils::pane_size::Dimension;
+
+    #[test]
+    fn a_sidebar_ending_at_the_viewport_origin_reserves_no_boundary_cell() {
+        let viewport = Viewport {
+            x: 20,
+            y: 0,
+            cols: 100,
+            rows: 40,
+        };
+        let sidebar = PaneGeom {
+            x: 0,
+            y: 0,
+            rows: Dimension::fixed(40),
+            cols: Dimension::fixed(20),
+            ..Default::default()
+        };
+        assert_eq!(pane_content_offset(&sidebar, &viewport), (0, 0));
+    }
+
+    #[test]
+    fn an_interior_pane_still_reserves_boundary_cells() {
+        let viewport = Viewport {
+            x: 20,
+            y: 5,
+            cols: 100,
+            rows: 40,
+        };
+        let pane = PaneGeom {
+            x: 20,
+            y: 5,
+            rows: Dimension::fixed(10),
+            cols: Dimension::fixed(20),
+            ..Default::default()
+        };
+        assert_eq!(pane_content_offset(&pane, &viewport), (1, 1));
+    }
 }
 
 pub struct TiledPanes {
@@ -122,6 +159,10 @@ impl TiledPanes {
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
     ) -> Self {
+        let active_panes = match senders.to_pty_writer.clone() {
+            Some(pty_writer) => ActivePanes::with_pty_writer(&os_api, pty_writer),
+            None => ActivePanes::new(&os_api),
+        };
         TiledPanes {
             panes: BTreeMap::new(),
             live_views: Default::default(),
@@ -137,7 +178,7 @@ impl TiledPanes {
             default_mode,
             style,
             session_is_mirrored,
-            active_panes: ActivePanes::new(&os_api),
+            active_panes,
             pane_frame_style,
             panes_to_hide: PanesToHide::default(),
             fullscreen_is_active: None,
@@ -686,6 +727,17 @@ impl TiledPanes {
                 .unwrap_or_else(|| Default::default())
         };
         let multi_member_stack_ids = self.multi_member_stack_ids();
+        let stack_member_counts = {
+            let mut counts = HashMap::new();
+            for (id, pane) in &self.panes {
+                if !self.panes_to_hide.contains(id) {
+                    if let Some(stack_id) = pane.current_geom().stacked {
+                        *counts.entry(stack_id).or_insert(0usize) += 1;
+                    }
+                }
+            }
+            counts
+        };
         let reserved_top_rows = if self.fullscreen_is_active.is_some() {
             HashMap::new()
         } else {
@@ -695,6 +747,7 @@ impl TiledPanes {
             if no_ui_fullscreen_pane_id == Some(pane.pid()) {
                 pane.set_frame(false);
                 pane.set_content_offset(Offset::default());
+                pane.set_collapsed_stack_program_size(None);
                 resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();
                 continue;
             }
@@ -704,6 +757,12 @@ impl TiledPanes {
 
             let pane_viewport = &viewport;
             let reserved_rows = reserved_top_rows.get(&pane.pid()).copied().unwrap_or(0);
+            let current_geom = pane.current_geom();
+            let is_one_liner_in_stack = current_geom.is_stacked()
+                && current_geom.rows.is_fixed()
+                && current_geom
+                    .stacked
+                    .is_some_and(|id| multi_member_stack_ids.contains(&id));
 
             #[allow(clippy::if_same_then_else)]
             if reserved_rows > 0 {
@@ -736,7 +795,6 @@ impl TiledPanes {
                 let mut position_and_size = pane.current_geom();
                 let is_stacked = position_and_size.is_stacked();
                 let is_flexible = !position_and_size.rows.is_fixed();
-                let is_one_liner_in_stack = is_stacked && !is_flexible;
                 let pane_is_borderless = pane.borderless();
                 if let Some(position_and_size_of_stack) = position_and_size
                     .stacked
@@ -765,6 +823,37 @@ impl TiledPanes {
                 } else {
                     pane.set_content_offset(Offset::shift(pane_rows_offset, pane_columns_offset));
                 }
+            }
+
+            // Collapsed stack members are laid out as fixed(1) title rows, which
+            // with frames yields a 0×0 content geom. Pin the PTY to the expanded
+            // stack content size so children still get a usable winsize.
+            if is_one_liner_in_stack {
+                if let Some(stack_id) = current_geom.stacked {
+                    if let Some(stack_geom) = position_and_sizes_of_stacks.get(&stack_id) {
+                        let member_count = stack_member_counts.get(&stack_id).copied().unwrap_or(1);
+                        let offset = pane.get_content_offset();
+                        let flexible_rows = stack_geom
+                            .rows
+                            .as_usize()
+                            .saturating_sub(member_count.saturating_sub(1));
+                        let cols = stack_geom
+                            .cols
+                            .as_usize()
+                            .saturating_sub(offset.left + offset.right)
+                            .max(1);
+                        let rows = flexible_rows
+                            .saturating_sub(offset.top + offset.bottom)
+                            .max(1);
+                        pane.set_collapsed_stack_program_size(Some(Size { cols, rows }));
+                    } else {
+                        pane.set_collapsed_stack_program_size(None);
+                    }
+                } else {
+                    pane.set_collapsed_stack_program_size(None);
+                }
+            } else {
+                pane.set_collapsed_stack_program_size(None);
             }
 
             resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();
@@ -3360,6 +3449,13 @@ impl TiledPanes {
                 .insert(client_id, to_pane_id, &mut self.panes);
         }
     }
+    pub fn remove_client(&mut self, client_id: ClientId) {
+        // Active/last focus is intentionally retained for an absent client:
+        // stack-list changes still move that client's focus, and a reconnect
+        // may reuse the entry. Only per-client geometry is session-lifetime
+        // state that cannot be reused after disconnect.
+        self.client_id_to_boundaries.remove(&client_id);
+    }
     fn reset_boundaries(&mut self) {
         self.client_id_to_boundaries.clear();
     }
@@ -3371,9 +3467,12 @@ impl TiledPanes {
     }
     pub fn pane_info(&self, current_pane_group: &HashMap<ClientId, Vec<PaneId>>) -> Vec<PaneInfo> {
         let mut pane_infos = vec![];
+        let connected_clients = self.connected_clients.borrow().clone();
         for (pane_id, pane) in self.panes.iter() {
             let mut pane_info_for_pane = pane_info_for_pane(pane_id, pane, &current_pane_group);
-            let is_focused = self.active_panes.pane_id_is_focused(pane_id);
+            let is_focused = self
+                .active_panes
+                .pane_id_is_focused_for_query(pane_id, &connected_clients);
             pane_info_for_pane.is_floating = false;
             pane_info_for_pane.is_suppressed = false;
             pane_info_for_pane.is_collapsed = self.panes_to_hide.is_covered(pane_id);

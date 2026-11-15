@@ -18,7 +18,7 @@ pub fn init() -> &'static Path {
         .get_or_init(|| {
             let test_root = create_test_root();
             isolate_process_environment(&test_root);
-            zellij_utils::logging::configure_logger();
+            zellij_utils::logging::configure_logger().unwrap();
             test_root
         })
         .as_path()

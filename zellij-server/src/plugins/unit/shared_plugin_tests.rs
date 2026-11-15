@@ -65,6 +65,7 @@ fn load(
         None,
         None,
         None,
+        None,
     ));
 }
 
@@ -125,6 +126,7 @@ impl ScreenLog {
                         plugin_permission.permissions,
                         PermissionStatus::Granted,
                         Some(self.cache_path.clone()),
+                        plugin_permission.prompt_id,
                     ));
             },
             ScreenInstruction::SetPaneCollapsed(pane_id, true) => {
@@ -711,6 +713,7 @@ pub fn a_shared_plugin_reloaded_by_url_loses_its_settings_entry() {
         shared_fixture(&[("label", "a"), ("settings_entries", "true")]),
         1,
         Size { cols: 80, rows: 5 },
+        None,
         None,
     ));
     screen.wait_until("the observer no longer lists the entry", |renders| {

@@ -34,6 +34,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use zellij_utils::errors::prelude::Context;
 use zellij_utils::errors::FatalError;
 use zellij_utils::shared::web_server_base_url;
 
@@ -601,7 +602,16 @@ fn create_ipc_pipe(name: &str, teardown: Option<TerminalTeardown>) -> PathBuf {
 /// falling back to the name-based path of sessions from before ids.
 fn resolve_ipc_pipe(name: &str, teardown: Option<TerminalTeardown>) -> PathBuf {
     prepare_sock_dir(teardown);
-    let path = zellij_utils::consts::session_socket_path(name);
+    let path = match zellij_utils::consts::session_socket_path(name) {
+        Ok(path) => path,
+        Err(error) => exit_after_startup_error(
+            teardown,
+            format!(
+                "Failed to read the session index for {:?}: {}. Not connecting.",
+                name, error
+            ),
+        ),
+    };
     prepare_parent_dir(teardown, &path);
     path
 }
@@ -666,6 +676,7 @@ pub(crate) enum InputInstruction {
     },
     NestedSessionFrameFromHost(Vec<u8>),
     HostTerminalFocusChanged(bool),
+    Eof,
     Exit,
 }
 
@@ -689,12 +700,14 @@ pub async fn run_remote_client_terminal_loop(
         .map_err(|e| RemoteClientError::IoError(e))?;
 
     let create_resize_message = |size: Size| {
+        // SAFETY: WebClientToWebServerControlMessage is a locally constructed enum/struct
+        // with an infallible Serialize impl for these variants.
         Message::Text(
             serde_json::to_string(&WebClientToWebServerControlMessage {
                 web_client_id: connections.web_client_id.clone(),
                 payload: WebClientToWebServerControlMessagePayload::TerminalResize(size),
             })
-            .unwrap()
+            .expect("serialize TerminalResize control message")
             .into(),
         )
     };
@@ -736,6 +749,8 @@ pub async fn run_remote_client_terminal_loop(
                                     let _ = stdout.flush();
                                 },
                                 Some(_) => {
+                                    // SAFETY: WebClientToWebServerControlMessage is a locally
+                                    // constructed enum/struct with an infallible Serialize impl.
                                     let control_msg = Message::Text(
                                         serde_json::to_string(&WebClientToWebServerControlMessage {
                                             web_client_id: connections.web_client_id.clone(),
@@ -743,7 +758,7 @@ pub async fn run_remote_client_terminal_loop(
                                                 payload_bytes,
                                             },
                                         })
-                                        .unwrap()
+                                        .expect("serialize NestedSessionFrameFromHost control message")
                                         .into(),
                                     );
                                     if let Err(e) = connections.control_ws.send(control_msg).await {
@@ -959,28 +974,50 @@ pub fn start_remote_client(
     )?;
 
     let reconnect_to_session = None;
-    os_input.unset_raw_mode().unwrap();
+    best_effort_unset_raw_mode(&*os_input);
 
     let mut stdout = os_input.get_stdout_writer();
-    stdout.write_all(ENTER_ALTERNATE_SCREEN.as_bytes()).unwrap();
-    stdout
-        .write_all(CLEAR_CLIENT_TERMINAL_ATTRIBUTES.as_bytes())
-        .unwrap();
-    stdout
-        .write_all(ENTER_KITTY_KEYBOARD_MODE.as_bytes())
-        .unwrap();
-    stdout
-        .write_all(ENABLE_HOST_THEME_NOTIFY.as_bytes())
-        .unwrap();
-    stdout.write_all(QUERY_HOST_THEME.as_bytes()).unwrap();
+    best_effort_write_and_flush(
+        &mut *stdout,
+        ENTER_ALTERNATE_SCREEN.as_bytes(),
+        "failed to enter alternate screen",
+    );
+    best_effort_write_and_flush(
+        &mut *stdout,
+        CLEAR_CLIENT_TERMINAL_ATTRIBUTES.as_bytes(),
+        "failed to clear client terminal attributes",
+    );
+    best_effort_write_and_flush(
+        &mut *stdout,
+        ENTER_KITTY_KEYBOARD_MODE.as_bytes(),
+        "failed to enter kitty keyboard mode",
+    );
+    best_effort_write_and_flush(
+        &mut *stdout,
+        ENABLE_HOST_THEME_NOTIFY.as_bytes(),
+        "failed to enable host theme notify",
+    );
+    best_effort_write_and_flush(
+        &mut *stdout,
+        QUERY_HOST_THEME.as_bytes(),
+        "failed to query host theme",
+    );
 
     envs::set_zellij("0".to_string());
 
     let full_screen_ws = os_input.get_terminal_size();
 
     os_input.set_raw_mode();
-    stdout.write_all(ENABLE_BRACKETED_PASTE.as_bytes()).unwrap();
-    stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
+    best_effort_write_and_flush(
+        &mut *stdout,
+        ENABLE_BRACKETED_PASTE.as_bytes(),
+        "failed to enable bracketed paste",
+    );
+    best_effort_write_and_flush(
+        &mut *stdout,
+        ENABLE_FOCUS_REPORTING.as_bytes(),
+        "failed to enable focus reporting",
+    );
     let announce = nested_session::NestedSessionMessage::Announce {
         session_name: remote_session_name.clone(),
         capabilities: vec![
@@ -988,10 +1025,11 @@ pub fn start_remote_client(
             nested_session::NestedSessionCapability::HintReporting,
         ],
     };
-    stdout
-        .write_all(&nested_session::encode_frame(&announce))
-        .unwrap();
-    let _ = stdout.flush();
+    best_effort_write_and_flush(
+        &mut *stdout,
+        &nested_session::encode_frame(&announce),
+        "failed to write nested session announce",
+    );
     let host_contacted = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     std::panic::set_hook({
@@ -1014,12 +1052,15 @@ pub fn start_remote_client(
             let _ = stdout.flush();
         }
         os_input.discard_pending_input();
-        os_input.unset_raw_mode().unwrap();
+        best_effort_unset_raw_mode(&*os_input);
         os_input.restore_console_mode();
         let error = terminal_teardown_message(&e, full_screen_ws.rows, false, false);
         let mut stdout = os_input.get_stdout_writer();
-        stdout.write_all(error.as_bytes()).unwrap();
-        stdout.flush().unwrap();
+        best_effort_write_and_flush(
+            &mut *stdout,
+            error.as_bytes(),
+            "failed to write teardown message to stdout",
+        );
         if exit_status == 0 {
             log::info!("{}", e);
         } else {
@@ -1054,8 +1095,11 @@ pub fn start_remote_client(
     } else {
         let clear_screen = "\u{1b}[2J";
         let mut stdout = os_input.get_stdout_writer();
-        stdout.write_all(clear_screen.as_bytes()).unwrap();
-        stdout.flush().unwrap();
+        best_effort_write_and_flush(
+            &mut *stdout,
+            clear_screen.as_bytes(),
+            "failed to clear the screen on reconnect",
+        );
     }
 
     Ok(reconnect_to_session)
@@ -1227,29 +1271,39 @@ pub fn start_client(
         .unwrap_or(true);
     let should_start_web_server = config_options.web_server.map(|w| w).unwrap_or(false);
     let mut reconnect_to_session = None;
-    os_input.unset_raw_mode().unwrap();
+    best_effort_unset_raw_mode(&*os_input);
 
     if !is_a_reconnect {
         // we don't do this for a reconnect because our controlling terminal already has the
         // attributes we want from it, and some terminals don't treat these atomically (looking at
         // you Windows Terminal...)
         let mut stdout = os_input.get_stdout_writer();
-        stdout.write_all(ENTER_ALTERNATE_SCREEN.as_bytes()).unwrap();
-        stdout
-            .write_all(CLEAR_CLIENT_TERMINAL_ATTRIBUTES.as_bytes())
-            .unwrap();
+        best_effort_write_and_flush(
+            &mut *stdout,
+            ENTER_ALTERNATE_SCREEN.as_bytes(),
+            "failed to enter alternate screen",
+        );
+        best_effort_write_and_flush(
+            &mut *stdout,
+            CLEAR_CLIENT_TERMINAL_ATTRIBUTES.as_bytes(),
+            "failed to clear client terminal attributes",
+        );
         if !explicitly_disable_kitty_keyboard_protocol {
-            stdout
-                .write_all(ENTER_KITTY_KEYBOARD_MODE.as_bytes())
-                .unwrap();
+            best_effort_write_and_flush(
+                &mut *stdout,
+                ENTER_KITTY_KEYBOARD_MODE.as_bytes(),
+                "failed to enter kitty keyboard mode",
+            );
         }
         // Subscribe to host CSI 2031 theme notifications and query the
         // current mode. Sent right after CLEAR_CLIENT_TERMINAL_ATTRIBUTES
         // so there's no window in which the host is unsubscribed.
         // Hosts that don't support 2031 ignore both sequences.
-        stdout
-            .write_all(ENABLE_HOST_THEME_NOTIFY.as_bytes())
-            .unwrap();
+        best_effort_write_and_flush(
+            &mut *stdout,
+            ENABLE_HOST_THEME_NOTIFY.as_bytes(),
+            "failed to enable host theme notify",
+        );
     }
     envs::set_zellij("0".to_string());
     config.env.set_vars();
@@ -1314,8 +1368,16 @@ pub fn start_client(
 
     os_input.set_raw_mode();
     let mut stdout = os_input.get_stdout_writer();
-    stdout.write_all(ENABLE_BRACKETED_PASTE.as_bytes()).unwrap();
-    stdout.write_all(ENABLE_FOCUS_REPORTING.as_bytes()).unwrap();
+    best_effort_write_and_flush(
+        &mut *stdout,
+        ENABLE_BRACKETED_PASTE.as_bytes(),
+        "failed to enable bracketed paste",
+    );
+    best_effort_write_and_flush(
+        &mut *stdout,
+        ENABLE_FOCUS_REPORTING.as_bytes(),
+        "failed to enable focus reporting",
+    );
     let announce = nested_session::NestedSessionMessage::Announce {
         session_name: own_session_name.clone(),
         capabilities: vec![
@@ -1323,10 +1385,11 @@ pub fn start_client(
             nested_session::NestedSessionCapability::HintReporting,
         ],
     };
-    stdout
-        .write_all(&nested_session::encode_frame(&announce))
-        .unwrap();
-    let _ = stdout.flush();
+    best_effort_write_and_flush(
+        &mut *stdout,
+        &nested_session::encode_frame(&announce),
+        "failed to write nested session announce",
+    );
     if is_a_reconnect {
         for message in os_input.remembered_host_state().replay() {
             os_input.send_to_server(ClientToServerMsg::NestedSessionFrameFromHost {
@@ -1474,7 +1537,12 @@ pub fn start_client(
                 );
             }
         })
-        .unwrap();
+        .unwrap_or_else(|e| {
+            exit_after_startup_error(
+                Some(terminal_teardown),
+                format!("Failed to spawn signal listener thread: {}", e),
+            );
+        });
 
     let router_thread = thread::Builder::new()
         .name("router".to_string())
@@ -1490,44 +1558,49 @@ pub fn start_client(
                         if let ServerToClientMsg::Exit { .. } = instruction {
                             should_break = true;
                         }
-                        send_client_instructions.send(instruction.into()).unwrap();
+                        if send_client_instructions.send(instruction.into()).is_err() {
+                            break;
+                        }
                         if should_break {
                             break;
                         }
                     },
                     Err(IpcReceiveError::Disconnected) => {
                         log::error!("Lost connection to the Zellij server");
-                        send_client_instructions
-                            .send(ClientInstruction::UnblockInputThread)
-                            .unwrap();
-                        send_client_instructions
-                            .send(ClientInstruction::Error(
-                                "Lost connection to the Zellij server".to_string(),
-                            ))
-                            .unwrap();
+                        let _ =
+                            send_client_instructions.send(ClientInstruction::UnblockInputThread);
+                        let _ = send_client_instructions.send(ClientInstruction::Error(
+                            "Lost connection to the Zellij server".to_string(),
+                        ));
                         break;
                     },
                     Err(IpcReceiveError::Undecodable) => {
                         consecutive_unknown_messages_received += 1;
-                        send_client_instructions
+                        if send_client_instructions
                             .send(ClientInstruction::UnblockInputThread)
-                            .unwrap();
+                            .is_err()
+                        {
+                            break;
+                        }
                         if consecutive_unknown_messages_received == 1 {
                             log::error!("Received unknown message from server");
                         }
                         if consecutive_unknown_messages_received >= 1000 {
-                            send_client_instructions
-                                .send(ClientInstruction::Error(
-                                    "Received empty unknown from server".to_string(),
-                                ))
-                                .unwrap();
+                            let _ = send_client_instructions.send(ClientInstruction::Error(
+                                "Received empty unknown from server".to_string(),
+                            ));
                             break;
                         }
                     },
                 }
             }
         })
-        .unwrap();
+        .unwrap_or_else(|e| {
+            exit_after_startup_error(
+                Some(terminal_teardown),
+                format!("Failed to spawn router thread: {}", e),
+            );
+        });
 
     let handle_error = |backtrace: String, include_grapheme_cluster_exit: bool| {
         quiet_host_input(
@@ -1536,7 +1609,7 @@ pub fn start_client(
             !explicitly_disable_kitty_keyboard_protocol,
             EXIT_DRAIN_TIMEOUT,
         );
-        let _ = os_input.unset_raw_mode();
+        best_effort_unset_raw_mode(&*os_input);
         os_input.restore_console_mode();
         let error = terminal_teardown_message(
             &backtrace,
@@ -1545,8 +1618,11 @@ pub fn start_client(
             include_grapheme_cluster_exit,
         );
         let mut stdout = os_input.get_stdout_writer();
-        let _ = stdout.write_all(error.as_bytes());
-        let _ = stdout.flush();
+        best_effort_write_and_flush(
+            &mut *stdout,
+            error.as_bytes(),
+            "failed to write teardown message to stdout",
+        );
         std::process::exit(1);
     };
 
@@ -1696,7 +1772,7 @@ pub fn start_client(
                 let stale_forward = {
                     let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
                     let stale_forward = stdin_ansi_parser.take_active_forward();
-                    stdin_ansi_parser.open_forward(token);
+                    stdin_ansi_parser.open_forward(token, &query_bytes);
                     let mut blob = query_bytes;
                     blob.extend_from_slice(stdin_ansi_parser::PRIMARY_DA_QUERY);
                     let mut out = os_input.get_stdout_writer();
@@ -1810,24 +1886,38 @@ pub fn start_client(
             exit_drain_timeout,
         );
         info!("{}", exit_msg);
-        let _ = os_input.unset_raw_mode();
+        best_effort_unset_raw_mode(&*os_input);
         os_input.restore_console_mode();
         let mut stdout = os_input.get_stdout_writer();
-        let _ = stdout.write_all(goodbye_message.as_bytes());
+        best_effort_write_and_flush(
+            &mut *stdout,
+            goodbye_message.as_bytes(),
+            "failed to write the goodbye message to stdout",
+        );
         if std::io::IsTerminal::is_terminal(&std::io::stdout()) {
             if let Some(line) = exit_line_once(&reminders) {
-                let _ = stdout.write_all(line.as_bytes());
+                best_effort_write_and_flush(
+                    &mut *stdout,
+                    line.as_bytes(),
+                    "failed to write the exit reminder to stdout",
+                );
             }
         }
-        let _ = stdout.flush();
     } else {
         let clear_screen = "\u{1b}[2J";
         let mut stdout = os_input.get_stdout_writer();
         if outer_grapheme_cluster_mode.is_enabled() {
-            let _ = stdout.write_all(DISABLE_GRAPHEME_CLUSTER_MODE.as_bytes());
+            best_effort_write_and_flush(
+                &mut *stdout,
+                DISABLE_GRAPHEME_CLUSTER_MODE.as_bytes(),
+                "failed to disable grapheme cluster mode on reconnect",
+            );
         }
-        let _ = stdout.write_all(clear_screen.as_bytes());
-        let _ = stdout.flush();
+        best_effort_write_and_flush(
+            &mut *stdout,
+            clear_screen.as_bytes(),
+            "failed to clear the screen on reconnect",
+        );
     }
 
     let _ = send_input_instructions.send(InputInstruction::Exit);
@@ -2033,6 +2123,22 @@ fn input_reporting_off_sequence(include_kitty_exit: bool) -> String {
         "{}{}{}{}",
         kitty_exit, DISABLE_BRACKETED_PASTE, DISABLE_HOST_THEME_NOTIFY, DISABLE_FOCUS_REPORTING
     )
+}
+
+pub(crate) fn best_effort_unset_raw_mode(os_input: &dyn ClientOsApi) {
+    os_input
+        .unset_raw_mode()
+        .context("failed to unset raw mode")
+        .non_fatal();
+}
+
+pub(crate) fn best_effort_write_and_flush(
+    stdout: &mut dyn Write,
+    bytes: &[u8],
+    err_context: &'static str,
+) {
+    stdout.write_all(bytes).context(err_context).non_fatal();
+    stdout.flush().context(err_context).non_fatal();
 }
 
 fn quiet_host_input(

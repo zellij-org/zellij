@@ -1072,7 +1072,10 @@ fn quitting_a_renamed_session_leaves_no_socket_under_either_name() {
         grid_snapshot.lines()[0].contains(&new_name)
     });
     zellij_integration_tests::wait_for("the new name to lead to the same socket", || {
-        zellij_utils::consts::session_socket_path(&new_name) == socket
+        match zellij_utils::consts::session_socket_path(&new_name) {
+            Ok(path) => path == socket,
+            Err(error) => panic!("session index lookup failed: {error}"),
+        }
     });
     assert!(socket.exists());
     assert!(lock_file_of(&socket).exists());

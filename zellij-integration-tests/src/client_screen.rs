@@ -7,7 +7,7 @@ use std::time::Instant;
 use crate::deadline::{ProgressDeadline, CLIENT_SCREEN_PROGRESS};
 use zellij_server::panes::kitty_graphics::KittyImageStore;
 pub use zellij_server::panes::terminal_character::AnsiCode;
-use zellij_server::panes::{LinkHandler, TerminalPane};
+use zellij_server::panes::TerminalPane;
 use zellij_utils::data::{Palette, Style};
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size, SizeInPixels};
 
@@ -507,7 +507,6 @@ fn build_terminal_pane(win_size: Size) -> TerminalPane {
     let pid = 0;
     let pane_index = 0;
     let pane_name = String::new();
-    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
     let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
         height: 21,
         width: 8,
@@ -529,7 +528,6 @@ fn build_terminal_pane(win_size: Size) -> TerminalPane {
         Style::default(),
         pane_index,
         pane_name,
-        link_handler,
         character_cell_size,
         sixel_image_store,
         Rc::new(RefCell::new(KittyImageStore::default())),

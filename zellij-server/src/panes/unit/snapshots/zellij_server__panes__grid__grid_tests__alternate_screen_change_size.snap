@@ -13,14 +13,3 @@ expression: "format!(\"{:?}\", grid)"
 07 (C): line9aaaaaaaaaaaaaaa
 08 (C): line10aaaaaaaaaaaaaa
 09 (C): line11aaaaaaaaaaaaaa
-10 (C): line12aaaaaaaaaaaaaa
-11 (C): line13aaaaaaaaaaaaaa
-12 (C): line14aaaaaaaaaaaaaa
-13 (C): line15aaaaaaaaaaaaaa
-14 (C): line16aaaaaaaaaaaaaa
-15 (C): line17aaaaaaaaaaaaaa
-16 (C): line18aaaaaaaaaaaaaa
-17 (C): line19a🦀aaaaaaaaaaa
-18 (C): line20a🦀🦀aaaaaaaaa
-19 (C): line21🦀🦀🦀🦀🦀🦀🦀
-

@@ -200,15 +200,22 @@ pub fn snapshot_of(sessions: &BTreeMap<String, SessionAttention>, details: bool)
 }
 
 fn last_used_ms(name: &str) -> Option<u64> {
-    let id = zellij_utils::sessions::resolve_session_id(name).unwrap_or_else(|| name.to_owned());
+    // A lookup error yields no timestamp. It must not read the display-name folder.
+    let id = match zellij_utils::sessions::session_folder_id(name) {
+        Ok(id) => id,
+        Err(_) => return None,
+    };
     let metadata = zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR
-        .join(id)
+        .join(&id)
         .join("session-metadata.kdl");
     let modified = std::fs::metadata(metadata)
         .and_then(|m| m.modified())
         .or_else(|_| {
-            std::fs::metadata(zellij_utils::consts::session_socket_path(name))
-                .and_then(|m| m.modified())
+            std::fs::metadata(zellij_utils::consts::session_socket_path_in(
+                &zellij_utils::consts::ZELLIJ_SOCK_DIR,
+                &id,
+            ))
+            .and_then(|m| m.modified())
         })
         .ok()?;
     epoch_ms(modified)
@@ -290,7 +297,13 @@ fn receive_push(
     };
     let mut sender = match reply {
         Some(reply) => zellij_utils::ipc::IpcSenderWithContext::<ServerToClientMsg>::new(reply),
-        None => receiver.get_sender::<ServerToClientMsg>(),
+        None => match receiver.get_sender::<ServerToClientMsg>() {
+            Ok(sender) => sender,
+            Err(e) => {
+                log::error!("failed to clone IPC sender for watcher push: {}", e);
+                return;
+            },
+        },
     };
     match message {
         ClientToServerMsg::PeerAttentionChanged {

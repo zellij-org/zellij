@@ -259,7 +259,6 @@ impl Tab {
             self.kitty_image_store.clone(),
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
-            self.link_handler.clone(),
             self.character_cell_size.clone(),
             vec![client_id],
             self.style,
@@ -648,7 +647,7 @@ impl Tab {
                     Event::Key(key_with_modifier),
                 )]));
             },
-            Some(AdjustedInput::PermissionRequestResult(permissions, status)) => {
+            Some(AdjustedInput::PermissionRequestResult(permissions, status, prompt_id)) => {
                 if let Some(pane) = self.popup_pane_mut(plugin_id) {
                     pane.request_permissions_from_user(None);
                 }
@@ -661,6 +660,7 @@ impl Tab {
                         permissions,
                         status,
                         None,
+                        prompt_id,
                     ));
                 self.set_force_render();
             },
@@ -866,7 +866,7 @@ impl Tab {
             .unwrap_or_default()
     }
     pub fn mouse_gesture_is_held(&self) -> bool {
-        self.selecting_with_mouse_in_pane.is_some()
+        !self.selecting_with_mouse_in_pane.is_empty()
             || self.pane_being_resized_with_mouse.is_some()
             || self.floating_panes.pane_is_being_moved_with_mouse()
             || !self.pane_drawings.is_empty()

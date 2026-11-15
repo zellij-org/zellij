@@ -183,10 +183,10 @@ impl Pane for FailingRenderPane {
     fn exclude_from_sync(&self) -> bool {
         self.inner.exclude_from_sync()
     }
-    fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>) {
+    fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>) -> bool {
         self.inner.add_red_pane_frame_color_override(_error_text)
     }
-    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) {
+    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) -> bool {
         self.inner.clear_pane_frame_color_override(_client_id)
     }
     fn frame_color_override(&self) -> Option<PaletteColor> {
@@ -389,10 +389,10 @@ impl Pane for FocusReportingPane {
     fn exclude_from_sync(&self) -> bool {
         self.inner.exclude_from_sync()
     }
-    fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>) {
+    fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>) -> bool {
         self.inner.add_red_pane_frame_color_override(_error_text)
     }
-    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) {
+    fn clear_pane_frame_color_override(&mut self, _client_id: Option<ClientId>) -> bool {
         self.inner.clear_pane_frame_color_override(_client_id)
     }
     fn frame_color_override(&self) -> Option<PaletteColor> {

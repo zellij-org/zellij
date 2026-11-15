@@ -252,6 +252,7 @@ fn sample_groups(
     } else {
         ribbon_lines[0].push(" ", None, Some(surrounding), false);
     }
+    // SAFETY: ribbon_lines is seeded with one Line above; last_mut is always Some.
     ribbon(
         ribbon_lines.last_mut().unwrap(),
         &styling.ribbon_selected,

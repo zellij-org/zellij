@@ -23,42 +23,11 @@ pub(super) fn font_file(path: &Path) -> Option<&'static [u8]> {
     Some(data)
 }
 
+/// Copies the font into the process. A mapping would be unsound if the file
+/// changed while that slice was still in use, and would lock user fonts on
+/// Windows while the app runs.
 pub(super) fn map_font_file(path: &Path) -> std::io::Result<&'static [u8]> {
-    if !safe_to_map(path) {
-        return Ok(Box::leak(std::fs::read(path)?.into_boxed_slice()));
-    }
-    let file = std::fs::File::open(path)?;
-    match unsafe { memmap2::Mmap::map(&file) } {
-        Ok(mapped) => Ok(&**Box::leak(Box::new(mapped))),
-        Err(_) => Ok(Box::leak(std::fs::read(path)?.into_boxed_slice())),
-    }
-}
-
-#[cfg(unix)]
-pub(super) fn safe_to_map(path: &Path) -> bool {
-    use std::os::unix::ffi::OsStrExt;
-    let Ok(path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
-        return false;
-    };
-    unsafe { libc::access(path.as_ptr(), libc::W_OK) != 0 }
-}
-
-/// Windows keeps a mapped file from being overwritten, so a font installer could not update a
-/// font while the app runs. Only the system's fonts, which Windows replaces only by servicing,
-/// are mapped; the rest are read.
-#[cfg(windows)]
-pub(super) fn safe_to_map(path: &Path) -> bool {
-    let Some(windows) = std::env::var_os("SystemRoot") else {
-        return false;
-    };
-    let fonts = Path::new(&windows).join("Fonts");
-    let folder = format!("{}\\", fonts.to_string_lossy().to_lowercase());
-    path.to_string_lossy().to_lowercase().starts_with(&folder)
-}
-
-#[cfg(not(any(unix, windows)))]
-pub(super) fn safe_to_map(_path: &Path) -> bool {
-    true
+    Ok(Box::leak(std::fs::read(path)?.into_boxed_slice()))
 }
 
 pub(super) fn has_weight_axis(font: &FontRef<'_>) -> bool {

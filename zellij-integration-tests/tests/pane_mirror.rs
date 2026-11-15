@@ -1660,7 +1660,8 @@ fn a_live_view_without_a_target_says_so_and_cannot_capture() {
 fn a_live_view_waiting_for_a_silent_session_shows_that_it_is_connecting_then_gives_up() {
     let mut viewer = start_viewer();
     let silent_session = format!("{}-silent", viewer.zellij.session_name());
-    let socket_path = zellij_utils::consts::session_socket_path(&silent_session);
+    let socket_path = zellij_utils::consts::session_socket_path(&silent_session)
+        .unwrap_or_else(|error| panic!("session index lookup failed: {error}"));
     let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
     let (held_sender, held_receiver) = unbounded();
     std::thread::spawn(move || {

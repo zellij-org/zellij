@@ -1,11 +1,15 @@
 use super::{
-    screen_thread_main, CopyOptions, Screen, ScreenInstruction, MAX_REMEMBERED_PANES_NEVER_CREATED,
+    push_pending_tab_event, screen_thread_main, ClosePaneSource, CopyOptions, KeybindIntercepts,
+    Screen, ScreenInstruction, MAX_PENDING_TAB_EVENTS, MAX_REMEMBERED_PANES_NEVER_CREATED,
 };
 use crate::panes::kitty_graphics::{KittyHostCapability, KittyImageStore};
 use crate::panes::PaneId;
 use crate::{
-    channels::SenderWithContext, os_input_output::ServerOsApi, route::route_action,
-    thread_bus::Bus, ClientId, ServerInstruction, SessionMetaData, ThreadSenders,
+    channels::SenderWithContext,
+    os_input_output::ServerOsApi,
+    route::{route_action, ActionCompletionKind, ActionCompletionResult, NotificationEnd},
+    thread_bus::Bus,
+    ClientId, ServerInstruction, SessionMetaData, ThreadSenders,
 };
 use insta::assert_snapshot;
 use std::net::{IpAddr, Ipv4Addr};
@@ -48,7 +52,10 @@ use zellij_utils::ipc::PixelDimensions;
 use interprocess::local_socket::Stream as LocalSocketStream;
 use zellij_utils::{
     channels::{self, ChannelWithContext, Receiver},
-    data::{Direction, FloatingPaneCoordinates, InputMode, ModeInfo, NewPanePlacement, Palette},
+    data::{
+        Direction, FloatingPaneCoordinates, InputMode, ModeInfo, NewPanePlacement, Palette,
+        SessionInfo,
+    },
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
 
@@ -209,7 +216,12 @@ impl ServerOsApi for FakeInputOutput {
         _quit_db: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
         _pane_env: &crate::os_input_output::PaneEnv,
-    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> Result<(
+        u32,
+        Box<dyn AsyncReader>,
+        Option<u32>,
+        Option<crate::os_input_output::ChildPidFd>,
+    )> {
         unimplemented!()
     }
     fn write_to_tty_stdin(&self, id: u32, buf: &[u8]) -> Result<usize> {
@@ -280,7 +292,11 @@ impl ServerOsApi for FakeInputOutput {
         _run_command: RunCommand,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _pane_env: &crate::os_input_output::PaneEnv,
-    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
+    ) -> Result<(
+        Box<dyn AsyncReader>,
+        Option<u32>,
+        Option<crate::os_input_output::ChildPidFd>,
+    )> {
         unimplemented!()
     }
     fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
@@ -451,17 +467,7 @@ impl MockScreen {
         let mut config = self.config.clone();
         config.options.advanced_mouse_actions = Some(self.advanced_mouse_actions);
         let client_attributes = self.client_attributes.clone();
-        let screen_bus = Bus::new(
-            vec![self.screen_receiver.take().unwrap()],
-            Some(&self.to_screen.clone()),
-            Some(&self.to_pty.clone()),
-            Some(&self.to_plugin.clone()),
-            Some(&self.to_server.clone()),
-            Some(&self.to_pty_writer.clone()),
-            Some(&self.to_background_jobs.clone()),
-            Some(Box::new(self.os_input.clone())),
-        )
-        .should_silently_fail();
+        let screen_bus = self.screen_bus_with_session_budget();
         let debug = false;
         let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
         let live_view_captures = self.session_metadata.live_view_captures.clone();
@@ -537,17 +543,7 @@ impl MockScreen {
     pub fn run_without_tabs(&mut self) -> std::thread::JoinHandle<()> {
         let config = self.config.clone();
         let client_attributes = self.client_attributes.clone();
-        let screen_bus = Bus::new(
-            vec![self.screen_receiver.take().unwrap()],
-            Some(&self.to_screen.clone()),
-            Some(&self.to_pty.clone()),
-            Some(&self.to_plugin.clone()),
-            Some(&self.to_server.clone()),
-            Some(&self.to_pty_writer.clone()),
-            Some(&self.to_background_jobs.clone()),
-            Some(Box::new(self.os_input.clone())),
-        )
-        .should_silently_fail();
+        let screen_bus = self.screen_bus_with_session_budget();
         let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
         let live_view_captures = self.session_metadata.live_view_captures.clone();
         std::thread::Builder::new()
@@ -577,17 +573,7 @@ impl MockScreen {
     ) -> std::thread::JoinHandle<()> {
         let config = self.config.clone();
         let client_attributes = self.client_attributes.clone();
-        let screen_bus = Bus::new(
-            vec![self.screen_receiver.take().unwrap()],
-            Some(&self.to_screen.clone()),
-            Some(&self.to_pty.clone()),
-            Some(&self.to_plugin.clone()),
-            Some(&self.to_server.clone()),
-            Some(&self.to_pty_writer.clone()),
-            Some(&self.to_background_jobs.clone()),
-            Some(Box::new(self.os_input.clone())),
-        )
-        .should_silently_fail();
+        let screen_bus = self.screen_bus_with_session_budget();
         let debug = false;
         let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
         let live_view_captures = self.session_metadata.live_view_captures.clone();
@@ -752,6 +738,32 @@ impl MockScreen {
         ));
         self.last_opened_tab_index = Some(tab_index);
     }
+    fn screen_bus_with_session_budget(&mut self) -> Bus<ScreenInstruction> {
+        let mut screen_bus = Bus::new(
+            vec![self.screen_receiver.take().unwrap()],
+            Some(&self.to_screen.clone()),
+            Some(&self.to_pty.clone()),
+            Some(&self.to_plugin.clone()),
+            Some(&self.to_server.clone()),
+            Some(&self.to_pty_writer.clone()),
+            Some(&self.to_background_jobs.clone()),
+            Some(Box::new(self.os_input.clone())),
+        )
+        .should_silently_fail();
+        // Bus::new wraps the raw transport with no budget. The session sender
+        // already holds the budget these tests installed. Share that budget so
+        // the screen thread admits writes the same way production does.
+        if let Some(budget) = self
+            .session_metadata
+            .senders
+            .to_pty_writer
+            .as_ref()
+            .and_then(|sender| sender.budget())
+        {
+            screen_bus.senders.set_pty_write_budget(budget);
+        }
+        screen_bus
+    }
     pub fn teardown(&mut self, threads: Vec<std::thread::JoinHandle<()>>) {
         let _ = self.to_pty.send(PtyInstruction::Exit);
         let _ = self.to_pty_writer.send(PtyWriteInstruction::Exit);
@@ -826,7 +838,10 @@ impl MockScreen {
                 to_screen: Some(to_screen.clone()),
                 to_pty: Some(to_pty.clone()),
                 to_plugin: Some(to_plugin.clone()),
-                to_pty_writer: Some(to_pty_writer.clone()),
+                to_pty_writer: Some(crate::thread_bus::PtyWriteSender::new(
+                    to_pty_writer.clone(),
+                    Some(Arc::new(crate::pty_ingress::PtyIngressBudget::new())),
+                )),
                 to_background_jobs: Some(to_background_jobs.clone()),
                 to_server: Some(to_server.clone()),
                 should_silently_fail: true,
@@ -950,16 +965,17 @@ macro_rules! log_actions_in_thread {
             .spawn({
                 let log = $arc_mutex_log.clone();
                 move || loop {
-                    let (event, _err_ctx) = $receiver
+                    let (mut event, _err_ctx) = $receiver
                         .recv()
                         .expect("failed to receive event on channel");
+                    event.publish_logged_completion();
                     match event {
                         $exit_event => {
-                            log.lock().unwrap().push(event.clone());
+                            log.lock().unwrap().push(event);
                             break;
                         },
                         _ => {
-                            log.lock().unwrap().push(event.clone());
+                            log.lock().unwrap().push(event);
                         },
                     }
                 }
@@ -1009,6 +1025,178 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
             None,
         )
         .expect("TEST");
+}
+
+#[test]
+fn a_tab_created_without_attached_clients_reuses_the_last_known_geometry() {
+    let size = Size {
+        rows: 32,
+        cols: 100,
+    };
+    let mut screen = create_new_screen(size, false, false);
+    screen.client_sizes.clear();
+    screen
+        .new_tab(7, (vec![], vec![]), None, None)
+        .expect("detached tab creation");
+    screen
+        .new_tab(8, (vec![], vec![]), None, None)
+        .expect("second detached tab creation");
+    assert_eq!(screen.tabs.get(&7).map(|tab| tab.size), Some(size));
+    assert_eq!(screen.tabs.get(&8).map(|tab| tab.size), Some(size));
+
+    screen.set_client_size(1, size);
+    screen
+        .add_client(1, false)
+        .expect("first client attachment");
+    assert_eq!(screen.tabs.len(), 2, "detached tabs survive first attach");
+}
+
+#[test]
+fn unchanged_session_snapshots_do_not_count_as_changes() {
+    let mut infos = BTreeMap::new();
+    infos.insert(
+        "current".to_owned(),
+        SessionInfo {
+            name: "current".to_owned(),
+            ..Default::default()
+        },
+    );
+    let mut resurrectable = BTreeMap::new();
+    resurrectable.insert("dead".to_owned(), Duration::from_secs(1));
+    let mut advanced_duration = resurrectable.clone();
+    advanced_duration.insert("dead".to_owned(), Duration::from_secs(500));
+    let mut aged_infos = infos.clone();
+    aged_infos.get_mut("current").unwrap().creation_time = Duration::from_secs(999);
+
+    assert!(!Screen::session_infos_changed(
+        &infos,
+        &aged_infos,
+        &resurrectable,
+        &advanced_duration
+    ));
+
+    let mut changed = infos.clone();
+    changed.get_mut("current").unwrap().connected_clients = 1;
+    assert!(Screen::session_infos_changed(
+        &infos,
+        &changed,
+        &resurrectable,
+        &advanced_duration
+    ));
+
+    let mut new_resurrectable = advanced_duration.clone();
+    new_resurrectable.insert("new-dead".to_owned(), Duration::from_secs(2));
+    assert!(Screen::session_infos_changed(
+        &infos,
+        &infos,
+        &resurrectable,
+        &new_resurrectable
+    ));
+}
+
+#[test]
+fn unchanged_session_list_query_does_not_emit_session_update() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+
+    let mut infos = BTreeMap::new();
+    infos.insert(
+        "current".to_owned(),
+        SessionInfo {
+            name: "current".to_owned(),
+            is_current_session: true,
+            ..Default::default()
+        },
+    );
+    let resurrectable = BTreeMap::new();
+    screen
+        .update_session_infos(infos.clone(), resurrectable.clone(), Some((7, 1)))
+        .expect("first snapshot should publish");
+    let first = plugin_receiver
+        .try_iter()
+        .filter(|(instruction, _)| matches!(instruction, PluginInstruction::Update(_)))
+        .count();
+    assert_eq!(first, 1, "first structural snapshot emits SessionUpdate");
+
+    let mut aged = infos.clone();
+    aged.get_mut("current").unwrap().creation_time = Duration::from_secs(42);
+    screen
+        .update_session_infos(aged.clone(), resurrectable.clone(), Some((7, 1)))
+        .expect("age-only refresh");
+    let second = plugin_receiver
+        .try_iter()
+        .filter(|(instruction, _)| matches!(instruction, PluginInstruction::Update(_)))
+        .count();
+    assert_eq!(
+        second, 0,
+        "unchanged structural snapshot must not feedback to the querying plugin"
+    );
+
+    aged.get_mut("current").unwrap().connected_clients = 2;
+    screen
+        .update_session_infos(aged, resurrectable, Some((7, 1)))
+        .expect("structural change");
+    let third = plugin_receiver
+        .try_iter()
+        .filter(|(instruction, _)| matches!(instruction, PluginInstruction::Update(_)))
+        .count();
+    assert_eq!(third, 1, "real structural change still emits SessionUpdate");
+}
+
+#[test]
+fn report_mode_info_to_plugin_delivers_an_initial_mode_update() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    screen
+        .report_mode_info_to_plugin(11, 1)
+        .expect("initial ModeUpdate");
+    let mode_updates = plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::Update(updates) => Some(updates),
+            _ => None,
+        })
+        .flatten()
+        .filter(|(_, _, event)| matches!(event, Event::ModeUpdate(_)))
+        .count();
+    assert_eq!(
+        mode_updates, 1,
+        "subscribe-time ModeUpdate must be delivered"
+    );
+}
+
+#[test]
+fn a_tab_created_before_any_client_geometry_falls_back_to_eighty_by_twenty_four() {
+    let size = Size {
+        rows: 32,
+        cols: 100,
+    };
+    let mut screen = create_new_screen(size, false, false);
+    screen.client_sizes.clear();
+    screen.last_client_size = None;
+    screen
+        .new_tab(3, (vec![], vec![]), None, None)
+        .expect("detached tab with no prior geometry");
+    assert_eq!(
+        screen.tabs.get(&3).map(|tab| tab.size),
+        Some(Size { rows: 24, cols: 80 })
+    );
 }
 
 #[test]
@@ -1824,6 +2012,139 @@ fn character_cell_size_is_not_derived_for_a_client_of_unknown_size() {
 }
 
 #[test]
+fn zero_character_cell_sizes_are_ignored() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(size, true, true);
+    let valid_cell_size = SizeInPixels {
+        height: 21,
+        width: 9,
+    };
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: Some(valid_cell_size),
+            text_area_size: None,
+        },
+    );
+
+    assert!(!screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 0,
+                width: 9,
+            }),
+            text_area_size: None,
+        },
+    ));
+    assert_eq!(*screen.character_cell_size.borrow(), Some(valid_cell_size));
+    assert_eq!(
+        screen.pixel_dimensions.character_cell_size,
+        Some(valid_cell_size)
+    );
+
+    assert!(!screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: Some(SizeInPixels {
+                height: 19,
+                width: 80,
+            }),
+        },
+    ));
+    assert_eq!(
+        *screen.character_cell_size.borrow(),
+        Some(valid_cell_size),
+        "a text area that derives a zero-sized cell must not replace a valid report"
+    );
+}
+
+#[test]
+fn pixel_dimensions_use_one_clients_complete_metrics() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut screen = create_new_screen(size, true, true);
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 100,
+            rows: 50,
+        },
+    );
+
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 10,
+                width: 5,
+            }),
+            text_area_size: None,
+        },
+    );
+    screen.update_pixel_dimensions(
+        2,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: Some(SizeInPixels {
+                height: 1050,
+                width: 900,
+            }),
+        },
+    );
+
+    assert_eq!(
+        *screen.character_cell_size.borrow(),
+        Some(SizeInPixels {
+            height: 21,
+            width: 9
+        }),
+        "the newest complete report becomes the provider"
+    );
+    assert_eq!(
+        screen.pixel_dimensions,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 21,
+                width: 9
+            }),
+            text_area_size: Some(SizeInPixels {
+                height: 1050,
+                width: 900
+            }),
+        },
+        "text-area and cell metrics come from the same client"
+    );
+
+    screen.update_pixel_dimensions(
+        1,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: None,
+        },
+    );
+    assert_eq!(
+        *screen.character_cell_size.borrow(),
+        Some(SizeInPixels {
+            height: 21,
+            width: 9
+        }),
+        "an empty update does not steal the provider"
+    );
+
+    screen.client_pixel_dimensions.remove(&2);
+    screen.select_pixel_dimension_provider(None);
+    assert_eq!(
+        *screen.character_cell_size.borrow(),
+        Some(SizeInPixels {
+            height: 10,
+            width: 5
+        }),
+        "the provider falls back to the remaining usable client"
+    );
+}
+
+#[test]
 fn attach_after_first_tab_closed() {
     // ensure https://github.com/zellij-org/zellij/issues/1645 is fixed
     let size = Size {
@@ -2432,6 +2753,53 @@ fn mouse_focus_clears_bell_on_focused_pane() {
 }
 
 #[test]
+fn focus_pane_with_id_clears_bell_on_focused_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+
+    new_tab(&mut screen, 1, 0);
+
+    let new_pane_id = PaneId::Terminal(2);
+    {
+        let active_tab = screen.get_active_tab_mut(client_id).unwrap();
+        active_tab
+            .horizontal_split(new_pane_id, None, client_id, None, None)
+            .unwrap();
+        active_tab.move_focus_up(client_id).unwrap();
+        active_tab.handle_pty_bytes(2, vec![7u8]).unwrap();
+        active_tab.check_and_handle_bell_notifications(false);
+        assert!(
+            active_tab.panes_with_pending_bell.contains(&new_pane_id),
+            "Pane 2 should have a pending bell before it is focused"
+        );
+    }
+
+    // what a plugin's focus_terminal_pane (or `zellij action focus-pane-id`) runs
+    screen
+        .focus_pane_with_id(new_pane_id, false, false, client_id)
+        .unwrap();
+
+    let active_tab = screen.get_active_tab(client_id).unwrap();
+    assert_eq!(
+        active_tab.get_active_pane_id(client_id),
+        Some(new_pane_id),
+        "focus_pane_with_id should have focused pane 2"
+    );
+    assert!(
+        !active_tab.panes_with_pending_bell.contains(&new_pane_id),
+        "Bell on pane 2 should be cleared after focusing it by id"
+    );
+    assert!(
+        !active_tab.tab_has_pending_bell,
+        "Tab bell should be cleared after the last pane bell is cleared"
+    );
+}
+
+#[test]
 fn nested_guest_fullscreen_moves_from_one_pane_to_another() {
     let size = Size {
         cols: 121,
@@ -2756,16 +3124,18 @@ pub fn send_cli_send_keys_action_to_screen() {
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
-    let received_write_instructions: Vec<_> = received_pty_instructions
-        .lock()
-        .unwrap()
-        .clone()
-        .into_iter()
-        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
-        .collect();
+    let received_write_instructions = {
+        let log = received_pty_instructions.lock().unwrap();
+        format!(
+            "{:#?}",
+            log.iter()
+                .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+                .collect::<Vec<_>>()
+        )
+    };
     // here we assert only the write instructions to make sure they arrived properly and in
     // sequence to the pane
-    assert_snapshot!(format!("{:#?}", received_write_instructions));
+    assert_snapshot!(received_write_instructions);
 }
 
 #[test]
@@ -2792,14 +3162,16 @@ pub fn send_cli_ctrl_c_reaches_pty_writer() {
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
-    let received_write_instructions: Vec<_> = received_pty_instructions
-        .lock()
-        .unwrap()
-        .clone()
-        .into_iter()
-        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
-        .collect();
-    assert_snapshot!(format!("{:#?}", received_write_instructions));
+    let received_write_instructions = {
+        let log = received_pty_instructions.lock().unwrap();
+        format!(
+            "{:#?}",
+            log.iter()
+                .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+                .collect::<Vec<_>>()
+        )
+    };
+    assert_snapshot!(received_write_instructions);
 }
 
 #[test]
@@ -2826,14 +3198,16 @@ pub fn send_cli_ctrl_w_reaches_pty_writer() {
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
-    let received_write_instructions: Vec<_> = received_pty_instructions
-        .lock()
-        .unwrap()
-        .clone()
-        .into_iter()
-        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
-        .collect();
-    assert_snapshot!(format!("{:#?}", received_write_instructions));
+    let received_write_instructions = {
+        let log = received_pty_instructions.lock().unwrap();
+        format!(
+            "{:#?}",
+            log.iter()
+                .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+                .collect::<Vec<_>>()
+        )
+    };
+    assert_snapshot!(received_write_instructions);
 }
 
 #[test]
@@ -3655,15 +4029,17 @@ pub fn send_cli_toggle_active_tab_sync_action() {
     send_cli_action_to_server(&session_metadata, cli_write_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
-    let received_write_instructions: Vec<_> = received_pty_instructions
-        .lock()
-        .unwrap()
-        .clone()
-        .into_iter()
-        .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
-        .collect();
+    let received_write_instructions = {
+        let log = received_pty_instructions.lock().unwrap();
+        format!(
+            "{:?}",
+            log.iter()
+                .filter(|i| matches!(i, PtyWriteInstruction::Write(..)))
+                .collect::<Vec<_>>()
+        )
+    };
     // here we should have 2 Write instructions, one for each pane
-    assert_snapshot!(format!("{:?}", received_write_instructions));
+    assert_snapshot!(received_write_instructions);
 }
 
 #[test]
@@ -3893,15 +4269,14 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_thread, screen_thread]);
 
-    let new_pane_instruction = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PtyInstruction::SpawnTerminal(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let new_pane_instruction_guard = received_pty_instructions.lock().unwrap();
+    let new_pane_instruction =
+        new_pane_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                PtyInstruction::SpawnTerminal(..) => true,
+                _ => false,
+            });
 
     assert_snapshot!(format!("{:?}", new_pane_instruction));
 }
@@ -4125,15 +4500,14 @@ pub fn send_cli_switch_mode_action() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
 
-    let switch_mode_action = received_server_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            ServerInstruction::ChangeMode(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let switch_mode_action_guard = received_server_instructions.lock().unwrap();
+    let switch_mode_action =
+        switch_mode_action_guard
+            .iter()
+            .find(|instruction| match instruction {
+                ServerInstruction::ChangeMode(..) => true,
+                _ => false,
+            });
 
     assert_snapshot!(format!("{:?}", switch_mode_action));
 }
@@ -4346,21 +4720,15 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    let new_tab_instruction = received_plugin_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .rev()
-        .find(|i| {
-            if let PluginInstruction::NewTab(..) = i {
-                return true;
-            } else {
-                return false;
-            }
-        })
-        .unwrap()
-        .clone();
-    let output = format!("{:#?}", new_tab_instruction);
+    let output = {
+        let log = received_plugin_instructions.lock().unwrap();
+        let new_tab_instruction = log
+            .iter()
+            .rev()
+            .find(|i| matches!(i, PluginInstruction::NewTab(..)))
+            .unwrap();
+        format!("{:#?}", new_tab_instruction)
+    };
     // Normalize Windows path separators for cross-platform snapshot consistency
     let output = output.replace("\\\\", "/");
     assert_snapshot!(output);
@@ -4540,21 +4908,20 @@ pub fn send_cli_rename_tab() {
     send_cli_action_to_server(&session_metadata, rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    let plugin_rename_tab_instruction = received_plugin_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PluginInstruction::Update(updates) => updates
-                .iter()
-                .find(|u| match u {
-                    (_, _, Event::TabUpdate(..)) => true,
-                    _ => false,
-                })
-                .is_some(),
-            _ => false,
-        })
-        .cloned();
+    let plugin_rename_tab_instruction_guard = received_plugin_instructions.lock().unwrap();
+    let plugin_rename_tab_instruction =
+        plugin_rename_tab_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                PluginInstruction::Update(updates) => updates
+                    .iter()
+                    .find(|u| match u {
+                        (_, _, Event::TabUpdate(..)) => true,
+                        _ => false,
+                    })
+                    .is_some(),
+                _ => false,
+            });
     assert_snapshot!(format!("{:#?}", plugin_rename_tab_instruction))
 }
 
@@ -4591,21 +4958,20 @@ pub fn send_cli_undo_rename_tab() {
     send_cli_action_to_server(&session_metadata, undo_rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    let plugin_undo_rename_tab_instruction = received_plugin_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PluginInstruction::Update(updates) => updates
-                .iter()
-                .find(|u| match u {
-                    (_, _, Event::TabUpdate(..)) => true,
-                    _ => false,
-                })
-                .is_some(),
-            _ => false,
-        })
-        .cloned();
+    let plugin_undo_rename_tab_instruction_guard = received_plugin_instructions.lock().unwrap();
+    let plugin_undo_rename_tab_instruction =
+        plugin_undo_rename_tab_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                PluginInstruction::Update(updates) => updates
+                    .iter()
+                    .find(|u| match u {
+                        (_, _, Event::TabUpdate(..)) => true,
+                        _ => false,
+                    })
+                    .is_some(),
+                _ => false,
+            });
     assert_snapshot!(format!("{:#?}", plugin_undo_rename_tab_instruction))
 }
 
@@ -4628,15 +4994,14 @@ pub fn send_cli_query_tab_names_action() {
     send_cli_action_to_server(&session_metadata, query_tab_names, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
-    let log_tab_names_instruction = received_server_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            ServerInstruction::Log(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let log_tab_names_instruction_guard = received_server_instructions.lock().unwrap();
+    let log_tab_names_instruction =
+        log_tab_names_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                ServerInstruction::Log(..) => true,
+                _ => false,
+            });
     assert_snapshot!(format!("{:#?}", log_tab_names_instruction));
 }
 
@@ -4671,15 +5036,14 @@ pub fn send_cli_launch_or_focus_plugin_action() {
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_thread, screen_thread]);
 
-    let pty_fill_plugin_cwd_instruction = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PtyInstruction::FillPluginCwd(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let pty_fill_plugin_cwd_instruction_guard = received_pty_instructions.lock().unwrap();
+    let pty_fill_plugin_cwd_instruction =
+        pty_fill_plugin_cwd_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                PtyInstruction::FillPluginCwd(..) => true,
+                _ => false,
+            });
 
     assert_snapshot!(format!("{:#?}", pty_fill_plugin_cwd_instruction));
 }
@@ -4734,9 +5098,8 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![plugin_thread, server_thread, screen_thread]);
 
-    let plugin_load_instruction_sent = received_plugin_instructions
-        .lock()
-        .unwrap()
+    let plugin_load_instruction_sent_guard = received_plugin_instructions.lock().unwrap();
+    let plugin_load_instruction_sent = plugin_load_instruction_sent_guard
         .iter()
         .find(|instruction| match instruction {
             PluginInstruction::Load(..) => true,
@@ -4762,6 +5125,304 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
             "Cursor moved to existing plugin in final snapshot indicating focus changed"
         );
     }
+}
+
+#[test]
+pub fn launch_or_focus_plugin_sends_activation_context_from_the_source_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let mut initial_layout = TiledPaneLayout::default();
+    let existing_plugin_pane = TiledPaneLayout {
+        run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
+            _allow_exec_host_cmd: false,
+            location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+            configuration: Default::default(),
+            ..Default::default()
+        }))),
+        ..Default::default()
+    };
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), existing_plugin_pane];
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let cli_action = CliAction::LaunchOrFocusPlugin {
+        floating: false,
+        in_place: false,
+        close_replaced_pane: false,
+        move_to_focused_tab: true,
+        url: "file:/path/to/fake/plugin".to_owned(),
+        configuration: Default::default(),
+        skip_plugin_cache: false,
+        tab_id: None,
+    };
+    // Client 1 is the connected client with the initial layout focus.
+    send_cli_action_to_server(&session_metadata, cli_action, 1);
+    std::thread::sleep(std::time::Duration::from_millis(150));
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let activation = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|instruction| match instruction {
+            PluginInstruction::Update(updates) => updates.iter().find_map(|(_, _, event)| {
+                if let Event::PluginActivated(context) = event {
+                    Some(context.clone())
+                } else {
+                    None
+                }
+            }),
+            _ => None,
+        });
+    let context = activation.expect("PluginActivated was not sent on LaunchOrFocusPlugin reuse");
+    assert_eq!(context.source_client_id, 1);
+    assert!(
+        context.source_pane_id.is_some(),
+        "activation must capture the pane that held focus at admission"
+    );
+    assert_eq!(context.source_tab_id, Some(0));
+}
+
+fn plugin_activated_events(
+    receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+) -> Vec<(Option<u32>, zellij_utils::data::PluginActivationContext)> {
+    let mut events = vec![];
+    for (instruction, _) in receiver.try_iter() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (plugin_id, _, event) in updates {
+                if let Event::PluginActivated(context) = event {
+                    events.push((plugin_id, context));
+                }
+            }
+        }
+    }
+    events
+}
+
+fn plugin_run(configuration: Option<BTreeMap<String, String>>) -> RunPluginOrAlias {
+    RunPluginOrAlias::from_url("file:/path/to/fake/plugin", &configuration, None, None).unwrap()
+}
+
+#[test]
+fn focusing_plugin_id_zero_emits_plugin_activation() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    let run = plugin_run(None);
+    let mut layout = TiledPaneLayout::default();
+    layout.children_split_direction = SplitDirection::Vertical;
+    let mut plugin_pane = TiledPaneLayout::default();
+    plugin_pane.run = Some(Run::Plugin(run.clone()));
+    layout.children = vec![TiledPaneLayout::default(), plugin_pane];
+    let mut plugin_ids = HashMap::new();
+    plugin_ids.insert(run.clone(), vec![0]);
+    screen.new_tab(0, (vec![], vec![]), None, Some(1)).unwrap();
+    screen
+        .apply_layout(
+            layout,
+            vec![],
+            vec![(1, None)],
+            vec![],
+            plugin_ids,
+            0,
+            true,
+            (1, false),
+            None,
+        )
+        .unwrap();
+    let _ = plugin_receiver.try_iter().count();
+    screen
+        .launch_or_focus_plugin(run, false, true, false, false, None, false, 1, None, None)
+        .unwrap();
+    let events = plugin_activated_events(&plugin_receiver);
+    assert_eq!(
+        events.len(),
+        1,
+        "reusing plugin id 0 must emit exactly one PluginActivated, got {events:?}"
+    );
+    assert_eq!(events[0].0, Some(0));
+    assert_eq!(events[0].1.source_client_id, 1);
+    assert_eq!(events[0].1.source_tab_id, Some(0));
+    assert!(
+        events[0].1.source_pane_id.is_some(),
+        "activation must capture the pane focused at admission"
+    );
+    assert!(
+        screen.pending_plugin_activations.is_empty(),
+        "focusing an existing plugin must not leave a pending load"
+    );
+}
+
+#[test]
+fn reversed_plugin_activation_loads_keep_their_source_identity() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    screen.bus.senders.to_pty = Some(SenderWithContext::new(to_pty));
+
+    let plugin_a = plugin_run(Some(BTreeMap::from([("role".to_owned(), "a".to_owned())])));
+    let plugin_b = plugin_run(Some(BTreeMap::from([("role".to_owned(), "b".to_owned())])));
+    assert_eq!(
+        plugin_a.location_string(),
+        plugin_b.location_string(),
+        "the two loads must share a location string"
+    );
+
+    screen.go_to_tab(1, 1).unwrap();
+    let source_a_pane = screen.get_active_pane_id(&1).map(Into::into);
+    let source_a_tab = screen.active_tab_ids.get(&1).copied();
+    screen
+        .launch_or_focus_plugin(
+            plugin_a, false, true, false, false, None, false, 1, None, None,
+        )
+        .unwrap();
+
+    screen.go_to_tab(2, 1).unwrap();
+    let source_b_pane = screen.get_active_pane_id(&1).map(Into::into);
+    let source_b_tab = screen.active_tab_ids.get(&1).copied();
+    screen
+        .launch_or_focus_plugin(
+            plugin_b, false, true, false, false, None, false, 1, None, None,
+        )
+        .unwrap();
+
+    assert_ne!(source_a_pane, source_b_pane);
+    assert_ne!(source_a_tab, source_b_tab);
+    let mut tokens = vec![];
+    for (instruction, _) in pty_receiver.try_iter() {
+        if let PtyInstruction::FillPluginCwd(_, _, _, _, _, _, _, _, _, _, _, _, _, _, token) =
+            instruction
+        {
+            tokens.push(token);
+        }
+    }
+    assert_eq!(tokens.len(), 2, "each load must carry its own token");
+    let token_a = tokens[0].expect("load A token");
+    let token_b = tokens[1].expect("load B token");
+    assert_ne!(token_a, token_b);
+    assert_eq!(screen.pending_plugin_activations.len(), 2);
+
+    screen.activate_plugin_for_load(99, Some(u64::MAX));
+    assert_eq!(
+        screen.pending_plugin_activations.len(),
+        2,
+        "an unknown token must not consume another load"
+    );
+
+    screen.activate_plugin_for_load(8, Some(token_b));
+    screen.activate_plugin_for_load(7, Some(token_a));
+    let events = plugin_activated_events(&plugin_receiver);
+    assert_eq!(events.len(), 2, "got {events:?}");
+    assert_eq!(events[0].0, Some(8));
+    assert_eq!(events[0].1.source_client_id, 1);
+    assert_eq!(events[0].1.source_pane_id, source_b_pane);
+    assert_eq!(events[0].1.source_tab_id, source_b_tab);
+    assert_eq!(events[1].0, Some(7));
+    assert_eq!(events[1].1.source_client_id, 1);
+    assert_eq!(events[1].1.source_pane_id, source_a_pane);
+    assert_eq!(events[1].1.source_tab_id, source_a_tab);
+    assert!(screen.pending_plugin_activations.is_empty());
+}
+
+#[test]
+fn plugin_focus_failure_does_not_record_a_pending_activation() {
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    let _ = plugin_receiver.try_iter().count();
+    let admitted = screen
+        .admit_plugin_focus(
+            Err(anyhow!("focus failed")),
+            zellij_utils::data::PluginActivationContext {
+                source_client_id: 1,
+                source_pane_id: Some(zellij_utils::data::PaneId::Terminal(1)),
+                source_tab_id: Some(0),
+            },
+            &mut None,
+        )
+        .unwrap();
+    assert_eq!(admitted, None);
+    assert!(
+        screen.pending_plugin_activations.is_empty(),
+        "a focus error must not be stored as a plugin id"
+    );
+    assert!(
+        plugin_activated_events(&plugin_receiver).is_empty(),
+        "a focus error must not emit PluginActivated"
+    );
+}
+
+#[test]
+fn client_disconnect_drops_pending_plugin_activation() {
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    let (to_pty, _pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
+    screen.bus.senders.to_pty = Some(SenderWithContext::new(to_pty));
+    screen
+        .launch_or_focus_plugin(
+            plugin_run(None),
+            false,
+            true,
+            false,
+            false,
+            None,
+            false,
+            1,
+            None,
+            None,
+        )
+        .unwrap();
+    assert_eq!(screen.pending_plugin_activations.len(), 1);
+    let client_token = *screen
+        .pending_plugin_activations
+        .keys()
+        .next()
+        .expect("pending load");
+    let other_token =
+        screen.store_pending_plugin_activation(zellij_utils::data::PluginActivationContext {
+            source_client_id: 2,
+            source_pane_id: Some(zellij_utils::data::PaneId::Terminal(9)),
+            source_tab_id: Some(3),
+        });
+    screen.remove_client(1).unwrap();
+    assert!(
+        !screen
+            .pending_plugin_activations
+            .contains_key(&client_token),
+        "disconnect must drop the client's pending load"
+    );
+    assert!(screen.pending_plugin_activations.contains_key(&other_token));
+    let _ = plugin_receiver.try_iter().count();
+    screen.activate_plugin_for_load(4, Some(client_token));
+    assert!(
+        plugin_activated_events(&plugin_receiver).is_empty(),
+        "a settled token must not emit PluginActivated"
+    );
+    assert!(screen.pending_plugin_activations.contains_key(&other_token));
 }
 
 #[test]
@@ -5641,6 +6302,63 @@ pub fn go_to_tab_by_id_verifies_screen_state() {
 }
 
 #[test]
+pub fn go_to_tab_by_id_does_not_duplicate_destination_in_tab_history() {
+    // Regression for #5384 / #5385: GoToTabWithId must only call switch_active_tab
+    // (which already records the previous tab). Pushing the destination again makes
+    // the first ToggleTab a no-op.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    assert_eq!(screen.get_active_tab(client_id).unwrap().id, 2);
+
+    let tab_position = screen.get_tab_position_by_id(0).unwrap();
+    screen
+        .switch_active_tab(tab_position, None, true, client_id)
+        .expect("TEST");
+    assert_eq!(
+        screen.tab_history.get(&client_id).unwrap().last(),
+        Some(&2),
+        "history should end with the previously active tab, not the destination"
+    );
+
+    screen.toggle_tab(client_id).expect("TEST");
+    assert_eq!(
+        screen.get_active_tab(client_id).unwrap().id,
+        2,
+        "ToggleTab should return to the previous tab in one press"
+    );
+}
+
+#[test]
+pub fn nonexistent_tab_by_id_actions_report_failure() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let cases: Vec<Box<dyn FnOnce(crate::route::NotificationEnd) -> ScreenInstruction>> = vec![
+        Box::new(|completion| ScreenInstruction::GoToTabWithId(99, Some(1), Some(completion))),
+        Box::new(|completion| {
+            ScreenInstruction::RenameTabWithId(99, b"ghost".to_vec(), Some(completion))
+        }),
+        Box::new(|completion| ScreenInstruction::CloseTabWithId(99, Some(completion))),
+    ];
+    for make_instruction in cases {
+        let result = send_instructions_and_collect(size, true, |_| {}, make_instruction);
+        assert_eq!(result.completion.exit_status, Some(1));
+        assert_eq!(
+            result.completion.error_message.as_deref(),
+            Some("Tab with id 99 not found")
+        );
+    }
+}
+
+#[test]
 pub fn send_cli_go_to_tab_by_id_action() {
     let size = Size {
         cols: 121,
@@ -5905,17 +6623,17 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_thread, screen_thread]);
 
-    let spawn_in_place_instruction = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PtyInstruction::SpawnInPlaceTerminal(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let spawn_in_place_instruction = {
+        let log = received_pty_instructions.lock().unwrap();
+        format!(
+            "{:#?}",
+            log.iter().find(|instruction| {
+                matches!(instruction, PtyInstruction::SpawnInPlaceTerminal(..))
+            })
+        )
+    };
 
-    assert_snapshot!(format!("{:#?}", spawn_in_place_instruction));
+    assert_snapshot!(spawn_in_place_instruction);
 }
 
 #[test]
@@ -5958,15 +6676,14 @@ pub fn send_cli_edit_in_place_with_close_replaced_pane() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_thread, screen_thread]);
 
-    let spawn_in_place_instruction = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PtyInstruction::SpawnInPlaceTerminal(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let spawn_in_place_instruction_guard = received_pty_instructions.lock().unwrap();
+    let spawn_in_place_instruction =
+        spawn_in_place_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                PtyInstruction::SpawnInPlaceTerminal(..) => true,
+                _ => false,
+            });
 
     assert_snapshot!(format!("{:#?}", spawn_in_place_instruction));
 }
@@ -6004,15 +6721,14 @@ pub fn send_cli_launch_or_focus_plugin_in_place_with_close_replaced_pane() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_thread, screen_thread]);
 
-    let fill_plugin_cwd_instruction = received_pty_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|instruction| match instruction {
-            PtyInstruction::FillPluginCwd(..) => true,
-            _ => false,
-        })
-        .cloned();
+    let fill_plugin_cwd_instruction_guard = received_pty_instructions.lock().unwrap();
+    let fill_plugin_cwd_instruction =
+        fill_plugin_cwd_instruction_guard
+            .iter()
+            .find(|instruction| match instruction {
+                PtyInstruction::FillPluginCwd(..) => true,
+                _ => false,
+            });
 
     assert_snapshot!(format!("{:#?}", fill_plugin_cwd_instruction));
 }
@@ -6128,6 +6844,36 @@ fn subscriber_receives_initial_delivery() {
         },
         other => panic!("Expected PaneRenderUpdate, got {:?}", other),
     }
+}
+
+#[test]
+fn repeated_pane_ids_in_a_subscription_get_one_initial_delivery() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+
+    screen.subscribe_to_pane_renders(
+        100,
+        vec![zellij_utils::data::PaneId::Terminal(1); 50]
+            .into_iter()
+            .chain(vec![zellij_utils::data::PaneId::Terminal(99); 50])
+            .collect(),
+        Some(0),
+        false,
+    );
+
+    let msgs = messages.lock().unwrap();
+    let client_msgs = msgs.get(&100).unwrap();
+    let snapshots = client_msgs
+        .iter()
+        .filter(|msg| matches!(msg, ServerToClientMsg::PaneRenderUpdate { .. }))
+        .count();
+    let not_found = client_msgs
+        .iter()
+        .filter(|msg| matches!(msg, ServerToClientMsg::LogError { .. }))
+        .count();
+    assert_eq!(snapshots, 1, "one snapshot per distinct pane");
+    assert_eq!(not_found, 1, "one error per distinct missing pane");
 }
 
 #[test]
@@ -6349,6 +7095,74 @@ fn subscriber_removed_on_remove_client() {
 
     let _ = screen.remove_client(100);
     assert!(!screen.pane_render_subscribers.contains_key(&100));
+}
+
+#[test]
+fn per_client_state_does_not_outlive_the_connection() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+    let client_id = 1;
+
+    // Black-box: focusing panes records per-client history.
+    screen
+        .focus_pane_with_id(PaneId::Terminal(1), true, false, client_id)
+        .expect("TEST");
+    assert!(screen.pane_history.contains_key(&client_id));
+
+    // White-box: the remaining client-keyed maps have no other
+    // disconnect cleanup path, so seed them directly.
+    screen
+        .pending_client_vte_instructions
+        .insert(client_id, vec!["stale".to_string()]);
+    screen.clipboard_paste_clients.insert(client_id, None);
+    screen
+        .client_kitty_host_state
+        .borrow_mut()
+        .insert(client_id, crate::output::HostKittyState::default());
+    screen.open_context_menus.insert(
+        client_id,
+        (
+            zellij_utils::data::ContextMenuContext {
+                kind: zellij_utils::data::ContextMenuKind::Pane,
+                pane_id: None,
+                pane_is_floating: false,
+                tab_index: None,
+                tab_id: None,
+                tab_count: 0,
+                line: 0,
+                column: 0,
+                client_id,
+                paste_shortcut: None,
+            },
+            Vec::new(),
+        ),
+    );
+    screen
+        .currently_marking_pane_group
+        .borrow_mut()
+        .insert(client_id, false);
+    screen
+        .last_mobile_state_sent
+        .insert(client_id, zellij_utils::ipc::MobileStatePayload::default());
+
+    screen.remove_client(client_id).expect("TEST");
+
+    assert!(!screen.pane_history.contains_key(&client_id));
+    assert!(!screen
+        .pending_client_vte_instructions
+        .contains_key(&client_id));
+    assert!(!screen.clipboard_paste_clients.contains_key(&client_id));
+    assert!(!screen
+        .client_kitty_host_state
+        .borrow()
+        .contains_key(&client_id));
+    assert!(!screen.open_context_menus.contains_key(&client_id));
+    assert!(!screen
+        .currently_marking_pane_group
+        .borrow()
+        .contains_key(&client_id));
+    assert!(!screen.last_mobile_state_sent.contains_key(&client_id));
 }
 
 #[test]
@@ -7415,6 +8229,36 @@ pub fn send_cli_clear_with_pane_id() {
 }
 
 #[test]
+pub fn send_cli_reset_pane_input_modes_with_pane_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::ResetPaneInputModes {
+        pane_id: Some("terminal_0".to_string()),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert!(
+        true,
+        "ResetPaneInputModes with pane_id CLI action completed without errors"
+    );
+}
+
+#[test]
 pub fn send_cli_edit_scrollback_with_pane_id() {
     let size = Size {
         cols: 121,
@@ -7972,6 +8816,48 @@ pub fn send_cli_dump_screen_action_without_ansi_strips_codes() {
         "Dumped file should NOT contain ANSI escape codes when ansi flag is false. Content: {:?}",
         dumped_content
     );
+}
+
+#[test]
+pub fn dumping_a_missing_explicit_pane_reports_failure() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(None, vec![]);
+    let (completion, receiver) = completion_and_receiver();
+
+    mock_screen
+        .to_screen
+        .send(ScreenInstruction::DumpScreen(
+            Some("/tmp/zellij-missing-pane-dump".to_owned()),
+            1,
+            true,
+            Some(PaneId::Terminal(999)),
+            Some(completion),
+            None,
+            false,
+        ))
+        .unwrap();
+
+    let result = receiver.blocking_recv().expect("the action must complete");
+    assert_eq!(result.exit_status, Some(1));
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("not found")),
+        "the completion must report the missing pane: {:?}",
+        result.error_message
+    );
+    assert!(
+        !mock_screen
+            .os_input
+            .fake_filesystem
+            .lock()
+            .unwrap()
+            .contains_key("/tmp/zellij-missing-pane-dump"),
+        "a missing target must not publish a successful dump file"
+    );
+    mock_screen.teardown(vec![screen_thread]);
 }
 
 #[test]
@@ -8641,21 +9527,15 @@ pub fn send_cli_new_tab_action_with_layout_string() {
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    let new_tab_instruction = received_plugin_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .rev()
-        .find(|i| {
-            if let PluginInstruction::NewTab(..) = i {
-                return true;
-            } else {
-                return false;
-            }
-        })
-        .unwrap()
-        .clone();
-    let output = format!("{:#?}", new_tab_instruction);
+    let output = {
+        let log = received_plugin_instructions.lock().unwrap();
+        let new_tab_instruction = log
+            .iter()
+            .rev()
+            .find(|i| matches!(i, PluginInstruction::NewTab(..)))
+            .unwrap();
+        format!("{:#?}", new_tab_instruction)
+    };
     // Normalize Windows path separators for cross-platform snapshot consistency
     let output = output.replace("\\\\", "/");
     assert_snapshot!(output);
@@ -8696,21 +9576,15 @@ pub fn send_cli_new_tab_action_with_layout_string_and_name() {
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    let new_tab_instruction = received_plugin_instructions
-        .lock()
-        .unwrap()
-        .iter()
-        .rev()
-        .find(|i| {
-            if let PluginInstruction::NewTab(..) = i {
-                return true;
-            } else {
-                return false;
-            }
-        })
-        .unwrap()
-        .clone();
-    let output = format!("{:#?}", new_tab_instruction);
+    let output = {
+        let log = received_plugin_instructions.lock().unwrap();
+        let new_tab_instruction = log
+            .iter()
+            .rev()
+            .find(|i| matches!(i, PluginInstruction::NewTab(..)))
+            .unwrap();
+        format!("{:#?}", new_tab_instruction)
+    };
     // Normalize Windows path separators for cross-platform snapshot consistency
     let output = output.replace("\\\\", "/");
     assert_snapshot!(output);
@@ -9155,6 +10029,7 @@ pub fn pty_bytes_and_hold_pane_buffered_before_new_pane() {
         PaneId::Terminal(new_pane_id),
         Some(0),
         run_command,
+        None,
     ));
 
     // Small sleep to ensure the above messages are processed (and buffered) first
@@ -9242,8 +10117,21 @@ impl ForwardCapture {
     fn drain_pty_writes(&self) -> Vec<(Vec<u8>, u32)> {
         let mut out = Vec::new();
         while let Ok((instr, _ctx)) = self.pty_writer_rx.try_recv() {
-            if let PtyWriteInstruction::Write(bytes, terminal_id, _) = instr {
+            if let PtyWriteInstruction::Write(write) = instr {
+                let (bytes, terminal_id, _, _) = write.into_parts();
                 out.push((bytes, terminal_id));
+            }
+        }
+        out
+    }
+
+    fn drain_pty_writes_with_generation(&self) -> Vec<(Vec<u8>, u32, Option<u64>)> {
+        let mut out = Vec::new();
+        while let Ok((instr, _ctx)) = self.pty_writer_rx.try_recv() {
+            if let PtyWriteInstruction::Write(write) = instr {
+                let run_generation = write.run_generation();
+                let (bytes, terminal_id, _, _) = write.into_parts();
+                out.push((bytes, terminal_id, run_generation));
             }
         }
         out
@@ -9270,7 +10158,10 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
 
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     bus.senders.to_server = Some(SenderWithContext::new(server_tx));
-    bus.senders.to_pty_writer = Some(SenderWithContext::new(pty_writer_tx));
+    bus.senders.to_pty_writer = Some(crate::thread_bus::PtyWriteSender::new(
+        SenderWithContext::new(pty_writer_tx),
+        Some(Arc::new(crate::pty_ingress::PtyIngressBudget::new())),
+    ));
     let fake_os_input = FakeInputOutput::default();
     bus.os_input = Some(Box::new(fake_os_input));
 
@@ -9375,7 +10266,7 @@ fn fg_query_bel() -> HostQuery {
 }
 fn palette_query(index: u8) -> HostQuery {
     HostQuery::PaletteRegister {
-        index,
+        indices: vec![index],
         terminator: OscTerminator::St,
     }
 }
@@ -9412,6 +10303,50 @@ fn forward_host_query_when_idle_dispatches_immediately() {
 }
 
 #[test]
+fn an_empty_palette_query_is_not_dispatched_or_queued() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let token = screen.forward_host_query(
+        PaneId::Terminal(42),
+        HostQuery::PaletteRegister {
+            indices: Vec::new(),
+            terminator: OscTerminator::St,
+        },
+    );
+    assert_eq!(token, crate::screen::STARTUP_SENTINEL_TOKEN);
+    assert!(capture.drain_forward_queries().is_empty());
+    assert!(screen.forward_queue.is_empty());
+    assert_eq!(screen.forward_in_flight_token, None);
+}
+
+#[test]
+fn a_noop_query_resumes_a_pane_tab_already_paused() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    let pane_id = PaneId::Terminal(1);
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .get_pane_with_id_mut(pane_id)
+        .unwrap()
+        .arm_forward_pause();
+    assert!(pane_is_forward_paused(&mut screen, pane_id));
+
+    let token = screen.forward_host_query(
+        pane_id,
+        HostQuery::PaletteRegister {
+            indices: Vec::new(),
+            terminator: OscTerminator::St,
+        },
+    );
+
+    assert_eq!(token, crate::screen::STARTUP_SENTINEL_TOKEN);
+    assert!(!pane_is_forward_paused(&mut screen, pane_id));
+    assert!(capture.drain_forward_queries().is_empty());
+}
+
+#[test]
 fn forward_host_query_when_busy_queues_instead_of_dispatching() {
     let size = Size { cols: 80, rows: 20 };
     let (mut screen, capture) = create_new_screen_with_forward_capture(size);
@@ -9430,6 +10365,31 @@ fn forward_host_query_when_busy_queues_instead_of_dispatching() {
     assert_eq!(screen.forward_queue.len(), 1);
     assert_eq!(screen.forward_queue[0].token, second_token);
     assert_eq!(screen.forward_queue[0].pane_id, second_pane);
+}
+
+#[test]
+fn queued_queries_for_one_pane_share_a_round_trip() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(1);
+
+    let _in_flight = screen.forward_host_query(pane, bg_query());
+    let queued = screen.forward_host_query(pane, palette_query(1));
+    let merged = screen.forward_host_query(pane, palette_query(2));
+
+    assert_eq!(queued, merged, "the merge keeps the queued token");
+    assert_eq!(screen.forward_queue.len(), 1);
+    match &screen.forward_queue[0].query {
+        HostQuery::RoundTrip(parts) => {
+            assert_eq!(parts.len(), 2);
+            assert_eq!(
+                screen.forward_queue[0].query.to_query_bytes(),
+                b"\x1b]4;1;?\x1b\\\x1b]4;2;?\x1b\\"
+            );
+        },
+        other => panic!("expected a round trip, got {other:?}"),
+    }
+    assert_eq!(capture.drain_forward_queries().len(), 1);
 }
 
 #[test]
@@ -9486,6 +10446,50 @@ fn handle_reply_dispatches_next_queued_forward() {
             .get(&second_token)
             .map(|e| e.pane_id),
         Some(second_pane)
+    );
+}
+
+#[test]
+fn a_resume_failure_still_releases_the_slot_and_dispatches_the_next_forward() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    let first_pane = PaneId::Terminal(1);
+    let second_pane = PaneId::Terminal(2);
+    let first_token = screen.forward_host_query(first_pane, bg_query());
+    let second_token = screen.forward_host_query(second_pane, fg_query());
+    let _ = capture.drain_forward_queries();
+    assert!(screen.pane_exists(&first_pane));
+
+    let (to_pty_writer, pty_writer_receiver) =
+        channels::unbounded::<(PtyWriteInstruction, ErrorContext)>();
+    drop(pty_writer_receiver);
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    tab.senders.should_silently_fail = false;
+    tab.senders
+        .replace_to_pty_writer(SenderWithContext::new(to_pty_writer));
+    tab.senders
+        .set_pty_write_budget(Arc::new(crate::pty_ingress::PtyIngressBudget::new()));
+
+    let result = screen.handle_forwarded_reply_from_host(first_token, b"reply".to_vec());
+    assert!(result.is_err(), "the failed PTY write must surface");
+    assert_eq!(
+        screen.forward_in_flight_token,
+        Some(second_token),
+        "the failed resume must not leave the forward slot wedged"
+    );
+    assert_eq!(
+        screen
+            .pending_forwarded_queries
+            .get(&second_token)
+            .map(|entry| entry.pane_id),
+        Some(second_pane)
+    );
+    let forwards = capture.drain_forward_queries();
+    assert_eq!(
+        forwards.iter().map(|(token, _)| *token).collect::<Vec<_>>(),
+        vec![second_token],
+        "the next queued forward must be dispatched despite the resume failure"
     );
 }
 
@@ -9920,6 +10924,7 @@ fn plugin_pane_reply_is_dropped_without_write() {
         super::PendingForwardEntry {
             pane_id: PaneId::Plugin(42),
             query: bg_query(),
+            run_generation: None,
         },
     );
     screen.forward_in_flight_token = Some(77);
@@ -9939,6 +10944,190 @@ fn plugin_pane_reply_is_dropped_without_write() {
     assert!(
         screen.forward_in_flight_token.is_none(),
         "slot still released"
+    );
+}
+
+#[test]
+fn reply_from_a_previous_run_is_discarded() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.terminal_runs.insert(
+        1,
+        super::TerminalRun {
+            generation: 2,
+            drained: false,
+            deferred_exit: None,
+        },
+    );
+    screen.pending_forwarded_queries.insert(
+        7,
+        super::PendingForwardEntry {
+            pane_id: PaneId::Terminal(1),
+            query: bg_query(),
+            run_generation: Some(1),
+        },
+    );
+    screen.forward_in_flight_token = Some(7);
+
+    screen
+        .handle_forwarded_reply_from_host(7, b"stale".to_vec())
+        .expect("ok");
+
+    assert!(
+        capture.drain_pty_writes().is_empty(),
+        "a reply from run 1 must not reach run 2"
+    );
+    assert_eq!(screen.forward_in_flight_token, None);
+}
+
+#[test]
+fn cancelling_a_forward_for_a_replaced_run_releases_the_global_slot() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.terminal_runs.insert(
+        1,
+        super::TerminalRun {
+            generation: 2,
+            drained: false,
+            deferred_exit: None,
+        },
+    );
+    screen.pending_forwarded_queries.insert(
+        7,
+        super::PendingForwardEntry {
+            pane_id: PaneId::Terminal(1),
+            query: bg_query(),
+            run_generation: Some(1),
+        },
+    );
+    screen.forward_in_flight_token = Some(7);
+
+    screen.cancel_forward_for_pane(PaneId::Terminal(1));
+
+    assert!(
+        capture.drain_pty_writes().is_empty(),
+        "a cancelled reply from run 1 must not reach run 2"
+    );
+    assert_eq!(
+        screen.forward_in_flight_token, None,
+        "the global forward slot must be released"
+    );
+    assert!(
+        screen.pending_forwarded_queries.get(&7).is_none(),
+        "the stale query must be removed"
+    );
+}
+
+#[test]
+fn cancelling_a_panes_forward_dispatches_the_next_queued_query() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 0);
+    let first = screen.forward_host_query(PaneId::Terminal(1), bg_query());
+    let second = screen.forward_host_query(PaneId::Terminal(2), fg_query());
+    assert_eq!(screen.forward_in_flight_token, Some(first));
+    assert_eq!(
+        screen.forward_queue.front().map(|pending| pending.token),
+        Some(second)
+    );
+
+    screen.cancel_forward_for_pane(PaneId::Terminal(1));
+
+    assert_eq!(
+        screen.forward_in_flight_token,
+        Some(second),
+        "the queued query must take the released slot"
+    );
+    assert!(
+        capture
+            .drain_forward_queries()
+            .iter()
+            .any(|(token, _)| *token == second),
+        "the next queued query must be dispatched to the host"
+    );
+}
+
+#[test]
+fn run_start_only_cancels_forwards_from_an_older_run() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.pending_forwarded_queries.insert(
+        7,
+        super::PendingForwardEntry {
+            pane_id: PaneId::Terminal(1),
+            query: bg_query(),
+            run_generation: Some(1),
+        },
+    );
+    screen.forward_in_flight_token = Some(7);
+
+    assert!(
+        screen.forward_is_from_another_run(PaneId::Terminal(1), 2),
+        "a query stamped with the replaced run must be cancelled"
+    );
+
+    screen
+        .pending_forwarded_queries
+        .get_mut(&7)
+        .unwrap()
+        .run_generation = Some(2);
+    assert!(
+        !screen.forward_is_from_another_run(PaneId::Terminal(1), 2),
+        "a query from the newly started run must be kept"
+    );
+
+    screen
+        .pending_forwarded_queries
+        .get_mut(&7)
+        .unwrap()
+        .run_generation = None;
+    assert!(
+        screen.forward_is_from_another_run(PaneId::Terminal(1), 2),
+        "an unstamped query after a run was known is stale"
+    );
+
+    screen.stamp_unstamped_forwards_for_pane(PaneId::Terminal(1), 2);
+    assert!(
+        !screen.forward_is_from_another_run(PaneId::Terminal(1), 2),
+        "stamping the pre-first-run query keeps it for the first run"
+    );
+}
+
+#[test]
+fn reply_from_the_current_run_is_stamped_with_its_origin_generation() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.terminal_runs.insert(
+        1,
+        super::TerminalRun {
+            generation: 2,
+            drained: false,
+            deferred_exit: None,
+        },
+    );
+    screen.pending_forwarded_queries.insert(
+        8,
+        super::PendingForwardEntry {
+            pane_id: PaneId::Terminal(1),
+            query: bg_query(),
+            run_generation: Some(2),
+        },
+    );
+    screen.forward_in_flight_token = Some(8);
+
+    screen
+        .handle_forwarded_reply_from_host(8, b"reply".to_vec())
+        .expect("ok");
+
+    assert_eq!(
+        capture.drain_pty_writes_with_generation(),
+        vec![(b"reply".to_vec(), 1, Some(2))],
+        "the reply must carry the originating run into the pty writer"
     );
 }
 
@@ -10055,6 +11244,60 @@ fn empty_reply_falls_back_to_cached_palette_register() {
 }
 
 #[test]
+fn empty_round_trip_uses_every_cached_part() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(1);
+    screen.update_terminal_color_registers(vec![
+        (1, "rgb:0101/0101/0101".to_string()),
+        (2, "rgb:0202/0202/0202".to_string()),
+    ]);
+    screen.update_terminal_foreground_color("rgb:0a0a/0b0b/0c0c".to_string());
+    let token = screen.forward_host_query(
+        pane,
+        HostQuery::RoundTrip(vec![palette_query(1), fg_query(), palette_query(2)]),
+    );
+    let _ = capture.drain_forward_queries();
+
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("ok");
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        std::str::from_utf8(&writes[0].0).unwrap(),
+        "\u{1b}]4;1;rgb:0101/0101/0101\u{1b}\\\
+         \u{1b}]10;rgb:0a0a/0b0b/0c0c\u{1b}\\\
+         \u{1b}]4;2;rgb:0202/0202/0202\u{1b}\\"
+    );
+}
+
+#[test]
+fn empty_round_trip_with_one_uncached_part_writes_nothing() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(1);
+    screen.update_terminal_color_registers(vec![(1, "rgb:0101/0101/0101".to_string())]);
+    let token = screen.forward_host_query(
+        pane,
+        HostQuery::RoundTrip(vec![palette_query(1), palette_query(2)]),
+    );
+    let _ = capture.drain_forward_queries();
+
+    screen
+        .handle_forwarded_reply_from_host(token, Vec::new())
+        .expect("ok");
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert!(
+        writes[0].0.is_empty(),
+        "a missing register must not shift the other reply onto the wrong query"
+    );
+}
+
+#[test]
 fn empty_reply_with_no_cache_writes_empty() {
     // No background override, no palette, no pixel dims: synthesis
     // returns empty and the pane receives an empty write — the app
@@ -10138,7 +11381,8 @@ impl ThemeCapture {
     fn drain_pty_writes(&self) -> Vec<(Vec<u8>, u32)> {
         let mut out = Vec::new();
         while let Ok((instr, _ctx)) = self.pty_writer_rx.try_recv() {
-            if let PtyWriteInstruction::Write(bytes, terminal_id, _) = instr {
+            if let PtyWriteInstruction::Write(write) = instr {
+                let (bytes, terminal_id, _, _) = write.into_parts();
                 out.push((bytes, terminal_id));
             }
         }
@@ -10280,7 +11524,10 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
 
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     bus.senders.to_plugin = Some(SenderWithContext::new(plugin_tx));
-    bus.senders.to_pty_writer = Some(SenderWithContext::new(pty_writer_tx));
+    bus.senders.to_pty_writer = Some(crate::thread_bus::PtyWriteSender::new(
+        SenderWithContext::new(pty_writer_tx),
+        Some(Arc::new(crate::pty_ingress::PtyIngressBudget::new())),
+    ));
     let fake_os_input = FakeInputOutput::default();
     bus.os_input = Some(Box::new(fake_os_input));
 
@@ -10882,7 +12129,6 @@ fn new_terminal_pane_for_pause_test(pid: u32) -> TerminalPane {
         Style::default(),
         0,
         String::new(),
-        Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(Some(SizeInPixels {
             width: 8,
             height: 16,
@@ -10925,14 +12171,14 @@ fn pane_buffers_pty_bytes_while_forward_paused() {
 }
 
 #[test]
-fn pane_forward_in_vte_stops_processing_with_remainder_queued() {
-    // App sends `OSC 10;? + after`. When vte's OSC dispatch runs and
-    // Grid pushes the forward query, processing must stop, leaving
-    // `after` in the queue. Those bytes will be replayed AFTER the
-    // host reply has been written.
+fn pane_forward_in_vte_stops_before_a_non_shareable_query() {
+    // `OSC 10;?` opens a batchable host query. Text after it can be parsed
+    // while the batch is open, but a clipboard read needs its own reply, so
+    // that query and everything after it must wait for the batch reply.
     let mut pane = new_terminal_pane_for_pause_test(1);
     let mut input = b"\x1b]10;?\x07".to_vec();
-    input.extend_from_slice(b"after");
+    let blocked = b"\x1b]52;c;?\x07after".to_vec();
+    input.extend_from_slice(&blocked);
     pane.handle_pty_bytes(input);
 
     let queries = pane.drain_forwarded_queries();
@@ -10946,10 +12192,67 @@ fn pane_forward_in_vte_stops_processing_with_remainder_queued() {
 
     let buffered = pane.drain_pending_pty_input();
     assert_eq!(
-        buffered,
-        b"after".to_vec(),
-        "bytes after the forward must remain queued, not rendered"
+        buffered, blocked,
+        "a non-shareable query and the bytes after it must remain queued"
     );
+}
+
+#[test]
+fn separate_palette_queries_in_one_read_stop_before_da1() {
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    let input = b"\x1b]4;1;?\x07hello\x1b[31m\x1b]4;2;?\x1b\\\x1b[c".to_vec();
+    pane.handle_pty_bytes(input);
+
+    let queries = pane.drain_forwarded_queries();
+    assert_eq!(queries.len(), 2, "both palette queries are parsed together");
+    assert!(matches!(
+        &queries[0],
+        HostQuery::PaletteRegister { indices, .. } if indices == &vec![1]
+    ));
+    assert!(matches!(
+        &queries[1],
+        HostQuery::PaletteRegister { indices, .. } if indices == &vec![2]
+    ));
+    assert!(
+        pane.drain_messages_to_pty().is_empty(),
+        "DA1 is not answered before the palette queries go out"
+    );
+    assert!(pane.dump_screen(true, None).contains("hello"));
+    assert_eq!(pane.drain_pending_pty_input(), b"\x1b[c".to_vec());
+}
+
+#[test]
+fn a_clipboard_query_does_not_join_an_open_palette_batch() {
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    pane.handle_pty_bytes(b"\x1b]4;1;?\x07\x1b]52;c;?\x1b\\".to_vec());
+
+    let queries = pane.drain_forwarded_queries();
+    assert_eq!(queries.len(), 1);
+    assert!(matches!(queries[0], HostQuery::PaletteRegister { .. }));
+    assert_eq!(
+        pane.drain_pending_pty_input(),
+        b"\x1b]52;c;?\x1b\\".to_vec()
+    );
+}
+
+#[test]
+fn da1_split_across_a_scan_block_stays_behind_the_open_batch() {
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    let block = crate::panes::terminal_pane::PTY_SCAN_BLOCK_SIZE;
+    let mut input = b"\x1b]4;1;?\x07".to_vec();
+    // The scan block ends on `ESC [`. The final `c` is in the next block.
+    input.resize(block - 2, b'a');
+    input.extend_from_slice(b"\x1b[c");
+    pane.handle_pty_bytes(input);
+
+    let queries = pane.drain_forwarded_queries();
+    assert_eq!(queries.len(), 1);
+    assert!(matches!(queries[0], HostQuery::PaletteRegister { .. }));
+    assert!(
+        pane.drain_messages_to_pty().is_empty(),
+        "the DA1 final byte is in the next scan block and must not be answered yet"
+    );
+    assert_eq!(pane.drain_pending_pty_input(), b"\x1b[c".to_vec());
 }
 
 #[test]
@@ -11054,10 +12357,9 @@ fn forwarded_reply_routes_through_tab_for_unpaused_pane() {
 
 #[test]
 fn paused_pane_with_da1_in_queue_emits_da1_after_resume() {
-    // Simulates the user-reported ordering bug: app sends
-    // `OSC 10;? + CSI c`. The OSC 10 forward must be dispatched
-    // first, then the DA1 reply emitted only after the resume kicks
-    // processing of the queued `\x1b[c`.
+    // `OSC 10;?` followed by `CSI c`: the color query is forwarded
+    // first, and the DA1 reply is emitted only after resume processes
+    // the queued `\x1b[c`.
     let mut pane = new_terminal_pane_for_pause_test(1);
     let mut input = b"\x1b]10;?\x07".to_vec();
     input.extend_from_slice(b"\x1b[c");
@@ -11110,6 +12412,352 @@ fn empty_reply_with_paused_pane_drains_buffer_without_phantom_write() {
         pane.drain_pending_pty_input().is_empty(),
         "queue fully consumed by post-resume processing"
     );
+}
+
+// A stream of numbered lines, each followed by a query that is
+// forwarded to the host terminal. The queries cover the BEL and ST
+// terminators; ST makes vte pause on the ESC of `ESC \`, in the middle of
+// bytes the kitty interceptor was holding. With `noise`, an unrelated APC
+// follows every line so that the stream takes the interceptor path.
+fn numbered_lines_with_queries(count: usize, noise: bool) -> (Vec<u8>, Vec<String>) {
+    let queries: [&[u8]; 2] = [b"\x1b]11;?\x07", b"\x1b]10;?\x1b\\"];
+    let mut stream = Vec::new();
+    let mut lines = Vec::new();
+    for i in 0..count {
+        let line = format!("line{:04}", i);
+        stream.extend_from_slice(line.as_bytes());
+        stream.extend_from_slice(b"\r\n");
+        if noise {
+            stream.extend_from_slice(b"\x1b_Xnoise\x1b\\");
+        }
+        stream.extend_from_slice(queries[i % queries.len()]);
+        lines.push(line);
+    }
+    (stream, lines)
+}
+
+fn screen_lines_starting_with_line(pane: &TerminalPane) -> Vec<String> {
+    pane.dump_screen(true, None)
+        .lines()
+        .map(|l| l.trim().to_owned())
+        .filter(|l| l.starts_with("line"))
+        .collect()
+}
+
+/// What Tab does after each batch of bytes: a forward arms the pause.
+fn arm_pause_if_forwarded(pane: &mut TerminalPane, queries_seen: &mut usize) {
+    let forwarded = pane.drain_forwarded_queries().len();
+    if forwarded > 0 {
+        *queries_seen += forwarded;
+        pane.arm_forward_pause();
+    }
+}
+
+/// What Tab does when a reply (or the timeout) resumes a paused pane.
+fn resume_paused_pane(pane: &mut TerminalPane, queries_seen: &mut usize) {
+    while pane.is_forward_paused() {
+        pane.clear_forward_pause();
+        if pane.has_pending_pty_input() {
+            pane.handle_pty_bytes(Vec::new());
+        }
+        arm_pause_if_forwarded(pane, queries_seen);
+    }
+}
+
+#[test]
+fn buffered_output_behind_many_queries_is_processed_once_in_order() {
+    for noise in [false, true] {
+        let count = 200;
+        let (stream, expected_lines) = numbered_lines_with_queries(count, noise);
+        let mut pane = new_terminal_pane_for_pause_test(1);
+        pane.arm_forward_pause();
+        for chunk in stream.chunks(1000) {
+            pane.handle_pty_bytes(chunk.to_vec());
+        }
+        let mut queries_seen = 0;
+        assert_eq!(
+            pane.drain_forwarded_queries().len(),
+            0,
+            "nothing is processed while paused"
+        );
+        resume_paused_pane(&mut pane, &mut queries_seen);
+
+        assert_eq!(queries_seen, count, "every query is forwarded exactly once");
+        assert_eq!(
+            screen_lines_starting_with_line(&pane),
+            expected_lines,
+            "every line is printed once, in order (noise: {noise})"
+        );
+        assert!(!pane.has_pending_pty_input());
+        assert_eq!(
+            pane.pending_bytes_appended(),
+            stream.len(),
+            "each byte is buffered once; resuming after a query must not \
+             re-copy the buffered remainder (noise: {noise})"
+        );
+    }
+}
+
+#[test]
+fn unbuffered_output_with_many_queries_is_processed_once_in_order() {
+    for noise in [false, true] {
+        let count = 200;
+        let (stream, expected_lines) = numbered_lines_with_queries(count, noise);
+        let mut pane = new_terminal_pane_for_pause_test(1);
+        let mut queries_seen = 0;
+        pane.handle_pty_bytes(stream);
+        arm_pause_if_forwarded(&mut pane, &mut queries_seen);
+        resume_paused_pane(&mut pane, &mut queries_seen);
+
+        assert_eq!(queries_seen, count);
+        assert_eq!(screen_lines_starting_with_line(&pane), expected_lines);
+        assert!(!pane.has_pending_pty_input());
+    }
+}
+
+#[test]
+fn output_split_at_every_boundary_around_queries_is_processed_in_order() {
+    // Odd chunk sizes land chunk ends inside escape sequences, with the
+    // pane sometimes paused (bytes buffered) and sometimes not.
+    for noise in [false, true] {
+        for chunk_size in [1, 2, 3, 5, 7, 13] {
+            let count = 40;
+            let (stream, expected_lines) = numbered_lines_with_queries(count, noise);
+            let mut pane = new_terminal_pane_for_pause_test(1);
+            let mut queries_seen = 0;
+            for (i, chunk) in stream.chunks(chunk_size).enumerate() {
+                pane.handle_pty_bytes(chunk.to_vec());
+                arm_pause_if_forwarded(&mut pane, &mut queries_seen);
+                if i % 3 == 2 {
+                    resume_paused_pane(&mut pane, &mut queries_seen);
+                }
+            }
+            resume_paused_pane(&mut pane, &mut queries_seen);
+
+            assert_eq!(
+                queries_seen, count,
+                "chunk size {chunk_size}, noise {noise}"
+            );
+            assert_eq!(
+                screen_lines_starting_with_line(&pane),
+                expected_lines,
+                "chunk size {chunk_size}, noise {noise}"
+            );
+            assert!(!pane.has_pending_pty_input());
+        }
+    }
+}
+
+#[test]
+fn pane_reports_when_buffered_output_exceeds_the_forward_limit() {
+    use crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED as LIMIT;
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    assert!(!pane.pending_pty_input_exceeds_forward_limit());
+    pane.arm_forward_pause();
+    pane.handle_pty_bytes(vec![b'x'; LIMIT]);
+    assert!(
+        !pane.pending_pty_input_exceeds_forward_limit(),
+        "exactly the limit is still allowed"
+    );
+    pane.handle_pty_bytes(vec![b'x']);
+    assert!(pane.pending_pty_input_exceeds_forward_limit());
+    pane.clear_forward_pause();
+    assert!(
+        !pane.pending_pty_input_exceeds_forward_limit(),
+        "only a paused pane is waiting on a reply"
+    );
+}
+
+#[test]
+fn output_buffered_behind_a_host_query_is_capped() {
+    use crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED as LIMIT;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    let pane_id = PaneId::Terminal(1);
+
+    // The pane asks the host a question that is never answered.
+    screen
+        .apply_pty_bytes(1, b"before\x1b]11;?\x1b\\".to_vec())
+        .unwrap();
+    let token = screen.forward_host_query(pane_id, bg_query());
+    assert_eq!(capture.drain_forward_queries().len(), 1);
+    let is_paused = |screen: &mut Screen| {
+        let tab = screen.get_active_tab_mut(1).unwrap();
+        tab.get_pane_with_id(pane_id).unwrap().is_forward_paused()
+    };
+    assert!(is_paused(&mut screen));
+
+    // The pane keeps writing. Up to the limit the output is held back.
+    let chunk = vec![b'x'; 16 * 1024];
+    let mut sent = 0;
+    while sent + chunk.len() <= LIMIT {
+        screen.apply_pty_bytes(1, chunk.clone()).unwrap();
+        sent += chunk.len();
+        assert!(is_paused(&mut screen), "still waiting at {sent} bytes");
+    }
+    assert!(!screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .pending_pty_input_exceeds_forward_limit(1));
+
+    // The chunk that crosses the limit ends the wait, as the timeout would.
+    screen.apply_pty_bytes(1, chunk.clone()).unwrap();
+    assert!(
+        !is_paused(&mut screen),
+        "the pane resumes once over the limit"
+    );
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert!(
+        pane.dump_screen(true, None).contains("xxxx"),
+        "the buffered output was processed"
+    );
+    assert!(
+        !pane.pending_pty_input_exceeds_forward_limit(),
+        "nothing is left buffered over the limit"
+    );
+    assert_eq!(screen.forward_in_flight_token, None, "the slot is released");
+
+    // The reply that finally arrives is stale and must not touch the pane.
+    screen
+        .handle_forwarded_reply_from_host(token, b"\x1b[4;100;200t".to_vec())
+        .unwrap();
+    assert!(capture.drain_pty_writes().is_empty());
+}
+
+fn pane_is_forward_paused(screen: &mut Screen, pane_id: PaneId) -> bool {
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    tab.get_pane_with_id(pane_id).unwrap().is_forward_paused()
+}
+
+#[test]
+fn a_pane_flooding_queries_cannot_keep_more_than_the_limit_buffered() {
+    use crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED as LIMIT;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    let pane_id = PaneId::Terminal(1);
+
+    // The host never answers, and the pane never stops asking.
+    screen
+        .apply_pty_bytes(1, b"\x1b]11;?\x1b\\".to_vec())
+        .unwrap();
+    screen.handle_forward_host_query(pane_id, bg_query(), None);
+    let flood = b"\x1b]11;?\x1b\\".repeat(20_000);
+    for round in 0..(4 * LIMIT / flood.len() + 4) {
+        screen.apply_pty_bytes(1, flood.clone()).unwrap();
+        if pane_is_forward_paused(&mut screen, pane_id) && screen.forward_in_flight_token.is_none()
+        {
+            // The pane paused on another query; its instruction is handled.
+            screen.handle_forward_host_query(pane_id, bg_query(), None);
+        }
+        assert!(
+            !screen
+                .get_active_tab_mut(1)
+                .unwrap()
+                .pending_pty_input_exceeds_forward_limit(1),
+            "buffer over the limit after round {round}"
+        );
+    }
+}
+
+#[test]
+fn output_buffered_while_the_forward_was_queued_is_capped_once_it_is_registered() {
+    use crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED as LIMIT;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    let pane_id = PaneId::Terminal(1);
+
+    // Replaying the output of a pane that was just created: the pane
+    // pauses on its query and buffers the rest, but the ForwardHostQuery
+    // instruction is only handled afterwards.
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    tab.handle_pty_bytes(1, b"\x1b]11;?\x1b\\".to_vec())
+        .unwrap();
+    tab.handle_pty_bytes(1, vec![b'x'; LIMIT + 1]).unwrap();
+    assert!(tab.pending_pty_input_exceeds_forward_limit(1));
+    assert!(pane_is_forward_paused(&mut screen, pane_id));
+
+    screen.handle_forward_host_query(pane_id, bg_query(), None);
+
+    assert!(!pane_is_forward_paused(&mut screen, pane_id));
+    assert_eq!(screen.forward_in_flight_token, None, "the slot is released");
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert!(pane.dump_screen(true, None).contains("xxxx"));
+    assert!(!pane.has_pending_pty_input());
+}
+
+#[test]
+fn the_limit_applies_to_a_pane_hidden_behind_the_scrollback_editor() {
+    use crate::panes::terminal_pane::MAX_PENDING_PTY_BYTES_WHILE_FORWARD_PAUSED as LIMIT;
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _capture) = create_new_screen_with_forward_capture(size);
+    new_tab(&mut screen, 1, 0);
+    // Pane 1 is stored under the key of the editor pane that replaced it.
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(1))
+        .unwrap();
+
+    screen
+        .apply_pty_bytes(1, b"before\x1b]11;?\x1b\\".to_vec())
+        .unwrap();
+    screen.handle_forward_host_query(PaneId::Terminal(1), bg_query(), None);
+    assert!(screen.forward_in_flight_token.is_some());
+
+    let tab = screen.get_active_tab_mut(1).unwrap();
+    tab.handle_pty_bytes(1, vec![b'x'; LIMIT + 1]).unwrap();
+    assert!(tab.pending_pty_input_exceeds_forward_limit(1));
+
+    screen.enforce_forward_buffer_limit(1);
+    assert_eq!(screen.forward_in_flight_token, None, "the slot is released");
+    assert!(!screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .pending_pty_input_exceeds_forward_limit(1));
+}
+
+#[test]
+fn a_cancelled_clipboard_read_holds_the_slot_until_the_client_is_done_with_it() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    screen.paste_buffer_read_enabled = true;
+    // Only pane 2 exists, a queued read for a closed pane is skipped.
+    new_tab(&mut screen, 2, 0);
+    let first_token = screen.forward_host_query(PaneId::Terminal(1), clipboard_query());
+    let second_token = screen.forward_host_query(PaneId::Terminal(2), clipboard_query());
+    assert_eq!(capture.drain_forward_queries().len(), 1);
+
+    // Pane 1 is given up on, e.g. because it buffered too much output.
+    assert!(screen
+        .stop_waiting_for_forward_reply(PaneId::Terminal(1))
+        .unwrap());
+    assert!(
+        capture.drain_pty_writes().is_empty(),
+        "a cancelled read for a pane that never existed must not fall back to the terminal id"
+    );
+    assert!(
+        capture.drain_forward_queries().is_empty(),
+        "dispatching the next read would make the client mix up the two"
+    );
+    assert_eq!(screen.clipboard_forward_in_flight_token, Some(first_token));
+    assert_eq!(screen.clipboard_forward_queue.len(), 1);
+
+    // The host's answer to the cancelled read is dropped, not delivered.
+    screen
+        .handle_forwarded_reply_from_host(first_token, b"\x1b]52;c;bGF0ZQ==\x1b\\".to_vec())
+        .unwrap();
+    assert!(capture.drain_pty_writes().is_empty());
+
+    // Only now does the next read go out.
+    let forwards = capture.drain_forward_queries();
+    assert_eq!(forwards.len(), 1);
+    assert_eq!(forwards[0].0, second_token);
+    assert_eq!(screen.clipboard_forward_in_flight_token, Some(second_token));
 }
 
 fn create_non_mirrored_screen(size: Size) -> Screen {
@@ -11668,7 +13316,11 @@ pub fn nested_guest_announce_gets_announce_ack_with_ancestry() {
         .unwrap()
         .iter()
         .find_map(|instruction| match instruction {
-            PtyWriteInstruction::Write(bytes, 0, None) => decode_nested_frame(bytes),
+            PtyWriteInstruction::Write(write)
+                if write.terminal_id() == 0 && write.completion().is_none() =>
+            {
+                decode_nested_frame(write.bytes())
+            },
             _ => None,
         })
         .expect("an announce_ack frame written to the guest pane");
@@ -11723,7 +13375,11 @@ pub fn nested_guest_announce_in_never_mode_still_completes_handshake() {
         .unwrap()
         .iter()
         .find_map(|instruction| match instruction {
-            PtyWriteInstruction::Write(bytes, 0, None) => decode_nested_frame(bytes),
+            PtyWriteInstruction::Write(write)
+                if write.terminal_id() == 0 && write.completion().is_none() =>
+            {
+                decode_nested_frame(write.bytes())
+            },
             _ => None,
         })
         .expect("an announce_ack frame written to the guest pane even in never mode");
@@ -11781,10 +13437,14 @@ pub fn nested_guest_bye_stops_liveness_pings() {
         .unwrap()
         .iter()
         .filter(|instruction| match instruction {
-            PtyWriteInstruction::Write(bytes, 0, None) => matches!(
-                decode_nested_frame(bytes),
-                Some(zellij_utils::nested_session::NestedSessionMessage::Ping)
-            ),
+            PtyWriteInstruction::Write(write)
+                if write.terminal_id() == 0 && write.completion().is_none() =>
+            {
+                matches!(
+                    decode_nested_frame(write.bytes()),
+                    Some(zellij_utils::nested_session::NestedSessionMessage::Ping)
+                )
+            },
             _ => false,
         })
         .count();
@@ -13802,6 +15462,7 @@ pub fn scrolling_an_unfocused_pane_does_not_sync_scroll_mode() {
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::ScrollUpWithPaneId(
+            client_id,
             PaneId::Terminal(1),
             None,
         ));
@@ -13810,6 +15471,109 @@ pub fn scrolling_an_unfocused_pane_does_not_sync_scroll_mode() {
         last_change_mode_for_client(&received_server_instructions, client_id),
         None,
         "scrolling a pane the client is not focused on should not change its mode",
+    );
+
+    // A targeted write clears the target pane's scroll only. It must not
+    // synchronize the client's mode from that target: the client may still be
+    // viewing the scrolled, unfocused pane.
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Scroll,
+        None,
+        client_id,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    send_cli_action_to_server(
+        &mock_screen.clone_session_metadata(),
+        CliAction::Write {
+            bytes: b"\r".to_vec(),
+            pane_id: Some("0".to_owned()),
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        None,
+        "a targeted write must not pull the client out of the other pane's scroll",
+    );
+
+    send_cli_action_to_server(
+        &mock_screen.clone_session_metadata(),
+        CliAction::WriteChars {
+            chars: "\r".to_owned(),
+            pane_id: Some("0".to_owned()),
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        None,
+        "write-chars to the active pane must not interrupt scrolling another pane",
+    );
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+}
+
+#[test]
+pub fn write_chars_to_another_pane_does_not_interrupt_active_scroll() {
+    let size = Size { cols: 80, rows: 10 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let client_id = mock_screen.main_client_id;
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let mut pane_contents = String::new();
+    for i in 0..20 {
+        pane_contents.push_str(&format!("fill active pane with something {}\n\r", i));
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::PtyBytes(
+        0,
+        pane_contents.as_bytes().to_vec(),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Scroll the active pane; Scroll mode follows the client's active pane.
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::ScrollUpWithPaneId(
+            client_id,
+            PaneId::Terminal(0),
+            None,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        Some(InputMode::Scroll),
+        "scrolling the active pane enters Scroll mode",
+    );
+    received_server_instructions.lock().unwrap().clear();
+
+    // A targeted write to the other pane must not reset the active pane's
+    // scroll or pull the client out of Scroll mode.
+    send_cli_action_to_server(
+        &mock_screen.clone_session_metadata(),
+        CliAction::WriteChars {
+            chars: "\r".to_owned(),
+            pane_id: Some("1".to_owned()),
+        },
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        last_change_mode_for_client(&received_server_instructions, client_id),
+        None,
+        "write-chars to another pane must not interrupt the active pane's scroll",
     );
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
@@ -14747,7 +16511,10 @@ mod nested_hint_reporting {
                 create_new_screen_with_capture(size, true, true, true, true);
             let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
                 channels::unbounded();
-            screen.bus.senders.to_pty_writer = Some(SenderWithContext::new(to_pty_writer));
+            screen.bus.senders.to_pty_writer = Some(crate::thread_bus::PtyWriteSender::new(
+                SenderWithContext::new(to_pty_writer),
+                Some(Arc::new(crate::pty_ingress::PtyIngressBudget::new())),
+            ));
             let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> =
                 channels::unbounded();
             screen.bus.senders.to_plugin = Some(SenderWithContext::new(to_plugin));
@@ -14806,7 +16573,11 @@ mod nested_hint_reporting {
             self.pty_writer_receiver
                 .try_iter()
                 .filter_map(|(instruction, _)| match instruction {
-                    PtyWriteInstruction::Write(bytes, 1, None) => decode_nested_frame(&bytes),
+                    PtyWriteInstruction::Write(write)
+                        if write.terminal_id() == 1 && write.completion().is_none() =>
+                    {
+                        decode_nested_frame(write.bytes())
+                    },
                     _ => None,
                 })
                 .collect()
@@ -15871,6 +17642,41 @@ pub fn moving_a_plugin_to_the_tab_of_a_client_without_a_tab_keeps_the_plugin() {
 }
 
 #[test]
+pub fn focus_plugin_pane_stays_on_its_tab_after_tab_ids_and_positions_diverge() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _capture) = create_new_screen_with_theme_capture(size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    let run_plugin =
+        RunPluginOrAlias::from_url("file:/path/to/fake/plugin", &None, None, None).unwrap();
+    screen
+        .tabs
+        .get_mut(&1)
+        .unwrap()
+        .new_pane(
+            PaneId::Plugin(5),
+            None,
+            Some(Run::Plugin(run_plugin.clone())),
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    screen.close_tab_by_id(0).unwrap();
+    screen.go_to_tab(1, 1).unwrap();
+    screen
+        .focus_plugin_pane(&run_plugin, false, true, false, 1, &mut None)
+        .unwrap();
+    assert_eq!(screen.get_active_tab(1).unwrap().id, 1);
+}
+
+#[test]
 pub fn breaking_panes_to_a_tab_that_cannot_be_found_returns_them() {
     let size = Size {
         cols: 121,
@@ -16001,6 +17807,90 @@ struct ScreenRunResult {
     plugin_instructions: Vec<PluginInstruction>,
 }
 
+trait PublishLoggedCompletion {
+    fn publish_logged_completion(&mut self) {}
+}
+
+impl PublishLoggedCompletion for PtyWriteInstruction {}
+
+impl PublishLoggedCompletion for PtyInstruction {
+    fn publish_logged_completion(&mut self) {
+        publish_pty_completion(self);
+    }
+}
+
+impl PublishLoggedCompletion for PluginInstruction {
+    fn publish_logged_completion(&mut self) {
+        publish_plugin_completion(self);
+    }
+}
+
+impl PublishLoggedCompletion for ServerInstruction {
+    fn publish_logged_completion(&mut self) {
+        publish_server_completion(self);
+    }
+}
+
+fn publish_owner(owner: &mut Option<crate::route::NotificationEnd>) {
+    if let Some(owner) = owner.as_mut() {
+        owner.publish_recorded();
+    }
+}
+
+fn publish_server_completion(instruction: &mut ServerInstruction) {
+    use ServerInstruction::*;
+    let owner = match instruction {
+        ClientExit(_, owner)
+        | DetachSession(_, owner)
+        | Log(_, _, owner)
+        | LogError(_, _, owner)
+        | SwitchSession(_, _, owner)
+        | SwitchSessionAndCloseCurrent(_, _, owner)
+        | HistoryMove(_, _, owner)
+        | ChangeMode(_, _, owner) => owner,
+        _ => return,
+    };
+    publish_owner(owner);
+}
+
+fn publish_pty_completion(instruction: &mut PtyInstruction) {
+    use PtyInstruction::*;
+    let owner = match instruction {
+        SpawnTerminal(_, _, _, _, _, owner, _, _) => owner,
+        OpenInPlaceEditor(_, _, _, owner) => owner,
+        NewTab(_, _, _, _, _, _, _, _, _, _, owner) => owner,
+        OverrideLayout(_, _, _, _, _, _, owner) => owner,
+        ClosePane(_, owner) | ClosePaneThatWasNotCreated(_, owner) => owner,
+        ReRunCommandInPane(_, _, owner) => owner,
+        DropToShellInPane { completion_tx, .. } => completion_tx,
+        SpawnInPlaceTerminal(_, _, _, _, owner, _) => owner,
+        DumpLayout(_, _, owner) => owner,
+        SaveSessionToDisk { completion_tx, .. } => completion_tx,
+        FillPluginCwd(_, _, _, _, _, _, _, _, _, _, _, _, _, owner, _) => owner,
+        ListClientsMetadata(_, _, owner) => owner,
+        RunInBackground { completion_tx, .. } => completion_tx,
+        SetResurrectCommand { completion_tx, .. } => completion_tx,
+        _ => return,
+    };
+    publish_owner(owner);
+}
+
+fn publish_plugin_completion(instruction: &mut PluginInstruction) {
+    use PluginInstruction::*;
+    let owner = match instruction {
+        Load(_, _, _, _, _, _, _, _, _, _, _, _, _, _, owner, _) => owner,
+        Reload(_, _, _, _, _, owner, _) => owner,
+        NewTab(_, _, _, _, _, _, _, _, _, owner) => owner,
+        OverrideLayout(_, _, _, _, _, _, owner) => owner,
+        DumpLayout(_, _, owner) | ListClientsMetadata(_, _, owner) => owner,
+        KeybindPipe {
+            notification_end, ..
+        } => notification_end,
+        _ => return,
+    };
+    publish_owner(owner);
+}
+
 fn send_instructions_and_collect(
     size: Size,
     with_tab: bool,
@@ -16033,6 +17923,19 @@ fn send_instructions_and_collect(
     let _ = mock_screen.to_screen.send(make_instruction(completion));
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_thread, plugin_thread, screen_thread]);
+    // The logger keeps the instruction. NotificationEnd is not Clone, so the
+    // oneshot stays in that log until we publish it. The real pty and plugin
+    // threads drop the owner when they finish the instruction.
+    {
+        let mut pty_log = received_pty_instructions.lock().unwrap();
+        for instruction in pty_log.iter_mut() {
+            publish_pty_completion(instruction);
+        }
+        let mut plugin_log = received_plugin_instructions.lock().unwrap();
+        for instruction in plugin_log.iter_mut() {
+            publish_plugin_completion(instruction);
+        }
+    }
     let completion = completion_receiver
         .try_recv()
         .expect("the caller is notified that the action ended");
@@ -16179,6 +18082,39 @@ pub fn overriding_with_an_empty_layout_keeps_all_tabs_and_reports_failure() {
         .plugin_instructions
         .iter()
         .any(|i| matches!(i, PluginInstruction::OverrideLayout(..))));
+}
+
+#[test]
+pub fn override_layout_completion_reports_tabs_that_failed_on_the_pty_side() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let result = send_instructions_and_collect(
+        size,
+        true,
+        |_| {},
+        |completion| {
+            ScreenInstruction::OverrideLayoutComplete(
+                vec![],
+                vec![(7, "simulated spawn failure".to_owned())],
+                false,
+                false,
+                1,
+                Some(completion),
+            )
+        },
+    );
+    assert_eq!(result.completion.exit_status, Some(1));
+    assert!(
+        result
+            .completion
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("tab 7: simulated spawn failure")),
+        "the completion must name the failed tab: {:?}",
+        result.completion.error_message
+    );
 }
 
 #[test]
@@ -16604,8 +18540,12 @@ pub fn a_pane_that_was_not_created_for_an_unknown_reason_is_closed() {
     new_tab(&mut screen, 1, 0);
     let (completion, mut completion_receiver) = completion_and_receiver();
     let mut completion = Some(completion);
-    screen.finish_pane_creation(PaneId::Terminal(5), &mut completion, &mut HashMap::new());
-    drop(completion);
+    screen.finish_pane_creation(
+        PaneId::Terminal(5),
+        &mut completion,
+        &mut Default::default(),
+    );
+    crate::route::settle(completion);
     assert_eq!(
         closed_pane_ids_from(&pty_receiver),
         vec![PaneId::Terminal(5)]
@@ -16632,7 +18572,7 @@ pub fn bookkeeping_for_panes_that_were_not_created_stays_bounded() {
             .pane_not_created_reasons_count(),
         1
     );
-    screen.finish_pane_creation(PaneId::Terminal(1), &mut None, &mut HashMap::new());
+    screen.finish_pane_creation(PaneId::Terminal(1), &mut None, &mut Default::default());
     assert_eq!(
         screen
             .tabs
@@ -17003,6 +18943,7 @@ fn switching_tabs_moves_a_popup_asking_for_permissions_along_with_its_focus() {
             Some(zellij_utils::data::PluginPermission::new(
                 "my-plugin".to_owned(),
                 vec![zellij_utils::data::PermissionType::ReadApplicationState],
+                1,
             )),
         );
     screen.switch_tab_prev(None, true, client_id).unwrap();
@@ -17067,7 +19008,10 @@ impl MockScreenWithPrompt {
         self.pty_writer_receiver
             .try_iter()
             .filter_map(|(instruction, _)| match instruction {
-                PtyWriteInstruction::Write(bytes, terminal_id, _) => Some((bytes, terminal_id)),
+                PtyWriteInstruction::Write(write) => {
+                    let (bytes, terminal_id, _, _) = write.into_parts();
+                    Some((bytes, terminal_id))
+                },
                 _ => None,
             })
             .collect()
@@ -17199,6 +19143,290 @@ fn a_targeted_write_reaches_its_pane_while_a_popup_is_open() {
     );
     assert!(harness.keys_sent_to_plugin(42).is_empty());
     harness.teardown_and_assert_popup_was_open();
+}
+
+/// `route_thread_main` always follows `route_action` with this message.
+/// `individual_messages_client` returns 0 on it, 2 on `LogError`, and the
+/// status on `Exit`.
+fn cli_exit_after_route(messages: &[ServerToClientMsg]) -> i32 {
+    let mut messages = messages.to_vec();
+    messages.push(ServerToClientMsg::UnblockInputThread);
+    for message in messages {
+        match message {
+            ServerToClientMsg::LogError { .. } => return 2,
+            ServerToClientMsg::Log { .. } => return 0,
+            ServerToClientMsg::Exit { exit_reason } => match exit_reason {
+                ExitReason::Error(_) => return 2,
+                ExitReason::CustomExitStatus(status) => return status,
+                _ => return 0,
+            },
+            ServerToClientMsg::UnblockInputThread => return 0,
+            _ => {},
+        }
+    }
+    0
+}
+
+fn route_cli_action(
+    session: &SessionMetaData,
+    os_input: &FakeInputOutput,
+    cli_client_id: ClientId,
+    action: Action,
+) -> (ActionCompletionResult, i32) {
+    os_input
+        .server_to_client_messages
+        .lock()
+        .unwrap()
+        .remove(&cli_client_id);
+    let (_, result) = route_action(
+        action,
+        1,
+        Some(cli_client_id),
+        None,
+        session.senders.clone(),
+        None,
+        None,
+        InputMode::Normal,
+        Some(Box::new(os_input.clone())),
+        true,
+    )
+    .expect("route_action");
+    let result = result.expect("action completion");
+    let messages = os_input
+        .server_to_client_messages
+        .lock()
+        .unwrap()
+        .get(&cli_client_id)
+        .cloned()
+        .unwrap_or_default();
+    let exit = cli_exit_after_route(&messages);
+    (result, exit)
+}
+
+fn assert_cli_failure(result: &ActionCompletionResult, exit: i32) {
+    assert_eq!(result.kind, ActionCompletionKind::Finished, "{result:?}");
+    assert!(
+        result.error_message.as_deref().is_some_and(|message| {
+            message.contains("rejected")
+                || message.contains("not admitted")
+                || message.contains("not found")
+        }),
+        "admission failure was not recorded: {result:?}"
+    );
+    assert!(
+        result.exit_status.is_some_and(|status| status != 0),
+        "admission failure needs a non-zero exit, got {result:?}"
+    );
+    assert_ne!(exit, 0, "CLI treated the rejection as success: {result:?}");
+}
+
+fn assert_cli_success(result: &ActionCompletionResult, exit: i32) {
+    assert_eq!(result.kind, ActionCompletionKind::Finished, "{result:?}");
+    assert!(result.error_message.is_none(), "{result:?}");
+    assert!(
+        result.exit_status.is_none() || result.exit_status == Some(0),
+        "{result:?}"
+    );
+    assert_eq!(exit, 0, "{result:?}");
+}
+
+fn drain_pty_writes(
+    receiver: &Receiver<(PtyWriteInstruction, ErrorContext)>,
+) -> Vec<(Vec<u8>, bool)> {
+    let mut writes = Vec::new();
+    for (instruction, _) in receiver.try_iter() {
+        let PtyWriteInstruction::Write(write) = instruction else {
+            continue;
+        };
+        let (bytes, terminal_id, _completion, budget) = write.into_parts();
+        let metered = budget.is_some();
+        if let Some(budget) = budget {
+            budget.release(terminal_id, bytes.len());
+        }
+        writes.push((bytes, metered));
+    }
+    writes
+}
+
+#[test]
+fn cli_write_to_pane_reports_admission_rejection_and_admits_a_small_write() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+    let session = mock_screen.clone_session_metadata();
+    let os_input = mock_screen.os_input.clone();
+    let screen_thread = mock_screen.run(None, vec![]);
+    std::thread::sleep(Duration::from_millis(150));
+    let _startup = drain_pty_writes(&pty_receiver);
+
+    let budget = session
+        .senders
+        .to_pty_writer
+        .as_ref()
+        .and_then(|sender| sender.budget())
+        .expect("the screen pty sender shares the session budget");
+    let terminal_id = 0u32;
+    let already = budget.terminal_reserved(terminal_id);
+    let room = crate::pty_ingress::PER_TERMINAL_LIMIT - already;
+    assert!(room > 64, "startup saturated terminal {terminal_id}");
+    budget
+        .try_reserve(terminal_id, room)
+        .expect("fill the terminal budget");
+    let saturated = budget.terminal_reserved(terminal_id);
+    let cli_client_id = 77;
+    let pane_id = zellij_utils::data::PaneId::Terminal(terminal_id);
+
+    let rejected = b"admission-rejected".to_vec();
+    let (result, exit) = route_cli_action(
+        &session,
+        &os_input,
+        cli_client_id,
+        Action::WriteToPaneId {
+            bytes: rejected.clone(),
+            pane_id,
+        },
+    );
+    assert_cli_failure(&result, exit);
+    assert_eq!(budget.terminal_reserved(terminal_id), saturated);
+    let queued = drain_pty_writes(&pty_receiver);
+    assert!(
+        queued.is_empty(),
+        "rejected write was sitting in the writer inbox: {queued:?}"
+    );
+
+    let (result, exit) = route_cli_action(
+        &session,
+        &os_input,
+        cli_client_id,
+        Action::WriteChars {
+            chars: "chars-rejected".into(),
+        },
+    );
+    assert_cli_failure(&result, exit);
+    assert_eq!(budget.terminal_reserved(terminal_id), saturated);
+    let queued = drain_pty_writes(&pty_receiver);
+    assert!(
+        queued.is_empty(),
+        "rejected keystrokes were queued: {queued:?}"
+    );
+
+    let (result, exit) = route_cli_action(
+        &session,
+        &os_input,
+        cli_client_id,
+        Action::WriteKeyToPaneId {
+            key_with_modifier: Some(zellij_utils::data::KeyWithModifier::new(
+                zellij_utils::data::BareKey::Char('a'),
+            )),
+            pane_id,
+        },
+    );
+    assert_cli_failure(&result, exit);
+    assert_eq!(budget.terminal_reserved(terminal_id), saturated);
+    let queued = drain_pty_writes(&pty_receiver);
+    assert!(
+        queued.is_empty(),
+        "rejected targeted key was queued: {queued:?}"
+    );
+
+    let (result, exit) = route_cli_action(
+        &session,
+        &os_input,
+        cli_client_id,
+        Action::Paste {
+            chars: "paste-rejected".into(),
+            pane_id: Some(pane_id),
+        },
+    );
+    assert_cli_failure(&result, exit);
+    assert_eq!(budget.terminal_reserved(terminal_id), saturated);
+    let queued = drain_pty_writes(&pty_receiver);
+    // Panes that are not in bracketed-paste mode turn the markers into an
+    // empty metered write. The rejected body must not ride along.
+    assert!(
+        queued.iter().all(|(bytes, metered)| {
+            *metered
+                && bytes
+                    .windows(b"paste-rejected".len())
+                    .all(|window| window != b"paste-rejected")
+        }),
+        "rejected paste was queued: {queued:?}"
+    );
+
+    budget.release(terminal_id, room);
+    let admitted = b"admitted-ok".to_vec();
+    let (result, exit) = route_cli_action(
+        &session,
+        &os_input,
+        cli_client_id,
+        Action::WriteToPaneId {
+            bytes: admitted.clone(),
+            pane_id,
+        },
+    );
+    assert_cli_success(&result, exit);
+    assert_eq!(
+        budget.terminal_reserved(terminal_id),
+        admitted.len(),
+        "the admitted write was not reserved"
+    );
+    let queued = drain_pty_writes(&pty_receiver);
+    assert!(
+        queued
+            .iter()
+            .any(|(bytes, metered)| bytes == &admitted && *metered),
+        "admitted write was missing from the metered inbox: {queued:?}"
+    );
+
+    mock_screen.teardown(vec![screen_thread]);
+}
+
+#[test]
+fn cli_targeted_actions_report_a_missing_pane_as_failure() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let session = mock_screen.clone_session_metadata();
+    let os_input = mock_screen.os_input.clone();
+    let screen_thread = mock_screen.run(None, vec![]);
+    std::thread::sleep(Duration::from_millis(150));
+    let missing = zellij_utils::data::PaneId::Terminal(999);
+    let cli_client_id = 77;
+    let actions = [
+        Action::WriteToPaneId {
+            bytes: b"missing".to_vec(),
+            pane_id: missing,
+        },
+        Action::Paste {
+            chars: "missing".into(),
+            pane_id: Some(missing),
+        },
+        Action::WriteKeyToPaneId {
+            key_with_modifier: Some(zellij_utils::data::KeyWithModifier::new(
+                zellij_utils::data::BareKey::Char('a'),
+            )),
+            pane_id: missing,
+        },
+    ];
+
+    for action in actions {
+        let (result, exit) = route_cli_action(&session, &os_input, cli_client_id, action);
+        assert_cli_failure(&result, exit);
+        assert!(
+            result
+                .error_message
+                .as_deref()
+                .is_some_and(|message| message.contains("not found")),
+            "missing-target failure was not recorded: {result:?}"
+        );
+    }
+
+    mock_screen.teardown(vec![screen_thread]);
 }
 
 fn screen_capturing_plugin_instructions() -> (Screen, Receiver<(PluginInstruction, ErrorContext)>) {
@@ -17355,6 +19583,7 @@ fn a_popup_asking_for_permissions_reports_its_focus_to_the_server() {
             Some(zellij_utils::data::PluginPermission::new(
                 "my-plugin".to_owned(),
                 vec![zellij_utils::data::PermissionType::ReadApplicationState],
+                1,
             )),
         );
     screen.report_popup_state_for_plugin(42);
@@ -17599,6 +19828,195 @@ fn a_session_with_a_collapsed_pane_serializes_as_if_the_pane_were_expanded() {
     let collapsed = serialize(&screen).expect("a collapsed pane should not break serialization");
 
     assert_eq!(collapsed, expanded);
+}
+
+#[test]
+fn layout_metadata_copies_one_viewport_quantum_per_turn() {
+    use crate::panes::grid::{MAX_SERIALIZE_SNAPSHOT_CELLS, SCREEN_ROW_QUANTUM};
+
+    let rows = SCREEN_ROW_QUANTUM + 40;
+    let cols = 20;
+    assert!(rows * cols < MAX_SERIALIZE_SNAPSHOT_CELLS);
+    let mut screen = create_new_screen(Size { cols, rows }, false, false);
+    new_tab(&mut screen, 1, 0);
+    let mut bytes = Vec::new();
+    for index in 0..rows {
+        bytes.extend(format!("MARK{index:05}XXXXXXXX\r\n").into_bytes());
+    }
+    let leftover = screen
+        .apply_pty_bytes(1, bytes)
+        .expect("the tall viewport is parsed on the screen");
+    assert!(
+        leftover.is_none(),
+        "the markers must be in the pane before the layout dump"
+    );
+    screen.serialize_pane_viewport = true;
+    screen.scrollback_lines_to_serialize = Some(usize::MAX);
+    let markers = |screen: &Screen| {
+        let metadata = screen.get_layout_metadata(None, None);
+        let manifest: zellij_utils::session_serialization::GlobalLayoutManifest = metadata.into();
+        let dumped = manifest
+            .tabs
+            .iter()
+            .flat_map(|(_, tab)| tab.tiled_panes.iter().chain(tab.floating_panes.iter()))
+            .filter_map(|pane| pane.pane_contents.as_deref())
+            .collect::<Vec<_>>()
+            .join("\n");
+        (0..rows)
+            .filter(|index| dumped.contains(&format!("MARK{index:05}")))
+            .collect::<Vec<_>>()
+    };
+    let first = markers(&screen);
+    assert!(
+        first.is_empty(),
+        "an unfinished snapshot must not publish a partial viewport"
+    );
+    assert!(
+        screen.serialize_snapshot_has_more(),
+        "rows past the first quantum must remain for the next turn"
+    );
+    let mut guard = 0;
+    let mut latest = first;
+    while screen.serialize_snapshot_has_more() && guard < 8 {
+        latest = markers(&screen);
+        guard += 1;
+    }
+    assert!(
+        !screen.serialize_snapshot_has_more(),
+        "continuation must cover the requested range"
+    );
+    assert!(
+        latest.contains(&0),
+        "the finished snapshot must include the oldest marker once the quanta are covered"
+    );
+    assert!(
+        latest.contains(&(rows - 1)),
+        "the finished snapshot must include the newest marker"
+    );
+}
+
+#[test]
+fn save_session_holds_the_disk_write_until_the_snapshot_pass_finishes() {
+    use crate::panes::grid::SCREEN_ROW_QUANTUM;
+
+    let rows = SCREEN_ROW_QUANTUM + 40;
+    let cols = 20;
+    let mut screen = create_new_screen(Size { cols, rows }, false, false);
+    let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
+    let (to_screen, _screen_receiver): ChannelWithContext<ScreenInstruction> =
+        channels::unbounded();
+    screen.bus.senders.to_pty = Some(SenderWithContext::new(to_pty));
+    screen.bus.senders.to_screen = Some(SenderWithContext::new(to_screen));
+    screen.bus.senders.should_silently_fail = true;
+    screen.serialize_pane_viewport = true;
+    screen.scrollback_lines_to_serialize = Some(usize::MAX);
+    screen.session_serialization = true;
+    new_tab(&mut screen, 1, 0);
+    let mut bytes = Vec::new();
+    for index in 0..rows {
+        bytes.extend(format!("MARK{index:05}XXXXXXXX\r\n").into_bytes());
+    }
+    let leftover = screen
+        .apply_pty_bytes(1, bytes)
+        .expect("the tall viewport is parsed on the screen");
+    assert!(leftover.is_none());
+
+    // The screen thread's SaveSession arm calls this. One turn must not publish.
+    screen
+        .handle_save_session(1, None)
+        .expect("the first save turn requeues");
+    assert!(
+        screen.serialize_snapshot_has_more(),
+        "a two-quantum pane is unfinished after one SaveSession turn"
+    );
+    assert!(
+        pty_receiver.try_recv().is_err(),
+        "SaveSessionToDisk must wait until serialize_snapshot_has_more is false"
+    );
+
+    let mut saved = None;
+    for _ in 0..8 {
+        let unfinished = screen.serialize_snapshot_has_more();
+        screen
+            .handle_save_session(1, None)
+            .expect("a later save turn runs");
+        match pty_receiver.try_recv() {
+            Ok((instruction, _)) => {
+                assert!(
+                    !unfinished || !screen.serialize_snapshot_has_more(),
+                    "the disk write must be the turn that finishes the pass"
+                );
+                assert!(
+                    !screen.serialize_snapshot_has_more(),
+                    "SaveSessionToDisk arrived while the snapshot still had more rows"
+                );
+                saved = Some(instruction);
+                break;
+            },
+            Err(_) => {
+                assert!(
+                    screen.serialize_snapshot_has_more(),
+                    "a turn that does not publish must leave the pass open"
+                );
+            },
+        }
+    }
+    let PtyInstruction::SaveSessionToDisk {
+        session_layout_metadata,
+        ..
+    } = saved.expect("SaveSession publishes once the pass is done")
+    else {
+        panic!("SaveSession must send SaveSessionToDisk");
+    };
+    assert!(
+        pty_receiver.try_recv().is_err(),
+        "one finished pass publishes one SaveSessionToDisk"
+    );
+    let manifest: zellij_utils::session_serialization::GlobalLayoutManifest =
+        session_layout_metadata.into();
+    let dumped = manifest
+        .tabs
+        .iter()
+        .flat_map(|(_, tab)| tab.tiled_panes.iter().chain(tab.floating_panes.iter()))
+        .filter_map(|pane| pane.pane_contents.as_deref())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        dumped.contains("MARK00000"),
+        "the saved metadata must include the oldest marker"
+    );
+    assert!(
+        dumped.contains(&format!("MARK{:05}", rows - 1)),
+        "the saved metadata must include the newest marker"
+    );
+}
+
+#[test]
+fn save_session_reports_a_failed_pty_handoff() {
+    let mut screen = create_new_screen(Size { cols: 80, rows: 20 }, false, false);
+    let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
+    drop(pty_receiver);
+    screen.bus.senders.to_pty = Some(SenderWithContext::new(to_pty));
+    screen.session_serialization = false;
+    new_tab(&mut screen, 1, 0);
+    let (completion, mut completion_receiver) = completion_and_receiver();
+
+    screen
+        .handle_save_session(1, Some(completion))
+        .expect("a failed handoff is reported through the completion");
+    let result = completion_receiver
+        .try_recv()
+        .expect("the caller receives the handoff failure");
+    assert_eq!(result.kind, crate::route::ActionCompletionKind::Finished);
+    assert_eq!(result.exit_status, Some(1));
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("failed to send message to pty")),
+        "{:?}",
+        result.error_message
+    );
 }
 
 fn rendered_payload_for_client(
@@ -19518,7 +21936,7 @@ fn launching_a_plugin_that_is_shown_in_a_popup_moves_the_popup_into_a_floating_p
             &mut completion,
         )
         .unwrap();
-    assert!(found);
+    assert!(found.is_some());
     let tab = screen.get_active_tab(client_id).unwrap();
     assert!(!tab.has_popup_for_client(client_id));
     assert!(tab.get_pane_with_id(PaneId::Plugin(62)).is_some());
@@ -19598,6 +22016,7 @@ fn f9_opens_the_session_manager_as_a_floating_pane_at_its_final_size() {
                 _,
                 should_focus,
                 coordinates,
+                _,
                 _,
             ) => loaded.push((
                 should_float,
@@ -19984,6 +22403,126 @@ fn cli_pane_renames_drop_control_characters() {
 }
 
 #[test]
+fn many_title_changes_in_one_turn_report_pane_state_once_with_the_last_title() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    screen.reconfigure_attention(zellij_utils::input::attention::AttentionConfig {
+        enabled: Some(false),
+        ..Default::default()
+    });
+    new_tab(&mut screen, 1, 0);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    screen
+        .background_plugin_subscriptions
+        .insert((7, 1), HashSet::from([EventType::PaneUpdate]));
+    // Settle the initial attention-visibility sync so the only pane-state
+    // report left to observe is the title-driven one.
+    screen.render_to_clients().expect("TEST");
+    let _ = received_pane_updates(&plugin_receiver);
+
+    for title in ["first", "second", "last"] {
+        let bytes = format!("\x1b]0;{title}\x07").into_bytes();
+        screen.apply_pty_bytes(1, bytes).expect("TEST");
+    }
+    let pane_updates_before_render = received_pane_updates(&plugin_receiver);
+    assert!(
+        pane_updates_before_render.is_empty(),
+        "title changes should be coalesced until the next render, got {} pane updates",
+        pane_updates_before_render.len()
+    );
+
+    screen.render_to_clients().expect("TEST");
+    let pane_updates = received_pane_updates(&plugin_receiver);
+    assert_eq!(
+        pane_updates.len(),
+        1,
+        "many title changes in one render turn must report pane state once"
+    );
+    let title = pane_updates[0]
+        .panes
+        .get(&0)
+        .and_then(|panes| panes.iter().find(|pane| pane.id == 1))
+        .map(|pane| pane.title.clone())
+        .expect("the terminal pane was reported");
+    assert_eq!(title, "last");
+
+    // A report satisfies the pending flag, so a second render does not repeat it.
+    screen.render_to_clients().expect("TEST");
+    assert!(received_pane_updates(&plugin_receiver).is_empty());
+}
+
+fn received_pane_updates(
+    plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+) -> Vec<zellij_utils::data::PaneManifest> {
+    plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::Update(updates) => Some(updates),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|(_plugin_id, _client_id, event)| match event {
+            Event::PaneUpdate(manifest) => Some(manifest),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_targeted_pane_state_report_does_not_drop_the_pending_broadcast() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    screen.reconfigure_attention(zellij_utils::input::attention::AttentionConfig {
+        enabled: Some(false),
+        ..Default::default()
+    });
+    new_tab(&mut screen, 1, 0);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    screen
+        .background_plugin_subscriptions
+        .insert((7, 1), HashSet::from([EventType::PaneUpdate]));
+    screen.render_to_clients().expect("TEST");
+    let _ = received_pane_updates(&plugin_receiver);
+
+    screen
+        .apply_pty_bytes(1, b"\x1b]0;last\x07".to_vec())
+        .expect("TEST");
+    screen
+        .report_pane_and_tab_state_to_plugin(9, 1)
+        .expect("TEST");
+    let _ = received_pane_updates(&plugin_receiver);
+
+    screen.render_to_clients().expect("TEST");
+    let pane_updates = received_pane_updates(&plugin_receiver);
+    assert_eq!(
+        pane_updates.len(),
+        1,
+        "the broadcast must still reach the subscribed plugin"
+    );
+    let title = pane_updates[0]
+        .panes
+        .get(&0)
+        .and_then(|panes| panes.iter().find(|pane| pane.id == 1))
+        .map(|pane| pane.title.clone())
+        .expect("the terminal pane was reported");
+    assert_eq!(title, "last");
+}
+
+#[test]
 fn closing_a_pane_that_needs_you_updates_the_reported_session_attention() {
     let size = Size {
         cols: 121,
@@ -20136,6 +22675,33 @@ mod session_rename {
             .collect()
     }
 
+    fn screen_rename_bus(
+        screen: &mut Screen,
+    ) -> (
+        crate::channels::SenderWithContext<ScreenInstruction>,
+        Receiver<(ScreenInstruction, ErrorContext)>,
+    ) {
+        let (sender, receiver) = channels::unbounded();
+        let sender = crate::channels::SenderWithContext::new(sender);
+        screen.bus.senders.to_screen = Some(sender.clone());
+        (sender, receiver)
+    }
+
+    fn apply_discovered_rename(
+        screen: &mut Screen,
+        receiver: &Receiver<(ScreenInstruction, ErrorContext)>,
+    ) {
+        let (instruction, _) = receiver
+            .recv_timeout(Duration::from_secs(20))
+            .expect("session rename discovery");
+        match instruction {
+            ScreenInstruction::CommitSessionRename(commit) => {
+                screen.commit_session_rename(*commit).expect("TEST");
+            },
+            other => panic!("expected session rename commit, got {other:?}"),
+        }
+    }
+
     fn start_renaming(h: &mut Harness, client_id: ClientId) {
         h.screen
             .change_mode(InputMode::RenameSession, Some(InputMode::Normal), client_id)
@@ -20188,9 +22754,11 @@ mod session_rename {
         start_renaming(&mut h, 1);
         type_text(&mut h, 1, "taken");
         assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("taken"));
+        let (_sender, receiver) = screen_rename_bus(&mut h.screen);
         h.screen
             .change_mode(InputMode::Normal, Some(InputMode::Normal), 1)
             .expect("TEST");
+        apply_discovered_rename(&mut h.screen, &receiver);
         assert_eq!(h.screen.session_name, "zellij-test");
         assert_eq!(shown_name(&h.screen, 1).as_deref(), Some("zellij-test"));
         let prompts = prompts(&h);
@@ -20237,6 +22805,375 @@ mod session_rename {
         type_text(&mut h, 1, "stray");
         assert_ne!(shown_name(&h.screen, 1).as_deref(), Some("stray"));
         assert!(h.screen.session_rename_drafts.is_empty());
+    }
+
+    struct DiscoveryGate {
+        entered: Mutex<bool>,
+        entered_cv: std::sync::Condvar,
+        release: Mutex<bool>,
+        release_cv: std::sync::Condvar,
+    }
+
+    impl DiscoveryGate {
+        fn new() -> Self {
+            DiscoveryGate {
+                entered: Mutex::new(false),
+                entered_cv: std::sync::Condvar::new(),
+                release: Mutex::new(false),
+                release_cv: std::sync::Condvar::new(),
+            }
+        }
+
+        fn block(&self) {
+            {
+                let mut entered = self.entered.lock().unwrap();
+                *entered = true;
+                self.entered_cv.notify_all();
+            }
+            let mut release = self.release.lock().unwrap();
+            let started = std::time::Instant::now();
+            while !*release {
+                let remaining = Duration::from_secs(5).saturating_sub(started.elapsed());
+                assert!(!remaining.is_zero(), "discovery was not released");
+                let (guard, timeout) = self.release_cv.wait_timeout(release, remaining).unwrap();
+                release = guard;
+                if timeout.timed_out() && !*release {
+                    panic!("discovery was not released");
+                }
+            }
+        }
+
+        fn wait_until_entered(&self) {
+            let entered = self.entered.lock().unwrap();
+            let (entered, timeout) = self
+                .entered_cv
+                .wait_timeout_while(entered, Duration::from_secs(2), |entered| !*entered)
+                .unwrap();
+            assert!(*entered && !timeout.timed_out(), "discovery never started");
+        }
+
+        fn is_released(&self) -> bool {
+            *self.release.lock().unwrap()
+        }
+
+        fn release(&self) {
+            let mut release = self.release.lock().unwrap();
+            *release = true;
+            self.release_cv.notify_all();
+        }
+    }
+
+    struct ReleaseDiscovery(Arc<DiscoveryGate>);
+
+    impl Drop for ReleaseDiscovery {
+        fn drop(&mut self) {
+            self.0.release();
+        }
+    }
+
+    #[test]
+    fn a_busy_rename_discovery_worker_refuses_new_requests_without_blocking_screen() {
+        let mut h = harness();
+        let gate = Arc::new(DiscoveryGate::new());
+        let _release = ReleaseDiscovery(Arc::clone(&gate));
+        let (_sender, _receiver) = screen_rename_bus(&mut h.screen);
+        let worker_gate = Arc::clone(&gate);
+        h.screen.session_rename_discovery =
+            super::super::SessionRenameDiscoveryHook::Override(Arc::new(move |_current, _new| {
+                worker_gate.block();
+                super::super::SessionRenameDiscovery {
+                    resurrectable_sessions: BTreeMap::new(),
+                    running_session_exists: Ok(false),
+                }
+            }));
+
+        let (first_tx, _first_rx) = tokio::sync::oneshot::channel();
+        h.screen
+            .begin_session_rename(
+                "one".to_owned(),
+                1,
+                false,
+                Some(crate::route::NotificationEnd::new(first_tx)),
+            )
+            .expect("TEST");
+        gate.wait_until_entered();
+
+        let (queued_tx, _queued_rx) = tokio::sync::oneshot::channel();
+        h.screen
+            .begin_session_rename(
+                "two".to_owned(),
+                1,
+                false,
+                Some(crate::route::NotificationEnd::new(queued_tx)),
+            )
+            .expect("TEST");
+
+        let (refused_tx, mut refused_rx) = tokio::sync::oneshot::channel();
+        h.screen
+            .begin_session_rename(
+                "three".to_owned(),
+                1,
+                false,
+                Some(crate::route::NotificationEnd::new(refused_tx)),
+            )
+            .expect("TEST");
+        let refused = refused_rx
+            .try_recv()
+            .expect("a request beyond the worker and its one queued job is refused");
+        assert_eq!(refused.kind, crate::route::ActionCompletionKind::Finished);
+        assert!(
+            refused
+                .error_message
+                .as_deref()
+                .is_some_and(|message| message.contains("already being checked")),
+            "{refused:?}"
+        );
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum ScreenSaw {
+        HandlerReturned,
+        CacheUpdated,
+        Committed(String),
+    }
+
+    #[test]
+    fn the_screen_thread_is_not_inside_peer_discovery_while_it_blocks() {
+        // Screen is not Send. Build it on the thread that runs the rename
+        // instruction handler, and keep the probe on the discovery thread.
+        let gate = Arc::new(DiscoveryGate::new());
+        let _release_on_drop = ReleaseDiscovery(Arc::clone(&gate));
+        let discovery_thread_id = Arc::new(Mutex::new(None));
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (progress_tx, progress_rx) = std::sync::mpsc::channel();
+        let gate_for_worker = Arc::clone(&gate);
+        let discovery_thread_id_for_worker = Arc::clone(&discovery_thread_id);
+        let worker = std::thread::spawn(move || {
+            let mut h = harness();
+            assert!(
+                matches!(
+                    &h.screen.session_rename_discovery,
+                    super::super::SessionRenameDiscoveryHook::Production
+                ),
+                "production rename must keep the real session scan"
+            );
+            let fake = FakeInputOutput::default();
+            let client_messages = fake.server_to_client_messages.clone();
+            h.screen.bus.os_input = Some(Box::new(fake));
+            let (sender, receiver) = screen_rename_bus(&mut h.screen);
+            let gate = gate_for_worker;
+            let discovery_thread_id = discovery_thread_id_for_worker;
+            h.screen.session_rename_discovery = super::super::SessionRenameDiscoveryHook::Override(
+                Arc::new(move |_current, _new| {
+                    *discovery_thread_id.lock().unwrap() = Some(std::thread::current().id());
+                    gate.block();
+                    super::super::SessionRenameDiscovery {
+                        resurrectable_sessions: BTreeMap::new(),
+                        running_session_exists: Ok(false),
+                    }
+                }),
+            );
+            let screen_thread_id = std::thread::current().id();
+            ready_tx
+                .send((sender, client_messages, screen_thread_id))
+                .expect("TEST");
+            let mut screen = h.screen;
+            loop {
+                let Ok((instruction, _)) = receiver.recv_timeout(Duration::from_secs(5)) else {
+                    break;
+                };
+                match instruction {
+                    ScreenInstruction::RenameSession(name, client_id, completion) => {
+                        screen
+                            .begin_session_rename(name, client_id, false, completion)
+                            .expect("TEST");
+                        progress_tx.send(ScreenSaw::HandlerReturned).expect("TEST");
+                    },
+                    ScreenInstruction::CommitSessionRename(commit) => {
+                        screen.commit_session_rename(*commit).expect("TEST");
+                        progress_tx
+                            .send(ScreenSaw::Committed(screen.session_name.clone()))
+                            .expect("TEST");
+                        break;
+                    },
+                    ScreenInstruction::UpdateSessionInfos(infos, resurrectable, plugin) => {
+                        screen
+                            .update_session_infos(infos, resurrectable, plugin)
+                            .expect("TEST");
+                        progress_tx.send(ScreenSaw::CacheUpdated).expect("TEST");
+                    },
+                    other => panic!("unexpected screen instruction: {other:?}"),
+                }
+            }
+            (
+                screen.session_name.clone(),
+                screen.peer_sessions_cache.contains_key("offscreen-peer"),
+            )
+        });
+
+        let (sender, client_messages, screen_thread_id) = ready_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("screen thread");
+        sender
+            .send(ScreenInstruction::RenameSession(
+                "offscreen-peer".to_owned(),
+                1,
+                None,
+            ))
+            .expect("TEST");
+        gate.wait_until_entered();
+        assert_eq!(
+            progress_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("handler returned"),
+            ScreenSaw::HandlerReturned
+        );
+        let discovery_id = discovery_thread_id
+            .lock()
+            .unwrap()
+            .expect("discovery thread id");
+        assert_ne!(
+            discovery_id, screen_thread_id,
+            "peer discovery ran on the screen thread"
+        );
+        assert!(!gate.is_released());
+
+        let mut infos = BTreeMap::new();
+        infos.insert(
+            "offscreen-peer".to_owned(),
+            SessionInfo::new("offscreen-peer".to_owned()),
+        );
+        sender
+            .send(ScreenInstruction::UpdateSessionInfos(
+                infos,
+                BTreeMap::new(),
+                None,
+            ))
+            .expect("TEST");
+        assert_eq!(
+            progress_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("cache update"),
+            ScreenSaw::CacheUpdated
+        );
+        assert!(!gate.is_released(), "screen work waited for peer discovery");
+
+        gate.release();
+        assert_eq!(
+            progress_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("commit"),
+            ScreenSaw::Committed("zellij-test".to_owned())
+        );
+        let (session_name, peer_was_cached) = worker.join().expect("screen thread");
+        assert_eq!(session_name, "zellij-test");
+        assert!(peer_was_cached);
+        let messages = client_messages.lock().unwrap();
+        let lines = messages.get(&1).expect("rename failure was reported");
+        assert!(
+            lines.iter().any(|message| matches!(
+                message,
+                ServerToClientMsg::LogError { lines }
+                    if lines.iter().any(|line| line.contains("already exists"))
+            )),
+            "commit did not recheck the peer cache: {lines:?}"
+        );
+    }
+
+    struct ForgetSessionName(String);
+
+    impl Drop for ForgetSessionName {
+        fn drop(&mut self) {
+            if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
+                let _ = index.delete(&self.0);
+            }
+        }
+    }
+
+    struct ForgetSocketFile(std::path::PathBuf);
+
+    impl Drop for ForgetSocketFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    fn refuse_discovered_rename(screen: &mut Screen, name: &str) -> ActionCompletionResult {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        screen
+            .commit_session_rename(super::super::SessionRenameCommit {
+                name: name.to_owned(),
+                client_id: 1,
+                discovery: super::super::SessionRenameDiscovery {
+                    resurrectable_sessions: BTreeMap::new(),
+                    running_session_exists: Ok(false),
+                },
+                popup_on_error: false,
+                completion: Some(NotificationEnd::new(sender)),
+            })
+            .expect("TEST");
+        receiver.blocking_recv().expect("rename completion")
+    }
+
+    #[test]
+    fn a_name_taken_after_discovery_is_refused_at_commit() {
+        let mut h = harness();
+        let indexed_name = format!("rename-offscreen-id-{}", std::process::id());
+        let _forget_indexed = ForgetSessionName(indexed_name.clone());
+        let indexed_id = zellij_utils::sessions::register_session(&indexed_name);
+        let resolved = zellij_utils::sessions::resolve_session_id(&indexed_name)
+            .expect("index read")
+            .expect("registered name is in the index");
+        assert_eq!(resolved, indexed_id);
+        assert_ne!(indexed_id, h.screen.session_id);
+
+        let result = refuse_discovered_rename(&mut h.screen, &indexed_name);
+        assert_eq!(h.screen.session_name, "zellij-test");
+        assert_eq!(result.kind, ActionCompletionKind::Finished, "{result:?}");
+        assert_eq!(result.exit_status, Some(1), "{result:?}");
+        assert!(
+            result
+                .error_message
+                .as_deref()
+                .is_some_and(|message| message.contains("already exists")),
+            "{result:?}"
+        );
+        assert_eq!(
+            zellij_utils::sessions::resolve_session_id(&indexed_name)
+                .expect("index read")
+                .as_deref(),
+            Some(indexed_id.as_str()),
+            "commit deleted the other session's index row"
+        );
+
+        let socket_name = format!("rename-offscreen-sock-{}", std::process::id());
+        let _forget_socket_row = ForgetSessionName(socket_name.clone());
+        let socket_path = zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&socket_name);
+        if let Some(parent) = socket_path.parent() {
+            std::fs::create_dir_all(parent).expect("socket dir");
+        }
+        std::fs::write(&socket_path, b"").expect("socket marker");
+        let _forget_socket = ForgetSocketFile(socket_path);
+        assert_eq!(
+            zellij_utils::sessions::resolve_session_id(&socket_name).expect("index read"),
+            None
+        );
+
+        let result = refuse_discovered_rename(&mut h.screen, &socket_name);
+        assert_eq!(h.screen.session_name, "zellij-test");
+        assert_eq!(result.exit_status, Some(1), "{result:?}");
+        assert!(
+            result
+                .error_message
+                .as_deref()
+                .is_some_and(|message| message.contains("already exists")),
+            "{result:?}"
+        );
+        assert_eq!(
+            zellij_utils::sessions::resolve_session_id(&socket_name).expect("index read"),
+            None,
+            "commit claimed a name whose socket already exists"
+        );
     }
 }
 
@@ -20408,4 +23345,461 @@ fn a_client_following_row_shifts_ends_up_with_the_same_screen_as_a_full_repaint(
         "a shifted frame must not resend every row"
     );
     assert_eq!(client.screen(), expected.screen());
+}
+
+/// Send `close` for a pane that does not exist yet, then create the pane, and
+/// count the PTY cleanups the screen requested for it.
+fn close_then_create_pane_cleanups(close: ScreenInstruction, pid: u32) -> usize {
+    events_then_create_pane_cleanups(vec![close], pid)
+}
+
+/// Send `events` for a pane that does not exist yet, then create the pane,
+/// and count the PTY cleanups the screen requested for it.
+fn events_then_create_pane_cleanups(events: Vec<ScreenInstruction>, pid: u32) -> usize {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let screen_thread = mock_screen.run(None, vec![]);
+    for event in events {
+        let _ = mock_screen.to_screen.send(event);
+    }
+    let _ = mock_screen.to_screen.send(ScreenInstruction::NewPane(
+        PaneId::Terminal(pid),
+        None,
+        None,
+        None,
+        NewPanePlacement::default(),
+        false,
+        ClientTabIndexOrPaneId::ClientId(1),
+        None,
+        false,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let cleanups = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|instruction| {
+            matches!(instruction, PtyInstruction::ClosePane(PaneId::Terminal(id), _) if *id == pid)
+        })
+        .count();
+    cleanups
+}
+
+#[test]
+pub fn an_external_close_for_a_pane_that_does_not_exist_yet_is_ignored() {
+    // A stale or speculative close (CLI, plugin) must not be replayed onto a
+    // pane that is created later with the same id.
+    let cleanups = close_then_create_pane_cleanups(
+        ScreenInstruction::ClosePane(
+            PaneId::Terminal(7),
+            None,
+            None,
+            None,
+            ClosePaneSource::External,
+            None,
+        ),
+        7,
+    );
+    assert_eq!(cleanups, 0);
+}
+
+#[test]
+pub fn a_child_exit_before_its_pane_exists_closes_the_pane_once_created() {
+    // A command that exits before its pane is laid out must still close it.
+    // The only cleanup comes from closing the created pane: none is sent
+    // while the pane does not exist yet.
+    let cleanups = close_then_create_pane_cleanups(
+        ScreenInstruction::ClosePane(
+            PaneId::Terminal(7),
+            None,
+            None,
+            Some(0),
+            ClosePaneSource::ChildExit,
+            Some(1),
+        ),
+        7,
+    );
+    assert_eq!(cleanups, 1);
+}
+
+#[test]
+pub fn an_external_close_for_a_headless_plugin_still_unloads_it() {
+    // Background plugins have no pane; the close must still reach the PTY
+    // thread, which unloads the plugin.
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let screen_thread = mock_screen.run(None, vec![]);
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ClosePane(
+        PaneId::Plugin(9),
+        None,
+        None,
+        None,
+        ClosePaneSource::External,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    assert!(received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|instruction| matches!(instruction, PtyInstruction::ClosePane(PaneId::Plugin(9), _))));
+}
+
+#[test]
+pub fn a_child_exit_before_its_layout_is_applied_closes_the_pane_once_created() {
+    // A layout command can exit before ApplyLayout creates its pane. The
+    // exit must be replayed when the layout creates the pane, so the pane
+    // is closed and its PID is forgotten instead of lingering in the PTY
+    // thread (where a later close could signal a reused PID).
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let screen_thread = mock_screen.run(None, vec![]);
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ClosePane(
+        PaneId::Terminal(9),
+        None,
+        None,
+        Some(0),
+        ClosePaneSource::ChildExit,
+        Some(1),
+    ));
+    let layout = TiledPaneLayout::default();
+    let _ = mock_screen.to_screen.send(ScreenInstruction::NewTab(
+        None,
+        None,
+        Some(layout.clone()),
+        vec![],
+        None,
+        (Some(vec![]), Some(vec![])),
+        None,
+        false,
+        true,
+        (mock_screen.main_client_id, false),
+        None,
+    ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        layout,
+        vec![],
+        vec![(9, None)],
+        vec![],
+        HashMap::new(),
+        1,
+        true,
+        (mock_screen.main_client_id, false),
+        None,
+        None,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let cleanups = received_pty_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|instruction| {
+            matches!(
+                instruction,
+                PtyInstruction::ClosePane(PaneId::Terminal(9), _)
+            )
+        })
+        .count();
+    assert_eq!(cleanups, 1);
+}
+
+#[test]
+pub fn a_child_exit_after_its_terminal_was_closed_is_dropped() {
+    // Closing a pane kills its child, whose exit then arrives for a pane
+    // that no longer exists. It must be dropped, not buffered for a pane
+    // that will never be created.
+    let cleanups = events_then_create_pane_cleanups(
+        vec![
+            ScreenInstruction::TerminalClosed(7),
+            ScreenInstruction::ClosePane(
+                PaneId::Terminal(7),
+                None,
+                None,
+                Some(0),
+                ClosePaneSource::ChildExit,
+                Some(1),
+            ),
+        ],
+        7,
+    );
+    assert_eq!(cleanups, 0);
+}
+
+#[test]
+fn late_run_events_do_not_recreate_state_for_a_closed_terminal() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _messages) = create_new_screen_with_message_capture(size);
+    let terminal_id = 7;
+    screen.remember_terminal_closed(terminal_id);
+
+    screen.note_terminal_run_started(terminal_id, 1);
+    assert!(!screen.terminal_runs.contains_key(&terminal_id));
+
+    let bytes = screen
+        .accept_run_bytes(terminal_id, 1, b"late".to_vec())
+        .expect("late bytes are ignored");
+    assert!(bytes.is_none());
+    assert!(!screen.terminal_runs.contains_key(&terminal_id));
+
+    screen.note_child_run_exited(PaneId::Terminal(terminal_id), Some(0), 1, None);
+    assert!(!screen.terminal_runs.contains_key(&terminal_id));
+}
+
+#[test]
+fn closed_terminals_are_forgotten_in_close_order() {
+    // A long-lived first pane closed after many newer ones must still be
+    // remembered: eviction follows close order, not terminal id order.
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _messages) = create_new_screen_with_message_capture(size);
+    for terminal_id in 1..=super::MAX_REMEMBERED_CLOSED_TERMINALS as u32 {
+        screen.remember_terminal_closed(terminal_id);
+    }
+    screen.remember_terminal_closed(0);
+    assert!(screen.terminal_was_closed(&PaneId::Terminal(0)));
+    assert!(!screen.terminal_was_closed(&PaneId::Terminal(1)));
+    assert!(screen.terminal_was_closed(&PaneId::Terminal(2)));
+    assert_eq!(
+        screen.closed_terminal_ids.len(),
+        super::MAX_REMEMBERED_CLOSED_TERMINALS
+    );
+}
+
+#[test]
+fn releasing_a_key_intercept_only_affects_the_plugin_that_holds_it() {
+    let mut intercepts = KeybindIntercepts::default();
+    intercepts.intercept(1, 10);
+    // unloading an unrelated plugin must not take the intercept away
+    intercepts.release(20, 1);
+    assert_eq!(intercepts.owner(1), Some(10));
+    // nor must releasing on behalf of a client that has none
+    intercepts.release(10, 2);
+    assert_eq!(intercepts.owner(1), Some(10));
+    intercepts.release(10, 1);
+    assert_eq!(intercepts.owner(1), None);
+}
+
+#[test]
+fn a_newer_key_intercept_replaces_the_previous_owner() {
+    let mut intercepts = KeybindIntercepts::default();
+    intercepts.intercept(1, 10);
+    intercepts.intercept(1, 20);
+    // the plugin that lost the intercept can still be unloaded without effect
+    intercepts.release(10, 1);
+    assert_eq!(intercepts.owner(1), Some(20));
+}
+
+#[test]
+fn unloading_one_plugin_keeps_the_key_intercept_of_another() {
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 1;
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.new_tab(TiledPaneLayout::default());
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let intercepting_plugin = 7;
+    let unrelated_plugin = 8;
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::InterceptKeyPresses(
+            intercepting_plugin,
+            client_id,
+        ));
+    // what the plugin thread sends for every client instance of a plugin it unloads
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::ClearKeyPressesIntercepts(
+            unrelated_plugin,
+            client_id,
+        ));
+    let key = zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char('a'));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::WriteCharacter(
+            Some(key.clone()),
+            vec![b'a'],
+            false,
+            client_id,
+            None,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+    let intercepted_by: Vec<_> = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|instruction| match instruction {
+            PluginInstruction::Update(updates) => Some(updates.clone()),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|update| match update {
+            (Some(plugin_id), Some(update_client), Event::InterceptedKeyPress(intercepted))
+                if update_client == client_id && intercepted == key =>
+            {
+                Some(plugin_id)
+            },
+            _ => None,
+        })
+        .collect();
+    assert_eq!(intercepted_by, vec![intercepting_plugin]);
+}
+
+#[test]
+fn a_newer_run_is_accepted_before_its_start_is_announced() {
+    use std::collections::HashMap;
+
+    let mut runs = HashMap::new();
+    assert!(super::run_generation_accepts(&mut runs, 1, 1));
+    assert!(super::run_generation_accepts(&mut runs, 1, 2));
+    assert_eq!(runs[&1].generation, 2);
+    assert!(!super::run_generation_accepts(&mut runs, 1, 1));
+}
+
+#[test]
+fn a_newer_run_exit_before_its_start_is_not_lost() {
+    use std::collections::HashMap;
+
+    let mut runs = HashMap::new();
+    super::stage_run_started(&mut runs, 1, 1);
+    let exit = ScreenInstruction::TerminalRunStarted(1, 2);
+    assert!(super::stage_child_exit(&mut runs, 1, 2, exit).is_none());
+    super::stage_run_started(&mut runs, 1, 2);
+    // a late start for the old generation must not replace the exited run
+    super::stage_run_started(&mut runs, 1, 1);
+    assert_eq!(runs[&1].generation, 2);
+    assert!(super::stage_run_drained(&mut runs, 1, 2).is_some());
+}
+
+#[test]
+fn settled_run_exit_is_released_after_pending_rep_is_applied() {
+    let size = Size { cols: 20, rows: 5 };
+    let mut screen = create_new_screen_with_kitty_graphics(size, true, true, true);
+    new_tab(&mut screen, 1, 0);
+    let exit = ScreenInstruction::ClosePane(
+        PaneId::Terminal(1),
+        None,
+        None,
+        Some(0),
+        ClosePaneSource::ChildExit,
+        Some(1),
+    );
+    screen.terminal_runs.insert(
+        1,
+        super::TerminalRun {
+            generation: 1,
+            drained: true,
+            deferred_exit: Some(exit),
+        },
+    );
+
+    let tab = screen.get_active_tab_mut(1).expect("active tab");
+    tab.handle_pty_bytes(1, b"a\x1b[65535b".to_vec())
+        .expect("feed repeat");
+    assert!(tab.has_pending_output(1));
+    screen.release_settled_run_exits();
+    assert!(
+        screen
+            .terminal_runs
+            .get(&1)
+            .and_then(|run| run.deferred_exit.as_ref())
+            .is_some(),
+        "an unfinished repeat must hold the exit"
+    );
+
+    let tab = screen.get_active_tab_mut(1).expect("active tab");
+    while tab.has_pending_output(1) {
+        tab.advance_deferred_pane_work();
+    }
+    screen.release_settled_run_exits();
+    assert!(
+        screen
+            .terminal_runs
+            .get(&1)
+            .and_then(|run| run.deferred_exit.as_ref())
+            .is_none(),
+        "the exit is released once the repeat is applied"
+    );
+}
+
+#[test]
+fn pending_tab_admission_rejects_a_full_queue() {
+    assert_eq!(MAX_PENDING_TAB_EVENTS, 1024);
+
+    let mut queue = Vec::new();
+    for _ in 0..1024 {
+        push_pending_tab_event(
+            &mut queue,
+            ScreenInstruction::SetPaneCollapsed(PaneId::Terminal(1), false),
+        );
+    }
+    assert_eq!(queue.len(), 1024);
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    push_pending_tab_event(
+        &mut queue,
+        ScreenInstruction::MoveTabWithTabId(3, Direction::Left, Some(NotificationEnd::new(tx))),
+    );
+    assert_eq!(queue.len(), 1024);
+    assert!(queue
+        .iter()
+        .all(|event| matches!(event, ScreenInstruction::SetPaneCollapsed(..))));
+    let result = rx.blocking_recv().expect("rejected move completes");
+    assert_eq!(result.exit_status, Some(1));
+    let message = result
+        .error_message
+        .expect("rejection names the full queue");
+    assert!(
+        message.contains("queue is full"),
+        "error should mention the queue is full: {message}"
+    );
+
+    let mut left_moves = Vec::new();
+    for _ in 0..1024 {
+        push_pending_tab_event(&mut left_moves, ScreenInstruction::MoveTabLeft(1, None));
+    }
+    push_pending_tab_event(&mut left_moves, ScreenInstruction::MoveTabLeft(2, None));
+    assert_eq!(left_moves.len(), 1024);
+    assert!(left_moves.iter().all(|event| matches!(
+        event,
+        ScreenInstruction::MoveTabLeft(client_id, None) if *client_id == 1
+    )));
 }

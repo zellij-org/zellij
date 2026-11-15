@@ -2762,3 +2762,166 @@ fn plugin_aliases_with_different_names_are_not_equivalent() {
     );
     assert!(!requested.is_equivalent_to_run(&running));
 }
+
+#[test]
+fn a_layout_file_with_a_non_kdl_extension_is_loaded_by_path() {
+    use crate::data::{LayoutInfo, LayoutMetadata};
+    use crate::input::config::Config;
+    use std::fs;
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    let layout_path = dir.path().join("my-layout.zellij");
+    fs::write(
+        &layout_path,
+        r#"
+layout {
+    pane
+    pane
+}
+"#,
+    )
+    .unwrap();
+
+    // layout_dir deliberately does not contain the file; the File info carries
+    // the absolute path the user supplied on the CLI.
+    let empty_layout_dir = tempdir().unwrap();
+    let result = Layout::from_layout_info_with_config(
+        &Some(empty_layout_dir.path().to_path_buf()),
+        &LayoutInfo::File(layout_path.display().to_string(), LayoutMetadata::default()),
+        Some(Config::default()),
+    );
+
+    let (layout, _) = result.unwrap_or_else(|e| {
+        panic!(
+            "a layout file given by path with a non-kdl extension failed to load:\n  {:?}",
+            e
+        )
+    });
+    let (tiled, _floating) = layout.new_tab();
+    assert_eq!(tiled.children.len(), 2);
+}
+
+#[test]
+fn layout_dir_prefers_an_existing_non_kdl_file_over_missing_kdl_fallback() {
+    use crate::data::{LayoutInfo, LayoutMetadata};
+    use crate::input::config::Config;
+    use std::fs;
+    use tempfile::tempdir;
+
+    let layout_dir = tempdir().unwrap();
+    fs::write(
+        layout_dir.path().join("custom.zellij"),
+        r#"
+layout {
+    pane
+    pane
+}
+"#,
+    )
+    .unwrap();
+    // No custom.kdl: old path lookup only checked with_extension("kdl") and
+    // would miss custom.zellij, falling through to built-in assets.
+    let result = Layout::from_layout_info_with_config(
+        &Some(layout_dir.path().to_path_buf()),
+        &LayoutInfo::File("custom.zellij".to_string(), LayoutMetadata::default()),
+        Some(Config::default()),
+    );
+    let (layout, _) = result.expect("layout_dir must load the non-kdl file as given");
+    let (tiled, _floating) = layout.new_tab();
+    assert_eq!(tiled.children.len(), 2);
+}
+
+#[test]
+fn layout_dir_still_falls_back_to_kdl_for_bare_names() {
+    use crate::data::{LayoutInfo, LayoutMetadata};
+    use crate::input::config::Config;
+    use std::fs;
+    use tempfile::tempdir;
+
+    let layout_dir = tempdir().unwrap();
+    fs::write(
+        layout_dir.path().join("bare.kdl"),
+        r#"
+layout {
+    pane
+    pane
+    pane
+}
+"#,
+    )
+    .unwrap();
+    let result = Layout::from_layout_info_with_config(
+        &Some(layout_dir.path().to_path_buf()),
+        &LayoutInfo::File("bare".to_string(), LayoutMetadata::default()),
+        Some(Config::default()),
+    );
+    let (layout, _) = result.expect("bare layout names must still resolve via .kdl");
+    let (tiled, _floating) = layout.new_tab();
+    assert_eq!(tiled.children.len(), 3);
+}
+
+#[test]
+fn validate_only_accepts_the_builtin_default_layout() {
+    Layout::validate_only("default", None).expect("builtin default layout should validate");
+}
+
+#[test]
+fn validate_only_rejects_remote_urls_without_downloading() {
+    let err = Layout::validate_only("https://example.invalid/layout.kdl", None)
+        .expect_err("remote URLs must be refused");
+    let message = err.to_string();
+    assert!(
+        message.contains("refuses remote URLs"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
+fn validate_only_rejects_panes_and_tabs_on_the_same_level() {
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("invalid.kdl");
+    std::fs::write(
+        &path,
+        r#"
+layout {
+    pane size=1 borderless=true {
+        plugin location="tab-bar"
+    }
+    tab name="work" {
+        pane cwd="/tmp"
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    assert!(
+        Layout::validate_only(path.to_str().unwrap(), None).is_err(),
+        "mixed pane/tab layout must fail semantic validation"
+    );
+}
+
+#[test]
+fn validate_only_accepts_a_valid_local_layout_file() {
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("valid.kdl");
+    std::fs::write(
+        &path,
+        r#"
+layout {
+    tab name="work" {
+        pane
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    Layout::validate_only(path.to_str().unwrap(), None)
+        .expect("valid local layout file should validate");
+}

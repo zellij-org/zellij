@@ -161,8 +161,6 @@ impl InputHandler {
     fn handle_input(&mut self) {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
-        let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
-        let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201~
         if self.options.mouse_mode.unwrap_or(true) {
             self.os_input.enable_mouse().non_fatal();
             self.mouse_mode_active = true;
@@ -173,91 +171,7 @@ impl InputHandler {
             }
             match self.receive_input_instructions.recv() {
                 Ok((InputInstruction::KeyEvent(input_event, raw_bytes), _error_context)) => {
-                    match input_event {
-                        InputEvent::Key(key_event) => {
-                            let key = cast_termwiz_key(
-                                key_event,
-                                &raw_bytes,
-                                Some((&self.config.keybinds, &self.mode)),
-                            );
-                            self.handle_key(&key, raw_bytes, false);
-                        },
-                        InputEvent::Mouse(mouse_event) => {
-                            let mouse_event = from_termwiz(&mut self.mouse_old_event, mouse_event);
-                            self.handle_mouse_event(&mouse_event);
-                        },
-                        InputEvent::FocusGained => {
-                            self.os_input.send_to_server(
-                                ClientToServerMsg::HostTerminalFocusChanged { focused: true },
-                            );
-                        },
-                        InputEvent::FocusLost => {
-                            self.os_input.send_to_server(
-                                ClientToServerMsg::HostTerminalFocusChanged { focused: false },
-                            );
-                        },
-                        InputEvent::Paste(pasted_text) => {
-                            if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
-                                self.dispatch_action(
-                                    Action::Write {
-                                        key_with_modifier: None,
-                                        bytes: bracketed_paste_start.clone(),
-                                        is_kitty_keyboard_protocol: false,
-                                    },
-                                    None,
-                                );
-                                self.dispatch_action(
-                                    Action::Write {
-                                        key_with_modifier: None,
-                                        bytes: pasted_text.as_bytes().to_vec(),
-                                        is_kitty_keyboard_protocol: false,
-                                    },
-                                    None,
-                                );
-                                self.dispatch_action(
-                                    Action::Write {
-                                        key_with_modifier: None,
-                                        bytes: bracketed_paste_end.clone(),
-                                        is_kitty_keyboard_protocol: false,
-                                    },
-                                    None,
-                                );
-                            }
-                            if self.mode == InputMode::EnterSearch {
-                                self.dispatch_action(
-                                    Action::SearchInput {
-                                        input: pasted_text.as_bytes().to_vec(),
-                                    },
-                                    None,
-                                );
-                            }
-                            if self.mode == InputMode::RenameTab {
-                                self.dispatch_action(
-                                    Action::TabNameInput {
-                                        input: pasted_text.as_bytes().to_vec(),
-                                    },
-                                    None,
-                                );
-                            }
-                            if self.mode == InputMode::RenamePane {
-                                self.dispatch_action(
-                                    Action::PaneNameInput {
-                                        input: pasted_text.as_bytes().to_vec(),
-                                    },
-                                    None,
-                                );
-                            }
-                            if self.mode == InputMode::RenameSession {
-                                self.dispatch_action(
-                                    Action::SessionNameInput {
-                                        input: pasted_text.as_bytes().to_vec(),
-                                    },
-                                    None,
-                                );
-                            }
-                        },
-                        _ => {},
-                    }
+                    self.handle_input_event(input_event, raw_bytes);
                 },
                 Ok((
                     InputInstruction::KeyWithModifierEvent(key_with_modifier, raw_bytes, is_kitty),
@@ -305,8 +219,79 @@ impl InputHandler {
                 Ok((InputInstruction::Exit, _error_context)) => {
                     self.should_exit = true;
                 },
-                Err(err) => panic!("Encountered read error: {:?}", err),
+                Ok((InputInstruction::Eof, _error_context)) => {
+                    self.exit(ExitReason::NormalDetached);
+                    self.should_exit = true;
+                },
+                Err(err) => {
+                    log::debug!("input instruction channel closed: {:?}", err);
+                    break;
+                },
             }
+        }
+    }
+    fn handle_input_event(&mut self, input_event: InputEvent, raw_bytes: Vec<u8>) {
+        match input_event {
+            InputEvent::Key(key_event) => {
+                let key = cast_termwiz_key(
+                    key_event,
+                    &raw_bytes,
+                    Some((&self.config.keybinds, &self.mode)),
+                );
+                self.handle_key(&key, raw_bytes, false);
+            },
+            InputEvent::Mouse(mouse_event) => {
+                let mouse_event = from_termwiz(&mut self.mouse_old_event, mouse_event);
+                self.handle_mouse_event(&mouse_event);
+            },
+            InputEvent::FocusGained => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::HostTerminalFocusChanged { focused: true });
+            },
+            InputEvent::FocusLost => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::HostTerminalFocusChanged { focused: false });
+            },
+            InputEvent::Paste(pasted_text) => {
+                if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
+                    self.dispatch_action(
+                        Action::Paste {
+                            chars: pasted_text,
+                            pane_id: None,
+                        },
+                        None,
+                    );
+                } else if self.mode == InputMode::EnterSearch {
+                    self.dispatch_action(
+                        Action::SearchInput {
+                            input: pasted_text.as_bytes().to_vec(),
+                        },
+                        None,
+                    );
+                } else if self.mode == InputMode::RenameTab {
+                    self.dispatch_action(
+                        Action::TabNameInput {
+                            input: pasted_text.as_bytes().to_vec(),
+                        },
+                        None,
+                    );
+                } else if self.mode == InputMode::RenamePane {
+                    self.dispatch_action(
+                        Action::PaneNameInput {
+                            input: pasted_text.as_bytes().to_vec(),
+                        },
+                        None,
+                    );
+                } else if self.mode == InputMode::RenameSession {
+                    self.dispatch_action(
+                        Action::SessionNameInput {
+                            input: pasted_text.as_bytes().to_vec(),
+                        },
+                        None,
+                    );
+                }
+            },
+            _ => {},
         }
     }
     fn handle_key(
@@ -352,9 +337,9 @@ impl InputHandler {
                     .send_to_server(ClientToServerMsg::ColorRegisters { color_registers });
             },
             AnsiStdinInstruction::SynchronizedOutput(enabled) => {
-                self.send_client_instructions
-                    .send(ClientInstruction::SetSynchronizedOutput(enabled))
-                    .unwrap();
+                let _ = self
+                    .send_client_instructions
+                    .send(ClientInstruction::SetSynchronizedOutput(enabled));
             },
             AnsiStdinInstruction::HostTerminalThemeChanged(mode) => {
                 self.os_input
@@ -395,11 +380,11 @@ impl InputHandler {
         }
         match decoded {
             Some(NestedSessionMessage::Ping) => {
-                self.send_client_instructions
-                    .send(ClientInstruction::EmitNestedSessionFrame(
-                        nested_session::encode_payload(&NestedSessionMessage::Pong),
-                    ))
-                    .unwrap();
+                let _ =
+                    self.send_client_instructions
+                        .send(ClientInstruction::EmitNestedSessionFrame(
+                            nested_session::encode_payload(&NestedSessionMessage::Pong),
+                        ));
             },
             Some(_) => {
                 self.os_input
@@ -517,9 +502,9 @@ impl InputHandler {
     /// Routine to be called when the input handler exits (at the moment this is the
     /// same as quitting Zellij).
     fn exit(&mut self, reason: ExitReason) {
-        self.send_client_instructions
-            .send(ClientInstruction::Exit(reason))
-            .unwrap();
+        let _ = self
+            .send_client_instructions
+            .send(ClientInstruction::Exit(reason));
     }
 }
 
@@ -546,4 +531,161 @@ pub(crate) fn input_loop(
         nested_reannounce,
     )
     .handle_input();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{self, Write};
+    use std::sync::{Arc, Mutex};
+    use zellij_utils::ipc::ServerToClientMsg;
+
+    #[derive(Clone)]
+    struct CapturingOsApi {
+        sent: Arc<Mutex<Vec<ClientToServerMsg>>>,
+    }
+
+    impl std::fmt::Debug for CapturingOsApi {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("CapturingOsApi").finish()
+        }
+    }
+
+    impl ClientOsApi for CapturingOsApi {
+        fn get_terminal_size(&self) -> zellij_utils::pane_size::Size {
+            zellij_utils::pane_size::Size { rows: 24, cols: 80 }
+        }
+        fn set_raw_mode(&mut self) {}
+        fn unset_raw_mode(&self) -> Result<(), io::Error> {
+            Ok(())
+        }
+        fn get_stdout_writer(&self) -> Box<dyn Write> {
+            Box::new(io::sink())
+        }
+        fn get_stdin_reader(&self) -> Box<dyn io::BufRead> {
+            Box::new(io::Cursor::new(Vec::new()))
+        }
+        fn update_session_name(&mut self, _new_session_name: String) {}
+        fn read_from_stdin(&mut self) -> Result<Vec<u8>, &'static str> {
+            Ok(Vec::new())
+        }
+        fn box_clone(&self) -> Box<dyn ClientOsApi> {
+            Box::new(self.clone())
+        }
+        fn send_to_server(&self, msg: ClientToServerMsg) {
+            self.sent.lock().unwrap().push(msg);
+        }
+        fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
+            None
+        }
+        fn handle_signals(
+            &self,
+            _sigwinch_cb: Box<dyn Fn()>,
+            _quit_cb: Box<dyn Fn()>,
+            _resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
+        ) {
+        }
+        fn connect_to_server(&self, _path: &std::path::Path) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn load_palette(&self) -> zellij_utils::data::Palette {
+            zellij_utils::data::Palette::default()
+        }
+        fn enable_mouse(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn disable_mouse(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn input_handler(mode: InputMode, sent: Arc<Mutex<Vec<ClientToServerMsg>>>) -> InputHandler {
+        let (client_instruction_tx, _client_instruction_rx) = zellij_utils::channels::unbounded();
+        let (_input_instruction_tx, input_instruction_rx) = zellij_utils::channels::unbounded();
+        InputHandler::new(
+            Box::new(CapturingOsApi { sent }),
+            CommandIsExecuting::new(),
+            Config::default(),
+            Options::default(),
+            SenderWithContext::new(client_instruction_tx),
+            mode,
+            input_instruction_rx,
+            NestedReannounce::for_tests(),
+        )
+    }
+
+    #[test]
+    fn paste_event_dispatches_one_semantic_paste_action() {
+        for mode in [InputMode::Normal, InputMode::Locked] {
+            let sent = Arc::new(Mutex::new(Vec::new()));
+            let mut handler = input_handler(mode, sent.clone());
+
+            handler.handle_input_event(InputEvent::Paste("y".to_owned()), b"y".to_vec());
+
+            let sent = sent.lock().unwrap();
+            assert_eq!(
+                sent.len(),
+                1,
+                "paste must not fragment into begin/body/end writes: {sent:?}"
+            );
+            match &sent[0] {
+                ClientToServerMsg::Action {
+                    action: Action::Paste { chars, pane_id },
+                    ..
+                } => {
+                    assert_eq!(chars, "y");
+                    assert_eq!(*pane_id, None);
+                },
+                other => panic!("expected one semantic paste action, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn paste_event_still_updates_search_input() {
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let mut handler = input_handler(InputMode::EnterSearch, sent.clone());
+
+        handler.handle_input_event(InputEvent::Paste("scope".to_owned()), b"scope".to_vec());
+
+        let sent = sent.lock().unwrap();
+        assert!(matches!(
+            sent.as_slice(),
+            [ClientToServerMsg::Action {
+                action: Action::SearchInput { input },
+                ..
+            }] if input == b"scope"
+        ));
+    }
+
+    #[test]
+    fn eof_instruction_requests_one_client_exit() {
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let (client_instruction_tx, client_instruction_rx) = zellij_utils::channels::unbounded();
+        let (input_instruction_tx, input_instruction_rx) = zellij_utils::channels::unbounded();
+        let mut handler = InputHandler::new(
+            Box::new(CapturingOsApi { sent }),
+            CommandIsExecuting::new(),
+            Config::default(),
+            Options::default(),
+            SenderWithContext::new(client_instruction_tx),
+            InputMode::Normal,
+            input_instruction_rx,
+            NestedReannounce::for_tests(),
+        );
+        input_instruction_tx
+            .send((InputInstruction::Eof, ErrorContext::default()))
+            .unwrap();
+
+        handler.handle_input();
+
+        let exits: Vec<_> = client_instruction_rx
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                ClientInstruction::Exit(reason) => Some(reason),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(exits, vec![ExitReason::NormalDetached]);
+    }
 }

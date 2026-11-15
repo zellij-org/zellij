@@ -1205,6 +1205,7 @@ impl Screen {
             Some(true),
             Some(coordinates),
             None,
+            None,
         ));
     }
     pub fn terminal_input_submitted(&mut self, client_id: ClientId) {

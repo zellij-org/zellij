@@ -4,6 +4,21 @@ use crate::data::{PaletteColor, DEFAULT_STYLES};
 use insta::assert_snapshot;
 use std::path::{Path, PathBuf};
 
+#[test]
+fn parse_hex_rgb_accepts_ascii_three_and_six_digit_forms() {
+    assert_eq!(parse_hex_rgb("#abc"), Some((0xaa, 0xbb, 0xcc)));
+    assert_eq!(parse_hex_rgb("AABBCC"), Some((0xaa, 0xbb, 0xcc)));
+}
+
+#[test]
+fn parse_hex_rgb_rejects_non_ascii_bodies_instead_of_slicing() {
+    // "#界" is four bytes (# + 3-byte UTF-8). Old length-only checks would
+    // treat it as a three-digit hex and panic on a mid-character index.
+    assert_eq!(parse_hex_rgb("#界"), None);
+    assert_eq!(parse_hex_rgb("#ÿÿÿ"), None);
+    assert_eq!(parse_hex_rgb("#gg0000"), None);
+}
+
 const THEMES_WITHOUT_TERMINAL_COLORS: [&str; 7] = [
     "ansi",
     "ao",

@@ -1,7 +1,8 @@
 use crate::{
-    terminal_teardown_message, OuterGraphemeClusterMode, DISABLE_FOCUS_REPORTING,
-    ENABLE_FOCUS_REPORTING,
+    best_effort_write_and_flush, terminal_teardown_message, OuterGraphemeClusterMode,
+    DISABLE_FOCUS_REPORTING, ENABLE_FOCUS_REPORTING,
 };
+use std::io::{self, Write};
 
 #[test]
 fn the_teardown_message_cancels_focus_reporting() {
@@ -97,4 +98,27 @@ fn a_session_switch_does_not_tell_the_outer_zellij_that_the_guest_left() {
     assert!(!says_goodbye_to_host(true, true));
     assert!(!says_goodbye_to_host(false, false));
     assert!(!says_goodbye_to_host(false, true));
+}
+
+struct DeadTty;
+
+impl Write for DeadTty {
+    fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+        Err(io::Error::new(io::ErrorKind::BrokenPipe, "tty gone"))
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Err(io::Error::new(io::ErrorKind::BrokenPipe, "tty gone"))
+    }
+}
+
+#[test]
+fn teardown_writes_record_failure_instead_of_panicking_on_a_dead_tty() {
+    let mut stdout = DeadTty;
+    // must return normally: a gone tty at exit used to unwrap and abort
+    best_effort_write_and_flush(
+        &mut stdout,
+        b"Bye from Zellij!",
+        "failed to write the goodbye message to stdout",
+    );
 }

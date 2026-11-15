@@ -89,6 +89,10 @@ impl FloatingPanes {
         os_input: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
     ) -> Self {
+        let active_panes = match senders.to_pty_writer.clone() {
+            Some(pty_writer) => ActivePanes::with_pty_writer(&os_input, pty_writer),
+            None => ActivePanes::new(&os_input),
+        };
         FloatingPanes {
             panes: BTreeMap::new(),
             live_views: Default::default(),
@@ -105,7 +109,7 @@ impl FloatingPanes {
             desired_pane_positions: HashMap::new(),
             z_indices: vec![],
             show_panes: false,
-            active_panes: ActivePanes::new(&os_input),
+            active_panes,
             pane_being_moved_with_mouse: None,
             senders,
             window_title: None,
@@ -367,6 +371,11 @@ impl FloatingPanes {
     pub fn active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         self.active_panes.get(&client_id).copied()
     }
+    #[cfg(test)]
+    pub fn force_active_pane_for_test(&mut self, client_id: ClientId, pane_id: PaneId) {
+        self.active_panes
+            .insert(client_id, pane_id, &mut self.panes);
+    }
     pub fn get_pane_z_index(&self, pane_id: PaneId) -> Option<usize> {
         self.z_indices.iter().position(|id| id == &pane_id)
     }
@@ -418,7 +427,8 @@ impl FloatingPanes {
     ) -> Result<PaneGeom> {
         let err_context = || format!("failed to find position for floating pane");
         let position = self.find_room_for_new_pane().with_context(err_context)?;
-        Ok(self.apply_floating_pane_layout_to_position(position, floating_pane_layout))
+        self.apply_floating_pane_layout_to_position(position, floating_pane_layout)
+            .with_context(err_context)
     }
     pub fn position_floating_pane_layout_or(
         &mut self,
@@ -430,6 +440,10 @@ impl FloatingPanes {
             fallback_position
         });
         self.apply_floating_pane_layout_to_position(position, floating_pane_layout)
+            .unwrap_or_else(|err| {
+                log::error!("Failed to fit floating pane layout into viewport: {err}");
+                fallback_position
+            })
     }
     pub fn position_floating_pane_layout_or_fill_viewport(
         &mut self,
@@ -449,15 +463,14 @@ impl FloatingPanes {
         &self,
         mut position: PaneGeom,
         floating_pane_layout: &FloatingPaneLayout,
-    ) -> PaneGeom {
+    ) -> Result<PaneGeom> {
         let viewport = *self.viewport.borrow();
         position.apply_floating_pane_position(
             floating_pane_layout.x.clone(),
             floating_pane_layout.y.clone(),
             floating_pane_layout.width.clone(),
             floating_pane_layout.height.clone(),
-            viewport.cols,
-            viewport.rows,
+            viewport,
         );
         if let Some(is_pinned) = &floating_pane_layout.pinned {
             position.is_pinned = *is_pinned;
@@ -465,25 +478,14 @@ impl FloatingPanes {
         if let Some(logical_position) = &floating_pane_layout.logical_position {
             position.logical_position = Some(*logical_position);
         }
-        if position.cols.as_usize() > viewport.cols {
-            position.cols = Dimension::fixed(viewport.cols.max(MIN_TERMINAL_WIDTH));
-        }
-        if position.rows.as_usize() > viewport.rows {
-            position.rows = Dimension::fixed(viewport.rows.max(MIN_TERMINAL_HEIGHT));
-        }
-        let max_x = viewport.x + viewport.cols;
-        let max_y = viewport.y + viewport.rows;
-        if position.x + position.cols.as_usize() > max_x {
-            position.x = position
-                .x
-                .saturating_sub((position.x + position.cols.as_usize()) - max_x);
-        }
-        if position.y + position.rows.as_usize() > max_y {
-            position.y = position
-                .y
-                .saturating_sub((position.y + position.rows.as_usize()) - max_y);
-        }
-        position
+        // Same rectangle-fitting contract as dynamic coordinates: preserve a
+        // valid frame minimum when the viewport allows, otherwise error.
+        position.fit_into_viewport_with_minimum(
+            viewport,
+            MIN_TERMINAL_WIDTH,
+            MIN_TERMINAL_HEIGHT,
+        )?;
+        Ok(position)
     }
     pub fn first_floating_pane_id(&self) -> Option<PaneId> {
         self.panes.keys().next().copied()
@@ -1326,7 +1328,9 @@ impl FloatingPanes {
                     pane.set_borderless(false);
                 };
             }
-            pane_geom.adjust_coordinates(new_coordinates, viewport);
+            pane_geom
+                .adjust_coordinates(new_coordinates, viewport)
+                .with_context(err_context)?;
             pane.set_geom(pane_geom);
             pane.set_should_render(true);
 
@@ -1889,9 +1893,12 @@ impl FloatingPanes {
     }
     pub fn pane_info(&self, current_pane_group: &HashMap<ClientId, Vec<PaneId>>) -> Vec<PaneInfo> {
         let mut pane_infos = vec![];
+        let connected_clients = self.connected_clients.borrow().clone();
         for (pane_id, pane) in self.panes.iter() {
             let mut pane_info_for_pane = pane_info_for_pane(pane_id, pane, current_pane_group);
-            let is_focused = self.pane_is_remembered_as_focused(pane_id);
+            let is_focused = self
+                .active_panes
+                .pane_id_is_focused_for_query(pane_id, &connected_clients);
             pane_info_for_pane.is_floating = true;
             pane_info_for_pane.is_suppressed = false;
             pane_info_for_pane.is_focused = is_focused;

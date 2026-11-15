@@ -14,11 +14,10 @@ anyhow = { workspace = true }
 arrayvec = { version = "0.7.2", default-features = false, features = ["std"] }
 async-trait = { version = "0.1.50", default-features = false }
 base64 = { version = "0.22", default-features = false, features = ["std"] }
-byteorder = { version = "1.4.3", default-features = false, features = ["std"] }
-bytes = { version = "1.6.0", default-features = false, features = ["std"] }
 chrono = { workspace = true }
 crossbeam = { version = "0.8", default-features = false, features = ["crossbeam-channel", "std"] }
 flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
+futures-io = "0.3.31"
 highway = { version = "=1.2.0", default-features = false, features = ["std"] }
 interprocess = { workspace = true }
 isahc = { workspace = true }
@@ -32,6 +31,7 @@ prost = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 sixel-image = { version = "0.2.1", default-features = false }
 sixel-tokenizer = { version = "0.1.0", default-features = false }
 sysinfo = { version = "0.39.5", default-features = false, features = ["system"] }
@@ -65,6 +65,7 @@ windows-sys = { workspace = true, features = [
     "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_System_Console",
+    "Win32_System_IO",
     "Win32_System_Pipes",
     "Win32_System_Threading",
 ] }
@@ -73,6 +74,7 @@ windows-sys = { workspace = true, features = [
 insta = "1.48"
 tempfile = "3.2.0"
 wasmi = { version = "1.1.0", features = ["std"] }
+wat = "1.239"
 
 [features]
 web_server_capability = ["zellij-utils/web_server_capability"]

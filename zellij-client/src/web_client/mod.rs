@@ -1,10 +1,12 @@
 pub mod control_message;
 
 pub(crate) mod authentication;
+mod client_channel;
 mod connection_manager;
 mod host_query_seed;
 mod http_handlers;
 mod ipc_listener;
+mod login_rate_limiter;
 mod message_handlers;
 mod server_listener;
 mod session_management;
@@ -13,13 +15,14 @@ mod utils;
 mod websocket_handlers;
 
 use std::{
-    net::{IpAddr, Ipv4Addr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
     sync::{Arc, Mutex},
     thread,
 };
 
 use axum::{
+    extract::DefaultBodyLimit,
     middleware,
     routing::{any, get, post},
     Router,
@@ -48,6 +51,7 @@ use http_handlers::{
     version_handler,
 };
 use ipc_listener::listen_to_web_server_instructions;
+use login_rate_limiter::LoginRateLimiter;
 
 use types::{
     AppState, ClientOsApiFactory, ConnectionTable, RealClientOsApiFactory, RealSessionManager,
@@ -132,7 +136,13 @@ pub fn start_web_client(
             startup_timeout,
         )
     } else {
-        let runtime = Runtime::new().unwrap();
+        let runtime = match Runtime::new() {
+            Ok(runtime) => runtime,
+            Err(e) => {
+                eprintln!("Failed to create web server runtime: {}", e);
+                std::process::exit(2);
+            },
+        };
         let listener = runtime.block_on(async move {
             std::net::TcpListener::bind(format!("{}:{}", web_server_ip, web_server_port))
         });
@@ -190,6 +200,11 @@ pub fn start_web_client(
     ));
 }
 
+const UNATTACHED_CLIENT_SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Upper bound for the body of any http request to the web server.
+const MAX_REQUEST_BODY_BYTES: usize = 16 * 1024;
+
 pub async fn serve_web_client(
     config: Config,
     config_options: Options,
@@ -227,6 +242,7 @@ pub async fn serve_web_client(
         client_os_api_factory,
         is_https,
         pending_welcome_sessions: Arc::new(Mutex::new(std::collections::VecDeque::new())),
+        login_rate_limiter: Arc::new(Mutex::new(LoginRateLimiter::new())),
     };
 
     tokio::spawn({
@@ -239,6 +255,25 @@ pub async fn serve_web_client(
                 web_server_port,
             )
             .await;
+        }
+    });
+
+    // client ids that were handed out but never used would otherwise sit in the
+    // table until the next request for a new one comes in
+    tokio::spawn({
+        let connection_table = connection_table.clone();
+        async move {
+            let mut interval = tokio::time::interval(UNATTACHED_CLIENT_SWEEP_INTERVAL);
+            loop {
+                interval.tick().await;
+                let expired = connection_table
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .remove_expired_unattached_clients(std::time::Instant::now());
+                if expired > 0 {
+                    log::debug!("Forgot {} web client ids that never connected", expired);
+                }
+            }
         }
     });
 
@@ -256,10 +291,14 @@ pub async fn serve_web_client(
         .route("/command/login", post(login_handler))
         .route("/info/version", get(version_handler))
         .with_state(state)
+        // the only request bodies are the login and session requests, a few
+        // dozen bytes each
+        .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
         .layer(axum::middleware::from_fn(move |request, next: axum::middleware::Next| {
             async move {
                 let mut response = next.run(request).await;
                 let headers = response.headers_mut();
+                // SAFETY: these HeaderValue string literals use only valid header bytes.
                 headers.insert("X-Content-Type-Options", "nosniff".parse().unwrap());
                 headers.insert("X-Frame-Options", "DENY".parse().unwrap());
                 headers.insert("Referrer-Policy", "strict-origin-when-cross-origin".parse().unwrap());
@@ -293,7 +332,7 @@ pub async fn serve_web_client(
             };
             let _ = server
                 .handle(server_handle)
-                .serve(app.into_make_service())
+                .serve(app.into_make_service_with_connect_info::<SocketAddr>())
                 .await;
         },
         None => {
@@ -306,7 +345,7 @@ pub async fn serve_web_client(
             };
             let _ = server
                 .handle(server_handle)
-                .serve(app.into_make_service())
+                .serve(app.into_make_service_with_connect_info::<SocketAddr>())
                 .await;
         },
     }
@@ -321,14 +360,27 @@ fn daemonize_web_server(
     _config_file_path: Option<PathBuf>,
     _startup_timeout: Option<u64>,
 ) -> (Runtime, std::net::TcpListener, Option<RustlsConfig>) {
-    let (mut exit_message_tx, exit_message_rx) = pipe().unwrap();
-    let (mut exit_status_tx, mut exit_status_rx) = pipe().unwrap();
+    let (mut exit_message_tx, exit_message_rx) = match pipe() {
+        Ok(pipe) => pipe,
+        Err(e) => {
+            eprintln!("Failed to create daemonize exit message pipe: {}", e);
+            std::process::exit(2);
+        },
+    };
+    let (mut exit_status_tx, mut exit_status_rx) = match pipe() {
+        Ok(pipe) => pipe,
+        Err(e) => {
+            eprintln!("Failed to create daemonize exit status pipe: {}", e);
+            std::process::exit(2);
+        },
+    };
     let current_umask = umask(Mode::all());
     umask(current_umask);
     let web_server_key = web_server_key.clone();
     let web_server_cert = web_server_cert.clone();
+    let working_directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
     let daemonization_outcome = daemonize::Daemonize::new()
-        .working_directory(std::env::current_dir().unwrap())
+        .working_directory(working_directory)
         .umask(current_umask.bits() as u32)
         .privileged_action(
             move || -> Result<(Runtime, std::net::TcpListener, Option<RustlsConfig>), String> {
@@ -461,11 +513,9 @@ fn daemonize_web_server(
         Ok(_child) => {
             let timeout_secs = startup_timeout.unwrap_or(DEFAULT_SERVER_STARTUP_TIMEOUT_SECS);
             let deadline = Instant::now() + Duration::from_secs(timeout_secs);
-            let addr = format!("{}:{}", web_server_ip, web_server_port);
+            let addr = SocketAddr::new(web_server_ip, web_server_port);
             loop {
-                if TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_millis(200))
-                    .is_ok()
-                {
+                if TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok() {
                     println!(
                         "Web Server started on {} port {}",
                         web_server_ip, web_server_port

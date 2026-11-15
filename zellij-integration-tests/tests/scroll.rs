@@ -70,7 +70,7 @@ fn half_page_scroll_up() {
     let grid_snapshot = zellij.wait_until("scrolled up by half a page", |grid_snapshot| {
         grid_snapshot.contains("PgDn|PgUp")
             && !grid_snapshot.contains(LAST_LINE)
-            && grid_snapshot.contains("SCROLL 10/")
+            && grid_snapshot.contains("SCROLL 11/")
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();

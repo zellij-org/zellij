@@ -10,7 +10,7 @@ use crate::{
     panes::PaneId,
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction},
-    screen::ScreenInstruction,
+    screen::{ClosePaneSource, ScreenInstruction},
     ServerInstruction, SessionMetaData, SessionState,
 };
 use std::thread;
@@ -42,13 +42,81 @@ pub use popup_keys::PopupScroll;
 
 const ACTION_COMPLETION_TIMEOUT: Duration = Duration::from_secs(1);
 
-#[derive(Debug, Clone)]
+fn abandoned_action_result(action_name: &str, why: &str) -> ActionCompletionResult {
+    ActionCompletionResult {
+        exit_status: None,
+        affected_pane_id: None,
+        affected_tab_id: None,
+        error_message: Some(format!(
+            "Action {action_name} {why}, its outcome is unknown"
+        )),
+        stdout_message: None,
+        kind: ActionCompletionKind::Abandoned,
+    }
+}
+
+fn timed_out_action_result(action_name: &str) -> ActionCompletionResult {
+    ActionCompletionResult {
+        exit_status: None,
+        affected_pane_id: None,
+        affected_tab_id: None,
+        error_message: Some(format!(
+            "Action {} did not complete within {:?}, its outcome is unknown",
+            action_name, ACTION_COMPLETION_TIMEOUT
+        )),
+        stdout_message: None,
+        kind: ActionCompletionKind::TimedOut,
+    }
+}
+
+#[cfg(test)]
+fn cancelled_action_result(action_name: &str) -> ActionCompletionResult {
+    ActionCompletionResult {
+        exit_status: None,
+        affected_pane_id: None,
+        affected_tab_id: None,
+        error_message: Some(format!(
+            "Action {action_name} was cancelled, its outcome is unknown"
+        )),
+        stdout_message: None,
+        kind: ActionCompletionKind::Cancelled,
+    }
+}
+
+/// A timeout is not a cancellation, and neither is an abandoned drop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionCompletionKind {
+    Finished,
+    Abandoned,
+    TimedOut,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ActionCompletionResult {
     pub exit_status: Option<i32>,
     pub affected_pane_id: Option<PaneId>,
     pub affected_tab_id: Option<usize>,
     pub error_message: Option<String>,
     pub stdout_message: Option<String>,
+    pub kind: ActionCompletionKind,
+}
+
+impl ActionCompletionResult {
+    pub fn success() -> Self {
+        ActionCompletionResult {
+            exit_status: None,
+            affected_pane_id: None,
+            affected_tab_id: None,
+            error_message: None,
+            stdout_message: None,
+            kind: ActionCompletionKind::Finished,
+        }
+    }
+
+    fn looks_like_success(&self) -> bool {
+        self.error_message.is_none() && self.exit_status.is_none() && self.stdout_message.is_none()
+    }
 }
 
 pub fn wait_for_action_completion(
@@ -63,13 +131,7 @@ pub fn wait_for_action_completion(
                 Ok(result) => result,
                 Err(e) => {
                     log::error!("Failed to wait for action {}: {}", action_name, e);
-                    ActionCompletionResult {
-                        exit_status: None,
-                        affected_pane_id: None,
-                        affected_tab_id: None,
-                        error_message: None,
-                        stdout_message: None,
-                    }
+                    abandoned_action_result(action_name, "was abandoned before it finished")
                 },
             }
         })
@@ -78,19 +140,17 @@ pub fn wait_for_action_completion(
             .block_on(async { tokio::time::timeout(ACTION_COMPLETION_TIMEOUT, receiver).await })
         {
             Ok(Ok(result)) => result,
-            Err(_) | Ok(Err(_)) => {
+            Ok(Err(e)) => {
+                log::error!("Failed to wait for action {}: {}", action_name, e);
+                abandoned_action_result(action_name, "was abandoned before it finished")
+            },
+            Err(_) => {
                 log::error!(
                     "Action {} did not complete within {:?} timeout",
                     action_name,
                     ACTION_COMPLETION_TIMEOUT
                 );
-                ActionCompletionResult {
-                    exit_status: None,
-                    affected_pane_id: None,
-                    affected_tab_id: None,
-                    error_message: None,
-                    stdout_message: None,
-                }
+                timed_out_action_result(action_name)
             },
         }
     }
@@ -105,12 +165,9 @@ fn wait_for_cli_action_completion(
         .block_on(async { tokio::time::timeout(ACTION_COMPLETION_TIMEOUT, receiver).await })
     {
         Ok(Ok(result)) => result,
-        Ok(Err(_)) => ActionCompletionResult {
-            exit_status: None,
-            affected_pane_id: None,
-            affected_tab_id: None,
-            error_message: None,
-            stdout_message: None,
+        Ok(Err(error)) => {
+            log::error!("Failed to wait for action {}: {}", action_name, error);
+            abandoned_action_result(action_name, "was abandoned before it finished")
         },
         Err(_) => {
             log::error!(
@@ -118,50 +175,32 @@ fn wait_for_cli_action_completion(
                 action_name,
                 ACTION_COMPLETION_TIMEOUT
             );
-            ActionCompletionResult {
-                exit_status: None,
-                affected_pane_id: None,
-                affected_tab_id: None,
-                error_message: Some(format!(
-                    "Action {} did not complete within {:?}, its outcome is unknown",
-                    action_name, ACTION_COMPLETION_TIMEOUT
-                )),
-                stdout_message: None,
-            }
+            timed_out_action_result(action_name)
         },
     }
 }
 
-// This is used to wait for actions that span multiple threads until they logically end
-// dropping this struct sends a notification through the oneshot channel to the receiver, letting
-// it know the action is ended and thus releasing it
-//
-// Note: Cloning this struct DOES NOT clone that internal receiver, it only implements Clone so
-// that it can be included in various other larger structs - DO NOT RELY ON CLONING IT!
+const ABANDONED_ON_DROP: &str =
+    "the action was abandoned before it finished, its outcome is unknown";
+
+/// One non-cloneable owner of an action's completion oneshot.
+///
+/// `complete` and `complete_recorded` send a typed outcome and consume the
+/// owner. `transfer` moves that oneshot to the next stage and sends nothing.
+/// `abandon` reports that the outcome is unknown. Drop does the same when
+/// the oneshot is still held: the outcome was not recorded, so it is not
+/// success. A handler that knows the result must `complete_recorded` (or
+/// [`settle`]) before this owner drops.
 #[derive(Debug)]
+#[must_use = "complete the owner, transfer it, or abandon it; dropping abandons"]
 pub struct NotificationEnd {
     channel: Option<oneshot::Sender<ActionCompletionResult>>,
     exit_status: Option<i32>,
     unblock_condition: Option<UnblockCondition>,
-    affected_pane_id: Option<PaneId>, // optional payload of the pane id affected by this action
-    affected_tab_id: Option<usize>,   // optional payload of the tab id affected by this action
+    affected_pane_id: Option<PaneId>,
+    affected_tab_id: Option<usize>,
     error_message: Option<String>,
     stdout_message: Option<String>,
-}
-
-impl Clone for NotificationEnd {
-    fn clone(&self) -> Self {
-        // Always clone as None - only the original holder should signal completion
-        NotificationEnd {
-            channel: None,
-            exit_status: self.exit_status,
-            unblock_condition: self.unblock_condition,
-            affected_pane_id: self.affected_pane_id,
-            affected_tab_id: self.affected_tab_id,
-            error_message: self.error_message.clone(),
-            stdout_message: self.stdout_message.clone(),
-        }
-    }
 }
 
 impl NotificationEnd {
@@ -219,20 +258,133 @@ impl NotificationEnd {
     pub fn unblock_condition(&self) -> Option<UnblockCondition> {
         self.unblock_condition
     }
+
+    /// Send `outcome` exactly once. The owner is consumed, so it cannot
+    /// complete again.
+    pub fn complete(mut self, outcome: ActionCompletionResult) {
+        if let Some(sender) = self.channel.take() {
+            let _ = sender.send(outcome);
+        }
+    }
+
+    /// Send the fields recorded on this owner as a finished outcome.
+    pub fn complete_recorded(mut self) {
+        let outcome = self.recorded(ActionCompletionKind::Finished);
+        self.complete(outcome);
+    }
+
+    /// Send the recorded finished outcome and leave this value unable to send
+    /// again. Drop then does nothing. The test logger uses this so a stored
+    /// instruction does not keep the only reply.
+    pub fn publish_recorded(&mut self) {
+        let Some(sender) = self.channel.take() else {
+            return;
+        };
+        let outcome = self.recorded(ActionCompletionKind::Finished);
+        let _ = sender.send(outcome);
+    }
+
+    /// The outcome is unknown. This is not success, a timeout, or a cancellation.
+    pub fn abandon(mut self) {
+        let Some(sender) = self.channel.take() else {
+            return;
+        };
+        let _ = sender.send(self.into_abandoned());
+    }
+
+    fn into_abandoned(&mut self) -> ActionCompletionResult {
+        let mut outcome = self.recorded(ActionCompletionKind::Abandoned);
+        outcome.kind = ActionCompletionKind::Abandoned;
+        outcome.exit_status = None;
+        outcome.affected_pane_id = None;
+        outcome.affected_tab_id = None;
+        outcome.stdout_message = None;
+        outcome.error_message = Some(ABANDONED_ON_DROP.to_string());
+        debug_assert!(!outcome.looks_like_success());
+        outcome
+    }
+
+    /// Move the oneshot to the next stage. This value sends nothing.
+    pub fn transfer(mut self) -> Self {
+        NotificationEnd {
+            channel: self.channel.take(),
+            exit_status: self.exit_status.take(),
+            unblock_condition: self.unblock_condition.take(),
+            affected_pane_id: self.affected_pane_id.take(),
+            affected_tab_id: self.affected_tab_id.take(),
+            error_message: self.error_message.take(),
+            stdout_message: self.stdout_message.take(),
+        }
+    }
+
+    fn recorded(&mut self, kind: ActionCompletionKind) -> ActionCompletionResult {
+        ActionCompletionResult {
+            exit_status: self.exit_status.take(),
+            affected_pane_id: self.affected_pane_id.take(),
+            affected_tab_id: self.affected_tab_id.take(),
+            error_message: self.error_message.take(),
+            stdout_message: self.stdout_message.take(),
+            kind,
+        }
+    }
 }
 
 impl Drop for NotificationEnd {
     fn drop(&mut self) {
-        if let Some(tx) = self.channel.take() {
-            let result = ActionCompletionResult {
-                exit_status: self.exit_status,
-                affected_pane_id: self.affected_pane_id,
-                affected_tab_id: self.affected_tab_id,
-                error_message: self.error_message.take(),
-                stdout_message: self.stdout_message.take(),
-            };
-            let _ = tx.send(result);
-        }
+        let Some(sender) = self.channel.take() else {
+            return;
+        };
+        // The handler disappeared without `complete_recorded`. Stored fields
+        // are not a result we can stand behind, so this is abandonment.
+        let _ = sender.send(self.into_abandoned());
+    }
+}
+
+/// Publishes the fields stored on `owner` as a finished outcome.
+///
+/// Empty fields are success. A stored error stays a finished failure.
+/// This is the call a handler makes when it knows the result, so a later
+/// drop cannot replace that result with abandonment.
+pub fn settle(owner: Option<NotificationEnd>) {
+    if let Some(owner) = owner {
+        owner.complete_recorded();
+    }
+}
+
+/// Owns a completion whose outcome is the fields the handler stores.
+///
+/// Dropping the guard calls [`NotificationEnd::complete_recorded`] before
+/// [`NotificationEnd`] itself drops, so abandonment does not overwrite a
+/// known result. [`RecordedCompletion::take`] moves the raw owner to the
+/// next stage and publishes nothing.
+#[derive(Debug)]
+pub struct RecordedCompletion {
+    owner: Option<NotificationEnd>,
+}
+
+impl RecordedCompletion {
+    pub fn new(owner: Option<NotificationEnd>) -> Self {
+        Self { owner }
+    }
+}
+
+impl Drop for RecordedCompletion {
+    fn drop(&mut self) {
+        settle(self.owner.take());
+    }
+}
+
+impl std::ops::Deref for RecordedCompletion {
+    type Target = Option<NotificationEnd>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.owner
+    }
+}
+
+impl std::ops::DerefMut for RecordedCompletion {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.owner
     }
 }
 
@@ -478,33 +630,31 @@ fn route_action_with_origin(
         },
         Action::WriteToPaneId { bytes, pane_id } => {
             senders
-                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
-                .with_context(err_context)?;
-            senders
                 .send_to_screen(ScreenInstruction::WriteToPaneId(
                     bytes,
                     pane_id.into(),
+                    Some(client_id),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
         },
         Action::WriteCharsToPaneId { chars, pane_id } => {
-            senders
-                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
-                .with_context(err_context)?;
             let bytes = chars.into_bytes();
             senders
                 .send_to_screen(ScreenInstruction::WriteToPaneId(
                     bytes,
                     pane_id.into(),
+                    Some(client_id),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
         },
         Action::Paste { chars, pane_id } => {
-            senders
-                .send_to_screen(ScreenInstruction::ClearScroll(client_id))
-                .with_context(err_context)?;
+            if pane_id.is_none() {
+                senders
+                    .send_to_screen(ScreenInstruction::ClearScroll(client_id))
+                    .with_context(err_context)?;
+            }
             let bytes = chars.into_bytes();
             senders
                 .send_to_screen(ScreenInstruction::Paste(
@@ -1493,7 +1643,7 @@ fn route_action_with_origin(
                 .with_context(err_context)?;
         },
         Action::Quit if !is_cli_client => {
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
             senders
                 .send_to_screen(ScreenInstruction::ConfirmQuit(client_id))
                 .with_context(err_context)?;
@@ -1648,13 +1798,13 @@ fn route_action_with_origin(
                 .with_context(err_context)?;
         },
         Action::PasteFromClipboardByPaneId { pane_id } => {
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
             senders
                 .send_to_screen(ScreenInstruction::PasteFromClipboard { client_id, pane_id })
                 .with_context(err_context)?;
         },
         Action::OpenSessionInTerminal => {
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
             let session_name = zellij_utils::envs::get_session_name().ok();
             let _ = std::thread::Builder::new()
                 .name("open_session_in_terminal".to_owned())
@@ -1681,7 +1831,7 @@ fn route_action_with_origin(
                 .with_context(err_context)?;
         },
         Action::ToggleTrayIcon => {
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
             let _ = std::thread::Builder::new()
                 .name("toggle_tray_icon".to_owned())
                 .spawn(|| {
@@ -2075,6 +2225,8 @@ fn route_action_with_origin(
                     // in the app, not just in the client's tab
                     Some(NotificationEnd::new(completion_tx)),
                     None,
+                    ClosePaneSource::External,
+                    None,
                 ))
                 .with_context(err_context)?;
         },
@@ -2087,6 +2239,8 @@ fn route_action_with_origin(
                     None, // we send None here so that the terminal pane would be closed anywhere
                     // in the app, not just in the client's tab
                     Some(NotificationEnd::new(completion_tx)),
+                    None,
+                    ClosePaneSource::External,
                     None,
                 ))
                 .with_context(err_context)?;
@@ -2233,8 +2387,10 @@ fn route_action_with_origin(
             popup_outside_click,
             ..
         } => {
-            drop(completion_tx); // releasing pipes is handled by the plugins, so we don't want
-                                 // this to block additionallu
+            // The action completes when the pipe is admitted. Output and
+            // release are delivered separately through CliPipeOutput and
+            // UnblockCliPipeInput.
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
             if let Some(seen_cli_pipes) = seen_cli_pipes.as_mut() {
                 if !seen_cli_pipes.contains(&pipe_id) {
                     seen_cli_pipes.insert(pipe_id.clone());
@@ -2370,7 +2526,7 @@ fn route_action_with_origin(
             } else {
                 send_error_to_client(cli_client_id, os_input.as_ref(), "Timeout listing panes");
             }
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
         },
         Action::ListTabs {
             show_state,
@@ -2400,7 +2556,7 @@ fn route_action_with_origin(
             } else {
                 send_error_to_client(cli_client_id, os_input.as_ref(), "Timeout listing tabs");
             }
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
         },
         Action::CurrentTabInfo { output_json } => {
             let maybe_tab_info = request_current_tab_info_from_screen(&senders, client_id)
@@ -2423,7 +2579,7 @@ fn route_action_with_origin(
                     );
                 },
             }
-            drop(NotificationEnd::new(completion_tx));
+            NotificationEnd::new(completion_tx).complete(ActionCompletionResult::success());
         },
         Action::TogglePanePinned => {
             senders
@@ -2543,6 +2699,7 @@ fn route_action_with_origin(
         Action::ScrollUpByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::ScrollUpWithPaneId(
+                    client_id,
                     pane_id.into(),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -2551,6 +2708,7 @@ fn route_action_with_origin(
         Action::ScrollDownByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::ScrollDownWithPaneId(
+                    client_id,
                     pane_id.into(),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -2575,6 +2733,7 @@ fn route_action_with_origin(
         Action::PageScrollUpByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::PageScrollUpWithPaneId(
+                    client_id,
                     pane_id.into(),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -2583,6 +2742,7 @@ fn route_action_with_origin(
         Action::PageScrollDownByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::PageScrollDownWithPaneId(
+                    client_id,
                     pane_id.into(),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -2591,6 +2751,7 @@ fn route_action_with_origin(
         Action::HalfPageScrollUpByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::HalfPageScrollUpWithPaneId(
+                    client_id,
                     pane_id.into(),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -2599,6 +2760,7 @@ fn route_action_with_origin(
         Action::HalfPageScrollDownByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::HalfPageScrollDownWithPaneId(
+                    client_id,
                     pane_id.into(),
                     Some(NotificationEnd::new(completion_tx)),
                 ))
@@ -2639,6 +2801,15 @@ fn route_action_with_origin(
             senders
                 .send_to_screen(ScreenInstruction::ClearScreenWithPaneId(
                     pane_id.into(),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ResetPaneInputModes { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::ResetPaneInputModes(
+                    pane_id.map(|pane_id| pane_id.into()),
+                    client_id,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
@@ -2894,6 +3065,7 @@ fn route_action_with_origin(
 
 const SESSION_READY_WAIT: Duration = Duration::from_secs(10);
 const SESSION_READY_POLL_INTERVAL: Duration = Duration::from_millis(5);
+const MAX_STARTUP_RETRY_QUEUE: usize = 1024;
 
 fn wait_for_session_to_be_ready(session_data: &Arc<RwLock<Option<SessionMetaData>>>) -> bool {
     let deadline = std::time::Instant::now() + SESSION_READY_WAIT;
@@ -2920,7 +3092,11 @@ macro_rules! send_to_screen_or_retry_queue {
             None => {
                 log::warn!("Server not ready, trying to place instruction in retry queue...");
                 if let Some(retry_queue) = $retry_queue.as_mut() {
-                    retry_queue.push_back($instruction);
+                    if retry_queue.len() < MAX_STARTUP_RETRY_QUEUE {
+                        retry_queue.push_back($instruction);
+                    } else {
+                        log::warn!("Startup retry queue is full; dropping an instruction");
+                    }
                 }
                 Ok(())
             },
@@ -2935,7 +3111,11 @@ macro_rules! send_to_screen_priority_or_retry_queue {
             None => {
                 log::warn!("Server not ready, trying to place instruction in retry queue...");
                 if let Some(retry_queue) = $retry_queue.as_mut() {
-                    retry_queue.push_back($instruction);
+                    if retry_queue.len() < MAX_STARTUP_RETRY_QUEUE {
+                        retry_queue.push_back($instruction);
+                    } else {
+                        log::warn!("Startup retry queue is full; dropping an instruction");
+                    }
                 }
                 Ok(())
             },
@@ -3061,7 +3241,7 @@ pub(crate) fn route_thread_main(
                             // Track this as the last active client
                             session_state
                                 .write()
-                                .unwrap()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner())
                                 .set_last_active_client(client_id);
 
                             // The read guard ends as a temporary in this expression so
@@ -3222,18 +3402,23 @@ pub(crate) fn route_thread_main(
                         } => {
                             let cli_client_id = client_id;
                             let client_id = if is_cli_client {
-                                // for cli clients, we want to default to the last active client
-                                // (i.e. the last client to have issued a keystroke) this is to
-                                // interpret actions that require a client_id (such as move focus,
-                                // detach, etc.) for which using the cli client id will not be
-                                // doing the right thing - using the last_active_client is almost
-                                // certainly correct in almost all cases
-                                session_state
+                                // Explicit ids win over last-active, but only while that
+                                // client is still connected. A missing id still defaults
+                                // to the last client that sent a key, then this connection.
+                                let resolved = session_state
                                     .read()
-                                    .unwrap()
-                                    .get_last_active_client()
-                                    .or(maybe_client_id)
-                                    .unwrap_or(client_id)
+                                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                    .resolve_cli_action_client(maybe_client_id, client_id);
+                                match resolved {
+                                    Some(resolved_client_id) => resolved_client_id,
+                                    None => {
+                                        log::error!(
+                                            "rejecting CLI action aimed at client {}, which is not connected",
+                                            maybe_client_id.unwrap_or(client_id)
+                                        );
+                                        return Ok(should_break);
+                                    },
+                                }
                             } else {
                                 maybe_client_id.unwrap_or(client_id)
                             };
@@ -3255,7 +3440,7 @@ pub(crate) fn route_thread_main(
                             let popup_has_focus = !is_cli_client
                                 && session_data
                                     .read()
-                                    .unwrap()
+                                    .unwrap_or_else(|poisoned| poisoned.into_inner())
                                     .as_ref()
                                     .map(|s| s.popup_clients.contains(&client_id))
                                     .unwrap_or(false);
@@ -3535,6 +3720,15 @@ pub(crate) fn route_thread_main(
                             terminal_size,
                             is_web_client,
                         } => {
+                            if !wait_for_session_to_be_ready(&session_data) {
+                                let _ = to_server.send(ServerInstruction::LogError(
+                                    vec!["Session did not become ready for the watcher.".to_owned()],
+                                    client_id,
+                                    None,
+                                ));
+                                let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
+                                return Ok(false);
+                            }
                             let allow_web_connections = session_data
                                 .read()
                                 .ok()
@@ -3619,7 +3813,7 @@ pub(crate) fn route_thread_main(
                             // empty reply for the same token.
                             session_state
                                 .write()
-                                .unwrap()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner())
                                 .clear_forward_in_flight(token);
                             let _ = send_to_screen_or_retry_queue!(
                                 senders,
@@ -3762,7 +3956,7 @@ pub(crate) fn route_thread_main(
                                 if let Some(scan_state) =
                                     crate::background_jobs::session_scan_state()
                                 {
-                                    let (session_name, available_layouts, plugin_list) = {
+                                    let (session_name, current_info, plugin_list) = {
                                         let name =
                                             scan_state.current_session_name.lock().unwrap().clone();
                                         let info =
@@ -3770,15 +3964,17 @@ pub(crate) fn route_thread_main(
                                         let plugins = scan_state
                                             .current_session_plugin_list
                                             .lock()
-                                            .unwrap()
+                                            .unwrap_or_else(|poisoned| poisoned.into_inner())
                                             .clone();
-                                        (name, info.available_layouts, plugins)
+                                        (name, info, plugins)
                                     };
+                                    let available_layouts = current_info.available_layouts.clone();
                                     let (live_sessions_map, resurrectable_sessions_map) =
-                                        crate::background_jobs::scan_session_list_default_dirs(
+                                        crate::background_jobs::scan_session_list_default_dirs_with_current(
                                             &session_name,
                                             &available_layouts,
                                             &plugin_list,
+                                            &current_info,
                                         );
                                     let _ = senders.send_to_screen(
                                         ScreenInstruction::UpdateSessionInfos(
@@ -3860,7 +4056,6 @@ pub(crate) fn route_thread_main(
                         }
                         if index < retried_count {
                             log::warn!("Server ready, retrying sending instruction.");
-                            thread::sleep(Duration::from_millis(5));
                         }
                         let should_break = handle_instruction(
                             pending_instruction,
@@ -4490,17 +4685,102 @@ mod tests {
         assert!(!action_submits_input(&Action::Quit));
     }
 
+    // routes `action` through `route_action` with a mock screen sender, draining the screen
+    // channel in a background thread (so that the `NotificationEnd`s are dropped and the action
+    // completes) and returning the names of the ScreenInstructions that were sent
+    fn screen_instructions_for(action: Action) -> Vec<String> {
+        use zellij_utils::channels::{self, ChannelWithContext};
+        use zellij_utils::errors::ScreenContext;
+        let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> =
+            channels::unbounded();
+        let mut senders = ThreadSenders::default().silently_fail_on_send();
+        senders.to_screen = Some(SenderWithContext::new(to_screen));
+        let drainer = thread::spawn(move || {
+            let mut instruction_names = vec![];
+            while let Ok((instruction, _ctx)) = screen_receiver.recv() {
+                instruction_names.push(format!("{:?}", ScreenContext::from(&instruction)));
+            }
+            instruction_names
+        });
+        route_action(
+            action,
+            1,
+            None,
+            None,
+            senders,
+            None,
+            None,
+            InputMode::Normal,
+            None,
+            false,
+        )
+        .unwrap();
+        drainer.join().unwrap()
+    }
+
+    #[test]
+    fn targeted_writes_do_not_clear_the_scroll_of_the_active_pane() {
+        // regression test for https://github.com/zellij-org/zellij/issues/5476
+        use zellij_utils::data::PaneId as DataPaneId;
+        for action in [
+            Action::WriteToPaneId {
+                bytes: vec![102],
+                pane_id: DataPaneId::Terminal(2),
+            },
+            Action::WriteCharsToPaneId {
+                chars: "f".to_owned(),
+                pane_id: DataPaneId::Terminal(2),
+            },
+            Action::Paste {
+                chars: "f".to_owned(),
+                pane_id: Some(DataPaneId::Terminal(2)),
+            },
+        ] {
+            let instructions = screen_instructions_for(action.clone());
+            assert!(
+                !instructions.iter().any(|i| i == "ClearScroll"),
+                "targeted action {action:?} must not clear the active pane scroll, got: {instructions:?}"
+            );
+            assert!(
+                !instructions
+                    .iter()
+                    .any(|i| i == "ScrollToBottomWithPaneId" || i == "ClearScroll"),
+                "targeted action {action:?} must let the screen clear only its target after validation, got: {instructions:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_targeted_writes_still_clear_the_scroll_of_the_active_pane() {
+        for action in [
+            Action::WriteChars {
+                chars: "f".to_owned(),
+            },
+            Action::Paste {
+                chars: "f".to_owned(),
+                pane_id: None,
+            },
+        ] {
+            let instructions = screen_instructions_for(action.clone());
+            assert!(
+                instructions.iter().any(|i| i == "ClearScroll"),
+                "non-targeted action {action:?} must clear the active pane scroll, got: {instructions:?}"
+            );
+        }
+    }
+
     #[test]
     fn test_notification_end_sets_affected_tab_id() {
         let (tx, rx) = oneshot::channel();
         let mut notification_end = NotificationEnd::new(tx);
 
         notification_end.set_affected_tab_id(42);
-
-        drop(notification_end);
+        notification_end.complete_recorded();
 
         let result = rx.blocking_recv().unwrap();
         assert_eq!(result.affected_tab_id, Some(42));
+        assert_eq!(result.kind, ActionCompletionKind::Finished);
+        assert!(result.looks_like_success());
     }
 
     #[test]
@@ -4512,6 +4792,12 @@ mod tests {
 
         let result = rx.blocking_recv().unwrap();
         assert_eq!(result.affected_tab_id, None);
+        assert_eq!(result.kind, ActionCompletionKind::Abandoned);
+        assert!(!result.looks_like_success());
+        assert_ne!(result.kind, ActionCompletionKind::Finished);
+        let message = result.error_message.unwrap();
+        assert!(message.contains("abandoned"), "{message}");
+        assert!(message.contains("unknown"), "{message}");
     }
 
     #[test]
@@ -4522,6 +4808,7 @@ mod tests {
             affected_tab_id: Some(123),
             error_message: None,
             stdout_message: None,
+            kind: ActionCompletionKind::Finished,
         };
 
         assert_eq!(result.affected_tab_id, Some(123));
@@ -4534,25 +4821,183 @@ mod tests {
 
         notification_end.set_affected_pane_id(PaneId::Terminal(10));
         notification_end.set_affected_tab_id(5);
-
-        drop(notification_end);
+        notification_end.complete_recorded();
 
         let result = rx.blocking_recv().unwrap();
         assert_eq!(result.affected_pane_id, Some(PaneId::Terminal(10)));
         assert_eq!(result.affected_tab_id, Some(5));
+        assert_eq!(result.kind, ActionCompletionKind::Finished);
     }
 
     #[test]
-    fn test_notification_end_clone_does_not_copy_channel() {
-        let (tx, _rx) = oneshot::channel();
-        let mut notification_end = NotificationEnd::new(tx);
-        notification_end.set_affected_tab_id(99);
+    fn explicit_complete_delivers_the_typed_outcome_once() {
+        let (tx, rx) = oneshot::channel();
+        let owner = NotificationEnd::new(tx);
+        let outcome = sample_result("finished");
+        // `complete` takes `self`, so a second complete cannot be written.
+        owner.complete(outcome.clone());
+        assert_eq!(rx.blocking_recv().unwrap(), outcome);
+    }
 
-        let cloned = notification_end.clone();
+    #[test]
+    fn dropping_a_handler_owner_does_not_publish_the_recorded_outcome() {
+        let (tx, rx) = oneshot::channel();
+        let mut owner = NotificationEnd::new(tx);
+        owner.set_affected_pane_id(PaneId::Terminal(10));
+        owner.set_error_message("pane failed".to_owned());
+        owner.set_exit_status(1);
+        drop(owner);
+        let result = rx.blocking_recv().unwrap();
+        assert_eq!(result.kind, ActionCompletionKind::Abandoned);
+        assert!(!result.looks_like_success());
+        assert_ne!(result.kind, ActionCompletionKind::Finished);
+        assert_ne!(result.affected_pane_id, Some(PaneId::Terminal(10)));
+        assert_eq!(result.exit_status, None);
+        assert_eq!(result.error_message.as_deref(), Some(ABANDONED_ON_DROP));
+    }
 
-        // Verify the clone has the same data
-        assert_eq!(cloned.affected_tab_id, Some(99));
-        // But channel should be None (as per the Clone implementation comment)
-        assert!(cloned.channel.is_none());
+    #[test]
+    fn complete_recorded_keeps_a_stored_error_that_drop_would_abandon() {
+        let (tx, rx) = oneshot::channel();
+        let mut owner = NotificationEnd::new(tx);
+        owner.set_error_message("pane failed".to_owned());
+        owner.set_exit_status(1);
+        owner.set_affected_pane_id(PaneId::Terminal(10));
+        owner.complete_recorded();
+        let result = rx.blocking_recv().unwrap();
+        assert_eq!(result.kind, ActionCompletionKind::Finished);
+        assert_eq!(result.error_message.as_deref(), Some("pane failed"));
+        assert_eq!(result.exit_status, Some(1));
+        assert_eq!(result.affected_pane_id, Some(PaneId::Terminal(10)));
+    }
+
+    #[test]
+    fn abandoning_the_owner_is_not_success_timeout_or_cancellation() {
+        let (tx, rx) = oneshot::channel();
+        NotificationEnd::new(tx).abandon();
+        let result = rx.blocking_recv().unwrap();
+        assert_eq!(result.kind, ActionCompletionKind::Abandoned);
+        assert!(!result.looks_like_success());
+        assert_ne!(result.kind, ActionCompletionKind::TimedOut);
+        assert_ne!(result.kind, ActionCompletionKind::Cancelled);
+        let message = result.error_message.unwrap();
+        assert!(message.contains("abandoned"), "{message}");
+        assert!(message.contains("unknown"), "{message}");
+        assert!(
+            !message.contains("did not complete within"),
+            "abandonment must not be reported as a timeout: {message}"
+        );
+        assert!(
+            !message.contains("cancelled"),
+            "abandonment must not be reported as a cancellation: {message}"
+        );
+    }
+
+    #[test]
+    fn transferring_the_owner_does_not_send() {
+        let (tx, mut rx) = oneshot::channel();
+        let owner = NotificationEnd::new(tx);
+        let transferred = owner.transfer();
+        assert!(
+            rx.try_recv().is_err(),
+            "transfer must not complete the action"
+        );
+        let outcome = sample_result("after transfer");
+        transferred.complete(outcome.clone());
+        assert_eq!(rx.blocking_recv().unwrap(), outcome);
+    }
+
+    #[test]
+    fn timeout_result_is_not_a_cancellation() {
+        let timed_out = timed_out_action_result("Write");
+        let cancelled = cancelled_action_result("Write");
+        assert_ne!(timed_out, cancelled);
+        assert_eq!(timed_out.kind, ActionCompletionKind::TimedOut);
+        assert_eq!(cancelled.kind, ActionCompletionKind::Cancelled);
+        assert!(timed_out
+            .error_message
+            .unwrap()
+            .contains("did not complete within"));
+        assert!(cancelled.error_message.unwrap().contains("cancelled"));
+    }
+
+    fn sample_result(message: &str) -> ActionCompletionResult {
+        ActionCompletionResult {
+            exit_status: Some(0),
+            affected_pane_id: Some(PaneId::Terminal(3)),
+            affected_tab_id: Some(4),
+            error_message: Some(message.to_owned()),
+            stdout_message: Some("out".to_owned()),
+            kind: ActionCompletionKind::Finished,
+        }
+    }
+
+    #[test]
+    fn wait_for_cli_action_completion_preserves_a_real_result() {
+        let (tx, rx) = oneshot::channel();
+        let expected = sample_result("real");
+        tx.send(expected.clone()).unwrap();
+        let result = wait_for_cli_action_completion(rx, "Write");
+        assert_eq!(result.exit_status, expected.exit_status);
+        assert_eq!(result.affected_pane_id, expected.affected_pane_id);
+        assert_eq!(result.affected_tab_id, expected.affected_tab_id);
+        assert_eq!(result.error_message.as_deref(), Some("real"));
+        assert_eq!(result.stdout_message.as_deref(), Some("out"));
+    }
+
+    #[test]
+    fn wait_for_action_completion_preserves_a_real_result() {
+        let (tx, rx) = oneshot::channel();
+        let expected = sample_result("real");
+        tx.send(expected.clone()).unwrap();
+        let result = wait_for_action_completion(rx, "Write", true);
+        assert_eq!(result.error_message.as_deref(), Some("real"));
+        assert_eq!(result.stdout_message.as_deref(), Some("out"));
+        assert_eq!(result.exit_status, Some(0));
+    }
+
+    #[test]
+    fn wait_for_cli_action_completion_reports_unknown_when_the_channel_closes() {
+        let (tx, rx) = oneshot::channel();
+        drop(tx);
+        let result = wait_for_cli_action_completion(rx, "Write");
+        let message = result
+            .error_message
+            .expect("a closed completion is not success");
+        assert!(message.contains("unknown"), "{message}");
+        assert!(message.contains("abandoned"), "{message}");
+    }
+
+    #[test]
+    fn wait_for_action_completion_reports_unknown_when_the_channel_closes() {
+        let (tx, rx) = oneshot::channel();
+        drop(tx);
+        let result = wait_for_action_completion(rx, "Write", true);
+        let message = result
+            .error_message
+            .expect("a closed completion is not success");
+        assert!(message.contains("unknown"), "{message}");
+        assert!(message.contains("abandoned"), "{message}");
+
+        let (tx, rx) = oneshot::channel();
+        drop(tx);
+        let result = wait_for_action_completion(rx, "Write", false);
+        let message = result
+            .error_message
+            .expect("a closed completion is not a timeout success");
+        assert!(message.contains("unknown"), "{message}");
+        assert!(
+            !message.contains("did not complete within"),
+            "closed channel must not be reported as a timeout: {message}"
+        );
+    }
+
+    #[test]
+    fn wait_for_action_completion_reports_unknown_on_timeout() {
+        let (_tx, rx) = oneshot::channel::<ActionCompletionResult>();
+        let result = wait_for_action_completion(rx, "Write", false);
+        let message = result.error_message.expect("timeout is not success");
+        assert!(message.contains("unknown"), "{message}");
+        assert!(message.contains("did not complete within"), "{message}");
     }
 }

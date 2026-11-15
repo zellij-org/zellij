@@ -101,11 +101,14 @@ struct WindowClient {
 impl WindowClient {
     fn attach_to(session_name: &str, pane_id: u32) -> Self {
         use zellij_utils::ipc::{IpcSenderWithContext, ServerToClientMsg};
-        let path = zellij_utils::consts::session_socket_path(session_name);
+        let path = zellij_utils::consts::session_socket_path(session_name)
+            .unwrap_or_else(|error| panic!("session index lookup failed: {error}"));
         let stream = zellij_utils::consts::ipc_connect(&path)
             .unwrap_or_else(|e| panic!("failed to connect to {:?}: {:?}", path, e));
         let mut sender = IpcSenderWithContext::new(stream);
-        let mut receiver = sender.get_receiver::<ServerToClientMsg>();
+        let mut receiver = sender
+            .get_receiver::<ServerToClientMsg>()
+            .expect("test IPC receiver clone");
         let handshake = zellij_client::first_message(
             &zellij_client::ClientInfo::Attach(
                 session_name.to_owned(),

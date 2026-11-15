@@ -29,13 +29,32 @@ impl WidgetState {
     pub fn flag(&self, name: &str) -> bool {
         self.flags.contains(name)
     }
+    /// A size or an index (a width, a number of rows, the selected item...). The values come from
+    /// the program drawing the widget, so they are limited to what fits in a terminal: nothing
+    /// is allocated or looped over in proportion to a value out of range.
     pub fn number(&self, name: &str) -> Option<usize> {
-        self.values.get(name).and_then(|v| v.parse::<usize>().ok())
+        self.values
+            .get(name)
+            .and_then(|v| v.parse::<usize>().ok())
+            .map(|v| std::cmp::min(v, MAX_STATE_NUMBER))
+    }
+    pub fn limit(&mut self, name: &str, max: usize) {
+        if let Some(value) = self.number(name) {
+            self.values
+                .insert(name.to_owned(), std::cmp::min(value, max).to_string());
+        }
     }
     pub fn count(&self, name: &str) -> usize {
-        self.number(name).unwrap_or(0)
+        self.raw_number(name).unwrap_or(0)
+    }
+    /// A quantity that is only displayed or used as a ratio (hidden rows, scroll offsets...),
+    /// unlimited.
+    fn raw_number(&self, name: &str) -> Option<usize> {
+        self.values.get(name).and_then(|v| v.parse::<usize>().ok())
     }
 }
+
+const MAX_STATE_NUMBER: usize = u16::MAX as usize;
 
 pub type WidgetRenderer = fn(&WidgetState, &[String], &Style, &Coordinates) -> Vec<u8>;
 
@@ -362,10 +381,14 @@ pub fn scrollbar_cells(height: usize, total: usize, offset: usize) -> Vec<bool> 
     if total <= height {
         return vec![true; height];
     }
-    let thumb = ((height * height) / total).max(1).min(height);
-    let max_offset = total - height;
-    let max_thumb_start = height - thumb;
-    let thumb_start = (offset.min(max_offset) * max_thumb_start + max_offset / 2) / max_offset;
+    // (the quantities come from the program drawing the scrollbar and can be as large as a usize)
+    let (height_wide, total_wide) = (height as u128, total as u128);
+    let thumb = (((height_wide * height_wide) / total_wide).max(1)).min(height_wide) as usize;
+    let max_offset = total_wide - height_wide;
+    let max_thumb_start = (height - thumb) as u128;
+    let thumb_start =
+        ((offset as u128).min(max_offset) * max_thumb_start + max_offset / 2) / max_offset;
+    let thumb_start = thumb_start as usize;
     (0..height)
         .map(|row| row >= thumb_start && row < thumb_start + thumb)
         .collect()

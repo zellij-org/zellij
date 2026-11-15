@@ -17,7 +17,7 @@ jobs:
 
     services:
       ssh:
-        image: ghcr.io/linuxserver/openssh-server
+        image: ghcr.io/linuxserver/openssh-server@sha256:161e0b670b31d9539ca1718bc5943e981779331b4e1c9d32e8929d7652a1f22f
         env:
           PUID: 1001
           PGID: 1000
@@ -29,25 +29,19 @@ jobs:
           - 2222:2222
         options: -v ${{ github.workspace }}/target:/usr/src/zellij --name ssh
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
     - name: Install Protoc
       shell: bash
       run: |
-        case "${{ runner.os }}" in
-          Linux)   asset=protoc-23.4-linux-x86_64.zip ;;
-          macOS)   asset=protoc-23.4-osx-universal_binary.zip ;;
-          Windows) asset=protoc-23.4-win64.zip ;;
-        esac
-        curl -sSfL -o "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v23.4/$asset"
-        unzip -q -o "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
-        echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
+        tr -d '\r' < .github/scripts/install-protoc.sh > "$RUNNER_TEMP/install-protoc.sh"
+        bash "$RUNNER_TEMP/install-protoc.sh"
 
     - name: Install musl-tools
       run: sudo apt-get install -y --no-install-recommends musl-tools
 
     - name: Install Rust
-      uses: actions-rust-lang/setup-rust-toolchain@v1
+      uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
       with:
         rustflags: ""
 
@@ -63,8 +57,6 @@ jobs:
     - name: Restart ssh container
       # we need to do this because otherwise the volume will not be mounted
       # on the docker container, since it was created before the folder existed
-      uses: docker://docker
-      with:
-        args: docker restart ssh
+      run: docker restart ssh
     - name: Test
       run: cargo xtask ci e2e --test

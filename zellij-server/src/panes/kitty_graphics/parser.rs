@@ -7,12 +7,12 @@ const BASE64_DECODER: GeneralPurpose = GeneralPurpose::new(
     GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
 );
 
-use std::io::{Read, Seek};
-use std::path::Path;
+use std::io::Read;
 
 pub const MAX_DECODED_BYTES: usize = 104_857_600;
 pub const MAX_DIMENSION: u32 = 10_000;
-const MAX_ENCODED_PAYLOAD_BYTES: usize = MAX_DECODED_BYTES / 3 * 4 + 4;
+// the most base64 text that can decode to at most MAX_DECODED_BYTES
+pub const MAX_PAYLOAD_B64_BYTES: usize = MAX_DECODED_BYTES.div_ceil(3) * 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KittyAction {
@@ -175,6 +175,24 @@ pub struct KittyCommandParser {
 struct PendingUpload {
     command: KittyCommand,
     payload_b64: Vec<u8>,
+    // set once the assembled payload outgrew MAX_PAYLOAD_B64_BYTES: the data
+    // is dropped, the remaining chunks are consumed unread until the final
+    // one and the transmission then fails
+    overflowed: bool,
+}
+
+impl PendingUpload {
+    fn append(&mut self, chunk: &[u8]) {
+        if self.overflowed {
+            return;
+        }
+        if self.payload_b64.len().saturating_add(chunk.len()) > MAX_PAYLOAD_B64_BYTES {
+            self.overflowed = true;
+            self.payload_b64 = Vec::new();
+        } else {
+            self.payload_b64.extend_from_slice(chunk);
+        }
+    }
 }
 
 impl KittyCommandParser {
@@ -187,7 +205,8 @@ impl KittyCommandParser {
             let pairs = match tokenize(control) {
                 Ok(pairs) => pairs,
                 Err(()) => {
-                    let pending = self.pending.take().unwrap();
+                    // SAFETY: pending.is_some() just checked
+                    let pending = self.pending.take().expect("pending set above");
                     let echo = EchoFields::from_command(&pending.command);
                     return Some(Err(
                         echo.error(KittyErrorCode::Einval, "malformed control data")
@@ -207,7 +226,10 @@ impl KittyCommandParser {
                             Some(0) => more_chunks = false,
                             Some(1) => more_chunks = true,
                             _ => {
-                                let pending = self.pending.take().unwrap();
+                                // SAFETY: inside pending.is_some() arm; still Some
+                                let Some(pending) = self.pending.take() else {
+                                    return None;
+                                };
                                 let echo = EchoFields::from_command(&pending.command);
                                 return Some(Err(
                                     echo.error(KittyErrorCode::Einval, "malformed control data")
@@ -219,22 +241,27 @@ impl KittyCommandParser {
                 for (key, value) in &pairs {
                     if *key == b"q" {
                         if let Some(q @ 0..=2) = parse_u32(value) {
-                            self.pending.as_mut().unwrap().command.quiet = q as u8;
+                            if let Some(pending) = self.pending.as_mut() {
+                                pending.command.quiet = q as u8;
+                            }
                         }
                     }
                 }
-                let pending = self.pending.as_mut().unwrap();
-                if pending.payload_b64.len() + payload.len() > MAX_ENCODED_PAYLOAD_BYTES {
-                    let pending = self.pending.take().unwrap();
-                    let echo = EchoFields::from_command(&pending.command);
-                    return Some(Err(echo.error(KittyErrorCode::Einval, "image too large")));
-                }
-                pending.payload_b64.extend_from_slice(payload);
+                let Some(pending) = self.pending.as_mut() else {
+                    return None;
+                };
+                pending.append(payload);
                 if more_chunks {
                     return None;
                 }
-                let mut pending = self.pending.take().unwrap();
+                let Some(mut pending) = self.pending.take() else {
+                    return None;
+                };
                 pending.command.more_chunks = false;
+                if pending.overflowed {
+                    let echo = EchoFields::from_command(&pending.command);
+                    return Some(Err(echo.error(KittyErrorCode::Einval, "image too large")));
+                }
                 return Some(run_payload_pipeline(pending.command, &pending.payload_b64));
             }
         }
@@ -246,10 +273,13 @@ impl KittyCommandParser {
             KittyAction::Delete | KittyAction::Display => Some(Ok(command)),
             KittyAction::Transmit | KittyAction::TransmitAndDisplay | KittyAction::Query => {
                 if command.more_chunks {
-                    self.pending = Some(PendingUpload {
+                    let mut pending = PendingUpload {
                         command,
-                        payload_b64: payload.to_vec(),
-                    });
+                        payload_b64: Vec::new(),
+                        overflowed: false,
+                    };
+                    pending.append(payload);
+                    self.pending = Some(pending);
                     None
                 } else {
                     Some(run_payload_pipeline(command, payload))
@@ -517,107 +547,29 @@ pub fn parse_control_data(control: &[u8]) -> Result<KittyCommand, KittyError> {
     Ok(command)
 }
 
-const TEMP_FILE_MARKER: &str = "tty-graphics-protocol";
-
-fn resolve_parent(path: &Path) -> Option<std::path::PathBuf> {
-    let file_name = path.file_name()?;
-    let parent = match path.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent,
-        _ => return None,
-    };
-    let canonical_parent = std::fs::canonicalize(parent).ok()?;
-    Some(canonical_parent.join(file_name))
-}
-
-fn is_deletable_temp_file(resolved: &Path) -> bool {
-    let roots = [
-        std::env::temp_dir(),
-        std::path::PathBuf::from("/tmp"),
-        std::path::PathBuf::from("/dev/shm"),
-    ];
-    roots
-        .iter()
-        .filter_map(|root| std::fs::canonicalize(root).ok())
-        .any(|root| {
-            resolved
-                .strip_prefix(&root)
-                .map(|relative| relative.to_string_lossy().contains(TEMP_FILE_MARKER))
-                .unwrap_or(false)
-        })
-}
-
-fn read_file_range(
-    path: &Path,
-    file_len: u64,
-    command: &KittyCommand,
-    echo: &EchoFields,
-) -> Result<Vec<u8>, KittyError> {
-    let start = command.data_offset.unwrap_or(0) as u64;
-    if start > file_len {
-        return Err(echo.error(KittyErrorCode::Ebadf, "could not read file"));
-    }
-    let available = file_len - start;
-    let length = match command.data_size {
-        Some(size) if size > 0 => std::cmp::min(size as u64, available),
-        _ => available,
-    };
-    if length > MAX_DECODED_BYTES as u64 {
-        return Err(echo.error(KittyErrorCode::Einval, "image too large"));
-    }
-    let read = |path: &Path| -> std::io::Result<Vec<u8>> {
-        let mut file = std::fs::File::open(path)?;
-        if start > 0 {
-            file.seek(std::io::SeekFrom::Start(start))?;
-        }
-        let mut bytes = Vec::new();
-        file.take(length).read_to_end(&mut bytes)?;
-        Ok(bytes)
-    };
-    read(path).map_err(|_| echo.error(KittyErrorCode::Ebadf, "could not read file"))
-}
-
 fn run_payload_pipeline(
     mut command: KittyCommand,
     payload_b64: &[u8],
 ) -> Result<KittyCommand, KittyError> {
     let echo = EchoFields::from_command(&command);
+    // Pane output must not open, read, or delete a host path.
+    if matches!(command.medium, KittyMedium::File | KittyMedium::TempFile) {
+        return Err(echo.error(
+            KittyErrorCode::Enotsupported,
+            "file transfer is not supported",
+        ));
+    }
+    if payload_b64.len() > MAX_PAYLOAD_B64_BYTES {
+        return Err(echo.error(KittyErrorCode::Einval, "image too large"));
+    }
     let trimmed_len = payload_b64
         .iter()
         .rposition(|b| *b != b'=')
         .map(|pos| pos + 1)
         .unwrap_or(0);
-    let decoded = BASE64_DECODER
+    let data = BASE64_DECODER
         .decode(&payload_b64[..trimmed_len])
         .map_err(|_| echo.error(KittyErrorCode::Einval, "invalid base64 payload"))?;
-    let data = match command.medium {
-        KittyMedium::Direct => decoded,
-        KittyMedium::File | KittyMedium::TempFile => {
-            let path_string = String::from_utf8(decoded)
-                .map_err(|_| echo.error(KittyErrorCode::Ebadf, "invalid file path"))?;
-            let requested_path = std::path::PathBuf::from(path_string);
-            let (path, deletable) = if command.medium == KittyMedium::TempFile {
-                match resolve_parent(&requested_path) {
-                    Some(resolved) => {
-                        let deletable = is_deletable_temp_file(&resolved);
-                        (resolved, deletable)
-                    },
-                    None => (requested_path, false),
-                }
-            } else {
-                (requested_path, false)
-            };
-            let metadata = std::fs::metadata(&path)
-                .map_err(|_| echo.error(KittyErrorCode::Ebadf, "could not read file"))?;
-            if !metadata.is_file() {
-                return Err(echo.error(KittyErrorCode::Ebadf, "could not read file"));
-            }
-            let read_result = read_file_range(&path, metadata.len(), &command, &echo);
-            if deletable {
-                let _ = std::fs::remove_file(&path);
-            }
-            read_result?
-        },
-    };
     let data = if command.compressed {
         let mut inflated = Vec::new();
         flate2::read::ZlibDecoder::new(&data[..])

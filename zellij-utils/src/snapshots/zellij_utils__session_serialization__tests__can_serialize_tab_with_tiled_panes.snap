@@ -25,7 +25,7 @@ layout {
             }
         }
         pane size=10 borderless=true
-        pane name="my cool \\ \"pane_title\"" focus=true contents_file="initial_contents_1" size=10
+        pane name="my cool \\ \"pane_title\"" focus=true contents_file="initial_contents_3fbf3557a8e6d016d37dbb75ef7798b4" size=10
     }
 }
 

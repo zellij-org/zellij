@@ -141,8 +141,10 @@ mod tests {
             "no app identity was declared ({:#010x})",
             result
         );
+        assert!(!declared.is_null(), "the declared app id pointer was null");
         let text = unsafe {
-            let length = (0..).take_while(|&i| *declared.add(i) != 0).count();
+            // Cap the walk so a missing terminator cannot read without limit.
+            let length = (0..1024).take_while(|&i| *declared.add(i) != 0).count();
             let text = String::from_utf16_lossy(std::slice::from_raw_parts(declared, length));
             CoTaskMemFree(declared as *const std::ffi::c_void);
             text
