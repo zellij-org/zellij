@@ -107,6 +107,11 @@ impl CliArgs {
         }
         None
     }
+    /// `zellij options` without a single option used to start a session that
+    /// changed nothing, which reads as a typo rather than a request.
+    pub fn options_without_any_option(&self) -> bool {
+        matches!(&self.command, Some(Command::Options(options)) if options == &Options::default())
+    }
     /// The clap command, named after the running distribution rather than after Zellij
     pub fn command_for_distribution() -> clap::Command {
         use clap::CommandFactory;
@@ -2355,6 +2360,42 @@ mod tests {
             Some(Command::Subscribe(s)) => s,
             other => panic!("Expected Subscribe, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn options_without_an_option_is_detected() {
+        let cli = try_parse(&["options"]).expect("`options` still parses");
+        assert!(cli.options_without_any_option());
+    }
+
+    #[test]
+    fn options_with_an_option_is_not_flagged() {
+        let cli = try_parse(&["options", "--theme", "dark"]).expect("one option must parse");
+        assert!(!cli.options_without_any_option());
+    }
+
+    #[test]
+    fn other_commands_are_not_flagged_as_empty_options() {
+        let cli = try_parse(&["list-sessions"]).expect("list-sessions must parse");
+        assert!(!cli.options_without_any_option());
+    }
+
+    #[test]
+    fn options_accepts_one_option() {
+        let cli = try_parse(&["options", "--theme", "dark"]).expect("one option must parse");
+        assert_eq!(
+            cli.options().and_then(|options| options.theme),
+            Some("dark".to_string())
+        );
+    }
+
+    #[test]
+    fn options_accepts_multiple_options() {
+        let cli = try_parse(&["options", "--theme", "dark", "--pane-frames", "true"])
+            .expect("several options must parse");
+        let options = cli.options().expect("parsed options");
+        assert_eq!(options.theme, Some("dark".to_string()));
+        assert_eq!(options.pane_frames, Some(true));
     }
 
     #[test]
