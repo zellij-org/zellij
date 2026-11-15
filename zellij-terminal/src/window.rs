@@ -81,6 +81,9 @@ pub(crate) fn application_id() -> &'static str {
 pub(crate) enum Wake {
     Window(u64, WindowWake),
     App(crate::app::AppEvent),
+    /// The system's light/dark preference, where it is read apart from the
+    /// window (on Linux, from the desktop portal).
+    Appearance(Option<HostTerminalThemeMode>),
 }
 
 pub(crate) enum WindowWake {
@@ -418,7 +421,7 @@ impl App {
                 self.schedule_draw();
                 self.resized(size.width, size.height);
             },
-            WindowEvent::ThemeChanged(theme) => self.os_theme_changed(Some(theme)),
+            WindowEvent::ThemeChanged(theme) => self.window_theme_changed(theme),
             WindowEvent::Moved(_) => self.follow_display_occasionally(),
             WindowEvent::ScaleFactorChanged {
                 scale_factor,

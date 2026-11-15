@@ -1,3 +1,5 @@
+#[cfg(target_os = "linux")]
+pub mod appearance;
 pub mod bundle;
 #[cfg(target_os = "linux")]
 pub mod dbus;

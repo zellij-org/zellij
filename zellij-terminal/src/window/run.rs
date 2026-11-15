@@ -370,11 +370,17 @@ pub(crate) struct Windowing {
 impl Windowing {
     pub(crate) fn bring_up() -> Result<Self> {
         crate::platform::static_build::ensure_windows()?;
-        Ok(Self {
-            event_loop: EventLoop::<Wake>::with_user_event()
-                .build()
-                .context("failed to create a windowing event loop")?,
-        })
+        let event_loop = EventLoop::<Wake>::with_user_event()
+            .build()
+            .context("failed to create a windowing event loop")?;
+        #[cfg(target_os = "linux")]
+        {
+            let proxy = event_loop.create_proxy();
+            crate::app::desktop::appearance::watch(move |mode| {
+                let _ = proxy.send_event(Wake::Appearance(mode));
+            });
+        }
+        Ok(Self { event_loop })
     }
 
     pub(crate) fn proxy(&self) -> EventLoopProxy<Wake> {

@@ -900,9 +900,9 @@ fn reported_theme_modes(harness: Harness) -> Vec<HostTerminalThemeMode> {
 fn a_system_appearance_change_is_reported_to_the_session_once_per_change() {
     use winit::window::Theme;
     let mut harness = Harness::new(2, true, "");
-    harness.app.os_theme_changed(Some(Theme::Light));
-    harness.app.os_theme_changed(Some(Theme::Light));
-    harness.app.os_theme_changed(Some(Theme::Dark));
+    harness.app.window_theme_changed(Theme::Light);
+    harness.app.window_theme_changed(Theme::Light);
+    harness.app.window_theme_changed(Theme::Dark);
     assert_eq!(
         reported_theme_modes(harness),
         vec![HostTerminalThemeMode::Light, HostTerminalThemeMode::Dark]

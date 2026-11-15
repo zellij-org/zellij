@@ -64,6 +64,14 @@ impl ApplicationHandler<Wake> for Desktop {
                 }
             },
             Wake::App(event) => self.app_event(event_loop, event),
+            Wake::Appearance(mode) => {
+                for app in self.windows.values_mut() {
+                    app.os_theme_changed(mode);
+                }
+                if let Some(panel) = self.panel.as_mut() {
+                    panel.app.os_theme_changed(mode);
+                }
+            },
         }
     }
 

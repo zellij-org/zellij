@@ -82,12 +82,16 @@ impl App {
         let theme = self
             .surfaces
             .as_ref()
-            .and_then(|surfaces| surfaces.window.theme());
-        self.os_theme_changed(theme);
+            .and_then(|surfaces| surfaces.window.theme())
+            .map(host_theme_mode);
+        self.os_theme_changed(theme.or_else(read_apart_from_the_window));
     }
 
-    pub(in crate::window) fn os_theme_changed(&mut self, theme: Option<winit::window::Theme>) {
-        let mode = theme.map(host_theme_mode);
+    pub(in crate::window) fn window_theme_changed(&mut self, theme: winit::window::Theme) {
+        self.os_theme_changed(Some(host_theme_mode(theme)));
+    }
+
+    pub(in crate::window) fn os_theme_changed(&mut self, mode: Option<HostTerminalThemeMode>) {
         if mode == self.os_theme {
             return;
         }
@@ -317,7 +321,19 @@ impl App {
     }
 }
 
-fn host_theme_mode(theme: winit::window::Theme) -> HostTerminalThemeMode {
+/// The preference of a system that winit cannot ask: on Linux, what the
+/// desktop portal last said.
+#[cfg(target_os = "linux")]
+fn read_apart_from_the_window() -> Option<HostTerminalThemeMode> {
+    crate::app::desktop::appearance::current()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn read_apart_from_the_window() -> Option<HostTerminalThemeMode> {
+    None
+}
+
+pub(in crate::window) fn host_theme_mode(theme: winit::window::Theme) -> HostTerminalThemeMode {
     match theme {
         winit::window::Theme::Light => HostTerminalThemeMode::Light,
         winit::window::Theme::Dark => HostTerminalThemeMode::Dark,
