@@ -11112,6 +11112,74 @@ fn empty_reply_with_paused_pane_drains_buffer_without_phantom_write() {
     );
 }
 
+#[test]
+fn full_palette_query_burst_is_forwarded_as_one_batch() {
+    // notcurses sends OSC 4 for all 256 registers, then DA1, and blocks
+    // on the DA1 reply. One host round trip per register stalls it for
+    // seconds over SSH; the whole burst must share one forward.
+    use crate::host_query::{HostQuery, OscTerminator};
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    let mut input: Vec<u8> = (0..=255u8)
+        .flat_map(|i| format!("\x1b]4;{};?\x1b\\", i).into_bytes())
+        .collect();
+    input.extend_from_slice(b"\x1b[c");
+    pane.handle_pty_bytes(input);
+
+    let queries = pane.drain_forwarded_queries();
+    let expected: Vec<(u8, OscTerminator)> = (0..=255u8).map(|i| (i, OscTerminator::St)).collect();
+    assert_eq!(
+        queries,
+        vec![HostQuery::PaletteRegisters {
+            registers: expected
+        }]
+    );
+    assert!(
+        pane.drain_messages_to_pty().is_empty(),
+        "DA1 must stay queued behind the palette forward"
+    );
+    assert_eq!(pane.drain_pending_pty_input(), b"\x1b[c".to_vec());
+}
+
+#[test]
+fn palette_query_batch_stops_at_a_setter() {
+    // A setter must not run before the reply to the getters queued
+    // ahead of it, so batching stops there and leaves it in the queue.
+    use crate::host_query::{HostQuery, OscTerminator};
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    let mut input = b"\x1b]4;1;?\x07\x1b]4;2;?\x07".to_vec();
+    input.extend_from_slice(b"\x1b]4;3;rgb:ff/00/00\x07\x1b]4;4;?\x07");
+    pane.handle_pty_bytes(input);
+
+    let queries = pane.drain_forwarded_queries();
+    assert_eq!(
+        queries,
+        vec![HostQuery::PaletteRegisters {
+            registers: vec![(1, OscTerminator::Bel), (2, OscTerminator::Bel)]
+        }]
+    );
+    assert_eq!(
+        pane.drain_pending_pty_input(),
+        b"\x1b]4;3;rgb:ff/00/00\x07\x1b]4;4;?\x07".to_vec()
+    );
+}
+
+#[test]
+fn single_palette_query_is_not_batched() {
+    use crate::host_query::{HostQuery, OscTerminator};
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    pane.handle_pty_bytes(b"\x1b]4;7;?\x1b\\after".to_vec());
+
+    assert_eq!(
+        pane.drain_forwarded_queries(),
+        vec![HostQuery::PaletteRegister {
+            index: 7,
+            terminator: OscTerminator::St
+        }]
+    );
+    // The ST's final `\` is consumed with the query; the text stays queued.
+    assert_eq!(pane.drain_pending_pty_input(), b"after".to_vec());
+}
+
 fn create_non_mirrored_screen(size: Size) -> Screen {
     let mut bus: Bus<ScreenInstruction> = Bus::empty();
     let fake_os_input = FakeInputOutput::default();

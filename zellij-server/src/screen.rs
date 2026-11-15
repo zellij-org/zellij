@@ -5819,6 +5819,12 @@ impl Screen {
                     Vec::new()
                 }
             },
+            HostQuery::PaletteRegisters { registers } => registers
+                .iter()
+                .flat_map(|&(index, terminator)| {
+                    self.synthesize_cached_reply(&HostQuery::PaletteRegister { index, terminator })
+                })
+                .collect(),
             HostQuery::ClipboardContent { .. } => query.empty_reply_bytes(),
             // Should not reach here: ColorPaletteMode short-circuits in
             // `forward_host_query` before any cache-fallback path runs.
