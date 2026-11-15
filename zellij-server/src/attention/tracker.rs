@@ -743,13 +743,20 @@ impl AttentionTracker {
                     },
                     _ => {},
                 }
-                track.records.apply(message, now);
+                // A record (a child, an idle root) can change without changing
+                // the resolved attention; plugins still need the pane state.
+                if track.records.apply(message, now) {
+                    self.changed.insert(pane_id);
+                }
             },
             PaneSignal::Reset => {
                 let track = self.track(pane_id, now);
-                track.records.clear_all();
+                let records_changed = track.records.clear_all();
                 track.forget_reported();
                 track.alternate_screen = false;
+                if records_changed {
+                    self.changed.insert(pane_id);
+                }
             },
             PaneSignal::AlternateScreen(active) => {
                 let track = self.track(pane_id, now);
@@ -761,7 +768,7 @@ impl AttentionTracker {
             PaneSignal::PromptShown { .. } => {
                 let track = self.track(pane_id, now);
                 track.command.reports_markers = true;
-                track.records.drop_transient();
+                let records_changed = track.records.drop_transient();
                 track.forget_reported();
                 track.foreground = None;
                 let unfinished = if track.command.phase == CommandPhase::Running {
@@ -771,6 +778,9 @@ impl AttentionTracker {
                 };
                 track.command.phase = CommandPhase::AtPrompt;
                 track.command.running = None;
+                if records_changed {
+                    self.changed.insert(pane_id);
+                }
                 if let Some(running) = unfinished {
                     self.finish_command(
                         pane_id,
@@ -836,8 +846,9 @@ impl AttentionTracker {
         if track.command.reports_markers || track.command_pane_started_ms.is_some() {
             return;
         }
+        let mut records_changed = false;
         if command.is_none() && track.foreground.is_some() && track.reported_ms.is_some() {
-            track.records.drop_transient();
+            records_changed = track.records.drop_transient();
             track.forget_reported();
         }
         match (command, track.foreground.take()) {
@@ -874,6 +885,9 @@ impl AttentionTracker {
             },
             (None, None) => {},
         }
+        if records_changed {
+            self.changed.insert(pane_id);
+        }
         self.resolve(pane_id, now);
         self.arm_command_check(pane_id, now);
     }
@@ -906,7 +920,7 @@ impl AttentionTracker {
         let Some(track) = self.panes.get_mut(&pane_id) else {
             return;
         };
-        track.records.drop_transient();
+        let records_changed = track.records.drop_transient();
         track.forget_reported();
         let running = track.command_pane_running.take();
         if running.is_some() || track.command_pane_started_ms.is_some() {
@@ -944,6 +958,9 @@ impl AttentionTracker {
                 None => "exited".to_owned(),
             };
             self.fire_watch(pane_id, text, detail, now);
+        }
+        if records_changed {
+            self.changed.insert(pane_id);
         }
         self.resolve(pane_id, now);
     }
