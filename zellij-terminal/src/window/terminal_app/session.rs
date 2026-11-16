@@ -127,9 +127,24 @@ impl App {
         let Some(title) = self.state.take_title() else {
             return;
         };
+        self.program_title = title.is_some();
         let title = title.unwrap_or_else(|| self.title.clone());
         if let Some(surfaces) = &self.surfaces {
             surfaces.window.set_title(&title);
+        }
+    }
+
+    pub(in crate::window) fn renamed(&mut self, name: String) {
+        if name.is_empty() || name == self.session_name {
+            return;
+        }
+        self.title = window_title(&name);
+        self.session_name = name;
+        if self.program_title {
+            return;
+        }
+        if let Some(surfaces) = &self.surfaces {
+            surfaces.window.set_title(&self.title);
         }
     }
 
@@ -237,6 +252,7 @@ impl App {
     pub(in crate::window) fn start_over(&mut self, geometry: Geometry) {
         self.cancel_scroll_animations();
         self.state = TerminalState::new(geometry.rows, geometry.cols);
+        self.program_title = false;
         self.state
             .set_cell_size(self.metrics.width, self.metrics.height);
         self.state.set_shared_media(!self.remote_session);

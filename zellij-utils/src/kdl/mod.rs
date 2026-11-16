@@ -5441,7 +5441,7 @@ impl Options {
         let comment_text = format!(
             "{}\n{}\n{}\n{}\n{}\n{}",
             " ",
-            "// A command to run (will be wrapped with sh -c and provided the RESURRECT_COMMAND env variable) ",
+            "// A command to run (will be wrapped with sh -c, or cmd /C on Windows, and provided the RESURRECT_COMMAND env variable) ",
             "// after Zellij attempts to discover a command inside a pane when resurrecting sessions, the STDOUT",
             "// of this command will be used instead of the discovered RESURRECT_COMMAND",
             "// can be useful for removing wrappers around commands",
