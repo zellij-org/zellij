@@ -3,25 +3,33 @@ use crate::panes::PaneId;
 
 use std::{
     collections::BTreeMap,
-    ffi::OsStr,
-    io,
+    ffi::{OsStr, OsString},
+    io, mem,
     os::windows::ffi::OsStrExt,
     os::windows::io::{FromRawHandle, IntoRawHandle, OwnedHandle},
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU32, AtomicU64, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
     },
 };
 
 use tokio::net::windows::named_pipe::NamedPipeServer;
 
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, S_OK};
+use windows_sys::core::HRESULT;
+use windows_sys::Win32::Foundation::{
+    CloseHandle, FreeLibrary, HANDLE, INVALID_HANDLE_VALUE, S_OK,
+};
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FlushFileBuffers, WriteFile, FILE_FLAG_OVERLAPPED, OPEN_EXISTING,
 };
 use windows_sys::Win32::System::Console::{
     ClosePseudoConsole, CreatePseudoConsole, GenerateConsoleCtrlEvent, ResizePseudoConsole, COORD,
     CTRL_C_EVENT, HPCON,
+};
+use windows_sys::Win32::System::LibraryLoader::{
+    GetModuleFileNameW, GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS,
+    LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
 };
 use windows_sys::Win32::System::Pipes::{CreateNamedPipeW, CreatePipe, PIPE_REJECT_REMOTE_CLIENTS};
 use windows_sys::Win32::System::Threading::{
@@ -48,6 +56,234 @@ const GENERIC_WRITE: u32 = 0x40000000;
 /// the previous pipe handle).
 static PIPE_SEQ: AtomicU64 = AtomicU64::new(0);
 
+// --- ConPTY API loader ---------------------------------------------------
+//
+// The pseudoconsole implementation baked into `kernel32.dll` predates a
+// lot of the terminal-emulation work Microsoft has done in the console
+// host code that lives in `microsoft/terminal`. That newer implementation
+// forwards VT queries from the child to the consumer (so apps inside a
+// pane can, for example, ask the host for its fg/bg via OSC 10/11 and
+// actually get an answer), supports more VT sequences, and carries years
+// of accumulated bug fixes.
+//
+// The kernel32 one also drops every DCS, APC and PM sequence a child
+// writes, which breaks nested Zellij session detection (the guest
+// announces itself with a DCS) as well as sixel and kitty graphics.
+//
+// Microsoft publishes the newer pseudoconsole (`conpty.dll` +
+// `OpenConsole.exe`) as the `Microsoft.Windows.Console.ConPTY` NuGet
+// package, and some apps bundle it (WezTerm, Visual Studio's terminal
+// component). `conpty.dll` starts the `OpenConsole.exe` that sits next to
+// it; without one it quietly falls back to the system console host, so we
+// only use a `conpty.dll` that has its `OpenConsole.exe` beside it.
+//
+// Where we look, in order:
+// - `ZELLIJ_CONPTY_DLL`, if set: a path to a `conpty.dll`, or `system` to
+//   always use kernel32.
+// - zellij's own folder, then each absolute folder on PATH. Unlike
+//   loading by bare name, this never looks in the current directory, so a
+//   `conpty.dll` in whatever folder zellij was started from is not loaded.
+// - Otherwise, kernel32.
+//
+// Which backend was picked, and from where, is logged once at startup.
+
+const CONPTY_DLL_ENV_VAR: &str = "ZELLIJ_CONPTY_DLL";
+const CONPTY_DLL_NAME: &str = "conpty.dll";
+const OPEN_CONSOLE_EXE_NAME: &str = "OpenConsole.exe";
+
+/// Where to get the pseudoconsole from.
+#[derive(Debug, PartialEq)]
+enum ConptySource {
+    /// kernel32's pseudoconsole.
+    System,
+    /// Exactly this `conpty.dll`, from `ZELLIJ_CONPTY_DLL`.
+    Explicit(PathBuf),
+    /// The first usable `conpty.dll` in these folders, in order.
+    Search(Vec<PathBuf>),
+}
+
+fn conpty_source(
+    override_value: Option<OsString>,
+    exe_dir: Option<PathBuf>,
+    path_var: Option<OsString>,
+) -> ConptySource {
+    if let Some(value) = override_value.filter(|value| !value.is_empty()) {
+        if value.to_string_lossy().eq_ignore_ascii_case("system") {
+            return ConptySource::System;
+        }
+        return ConptySource::Explicit(PathBuf::from(value));
+    }
+    let mut dirs: Vec<PathBuf> = exe_dir.into_iter().collect();
+    if let Some(path_var) = path_var {
+        for dir in std::env::split_paths(&path_var) {
+            if dir.is_absolute() && !dirs.contains(&dir) {
+                dirs.push(dir);
+            }
+        }
+    }
+    ConptySource::Search(dirs)
+}
+
+/// Why a `conpty.dll` can't be used, checked before loading it.
+fn conpty_dll_problem(dll: &Path) -> Option<String> {
+    if !dll.is_file() {
+        return Some("the file does not exist".to_owned());
+    }
+    if !dll.with_file_name(OPEN_CONSOLE_EXE_NAME).is_file() {
+        return Some(format!(
+            "{} is not in the same folder (without it, conpty.dll falls back to the system \
+             console host)",
+            OPEN_CONSOLE_EXE_NAME
+        ));
+    }
+    None
+}
+
+type CreatePseudoConsoleFn =
+    unsafe extern "system" fn(COORD, HANDLE, HANDLE, u32, *mut HPCON) -> HRESULT;
+type ResizePseudoConsoleFn = unsafe extern "system" fn(HPCON, COORD) -> HRESULT;
+type ClosePseudoConsoleFn = unsafe extern "system" fn(HPCON);
+
+struct ConptyApi {
+    create: CreatePseudoConsoleFn,
+    resize: ResizePseudoConsoleFn,
+    close: ClosePseudoConsoleFn,
+}
+
+// The function pointers are plain fn pointers and thread-safe.
+unsafe impl Sync for ConptyApi {}
+unsafe impl Send for ConptyApi {}
+
+impl ConptyApi {
+    fn load() -> Self {
+        let source = conpty_source(
+            std::env::var_os(CONPTY_DLL_ENV_VAR),
+            std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(Path::to_path_buf)),
+            std::env::var_os("PATH"),
+        );
+        match source {
+            ConptySource::System => {
+                log::info!(
+                    "Windows pseudoconsole: {}=system, using the system default from \
+                     kernel32.dll.",
+                    CONPTY_DLL_ENV_VAR
+                );
+            },
+            ConptySource::Explicit(dll) => match Self::try_load_conpty_dll(&dll) {
+                Ok(api) => return api,
+                Err(problem) => log::warn!(
+                    "Windows pseudoconsole: {} is set to {}, but {}. Using the system default \
+                     from kernel32.dll.",
+                    CONPTY_DLL_ENV_VAR,
+                    dll.display(),
+                    problem
+                ),
+            },
+            ConptySource::Search(dirs) => {
+                for dll in dirs.iter().map(|dir| dir.join(CONPTY_DLL_NAME)) {
+                    if !dll.is_file() {
+                        continue;
+                    }
+                    match Self::try_load_conpty_dll(&dll) {
+                        Ok(api) => return api,
+                        Err(problem) => log::warn!(
+                            "Windows pseudoconsole: skipping {}: {}.",
+                            dll.display(),
+                            problem
+                        ),
+                    }
+                }
+                log::info!(
+                    "Windows pseudoconsole: using the system default from kernel32.dll. It drops \
+                     some escape sequences programs rely on, which breaks nested Zellij \
+                     sessions, sixel and kitty graphics, and OSC 10/11 color queries. To use \
+                     the newer one, get conpty.dll and OpenConsole.exe (from Microsoft's \
+                     Microsoft.Windows.Console.ConPTY NuGet package, or from an app that \
+                     bundles them such as WezTerm) and put both next to zellij.exe or in a \
+                     folder on PATH, or set {} to the path of conpty.dll.",
+                    CONPTY_DLL_ENV_VAR
+                );
+            },
+        }
+        Self {
+            create: CreatePseudoConsole,
+            resize: ResizePseudoConsole,
+            close: ClosePseudoConsole,
+        }
+    }
+
+    fn try_load_conpty_dll(dll: &Path) -> std::result::Result<Self, String> {
+        if let Some(problem) = conpty_dll_problem(dll) {
+            return Err(problem);
+        }
+        let wide_path: Vec<u16> = dll.as_os_str().encode_wide().chain(Some(0)).collect();
+        unsafe {
+            // Resolve conpty.dll's own dependencies from its folder and the
+            // system folders only, never from the current directory.
+            let hmod = LoadLibraryExW(
+                wide_path.as_ptr(),
+                std::ptr::null_mut(),
+                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS,
+            );
+            if hmod.is_null() {
+                return Err(format!(
+                    "it could not be loaded ({})",
+                    io::Error::last_os_error()
+                ));
+            }
+            let functions = (
+                GetProcAddress(hmod, b"CreatePseudoConsole\0".as_ptr()),
+                GetProcAddress(hmod, b"ResizePseudoConsole\0".as_ptr()),
+                GetProcAddress(hmod, b"ClosePseudoConsole\0".as_ptr()),
+            );
+            let (Some(create), Some(resize), Some(close)) = functions else {
+                FreeLibrary(hmod);
+                return Err("it does not export the pseudoconsole functions".to_owned());
+            };
+            let path = module_path(hmod).unwrap_or_else(|| dll.display().to_string());
+            log::info!(
+                "Windows pseudoconsole: loaded conpty.dll from {}. Child processes use it \
+                 instead of the system default in kernel32.dll.",
+                path
+            );
+            Ok(Self {
+                create: mem::transmute::<_, CreatePseudoConsoleFn>(create),
+                resize: mem::transmute::<_, ResizePseudoConsoleFn>(resize),
+                close: mem::transmute::<_, ClosePseudoConsoleFn>(close),
+            })
+        }
+    }
+}
+
+/// Resolve the full on-disk path of a loaded module for logging.
+/// Returns None on API failure.
+unsafe fn module_path(hmod: *mut core::ffi::c_void) -> Option<String> {
+    let mut buf = vec![0u16; 260]; // start at MAX_PATH; grow if needed
+    loop {
+        let len = GetModuleFileNameW(hmod, buf.as_mut_ptr(), buf.len() as u32);
+        if len == 0 {
+            return None;
+        }
+        // If len == buf.len(), Win32 truncated and did not null-terminate.
+        // Grow and retry (with a sanity cap to avoid runaway allocation).
+        if (len as usize) < buf.len() {
+            buf.truncate(len as usize);
+            return Some(String::from_utf16_lossy(&buf));
+        }
+        if buf.len() >= 32_768 {
+            return None;
+        }
+        buf.resize(buf.len() * 2, 0);
+    }
+}
+
+fn conpty_api() -> &'static ConptyApi {
+    static API: OnceLock<ConptyApi> = OnceLock::new();
+    API.get_or_init(ConptyApi::load)
+}
+
 /// Per-terminal ConPTY state.
 struct ConPtyTerminal {
     hpcon: HPCON,
@@ -65,7 +301,7 @@ impl Drop for ConPtyTerminal {
             // Close the pseudo console first — it may write a final VT frame
             // to the output pipe. The async reader task (if still alive) will
             // drain it. Then close the remaining handle.
-            ClosePseudoConsole(self.hpcon);
+            (conpty_api().close)(self.hpcon);
             CloseHandle(self.input_write_handle);
         }
     }
@@ -290,7 +526,7 @@ fn create_conpty(
         Y: rows as i16,
     };
     let mut hpcon: HPCON = 0;
-    let hr = unsafe { CreatePseudoConsole(size, input_read, output_write, 0, &mut hpcon) };
+    let hr = unsafe { (conpty_api().create)(size, input_read, output_write, 0, &mut hpcon) };
     if hr != S_OK {
         Err(io::Error::from_raw_os_error(hr))
     } else {
@@ -482,7 +718,7 @@ impl WindowsPtyBackend {
                 Ok(r) => r,
                 Err(e) => {
                     unsafe {
-                        ClosePseudoConsole(hpcon);
+                        (conpty_api().close)(hpcon);
                         CloseHandle(input_write);
                         CloseHandle(output_read);
                     }
@@ -583,7 +819,7 @@ impl WindowsPtyBackend {
                         X: cols as i16,
                         Y: rows as i16,
                     };
-                    let hr = unsafe { ResizePseudoConsole(term.hpcon, size) };
+                    let hr = unsafe { (conpty_api().resize)(term.hpcon, size) };
                     if hr != S_OK {
                         Err::<(), _>(anyhow!("ResizePseudoConsole failed: HRESULT 0x{:08x}", hr))
                             .with_context(err_context)
@@ -755,5 +991,81 @@ mod tests {
         // closing quote. The trailing backslash must be doubled.
         let s = build_command_line_string(&cmd("prog", &["C:\\my path\\"]));
         assert_eq!(s, "\"prog\" \"C:\\my path\\\\\"");
+    }
+
+    fn os(value: &str) -> Option<OsString> {
+        Some(OsString::from(value))
+    }
+
+    #[test]
+    fn conpty_override_system_uses_kernel32() {
+        assert_eq!(
+            conpty_source(os("system"), None, None),
+            ConptySource::System
+        );
+        assert_eq!(
+            conpty_source(os("SYSTEM"), None, None),
+            ConptySource::System
+        );
+    }
+
+    #[test]
+    fn conpty_override_path_is_used_instead_of_searching() {
+        assert_eq!(
+            conpty_source(
+                os(r"C:\tools\conpty\conpty.dll"),
+                Some(PathBuf::from(r"C:\zellij")),
+                os(r"C:\Program Files\WezTerm"),
+            ),
+            ConptySource::Explicit(PathBuf::from(r"C:\tools\conpty\conpty.dll"))
+        );
+    }
+
+    #[test]
+    fn empty_conpty_override_is_ignored() {
+        assert_eq!(
+            conpty_source(os(""), Some(PathBuf::from(r"C:\zellij")), None),
+            ConptySource::Search(vec![PathBuf::from(r"C:\zellij")])
+        );
+    }
+
+    // Loading conpty.dll by bare name would also look in the current
+    // directory. The search must only cover zellij's folder and absolute
+    // PATH entries.
+    #[test]
+    fn conpty_search_covers_zellij_folder_then_absolute_path_entries() {
+        let source = conpty_source(
+            None,
+            Some(PathBuf::from(r"C:\zellij")),
+            os(r"C:\Program Files\WezTerm;.;bin;;\rooted;C:\zellij;C:\Windows"),
+        );
+        assert_eq!(
+            source,
+            ConptySource::Search(vec![
+                PathBuf::from(r"C:\zellij"),
+                PathBuf::from(r"C:\Program Files\WezTerm"),
+                PathBuf::from(r"C:\Windows"),
+            ])
+        );
+    }
+
+    #[test]
+    fn missing_conpty_dll_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(conpty_dll_problem(&dir.path().join(CONPTY_DLL_NAME)).is_some());
+    }
+
+    // Without OpenConsole.exe beside it, conpty.dll quietly uses the system
+    // console host, which drops the same sequences as kernel32.
+    #[test]
+    fn conpty_dll_needs_open_console_beside_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let dll = dir.path().join(CONPTY_DLL_NAME);
+        std::fs::write(&dll, b"").unwrap();
+        let problem = conpty_dll_problem(&dll).unwrap();
+        assert!(problem.contains(OPEN_CONSOLE_EXE_NAME), "{}", problem);
+
+        std::fs::write(dir.path().join(OPEN_CONSOLE_EXE_NAME), b"").unwrap();
+        assert_eq!(conpty_dll_problem(&dll), None);
     }
 }
