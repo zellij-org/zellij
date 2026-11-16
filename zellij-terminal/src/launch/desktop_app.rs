@@ -366,7 +366,10 @@ pub(crate) struct Launcher {
 
 impl Launcher {
     pub(crate) fn current(&self) -> Result<(config::settings::Settings, Options)> {
-        let settings = config::settings::load(self.config_path.as_deref())?;
+        let settings = config::settings::load(
+            self.config_path.as_deref(),
+            self.dialer.opts.config_dir.as_deref(),
+        )?;
         let options = config::options::resolve(&settings, None);
         Ok((settings, options))
     }

@@ -175,6 +175,13 @@ mod fontconfig {
         config_substitute: unsafe extern "C" fn(*mut Config, *mut Pattern, c_int) -> c_int,
         default_substitute: unsafe extern "C" fn(*mut Pattern),
         font_match: unsafe extern "C" fn(*mut Config, *mut Pattern, *mut c_int) -> *mut Pattern,
+        font_sort: unsafe extern "C" fn(
+            *mut Config,
+            *mut Pattern,
+            c_int,
+            *mut *mut CharSet,
+            *mut c_int,
+        ) -> *mut FontSet,
         object_set_create: unsafe extern "C" fn() -> *mut ObjectSet,
         object_set_add: unsafe extern "C" fn(*mut ObjectSet, *const c_char) -> c_int,
         object_set_destroy: unsafe extern "C" fn(*mut ObjectSet),
@@ -257,46 +264,14 @@ mod fontconfig {
                     return None;
                 }
                 (api.charset_add_char)(charset, character as u32);
-
-                let pattern = (api.pattern_create)();
+                let pattern = self.styled_pattern(MONOSPACE.as_ptr(), request);
                 if pattern.is_null() {
                     (api.charset_destroy)(charset);
                     return None;
                 }
-                (api.pattern_add_string)(
-                    pattern,
-                    FAMILY.as_ptr() as *const c_char,
-                    MONOSPACE.as_ptr(),
-                );
-                (api.pattern_add_integer)(
-                    pattern,
-                    WEIGHT.as_ptr() as *const c_char,
-                    fontconfig_weight(request.weight),
-                );
-                (api.pattern_add_integer)(
-                    pattern,
-                    SLANT.as_ptr() as *const c_char,
-                    if request.italic {
-                        FC_SLANT_ITALIC
-                    } else {
-                        FC_SLANT_ROMAN
-                    },
-                );
                 (api.pattern_add_charset)(pattern, CHARSET.as_ptr() as *const c_char, charset);
-                (api.config_substitute)(self.config, pattern, FC_MATCH_PATTERN);
-                (api.default_substitute)(pattern);
-
-                let mut result: c_int = 0;
-                let matched = (api.font_match)(self.config, pattern, &mut result);
-                let found = if matched.is_null() || result != FC_RESULT_MATCH {
-                    None
-                } else {
-                    self.describe(matched, character)
-                };
-
-                if !matched.is_null() {
-                    (api.pattern_destroy)(matched);
-                }
+                let found =
+                    self.first_readable(pattern, true, |font| self.describe(font, character));
                 (api.pattern_destroy)(pattern);
                 (api.charset_destroy)(charset);
                 found
@@ -320,20 +295,8 @@ mod fontconfig {
                 (api.pattern_add_string)(pattern, FAMILY.as_ptr() as *const c_char, EMOJI.as_ptr());
                 (api.pattern_add_bool)(pattern, COLOR.as_ptr() as *const c_char, FC_TRUE);
                 (api.pattern_add_charset)(pattern, CHARSET.as_ptr() as *const c_char, charset);
-                (api.config_substitute)(self.config, pattern, FC_MATCH_PATTERN);
-                (api.default_substitute)(pattern);
-
-                let mut result: c_int = 0;
-                let matched = (api.font_match)(self.config, pattern, &mut result);
-                let found = if matched.is_null() || result != FC_RESULT_MATCH {
-                    None
-                } else {
-                    self.describe(matched, character)
-                };
-
-                if !matched.is_null() {
-                    (api.pattern_destroy)(matched);
-                }
+                let found =
+                    self.first_readable(pattern, true, |font| self.describe(font, character));
                 (api.pattern_destroy)(pattern);
                 (api.charset_destroy)(charset);
                 found
@@ -345,52 +308,145 @@ mod fontconfig {
             family: &str,
             request: FaceRequest,
         ) -> Option<(PathBuf, u32)> {
-            let api = &self.api;
             let requested = CString::new(family).ok()?;
             unsafe {
-                let pattern = (api.pattern_create)();
+                let pattern = self.styled_pattern(requested.as_ptr() as *const u8, request);
                 if pattern.is_null() {
                     return None;
                 }
-                (api.pattern_add_string)(
-                    pattern,
-                    FAMILY.as_ptr() as *const c_char,
-                    requested.as_ptr() as *const u8,
-                );
-                (api.pattern_add_integer)(
-                    pattern,
-                    WEIGHT.as_ptr() as *const c_char,
-                    fontconfig_weight(request.weight),
-                );
-                (api.pattern_add_integer)(
-                    pattern,
-                    SLANT.as_ptr() as *const c_char,
-                    if request.italic {
-                        FC_SLANT_ITALIC
+                let found = self.first_readable(pattern, false, |font| {
+                    if self.answers_to(font, family) {
+                        self.locate(font)
                     } else {
-                        FC_SLANT_ROMAN
-                    },
-                );
-                (api.config_substitute)(self.config, pattern, FC_MATCH_PATTERN);
-                (api.default_substitute)(pattern);
+                        None
+                    }
+                });
+                (self.api.pattern_destroy)(pattern);
+                found
+            }
+        }
 
-                let mut result: c_int = 0;
+        #[cfg(test)]
+        pub(super) fn first_choice_for_family(
+            &self,
+            family: &str,
+            request: FaceRequest,
+        ) -> Option<PathBuf> {
+            let requested = CString::new(family).ok()?;
+            unsafe {
+                self.first_choice(self.styled_pattern(requested.as_ptr() as *const u8, request))
+            }
+        }
+
+        #[cfg(test)]
+        pub(super) fn first_choice_for_codepoint(
+            &self,
+            request: FaceRequest,
+            character: char,
+        ) -> Option<PathBuf> {
+            let api = &self.api;
+            unsafe {
+                let charset = (api.charset_create)();
+                (api.charset_add_char)(charset, character as u32);
+                let pattern = self.styled_pattern(MONOSPACE.as_ptr(), request);
+                (api.pattern_add_charset)(pattern, CHARSET.as_ptr() as *const c_char, charset);
+                let found = self.first_choice(pattern);
+                (api.charset_destroy)(charset);
+                found
+            }
+        }
+
+        #[cfg(test)]
+        unsafe fn first_choice(&self, pattern: *mut Pattern) -> Option<PathBuf> {
+            let api = &self.api;
+            if pattern.is_null() {
+                return None;
+            }
+            (api.config_substitute)(self.config, pattern, FC_MATCH_PATTERN);
+            (api.default_substitute)(pattern);
+            let mut result: c_int = 0;
+            let matched = (api.font_match)(self.config, pattern, &mut result);
+            let found = if matched.is_null() || result != FC_RESULT_MATCH {
+                None
+            } else {
+                self.locate(matched).map(|(path, _)| path)
+            };
+            if !matched.is_null() {
+                (api.pattern_destroy)(matched);
+            }
+            (api.pattern_destroy)(pattern);
+            found
+        }
+
+        unsafe fn styled_pattern(&self, family: *const u8, request: FaceRequest) -> *mut Pattern {
+            let api = &self.api;
+            let pattern = (api.pattern_create)();
+            if pattern.is_null() {
+                return pattern;
+            }
+            (api.pattern_add_string)(pattern, FAMILY.as_ptr() as *const c_char, family);
+            (api.pattern_add_integer)(
+                pattern,
+                WEIGHT.as_ptr() as *const c_char,
+                fontconfig_weight(request.weight),
+            );
+            (api.pattern_add_integer)(
+                pattern,
+                SLANT.as_ptr() as *const c_char,
+                if request.italic {
+                    FC_SLANT_ITALIC
+                } else {
+                    FC_SLANT_ROMAN
+                },
+            );
+            pattern
+        }
+
+        unsafe fn first_readable(
+            &self,
+            pattern: *mut Pattern,
+            try_best_match_first: bool,
+            accept: impl Fn(*mut Pattern) -> Option<(PathBuf, u32)>,
+        ) -> Option<(PathBuf, u32)> {
+            let api = &self.api;
+            (api.config_substitute)(self.config, pattern, FC_MATCH_PATTERN);
+            (api.default_substitute)(pattern);
+
+            let mut result: c_int = 0;
+            if try_best_match_first {
                 let matched = (api.font_match)(self.config, pattern, &mut result);
-                let found = if matched.is_null()
-                    || result != FC_RESULT_MATCH
-                    || !self.answers_to(matched, family)
-                {
+                let found = if matched.is_null() || result != FC_RESULT_MATCH {
                     None
                 } else {
-                    self.locate(matched)
+                    accept(matched).filter(|(path, _)| is_sfnt(path))
                 };
-
                 if !matched.is_null() {
                     (api.pattern_destroy)(matched);
                 }
-                (api.pattern_destroy)(pattern);
-                found
+                if found.is_some() {
+                    return found;
+                }
             }
+
+            let sorted =
+                (api.font_sort)(self.config, pattern, 0, std::ptr::null_mut(), &mut result);
+            if sorted.is_null() {
+                return None;
+            }
+            let set = &*sorted;
+            let mut found = None;
+            for position in 0..set.nfont.max(0) as usize {
+                let candidate = *set.fonts.add(position);
+                if candidate.is_null() {
+                    continue;
+                }
+                if let Some(located) = accept(candidate).filter(|(path, _)| is_sfnt(path)) {
+                    found = Some(located);
+                    break;
+                }
+            }
+            (api.font_set_destroy)(sorted);
+            found
         }
 
         pub(super) fn monospace_families(&self) -> Vec<String> {
@@ -515,6 +571,15 @@ mod fontconfig {
         (index as u32) & 0xffff
     }
 
+    pub(super) fn is_sfnt(path: &std::path::Path) -> bool {
+        use std::io::Read;
+        let mut tag = [0u8; 4];
+        std::fs::File::open(path)
+            .and_then(|mut file| file.read_exact(&mut tag))
+            .is_ok()
+            && matches!(&tag, b"\x00\x01\x00\x00" | b"OTTO" | b"true" | b"ttcf")
+    }
+
     unsafe fn load(name: &str) -> Result<Api, libloading::Error> {
         let library = libloading::Library::new(name)?;
 
@@ -542,6 +607,7 @@ mod fontconfig {
             config_substitute: symbol!(b"FcConfigSubstitute\0"),
             default_substitute: symbol!(b"FcDefaultSubstitute\0"),
             font_match: symbol!(b"FcFontMatch\0"),
+            font_sort: symbol!(b"FcFontSort\0"),
             object_set_create: symbol!(b"FcObjectSetCreate\0"),
             object_set_add: symbol!(b"FcObjectSetAdd\0"),
             object_set_destroy: symbol!(b"FcObjectSetDestroy\0"),
@@ -550,6 +616,67 @@ mod fontconfig {
             _library: library,
         })
     }
+}
+
+#[cfg(test)]
+pub fn woff_wrapped(sfnt: &[u8]) -> Vec<u8> {
+    let read_u16 = |at: usize| u16::from_be_bytes([sfnt[at], sfnt[at + 1]]);
+    let read_u32 = |at: usize| u32::from_be_bytes(sfnt[at..at + 4].try_into().unwrap());
+    let padded = |length: usize| (length + 3) & !3;
+    let tables: Vec<([u8; 4], u32, usize, usize)> = (0..read_u16(4) as usize)
+        .map(|position| {
+            let record = 12 + position * 16;
+            (
+                sfnt[record..record + 4].try_into().unwrap(),
+                read_u32(record + 4),
+                read_u32(record + 8) as usize,
+                read_u32(record + 12) as usize,
+            )
+        })
+        .collect();
+    let sfnt_size = 12 + 16 * tables.len() + tables.iter().map(|t| padded(t.3)).sum::<usize>();
+    let mut offset = 44 + 20 * tables.len();
+    let mut directory = Vec::new();
+    let mut data = Vec::new();
+    for (tag, checksum, start, length) in &tables {
+        directory.extend_from_slice(tag);
+        directory.extend_from_slice(&(offset as u32).to_be_bytes());
+        directory.extend_from_slice(&(*length as u32).to_be_bytes());
+        directory.extend_from_slice(&(*length as u32).to_be_bytes());
+        directory.extend_from_slice(&checksum.to_be_bytes());
+        data.extend_from_slice(&sfnt[*start..*start + *length]);
+        data.resize(data.len() + padded(*length) - *length, 0);
+        offset += padded(*length);
+    }
+    let mut woff = Vec::new();
+    woff.extend_from_slice(b"wOFF");
+    woff.extend_from_slice(&sfnt[0..4]);
+    woff.extend_from_slice(&(offset as u32).to_be_bytes());
+    woff.extend_from_slice(&(tables.len() as u16).to_be_bytes());
+    woff.extend_from_slice(&0u16.to_be_bytes());
+    woff.extend_from_slice(&(sfnt_size as u32).to_be_bytes());
+    woff.extend_from_slice(&1u16.to_be_bytes());
+    woff.extend_from_slice(&0u16.to_be_bytes());
+    woff.extend_from_slice(&[0u8; 20]);
+    woff.extend_from_slice(&directory);
+    woff.extend_from_slice(&data);
+    woff
+}
+
+#[cfg(test)]
+pub fn a_web_font_beside_a_desktop_font(directory: &std::path::Path) {
+    let fonts = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/fonts");
+    let regular = std::fs::read(fonts.join("IosevkaTerm-Regular.ttf")).unwrap();
+    std::fs::write(
+        directory.join("IosevkaTerm-Regular.woff"),
+        woff_wrapped(&regular),
+    )
+    .unwrap();
+    std::fs::copy(
+        fonts.join("IosevkaTerm-Bold.ttf"),
+        directory.join("IosevkaTerm-Bold.ttf"),
+    )
+    .unwrap();
 }
 
 #[cfg(test)]
@@ -599,6 +726,105 @@ mod tests {
         assert_eq!(face_index((5 << 16) | 1), 1);
         assert_eq!(face_index(0x8000_0000_u32 as std::ffi::c_int), 0);
         assert_eq!(face_index(0x8000_0001_u32 as std::ffi::c_int), 1);
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    #[test]
+    fn only_files_the_font_parser_reads_are_taken_for_a_family() {
+        use fontconfig::is_sfnt;
+        let directory = tempfile::TempDir::new().unwrap();
+        let write = |name: &str, bytes: &[u8]| {
+            let path = directory.path().join(name);
+            std::fs::write(&path, bytes).unwrap();
+            path
+        };
+        assert!(is_sfnt(&write("a.ttf", b"\x00\x01\x00\x00rest")));
+        assert!(is_sfnt(&write("a.otf", b"OTTOrest")));
+        assert!(is_sfnt(&write("a.ttc", b"ttcfrest")));
+        assert!(!is_sfnt(&write("a.woff", b"wOFFrest")));
+        assert!(!is_sfnt(&write("a.woff2", b"wOF2rest")));
+        assert!(!is_sfnt(&write("short", b"OT")));
+        assert!(!is_sfnt(&directory.path().join("missing.otf")));
+        assert!(is_sfnt(
+            &embedded_font_dir().join("IosevkaTerm-Regular.ttf")
+        ));
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    fn web_font_discovery(directory: &std::path::Path) -> Option<Discovery> {
+        a_web_font_beside_a_desktop_font(directory);
+        let discovery = Discovery::synthetic(directory)?;
+        let first_choice = discovery
+            .0
+            .lock()
+            .unwrap()
+            .first_choice_for_family("Iosevka Term", FaceStyle::Regular.into());
+        let ranked_first = first_choice
+            .as_ref()
+            .and_then(|path| path.extension())
+            .is_some_and(|extension| extension == "woff");
+        if !ranked_first {
+            eprintln!(
+                "fontconfig here does not rank the web font first ({:?}); the case is untested",
+                first_choice
+            );
+            return None;
+        }
+        Some(discovery)
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    #[test]
+    fn a_family_whose_best_match_is_a_web_font_resolves_to_its_desktop_file() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let Some(discovery) = web_font_discovery(directory.path()) else {
+            return;
+        };
+        let (path, _) = discovery
+            .match_family("Iosevka Term", FaceStyle::Regular)
+            .expect("a family installed as a web font and a desktop font did not resolve");
+        assert_eq!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("IosevkaTerm-Bold.ttf")
+        );
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    #[test]
+    fn a_character_whose_best_match_is_a_web_font_resolves_to_a_desktop_file() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let Some(discovery) = web_font_discovery(directory.path()) else {
+            return;
+        };
+        let first_choice = discovery
+            .0
+            .lock()
+            .unwrap()
+            .first_choice_for_codepoint(FaceStyle::Regular.into(), 'A');
+        assert!(
+            first_choice
+                .as_ref()
+                .and_then(|path| path.extension())
+                .is_some_and(|extension| extension == "woff"),
+            "fontconfig did not rank the web font first for a character: {:?}",
+            first_choice
+        );
+        let (path, _) = discovery
+            .match_codepoint(FaceStyle::Regular, 'A')
+            .expect("a character carried by a desktop font did not resolve");
+        assert_eq!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("IosevkaTerm-Bold.ttf")
+        );
+    }
+
+    #[test]
+    fn a_wrapped_web_font_is_not_read_by_the_font_parser() {
+        let regular = std::fs::read(embedded_font_dir().join("IosevkaTerm-Regular.ttf")).unwrap();
+        let woff = woff_wrapped(&regular);
+        assert_eq!(&woff[0..4], b"wOFF");
+        assert!(swash::FontRef::from_index(&regular, 0).is_some());
+        assert!(swash::FontRef::from_index(&woff, 0).is_none());
     }
 
     #[cfg(not(any(target_os = "macos", windows)))]

@@ -95,6 +95,9 @@ impl FontStack {
     }
 
     pub(super) fn discovered(&mut self, style: FaceStyle, character: char) -> Option<Glyph> {
+        if !self.system_fallbacks {
+            return None;
+        }
         {
             self.discovery_queries += 1;
         }
@@ -129,7 +132,7 @@ impl FontStack {
             };
             if self.discovery.is_none() {
                 report!(
-                    "system_fonts is off, so the family {:?} set for {:?} text \
+                    "system font discovery is unavailable, so the family {:?} set for {:?} text \
                      is not looked up",
                     family,
                     style
