@@ -176,6 +176,32 @@ pub struct WebSocketConnections {
     pub web_client_id: String,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ClientDeclaration {
+    pub size: Option<zellij_utils::pane_size::Size>,
+    pub cell: Option<zellij_utils::pane_size::SizeInPixels>,
+    pub structured: bool,
+}
+
+impl ClientDeclaration {
+    fn query(&self) -> String {
+        let size = self
+            .size
+            .unwrap_or_else(crate::os_input_output::get_terminal_size);
+        let mut query = format!("&rows={}&cols={}", size.rows, size.cols);
+        if let Some(cell) = self.cell {
+            query.push_str(&format!(
+                "&cell_width={}&cell_height={}",
+                cell.width, cell.height
+            ));
+        }
+        if self.structured {
+            query.push_str("&structured=true");
+        }
+        query
+    }
+}
+
 impl std::fmt::Debug for WebSocketConnections {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WebSocketConnections")
@@ -191,6 +217,7 @@ pub async fn establish_websocket_connections(
     session_name: &str,
     ca_cert: Option<&Path>,
     insecure: bool,
+    declaration: ClientDeclaration,
 ) -> Result<WebSocketConnections, Box<dyn std::error::Error>> {
     let parsed_url = url::Url::parse(server_base_url)?;
     let host = parsed_url
@@ -205,24 +232,33 @@ pub async fn establish_websocket_connections(
     let ws_protocol = if is_tls { "wss" } else { "ws" };
     let base_host = format!("{}:{}", host, port);
 
+    let size_query = declaration.query();
+
     let terminal_url = if session_name.is_empty() {
         format!(
-            "{}://{}{WS_TERMINAL_ENDPOINT}?web_client_id={}",
+            "{}://{}{WS_TERMINAL_ENDPOINT}?web_client_id={}{}",
             ws_protocol,
             base_host,
-            urlencoding::encode(web_client_id)
+            urlencoding::encode(web_client_id),
+            size_query
         )
     } else {
         format!(
-            "{}://{}{WS_TERMINAL_ENDPOINT}/{}?web_client_id={}",
+            "{}://{}{WS_TERMINAL_ENDPOINT}/{}?web_client_id={}{}",
             ws_protocol,
             base_host,
             urlencoding::encode(session_name),
-            urlencoding::encode(web_client_id)
+            urlencoding::encode(web_client_id),
+            size_query
         )
     };
 
-    let control_url = format!("{}://{}{WS_CONTROL_ENDPOINT}", ws_protocol, base_host);
+    let control_url = format!(
+        "{}://{}{WS_CONTROL_ENDPOINT}?web_client_id={}",
+        ws_protocol,
+        base_host,
+        urlencoding::encode(web_client_id)
+    );
 
     log::info!("Connecting to terminal WebSocket: {}", terminal_url);
     log::info!("Connecting to control WebSocket: {}", control_url);
@@ -275,4 +311,39 @@ pub async fn establish_websocket_connections(
         control_ws,
         web_client_id: web_client_id.to_owned(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zellij_utils::pane_size::{Size, SizeInPixels};
+
+    #[test]
+    fn a_terminal_client_declares_only_the_size_it_always_declared() {
+        let size = crate::os_input_output::get_terminal_size();
+        assert_eq!(
+            ClientDeclaration::default().query(),
+            format!("&rows={}&cols={}", size.rows, size.cols),
+            "the terminal client's query string must not change shape"
+        );
+    }
+
+    #[test]
+    fn a_window_declares_its_own_grid_its_measured_cell_and_that_it_is_structured() {
+        let declaration = ClientDeclaration {
+            size: Some(Size {
+                rows: 40,
+                cols: 120,
+            }),
+            cell: Some(SizeInPixels {
+                width: 7,
+                height: 18,
+            }),
+            structured: true,
+        };
+        assert_eq!(
+            declaration.query(),
+            "&rows=40&cols=120&cell_width=7&cell_height=18&structured=true"
+        );
+    }
 }

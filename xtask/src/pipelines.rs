@@ -1,7 +1,7 @@
 //! Composite pipelines for the build system.
 //!
 //! Defines multiple "pipelines" that run specific individual steps in sequence.
-use crate::{build, clippy, format, metadata, test};
+use crate::{build, format, metadata, test};
 use crate::{flags, WorkspaceMember};
 use anyhow::Context;
 use xshell::{cmd, Shell};
@@ -13,7 +13,6 @@ use xshell::{cmd, Shell};
 /// - format
 /// - build
 /// - test
-/// - clippy
 pub fn make(sh: &Shell, flags: flags::Make) -> anyhow::Result<()> {
     let err_context = || format!("failed to run pipeline 'make' with args {flags:?}");
 
@@ -32,6 +31,7 @@ pub fn make(sh: &Shell, flags: flags::Make) -> anyhow::Result<()> {
                     no_plugins: false,
                     plugins_only: false,
                     no_web: flags.no_web,
+                    args: vec![],
                 },
             )
         })
@@ -41,10 +41,10 @@ pub fn make(sh: &Shell, flags: flags::Make) -> anyhow::Result<()> {
                 flags::Test {
                     args: vec![],
                     no_web: flags.no_web,
+                    no_terminal: false,
                 },
             )
         })
-        .and_then(|_| clippy::clippy(sh, flags::Clippy {}))
         .with_context(err_context)
 }
 
@@ -54,7 +54,6 @@ pub fn make(sh: &Shell, flags: flags::Make) -> anyhow::Result<()> {
 ///
 /// - [`build`](build::build) (release, plugins only)
 /// - [`build`](build::build) (release, without plugins)
-/// - [`manpage`](build::manpage)
 /// - Copy the executable to [target file](flags::Install::destination)
 pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
     let err_context = || format!("failed to run pipeline 'install' with args {flags:?}");
@@ -67,6 +66,7 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
             no_plugins: false,
             plugins_only: true,
             no_web: flags.no_web,
+            args: vec![],
         },
     )
     .and_then(|_| {
@@ -78,12 +78,9 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
                 no_plugins: true,
                 plugins_only: false,
                 no_web: flags.no_web,
+                args: flags.args.clone(),
             },
         )
-    })
-    .and_then(|_| {
-        // Generate man page
-        build::manpage(sh)
     })
     .with_context(err_context)?;
 
@@ -96,8 +93,11 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
             .join(&flags.destination)
     };
     sh.change_dir(crate::project_root());
-    sh.copy_file("target/release/zellij", &destination)
-        .with_context(err_context)
+    sh.copy_file(
+        crate::target_dir().join("release").join("zellij"),
+        &destination,
+    )
+    .with_context(err_context)
 }
 
 /// Run zellij debug build.
@@ -127,6 +127,8 @@ pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
             "disable_automatic_asset_installation web_server_capability"
         };
 
+        build::ensure_plugin_assets(sh).with_context(|| err_context(&flags))?;
+
         crate::cargo()
             .and_then(|cargo| {
                 cmd!(sh, "{cargo} run")
@@ -148,6 +150,7 @@ pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
                 no_plugins: false,
                 plugins_only: true,
                 no_web: flags.no_web,
+                args: vec![],
             },
         )
         .and_then(|_| crate::cargo())
@@ -191,37 +194,6 @@ pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
         })
         .with_context(|| err_context(&flags))
     }
-}
-
-/// Bundle all distributable content to `target/dist`.
-///
-/// This includes the optimized zellij executable from the [`install`] pipeline, the man page, the
-/// `.desktop` file and the application logo.
-pub fn dist(sh: &Shell, _flags: flags::Dist) -> anyhow::Result<()> {
-    let err_context = || "failed to run pipeline 'dist'";
-
-    sh.change_dir(crate::project_root());
-    if sh.path_exists("target/dist") {
-        sh.remove_path("target/dist").with_context(err_context)?;
-    }
-    sh.create_dir("target/dist")
-        .map_err(anyhow::Error::new)
-        .and_then(|_| {
-            install(
-                sh,
-                flags::Install {
-                    destination: crate::project_root().join("./target/dist/zellij"),
-                    no_web: false,
-                },
-            )
-        })
-        .with_context(err_context)?;
-
-    sh.create_dir("target/dist/man")
-        .and_then(|_| sh.copy_file("assets/man/zellij.1", "target/dist/man/zellij.1"))
-        .and_then(|_| sh.copy_file("assets/zellij.desktop", "target/dist/zellij.desktop"))
-        .and_then(|_| sh.copy_file("assets/logo.png", "target/dist/logo.png"))
-        .with_context(err_context)
 }
 
 /// Actions for the user to choose from to resolve publishing errors/conflicts.
@@ -268,7 +240,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
     let manifest = sh
         .read_file(project_dir.join("Cargo.toml"))
         .context(err_context)?
-        .parse::<toml::Value>()
+        .parse::<toml::Table>()
         .context(err_context)?;
     // Version of the core crate
     let version = manifest
@@ -323,6 +295,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                 no_plugins: false,
                 plugins_only: true,
                 no_web: false,
+                args: vec![],
             },
         )
         .context(err_context)?;

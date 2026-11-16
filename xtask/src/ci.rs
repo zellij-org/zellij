@@ -1,6 +1,6 @@
 //! Tasks related to zellij CI
 use crate::{
-    build,
+    assets, build,
     flags::{self, BuildRelease, CiCmd, Cross, E2e},
     metadata,
 };
@@ -55,6 +55,7 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
             no_plugins: false,
             plugins_only: true,
             no_web: false,
+            args: vec![],
         },
     )
     .context(err_context)?;
@@ -62,7 +63,7 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
     // Copy plugins to e2e data-dir
     let plugin_dir = crate::asset_dir().join("plugins");
     let project_root = crate::project_root();
-    let data_dir = project_root.join("target").join("e2e-data");
+    let data_dir = crate::target_dir().join("e2e-data");
     let plugins: Vec<_> = std::fs::read_dir(plugin_dir)
         .context(err_context)?
         .filter_map(|dir_entry| {
@@ -145,6 +146,8 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
 fn build_release(sh: &Shell, no_web: bool) -> anyhow::Result<()> {
     let err_context = "failed to perform native release build";
 
+    assets::assets(sh, flags::Assets { check: true }).context(err_context)?;
+
     // Build plugins and generate protobufs
     build::build(
         sh,
@@ -153,6 +156,7 @@ fn build_release(sh: &Shell, no_web: bool) -> anyhow::Result<()> {
             no_plugins: false,
             plugins_only: true,
             no_web,
+            args: vec![],
         },
     )
     .context(err_context)?;
@@ -223,20 +227,30 @@ fn e2e_test(sh: &Shell, args: Vec<OsString>) -> anyhow::Result<()> {
         .context(err_context)
 }
 
+const GNU_LINUX_SUFFIX: &str = "-unknown-linux-gnu";
+const OLDEST_GLIBC: &str = "2.17";
+
+fn builds_with_zig(target: &OsString) -> bool {
+    target
+        .to_str()
+        .is_some_and(|target| target.ends_with(GNU_LINUX_SUFFIX))
+}
+
 fn cross_compile(sh: &Shell, target: &OsString, no_web: bool) -> anyhow::Result<()> {
     let err_context = || format!("failed to cross-compile for {target:?}");
+    let with_zig = builds_with_zig(target);
 
-    crate::cargo()
-        .and_then(|cargo| {
-            cmd!(sh, "{cargo} install mandown").run()?;
-            Ok(cargo)
-        })
-        .and_then(|cargo| {
-            cmd!(sh, "{cargo} install cross")
-                .run()
-                .map_err(anyhow::Error::new)
-        })
-        .with_context(err_context)?;
+    if with_zig {
+        zig_tools(sh, target).with_context(err_context)?;
+    } else {
+        crate::cargo()
+            .and_then(|cargo| {
+                cmd!(sh, "{cargo} install cross")
+                    .run()
+                    .map_err(anyhow::Error::new)
+            })
+            .with_context(err_context)?;
+    }
 
     build::build(
         sh,
@@ -245,38 +259,60 @@ fn cross_compile(sh: &Shell, target: &OsString, no_web: bool) -> anyhow::Result<
             no_plugins: false,
             plugins_only: true,
             no_web,
+            args: vec![],
         },
     )
-    .and_then(|_| build::manpage(sh))
     .with_context(err_context)?;
 
-    cross()
-        .and_then(|cross| {
-            if no_web {
-                match metadata::get_no_web_features(sh, ".")
-                    .context("Failed to check web features for cross compilation")?
-                {
-                    Some(features) => {
-                        let mut cmd = cmd!(sh, "{cross} build --verbose --release --target {target} --no-default-features");
-                        if !features.is_empty() {
-                            cmd = cmd.arg("--features").arg(features);
-                        }
-                        cmd.run().map_err(anyhow::Error::new)
-                    },
-                    None => {
-                        // Main crate doesn't have web_server_capability, build normally
-                        cmd!(sh, "{cross} build --verbose --release --target {target}")
-                            .run()
-                            .map_err(anyhow::Error::new)
-                    },
-                }
-            } else {
-                cmd!(sh, "{cross} build --verbose --release --target {target}")
-                    .run()
-                    .map_err(anyhow::Error::new)
-            }
-        })
+    let features = if no_web {
+        metadata::get_no_web_features(sh, ".")
+            .context("Failed to check web features for cross compilation")
+            .with_context(err_context)?
+    } else {
+        None
+    };
+
+    let _pd = sh.push_dir(crate::project_root());
+    let mut command = if with_zig {
+        let cargo = crate::cargo().with_context(err_context)?;
+        let mut zig_target = target.clone();
+        zig_target.push(".");
+        zig_target.push(OLDEST_GLIBC);
+        cmd!(
+            sh,
+            "{cargo} zigbuild --verbose --release --target {zig_target}"
+        )
+        .env("LIBZ_SYS_STATIC", "1")
+    } else {
+        let cross = cross().with_context(err_context)?;
+        cmd!(sh, "{cross} build --verbose --release --target {target}")
+    };
+    if let Some(features) = features {
+        command = command.arg("--no-default-features");
+        if !features.is_empty() {
+            command = command.arg("--features").arg(features);
+        }
+    }
+    command
+        .run()
+        .map_err(anyhow::Error::new)
         .with_context(err_context)
+}
+
+fn zig_tools(sh: &Shell, target: &OsString) -> anyhow::Result<()> {
+    if which::which("zig").is_err() {
+        eprintln!("!! 'zig' wasn't found but is needed to build {target:?}.");
+        eprintln!("!! Please install it from https://ziglang.org/download/");
+        anyhow::bail!("couldn't find 'zig'");
+    }
+    if which::which("cargo-zigbuild").is_err() {
+        eprintln!("!! 'cargo-zigbuild' wasn't found but is needed to build {target:?}.");
+        eprintln!("!! Please install it with: `cargo install --locked cargo-zigbuild`");
+        anyhow::bail!("couldn't find 'cargo-zigbuild'");
+    }
+    cmd!(sh, "rustup target add {target}")
+        .run()
+        .context("failed to add the Rust target")
 }
 
 fn cross() -> anyhow::Result<PathBuf> {

@@ -259,7 +259,11 @@ impl Default for WebClientConfig {
 
 impl WebClientConfig {
     pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
-        let mut web_client_config = WebClientConfig::default();
+        WebClientConfig::from_kdl_over(kdl, &WebClientConfig::default())
+    }
+
+    pub fn from_kdl_over(kdl: &KdlNode, base: &WebClientConfig) -> Result<Self, ConfigError> {
+        let mut web_client_config = base.clone();
 
         if let Some(font) = kdl_get_child_entry_string_value!(kdl, "font") {
             web_client_config.font = font.to_owned();

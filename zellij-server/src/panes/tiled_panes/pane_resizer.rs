@@ -1,10 +1,6 @@
 use super::stacked_panes::StackedPanes;
 use crate::{panes::PaneId, tab::Pane};
-use cassowary::{
-    strength::{REQUIRED, STRONG},
-    Expression, Solver, Variable,
-    WeightedRelation::EQ,
-};
+use kasuari::{Expression, Solver, Strength, Variable, WeightedRelation::EQ};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -68,13 +64,13 @@ impl<'a> PaneResizer<'a> {
             .map(|b| self.spans_in_boundary(direction, b))
             .collect();
 
-        let constraints: HashSet<_> = grid
-            .iter()
-            .flat_map(|s| constrain_spans(space, s))
-            .collect();
+        let mut constraints: HashSet<kasuari::Constraint> = HashSet::new();
+        for spans in &grid {
+            constraints.extend(constrain_spans(space, spans)?);
+        }
 
         self.solver
-            .add_constraints(&constraints)
+            .add_constraints(constraints)
             .map_err(|e| format!("{:?}", e))?;
 
         Ok(grid)
@@ -137,17 +133,20 @@ impl<'a> PaneResizer<'a> {
         // If pane stacks are too tall to fit on the screen, abandon ship before the status bar gets caught up in
         // any erroneous resizing...
         for span in spans {
-            let pane_is_stacked = self
+            let Some(pane_is_stacked) = self
                 .panes
                 .borrow()
                 .get(&span.pid)
-                .unwrap()
-                .current_geom()
-                .is_stacked();
+                .map(|p| p.current_geom().is_stacked())
+            else {
+                return false;
+            };
             if pane_is_stacked && span.direction == SplitDirection::Vertical {
-                let min_stack_height = StackedPanes::new(self.panes.clone())
-                    .min_stack_height(&span.pid)
-                    .unwrap();
+                let Ok(min_stack_height) =
+                    StackedPanes::new(self.panes.clone()).min_stack_height(&span.pid)
+                else {
+                    return false;
+                };
                 if span.size.as_usize() < min_stack_height {
                     return false;
                 }
@@ -160,17 +159,20 @@ impl<'a> PaneResizer<'a> {
         let err_context = || format!("Failed to apply spans");
         let mut geoms_changed = false;
         for span in spans {
-            let pane_is_stacked = self
+            let Some(pane_is_stacked) = self
                 .panes
                 .borrow()
                 .get(&span.pid)
-                .unwrap()
-                .current_geom()
-                .is_stacked();
+                .map(|p| p.current_geom().is_stacked())
+            else {
+                continue;
+            };
             if pane_is_stacked {
-                let current_geom = StackedPanes::new(self.panes.clone())
-                    .position_and_size_of_stack(&span.pid)
-                    .unwrap();
+                let Some(current_geom) =
+                    StackedPanes::new(self.panes.clone()).position_and_size_of_stack(&span.pid)
+                else {
+                    continue;
+                };
                 let new_geom = match span.direction {
                     SplitDirection::Horizontal => PaneGeom {
                         x: span.pos,
@@ -191,7 +193,9 @@ impl<'a> PaneResizer<'a> {
                 }
             } else {
                 let mut panes = self.panes.borrow_mut();
-                let pane = panes.get_mut(&span.pid).unwrap();
+                let Some(pane) = panes.get_mut(&span.pid) else {
+                    continue;
+                };
                 let current_geom = pane.position_and_size();
                 let new_geom = match span.direction {
                     SplitDirection::Horizontal => PaneGeom {
@@ -287,7 +291,7 @@ impl<'a> PaneResizer<'a> {
                 Some(pas)
             }
         }?;
-        let size_var = *self.vars.get(&pane.pid()).unwrap();
+        let size_var = *self.vars.get(&pane.pid())?;
         match direction {
             SplitDirection::Horizontal => Some(Span {
                 pid: pane.pid(),
@@ -307,7 +311,7 @@ impl<'a> PaneResizer<'a> {
     }
 }
 
-fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constraint> {
+fn constrain_spans(space: usize, spans: &[Span]) -> Result<HashSet<kasuari::Constraint>, String> {
     let mut constraints = HashSet::new();
 
     // Calculating "flexible" space (space not consumed by fixed-size spans)
@@ -319,22 +323,32 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
         }
     });
 
+    let has_flexible_spans = spans
+        .iter()
+        .any(|s| matches!(s.size.constraint, Constraint::Percent(_)));
+    if new_flex_space == 0 && has_flexible_spans {
+        return Err("Ran out of room for spans".into());
+    }
+
     // Spans must use all of the available space
     let full_size = spans
         .iter()
         .fold(Expression::from_constant(0.0), |acc, s| acc + s.size_var);
-    constraints.insert(full_size.clone() | EQ(REQUIRED) | space as f64);
+    constraints.insert(full_size.clone() | EQ(Strength::REQUIRED) | space as f64);
 
     // Try to maintain ratios and lock non-flexible sizes
     for span in spans {
         match span.size.constraint {
-            Constraint::Fixed(s) => constraints.insert(span.size_var | EQ(REQUIRED) | s as f64),
-            Constraint::Percent(p) => constraints
-                .insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | (p / 100.0)),
+            Constraint::Fixed(s) => {
+                constraints.insert(span.size_var | EQ(Strength::REQUIRED) | s as f64)
+            },
+            Constraint::Percent(p) => constraints.insert(
+                (span.size_var / new_flex_space as f64) | EQ(Strength::STRONG) | (p / 100.0),
+            ),
         };
     }
 
-    constraints
+    Ok(constraints)
 }
 
 fn stable_round(x: f64) -> f64 {

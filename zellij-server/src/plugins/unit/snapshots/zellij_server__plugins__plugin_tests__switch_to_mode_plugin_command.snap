@@ -4,11 +4,8 @@ expression: "format!(\"{:#?}\", switch_to_mode_event)"
 ---
 Some(
     ChangeMode(
-        Tab,
-        Some(
-            Normal,
-        ),
         1,
+        Tab,
         Some(
             NotificationEnd {
                 channel: None,

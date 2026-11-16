@@ -136,7 +136,11 @@ fn init_db(conn: &Connection) -> Result<()> {
 pub fn hash_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{:02x}", byte))
+        .collect()
 }
 
 pub fn create_token(name: Option<String>, read_only: bool) -> Result<(String, String)> {

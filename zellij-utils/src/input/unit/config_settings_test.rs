@@ -1,0 +1,571 @@
+use super::super::config::Config;
+use super::super::config_settings::*;
+use super::super::options::{
+    Clipboard, HostNotificationProtocol, NestedSessionHandling, OnForceClose, Options,
+    PaneFrameStyle,
+};
+use super::super::terminal::TerminalConfig;
+use super::super::theme::{FrameConfig, UiConfig};
+use super::super::web_client::{CursorInactiveStyle, CursorStyle, WebClientConfig};
+use crate::data::{
+    BorderStyleOverride, InputMode, LineStyle, SettingKey, SettingSection, ThemeHue, WebSharing,
+};
+use kdl::KdlDocument;
+use std::collections::BTreeSet;
+use std::path::PathBuf;
+
+fn every_option_set() -> Options {
+    Options {
+        simplified_ui: Some(true),
+        theme: Some("dracula".to_owned()),
+        theme_dark: Some("nord".to_owned()),
+        theme_light: Some("gruvbox-light".to_owned()),
+        explicit_theme_hue: Some(ThemeHue::Light),
+        default_mode: Some(InputMode::Locked),
+        default_shell: Some(PathBuf::from("/bin/fish")),
+        default_cwd: Some(PathBuf::from("/tmp/work")),
+        default_layout: Some(PathBuf::from("compact")),
+        layout_dir: Some(PathBuf::from("/tmp/layouts")),
+        theme_dir: Some(PathBuf::from("/tmp/themes")),
+        keybinds_dir: Some(PathBuf::from("/tmp/keybinds")),
+        keybinds_preset: None,
+        keybinds_primary: None,
+        keybinds_secondary: None,
+        keybinds_unlock: None,
+        mouse_mode: Some(false),
+        pane_frames: Some(false),
+        pane_frame_style: Some(PaneFrameStyle::Full),
+        mirror_session: Some(true),
+        on_force_close: Some(OnForceClose::Quit),
+        scroll_buffer_size: Some(5000),
+        copy_command: Some("wl-copy".to_owned()),
+        copy_clipboard: Some(Clipboard::Primary),
+        copy_on_select: Some(false),
+        osc8_hyperlinks: Some(false),
+        scrollback_editor: Some(PathBuf::from("/usr/bin/vim")),
+        session_name: Some("work".to_owned()),
+        attach_to_session: Some(true),
+        auto_layout: Some(false),
+        session_serialization: Some(false),
+        serialize_pane_viewport: Some(true),
+        scrollback_lines_to_serialize: Some(1000),
+        styled_underlines: Some(false),
+        serialization_interval: Some(30),
+        disable_session_metadata: Some(true),
+        support_kitty_keyboard_protocol: Some(false),
+        support_kitty_graphics_protocol: Some(false),
+        grapheme_clusters: Some(false),
+        mirror_resizes_source_pane: Some(false),
+        live_view_release_key: Some("Ctrl Alt End".to_owned()),
+        web_server: Some(true),
+        web_sharing: Some(WebSharing::Disabled),
+        stacked_resize: Some(false),
+        stacked_pane_list: Some(false),
+        stacked_pane_list_orientation: Some(
+            crate::input::options::StackListOrientation::Horizontal,
+        ),
+        show_startup_tips: Some(false),
+        show_release_notes: Some(false),
+        advanced_mouse_actions: Some(false),
+        mouse_scroll_resize: Some(false),
+        scroll_mode_sync: Some(false),
+        mouse_hover_effects: Some(false),
+        mouse_hover_tips: Some(false),
+        visual_bell: Some(false),
+        focus_follows_mouse: Some(true),
+        mouse_click_through: Some(true),
+        context_menu_enabled: Some(false),
+        osc133_command_selection: Some(false),
+        word_separators: Some("[]".to_owned()),
+        host_notification_protocol: Some(HostNotificationProtocol::Osc99),
+        web_server_ip: Some("127.0.0.2".parse().unwrap()),
+        web_server_port: Some(9000),
+        web_server_cert: Some(PathBuf::from("/tmp/cert.pem")),
+        web_server_key: Some(PathBuf::from("/tmp/key.pem")),
+        enforce_https_for_localhost: Some(true),
+        dangerously_allow_web_serving_without_a_certificate: Some(true),
+        post_command_discovery_hook: Some("echo hook".to_owned()),
+        client_async_worker_tasks: Some(8),
+        nested_session_handling: Some(NestedSessionHandling::Never),
+        dangerously_enable_paste_buffer_read: Some(true),
+        session_indicator: Some(false),
+        swap_layout_notification: Some(false),
+        on_quit: Some(crate::input::options::OnQuit::Detach),
+        bars_hidden_on_start: Some(crate::data::HiddenBars::from_names(&["tab-bar"])),
+        hidden_bars_notification: Some(false),
+        mode_hints_when_bars_hidden: Some(false),
+    }
+}
+
+fn every_border_override_set(line_style: LineStyle) -> BorderStyleOverride {
+    BorderStyleOverride {
+        all: Some(line_style),
+        top: Some(LineStyle::Double),
+        right: Some(LineStyle::Dashed),
+        bottom: Some(LineStyle::HeavyDashed),
+        left: Some(LineStyle::Single),
+        rounded_corners: Some(true),
+    }
+}
+
+const EVERY_BLOCK_SET: &str = "keybinds preset=\"default\"
+mousebinds {
+    normal {
+        bind \"Alt Middle\" { NewTab; }
+    }
+}
+plugins {
+    mine location=\"zellij:strider\" {
+        size \"3\"
+    }
+}
+load_plugins {
+    \"zellij:strider\"
+}
+env {
+    EDITOR \"vim\"
+}
+themes {
+    mine {
+        fg 1
+        bg 2
+        red 3
+        green 4
+        blue 5
+        yellow 6
+        magenta 7
+        orange 8
+        cyan 9
+        black 10
+        white 11
+    }
+}
+context_menu {
+    pane clear-defaults=true {
+        item \"Mine\" { NewTab; }
+    }
+}
+";
+
+const EVERY_WINDOW_SETTING_SET: &str = "terminal {
+    font \"Iosevka Term\"
+    font_bold \"Iosevka Term Bold\"
+    font_italic \"Iosevka Term Italic\"
+    font_bold_italic \"Iosevka Term Bold Italic\"
+    font_size 13.5
+    font_weight 500
+    system_fonts false
+    ligatures false
+    font_features \"calt\" \"ss01\"
+    cursor_style \"bar\"
+    cursor_blink false
+    cursor_unfocused_hollow false
+    startup_mode \"maximized\"
+    terminal_requests \"existing_session\"
+    initial_columns 120
+    initial_rows 40
+    opacity 0.9
+    opacity_mode \"everything\"
+    blur true
+    padding 4
+    padding_top 2.5
+    padding_right 3
+    padding_bottom 5
+    padding_left 6
+    padding_balance true
+    padding_color \"extend\"
+    line_height 1.2
+    cell_width 1.1
+    baseline_offset 1
+    underline_offset -1
+    underline_thickness 2
+    minimum_contrast 3.5
+    smooth_scrolling false
+    scroll_animation_duration 200
+    scroll_momentum false
+    scroll_momentum_friction 4.5
+    bell \"both\"
+    open_links false
+    open_links_with_shift false
+    shift_drag_selects false
+    reuse_session_windows false
+    middle_click_paste false
+    allow_remote_clipboard_read true
+    hide_pointer_while_typing true
+    macos_option_as_alt \"both\"
+    paste_keys \"Ctrl Shift v\" \"Shift Insert\"
+    copy_keys \"Ctrl Shift c\"
+    zoom_in_keys \"Ctrl =\"
+    zoom_out_keys \"Ctrl -\"
+    zoom_reset_keys \"Ctrl 0\"
+    fullscreen_keys \"F11\" \"Alt Enter\"
+    theme {
+        foreground 200 201 202
+        background \"#101112\"
+        cursor 7
+        black 0 0 0
+        red \"#ff0000\"
+        green 0 255 0
+        yellow 255 255 0
+        blue 0 0 255
+        magenta 255 0 255
+        cyan 0 255 255
+        white 250 250 250
+        bright_black 80 80 80
+        bright_red 255 80 80
+        bright_green 80 255 80
+        bright_yellow 255 255 80
+        bright_blue 80 80 255
+        bright_magenta 255 80 255
+        bright_cyan 80 255 255
+        bright_white 255 255 255
+    }
+}
+";
+
+pub(crate) fn every_window_setting_set() -> TerminalConfig {
+    let document: KdlDocument = EVERY_WINDOW_SETTING_SET.parse().unwrap();
+    TerminalConfig::from_kdl(document.get("terminal").unwrap()).unwrap()
+}
+
+pub(crate) fn every_setting_set() -> Config {
+    let with_preset = Config::from_kdl(
+        EVERY_BLOCK_SET,
+        Some(Config::from_default_assets().unwrap()),
+    )
+    .unwrap();
+    Config {
+        keybinds: with_preset.keybinds.clone(),
+        keybinds_layers: with_preset.keybinds_layers,
+        mousebinds: with_preset.mousebinds.clone(),
+        plugins: with_preset.plugins,
+        background_plugins: with_preset.background_plugins,
+        env: with_preset.env,
+        themes: with_preset.themes,
+        context_menu: with_preset.context_menu,
+        options: every_option_set(),
+        ui: UiConfig {
+            pane_frames: FrameConfig {
+                rounded_corners: true,
+                hide_session_name: true,
+                border_style: every_border_override_set(LineStyle::Heavy),
+                floating_border_style: every_border_override_set(LineStyle::Double),
+            },
+        },
+        web_client: WebClientConfig {
+            font: "Fira Code".to_owned(),
+            theme: None,
+            cursor_blink: true,
+            cursor_inactive_style: Some(CursorInactiveStyle::NoStyle),
+            cursor_style: Some(CursorStyle::Underline),
+            mac_option_is_meta: false,
+            base_url: Some("/zellij".to_owned()),
+            font_size: Some(14),
+        },
+        terminal: every_window_setting_set(),
+        attention: crate::input::attention::AttentionConfig {
+            frame_markers: Some(false),
+            host_status: Some(false),
+            tab_markers: Some(false),
+            idle_rule: Some(crate::input::attention::IdleRuleScope::Watched),
+            done_threshold_secs: Some(30),
+            track_commands: Some(false),
+            idle_activity_secs: Some(20),
+            idle_silence_secs: Some(5),
+            startup_card: Some(crate::input::attention::StartupCard::Never),
+            tray_icon: Some(false),
+            enabled: Some(false),
+            desktop_notifications: crate::input::attention::StatusMap {
+                needs_you: Some(true),
+                failed: Some(false),
+                done: Some(true),
+                ..Default::default()
+            },
+            tray_badge: crate::input::attention::StatusMap {
+                needs_you: Some(true),
+                failed: Some(true),
+                done: Some(false),
+                working: Some(false),
+                quiet: Some(true),
+                new_output: Some(true),
+            },
+            tray_badge_colors: crate::input::attention::StatusMap {
+                needs_you: Some([1, 2, 3]),
+                failed: Some([4, 5, 6]),
+                done: Some([7, 8, 9]),
+                working: Some([10, 11, 12]),
+                quiet: Some([13, 14, 15]),
+                new_output: Some([16, 17, 18]),
+            },
+            notification_details: Some(false),
+        },
+        ..Default::default()
+    }
+}
+
+fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
+    let document: KdlDocument = config.to_string(false).parse().unwrap();
+    let blocks = [
+        "keybinds",
+        "mousebinds",
+        "themes",
+        "plugins",
+        "load_plugins",
+        "ui",
+        "env",
+        "web_client",
+        "context_menu",
+        "terminal",
+        "attention",
+    ];
+    let mut names = BTreeSet::new();
+    for node in document.nodes() {
+        let name = node.name().value();
+        if !blocks.contains(&name) {
+            names.insert((SettingSection::TopLevel, name.to_owned()));
+        } else if ![
+            "keybinds",
+            "mousebinds",
+            "ui",
+            "web_client",
+            "terminal",
+            "attention",
+        ]
+        .contains(&name)
+        {
+            names.insert((SettingSection::Blocks, name.to_owned()));
+        }
+    }
+    names.insert((SettingSection::Keybinds, "keybinds".to_owned()));
+    names.insert((SettingSection::Keybinds, "mousebinds".to_owned()));
+    let pane_frames = document
+        .get("ui")
+        .and_then(|ui| ui.children())
+        .and_then(|ui| ui.get("pane_frames"))
+        .and_then(|pane_frames| pane_frames.children())
+        .unwrap();
+    for node in pane_frames.nodes() {
+        names.insert((SettingSection::PaneFrames, node.name().value().to_owned()));
+    }
+    let web_client = document
+        .get("web_client")
+        .and_then(|web_client| web_client.children())
+        .unwrap();
+    for node in web_client.nodes() {
+        names.insert((SettingSection::WebClient, node.name().value().to_owned()));
+    }
+    let attention = document
+        .get("attention")
+        .and_then(|attention| attention.children())
+        .unwrap();
+    for node in attention.nodes() {
+        let section = match node.name().value() {
+            "desktop_notifications" => Some(SettingSection::AttentionPopups),
+            "tray_badge" => Some(SettingSection::AttentionBadge),
+            "tray_badge_colors" => Some(SettingSection::AttentionBadgeColors),
+            _ => None,
+        };
+        match section {
+            Some(section) => {
+                for child in node.children().unwrap().nodes() {
+                    names.insert((section, child.name().value().to_owned()));
+                }
+            },
+            None => {
+                names.insert((SettingSection::Attention, node.name().value().to_owned()));
+            },
+        }
+    }
+    let window = document
+        .get("terminal")
+        .and_then(|window| window.children())
+        .unwrap();
+    for node in window.nodes() {
+        let name = node.name().value();
+        if name == "theme" {
+            for colour in node.children().unwrap().nodes() {
+                names.insert((
+                    SettingSection::TerminalTheme,
+                    colour.name().value().to_owned(),
+                ));
+            }
+        } else {
+            names.insert((SettingSection::Terminal, name.to_owned()));
+        }
+    }
+    names
+}
+
+#[test]
+fn every_setting_in_the_config_file_has_exactly_one_setting_key() {
+    let from_config_file = kdl_names_in(&every_setting_set());
+    let from_setting_keys: BTreeSet<(SettingSection, String)> = SettingKey::all()
+        .into_iter()
+        .map(|key| (key.section(), key.kdl_name().to_owned()))
+        .collect();
+    assert_eq!(from_setting_keys.len(), SettingKey::all().len());
+    assert_eq!(from_config_file, from_setting_keys);
+}
+
+#[test]
+fn every_setting_key_has_a_unique_id_that_reads_back() {
+    let ids: BTreeSet<String> = SettingKey::all().iter().map(|key| key.id()).collect();
+    assert_eq!(ids.len(), SettingKey::all().len());
+    for key in SettingKey::all() {
+        assert_eq!(SettingKey::from_id(&key.id()), Some(key));
+    }
+}
+
+#[test]
+fn every_setting_has_a_value_when_set_and_reads_back_from_the_file() {
+    let config = every_setting_set();
+    let values = setting_values(&config);
+    for key in SettingKey::all() {
+        assert!(values.contains_key(&key), "{} has no value", key);
+        if key != SettingKey::Keybinds && key != SettingKey::Mousebinds {
+            assert!(values[&key].is_some(), "{} has no value", key);
+        }
+    }
+    let read_back = Config::from_kdl(
+        &config.to_string(false),
+        Some(Config::from_default_assets().unwrap()),
+    )
+    .unwrap();
+    assert_eq!(setting_values(&read_back), values);
+    assert!(!settings_differ(&read_back, &config, SettingKey::Keybinds));
+    assert!(!settings_differ(
+        &read_back,
+        &config,
+        SettingKey::Mousebinds
+    ));
+}
+
+#[test]
+fn every_setting_is_found_in_a_file_that_sets_it() {
+    let file_contents = every_setting_set().to_string(false);
+    let set_in_file = settings_set_in_file(&file_contents);
+    assert_eq!(
+        set_in_file,
+        SettingKey::all().into_iter().collect::<BTreeSet<_>>()
+    );
+    assert!(settings_set_in_file("").is_empty());
+    let partial = settings_set_in_file("mouse_mode false\nweb_client {\n font \"x\"\n}\n");
+    assert_eq!(
+        partial,
+        [SettingKey::MouseMode, SettingKey::WebClientFont]
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+    );
+}
+
+#[test]
+fn copying_a_setting_changes_only_that_setting() {
+    let source = every_setting_set();
+    let default_values = setting_values(&Config::default());
+    for key in SettingKey::all() {
+        let mut target = Config::default();
+        copy_setting(&mut target, &source, key);
+        assert!(
+            !settings_differ(&target, &source, key),
+            "{} was not copied",
+            key
+        );
+        let target_values = setting_values(&target);
+        for other in SettingKey::all() {
+            if other != key {
+                assert_eq!(
+                    target_values[&other], default_values[&other],
+                    "copying {} changed {}",
+                    key, other
+                );
+            }
+        }
+        assert_eq!(differing_settings(&target, &Config::default()), vec![key]);
+    }
+}
+
+#[test]
+fn unsetting_a_setting_restores_its_default() {
+    let default_values = setting_values(&Config::default());
+    for key in SettingKey::all() {
+        let mut config = every_setting_set();
+        unset_setting(&mut config, key);
+        if key == SettingKey::Keybinds {
+            assert!(config.keybinds_layers.user.is_empty());
+            assert_eq!(
+                config.keybinds,
+                Config::from_default_assets().unwrap().keybinds
+            );
+        } else if key == SettingKey::Mousebinds {
+            assert!(config.keybinds_layers.user_mouse.is_empty());
+            assert_eq!(
+                config.mousebinds,
+                Config::from_default_assets().unwrap().mousebinds
+            );
+        } else {
+            assert_eq!(setting_value(&config, key), default_values[&key].clone());
+        }
+    }
+}
+
+#[test]
+fn a_partial_ui_or_web_client_block_keeps_the_other_values() {
+    let base = every_setting_set();
+    let changed = Config::from_kdl(
+        "ui {\n pane_frames {\n border_top \"single\"\n }\n}\nweb_client {\n font_size 20\n}\n",
+        Some(base.clone()),
+    )
+    .unwrap();
+    assert_eq!(
+        differing_settings(&base, &changed),
+        vec![SettingKey::FrameBorderTop, SettingKey::WebClientFontSize]
+    );
+}
+
+#[test]
+fn window_values_are_shown_as_plain_text() {
+    let config = every_setting_set();
+    assert_eq!(
+        setting_value(&config, SettingKey::TerminalFontSize).as_deref(),
+        Some("13.5")
+    );
+    assert_eq!(
+        setting_value(&config, SettingKey::TerminalOpacity).as_deref(),
+        Some("0.9")
+    );
+    assert_eq!(
+        setting_value(&config, SettingKey::TerminalPadding).as_deref(),
+        Some("4")
+    );
+    assert_eq!(
+        setting_value(&config, SettingKey::TerminalPasteKeys).as_deref(),
+        Some("Ctrl Shift v, Shift insert")
+    );
+    assert_eq!(
+        setting_value(&config, SettingKey::TerminalColorForeground).as_deref(),
+        Some("#c8c9ca")
+    );
+    assert_eq!(
+        setting_value(&config, SettingKey::TerminalColorRed).as_deref(),
+        Some("#ff0000")
+    );
+    assert_eq!(
+        setting_value(&config, SettingKey::TerminalColorCursor).as_deref(),
+        Some("7")
+    );
+}
+
+#[test]
+fn a_window_setting_applied_live_changes_only_that_setting() {
+    let base = every_setting_set();
+    for (key, value) in [
+        (SettingKey::TerminalOpacity, "0.5"),
+        (SettingKey::TerminalFontFeatures, "liga, zero"),
+        (SettingKey::TerminalColorBlue, "#123456"),
+        (SettingKey::TerminalCursorStyle, "underline"),
+    ] {
+        let changed = Config::from_kdl(&key.kdl_snippet(value), Some(base.clone())).unwrap();
+        assert_eq!(differing_settings(&base, &changed), vec![key]);
+        assert_eq!(setting_value(&changed, key).as_deref(), Some(value));
+    }
+}

@@ -61,6 +61,7 @@ impl ServerOsApi for MockOsApi {
         _: TerminalAction,
         _: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _: Option<PathBuf>,
+        _pane_env: &crate::os_input_output::PaneEnv,
     ) -> anyhow::Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
@@ -85,19 +86,18 @@ impl ServerOsApi for MockOsApi {
     fn send_to_client(&self, _: ClientId, _: ServerToClientMsg) -> anyhow::Result<()> {
         Ok(())
     }
-    fn new_client(
+    fn register_client(
         &mut self,
         _: ClientId,
-        _: LocalSocketStream,
-    ) -> anyhow::Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        _: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> anyhow::Result<()> {
         unimplemented!()
     }
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         _: ClientId,
         _: LocalSocketStream,
-        _: LocalSocketStream,
-    ) -> anyhow::Result<IpcReceiverWithContext<ClientToServerMsg>> {
+    ) -> anyhow::Result<()> {
         unimplemented!()
     }
     fn remove_client(&mut self, _: ClientId) -> anyhow::Result<()> {
@@ -125,6 +125,21 @@ impl ServerOsApi for MockOsApi {
     fn get_all_cmds_by_ppid(&self, _: &Option<String>) -> HashMap<String, Vec<String>> {
         self.cmds_by_ppid.lock().unwrap().clone()
     }
+    fn get_foreground_cmds(
+        &self,
+        panes: &[(u32, u32)],
+        _: &Option<String>,
+    ) -> HashMap<u32, Vec<String>> {
+        let cmds_by_ppid = self.cmds_by_ppid.lock().unwrap();
+        panes
+            .iter()
+            .filter_map(|(terminal_id, shell_pid)| {
+                cmds_by_ppid
+                    .get(&shell_pid.to_string())
+                    .map(|cmd| (*terminal_id, cmd.clone()))
+            })
+            .collect()
+    }
     fn write_to_file(&mut self, _: String, _: Option<String>) -> anyhow::Result<()> {
         Ok(())
     }
@@ -133,6 +148,7 @@ impl ServerOsApi for MockOsApi {
         _: u32,
         _: RunCommand,
         _: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        _pane_env: &crate::os_input_output::PaneEnv,
     ) -> anyhow::Result<(Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
@@ -149,7 +165,7 @@ fn make_pty_with_plugin_receiver(
     let mut bus: Bus<PtyInstruction> = Bus::empty().should_silently_fail();
     bus.os_input = Some(Box::new(mock));
     bus.senders.to_plugin = Some(plugin_sender);
-    let pty = Pty::new(bus, false, None, None);
+    let pty = Pty::new(bus, false, None, None, Default::default());
     (pty, plugin_rx)
 }
 
@@ -476,4 +492,158 @@ fn osc7_then_poll_skips_terminal() {
         cwd_events.is_empty() && cmd_events.is_empty(),
         "poll after osc7 should skip terminal since flag was cleared"
     );
+}
+
+fn session_with_terminal_pane(terminal_id: u32) -> SessionLayoutMetadata {
+    let mut meta = SessionLayoutMetadata::default();
+    let pane = crate::session_layout_metadata::PaneLayoutMetadata::new(
+        PaneId::Terminal(terminal_id),
+        zellij_utils::pane_size::PaneGeom::default(),
+        false,
+        None,
+        None,
+        false,
+        None,
+        vec![],
+        None,
+        None,
+        Default::default(),
+    );
+    meta.add_tab("tab1".to_string(), true, false, vec![pane], vec![]);
+    meta
+}
+
+fn serialized_run_and_cwd(pty: &mut Pty, terminal_id: u32) -> (Option<Run>, Option<PathBuf>) {
+    let mut meta = session_with_terminal_pane(terminal_id);
+    pty.populate_session_layout_metadata(&mut meta);
+    let manifest: session_serialization::GlobalLayoutManifest = meta.into();
+    let global_cwd = manifest.global_cwd;
+    let pane = manifest
+        .tabs
+        .into_iter()
+        .next()
+        .unwrap()
+        .1
+        .tiled_panes
+        .into_iter()
+        .next()
+        .unwrap();
+    let cwd = match (global_cwd, pane.cwd) {
+        (Some(global_cwd), Some(cwd)) => Some(global_cwd.join(cwd)),
+        (None, cwd) => cwd,
+        (global_cwd, None) => global_cwd,
+    };
+    (pane.run, cwd)
+}
+
+fn run_command(command: &str, args: Vec<&str>) -> Option<Run> {
+    let mut run_command = RunCommand::new(PathBuf::from(command));
+    run_command.args = args.into_iter().map(|a| a.to_string()).collect();
+    Some(Run::Command(run_command))
+}
+
+fn resurrect_command(command: &str, args: Vec<&str>, cwd: Option<&str>) -> ResurrectCommand {
+    ResurrectCommand {
+        command: PathBuf::from(command),
+        args: args.into_iter().map(|a| a.to_string()).collect(),
+        cwd: cwd.map(PathBuf::from),
+    }
+}
+
+#[test]
+fn resurrect_command_overrides_detected_command_and_cwd() {
+    let mock = MockOsApi::new();
+    let child_pid = 100;
+    mock.set_foreground_cmd(child_pid, vec!["htop".into()]);
+    mock.set_cwd(child_pid, PathBuf::from("/tmp/detected"));
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+    set_active_terminal(&mut pty, 1, child_pid);
+
+    pty.set_resurrect_command(
+        1,
+        Some(resurrect_command(
+            "opencode",
+            vec!["-s", "ses_abc"],
+            Some("/tmp/resurrected"),
+        )),
+    )
+    .unwrap();
+
+    let (run, cwd) = serialized_run_and_cwd(&mut pty, 1);
+    assert_eq!(run, run_command("opencode", vec!["-s", "ses_abc"]));
+    assert_eq!(cwd, Some(PathBuf::from("/tmp/resurrected")));
+}
+
+#[test]
+fn resurrect_command_without_cwd_keeps_detected_cwd() {
+    let mock = MockOsApi::new();
+    let child_pid = 100;
+    mock.set_foreground_cmd(child_pid, vec!["htop".into()]);
+    mock.set_cwd(child_pid, PathBuf::from("/tmp/detected"));
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+    set_active_terminal(&mut pty, 1, child_pid);
+
+    pty.set_resurrect_command(1, Some(resurrect_command("opencode", vec![], None)))
+        .unwrap();
+
+    let (run, cwd) = serialized_run_and_cwd(&mut pty, 1);
+    assert_eq!(run, run_command("opencode", vec![]));
+    assert_eq!(cwd, Some(PathBuf::from("/tmp/detected")));
+}
+
+#[test]
+fn cleared_resurrect_command_falls_back_to_detected_command() {
+    let mock = MockOsApi::new();
+    let child_pid = 100;
+    mock.set_foreground_cmd(child_pid, vec!["htop".into()]);
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+    set_active_terminal(&mut pty, 1, child_pid);
+
+    pty.set_resurrect_command(1, Some(resurrect_command("opencode", vec![], None)))
+        .unwrap();
+    pty.set_resurrect_command(1, None).unwrap();
+
+    let (run, _cwd) = serialized_run_and_cwd(&mut pty, 1);
+    assert_eq!(run, run_command("htop", vec![]));
+}
+
+#[test]
+fn resurrect_command_persists_after_foreground_command_changes() {
+    let mock = MockOsApi::new();
+    let child_pid = 100;
+    mock.set_foreground_cmd(child_pid, vec!["htop".into()]);
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock.clone());
+    set_active_terminal(&mut pty, 1, child_pid);
+
+    pty.set_resurrect_command(1, Some(resurrect_command("opencode", vec![], None)))
+        .unwrap();
+    mock.set_foreground_cmd(child_pid, vec!["top".into()]);
+
+    let (run, _cwd) = serialized_run_and_cwd(&mut pty, 1);
+    assert_eq!(run, run_command("opencode", vec![]));
+}
+
+#[test]
+fn closing_pane_removes_resurrect_command() {
+    let mock = MockOsApi::new();
+    let child_pid = 100;
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+    set_active_terminal(&mut pty, 1, child_pid);
+
+    pty.set_resurrect_command(1, Some(resurrect_command("opencode", vec![], None)))
+        .unwrap();
+    pty.close_pane(PaneId::Terminal(1)).unwrap();
+
+    assert!(!pty.resurrect_commands.contains_key(&1));
+}
+
+#[test]
+fn resurrect_command_for_unknown_terminal_is_rejected() {
+    let mock = MockOsApi::new();
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+
+    let result = pty.set_resurrect_command(7, Some(resurrect_command("opencode", vec![], None)));
+
+    assert!(result.is_err());
+    assert!(pty.resurrect_commands.is_empty());
 }

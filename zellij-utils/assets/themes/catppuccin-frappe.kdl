@@ -1,7 +1,7 @@
 themes {
     catppuccin-frappe {
         text_unselected {
-            base 198 208 245
+            base 225 232 255
             background 41 44 60
             emphasis_0 239 159 118
             emphasis_1 153 209 219
@@ -9,44 +9,52 @@ themes {
             emphasis_3 244 184 228
         }
         text_selected {
-            base 198 208 245
+            base 225 232 255
             background 98 104 128
-            emphasis_0 239 159 118
-            emphasis_1 153 209 219
-            emphasis_2 166 209 137
-            emphasis_3 244 184 228
+            emphasis_0 255 228 215
+            emphasis_1 185 242 252
+            emphasis_2 203 247 173
+            emphasis_3 255 225 246
         }
         ribbon_selected {
             base 41 44 60
             background 166 209 137
-            emphasis_0 231 130 132
-            emphasis_1 239 159 118
-            emphasis_2 244 184 228
-            emphasis_3 140 170 238
+            emphasis_0 142 50 57
+            emphasis_1 110 73 54
+            emphasis_2 98 74 91
+            emphasis_3 55 80 140
         }
         ribbon_unselected {
             base 41 44 60
             background 198 208 245
-            emphasis_0 231 130 132
-            emphasis_1 198 208 245
-            emphasis_2 140 170 238
-            emphasis_3 244 184 228
+            emphasis_0 152 59 65
+            emphasis_1 83 87 103
+            emphasis_2 73 88 124
+            emphasis_3 123 72 111
+        }
+        ribbon_hover {
+            base 41 44 60
+            background 198 208 245
+            emphasis_0 152 59 65
+            emphasis_1 83 87 103
+            emphasis_2 73 88 124
+            emphasis_3 123 72 111
         }
         table_title {
             base 166 209 137
-            background 0
+            background 41 44 60
             emphasis_0 239 159 118
             emphasis_1 153 209 219
             emphasis_2 166 209 137
             emphasis_3 244 184 228
         }
         table_cell_selected {
-            base 198 208 245
+            base 225 232 255
             background 98 104 128
-            emphasis_0 239 159 118
-            emphasis_1 153 209 219
-            emphasis_2 166 209 137
-            emphasis_3 244 184 228
+            emphasis_0 255 228 215
+            emphasis_1 185 242 252
+            emphasis_2 203 247 173
+            emphasis_3 255 225 246
         }
         table_cell_unselected {
             base 198 208 245
@@ -57,12 +65,12 @@ themes {
             emphasis_3 244 184 228
         }
         list_selected {
-            base 198 208 245
+            base 225 232 255
             background 98 104 128
-            emphasis_0 239 159 118
-            emphasis_1 153 209 219
-            emphasis_2 166 209 137
-            emphasis_3 244 184 228
+            emphasis_0 255 228 215
+            emphasis_1 185 242 252
+            emphasis_2 203 247 173
+            emphasis_3 255 225 246
         }
         list_unselected {
             base 198 208 245
@@ -78,7 +86,7 @@ themes {
             emphasis_0 239 159 118
             emphasis_1 153 209 219
             emphasis_2 244 184 228
-            emphasis_3 0
+            emphasis_3 244 184 228
         }
         frame_highlight {
             base 239 159 118
@@ -100,21 +108,40 @@ themes {
             base 231 130 132
             background 0
             emphasis_0 229 200 144
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 239 159 118
+            emphasis_2 244 184 228
+            emphasis_3 153 209 219
         }
         multiplayer_user_colors {
             player_1 244 184 228
             player_2 140 170 238
-            player_3 0
+            player_3 166 209 137
             player_4 229 200 144
             player_5 153 209 219
-            player_6 0
+            player_6 239 159 118
             player_7 231 130 132
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 187 185 255
+            player_9 254 166 172
+            player_10 128 203 255
+        }
+        // terminal_colors: https://github.com/catppuccin/alacritty/blob/main/catppuccin-frappe.toml
+        terminal_colors {
+            black 81 87 109
+            red 231 130 132
+            green 166 209 137
+            yellow 229 200 144
+            blue 140 170 238
+            magenta 244 184 228
+            cyan 129 200 190
+            white 181 191 226
+            bright_black 98 104 128
+            bright_red 231 130 132
+            bright_green 166 209 137
+            bright_yellow 229 200 144
+            bright_blue 140 170 238
+            bright_magenta 244 184 228
+            bright_cyan 129 200 190
+            bright_white 165 173 206
         }
     }
 }

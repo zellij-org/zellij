@@ -1,0 +1,17 @@
+plugins {
+    example-plugin location="zellij:example-plugin"
+}
+
+load_plugins {
+    "zellij:example-plugin"
+}
+
+keybinds {
+    session {
+        unbind "s"
+    }
+}
+
+default_layout "example"
+
+theme "gruvbox-dark"

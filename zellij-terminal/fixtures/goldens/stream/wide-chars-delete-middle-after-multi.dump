@@ -1,0 +1,51 @@
+size: 40x120
+cursor: row=0 col=25 visible shape=Default
+grid:
+|[aram@green zellij]$ 🏠 🏠 🏠                                                                                              |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 0: cols 21-21 fg=Foreground bg=Background flags=WIDE_CHAR
+row 0: cols 22-22 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 23-23 fg=Foreground bg=Background flags=WIDE_CHAR
+row 0: cols 24-24 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 25-25 fg=Foreground bg=Background flags=WIDE_CHAR
+row 0: cols 26-26 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+images:

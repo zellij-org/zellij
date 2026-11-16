@@ -51,3 +51,8 @@ sudo port install zellij
 ```
 sudo xbps-install zellij
 ```
+
+## Packaging the desktop app
+
+Packagers adding the launcher, icons and software-centre listing will find the
+details in [PACKAGING_DESKTOP.md](PACKAGING_DESKTOP.md).

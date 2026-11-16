@@ -7,4 +7,3 @@ license.workspace = true
 
 [dependencies]
 zellij-tile = { path = "../../zellij-tile" }
-fuzzy-matcher = "0.3.7"

@@ -391,7 +391,7 @@ impl App {
             short_text
         };
 
-        let text_element = Text::new(text).color_range(3, ..);
+        let text_element = Text::from(text).color_range(3, ..);
         let text_x = cols.saturating_sub(text.chars().count()) / 2;
         let text_y = rows / 2;
         print_text_with_coordinates(text_element, text_x, text_y, None, None);
@@ -603,15 +603,15 @@ impl TokenManager {
             },
             BareKey::Backspace if key.has_no_modifiers() => {
                 if let Some(ref mut name) = self.entering_new_name {
-                    name.pop();
+                    zellij_tile::graphemes::pop_cluster(name);
                     return true;
                 }
                 if let Some(ref mut name) = self.entering_new_read_only_name {
-                    name.pop();
+                    zellij_tile::graphemes::pop_cluster(name);
                     return true;
                 }
                 if let Some(ref mut name) = self.renaming_token {
-                    name.pop();
+                    zellij_tile::graphemes::pop_cluster(name);
                     return true;
                 }
             },

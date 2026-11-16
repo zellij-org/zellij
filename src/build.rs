@@ -7,7 +7,18 @@ fn main() {
         println!("cargo:rustc-link-arg=/STACK:8388608");
     }
 
-    // Embed the application icon into the Windows executable.
+    // Embed the application icon and manifest into the Windows executables.
     #[cfg(target_os = "windows")]
-    let _ = embed_resource::compile("assets/zellij.rc", embed_resource::NONE);
+    {
+        // These files are outside the package's `include` list, so Cargo would not rerun this
+        // script when they change unless told to watch them.
+        for resource in [
+            "assets/zellij.rc",
+            "assets/zellij.manifest",
+            "assets/logo128.ico",
+        ] {
+            println!("cargo:rerun-if-changed={}", resource);
+        }
+        let _ = embed_resource::compile("assets/zellij.rc", embed_resource::NONE);
+    }
 }

@@ -3,6 +3,8 @@ use fuzzy_matcher::FuzzyMatcher;
 use std::path::PathBuf;
 use zellij_tile::prelude::*;
 
+use crate::app_panel::{close_self, hide_self, switch_session, switch_session_with_layout};
+
 #[derive(Default)]
 pub struct NewSessionInfo {
     name: String,
@@ -51,10 +53,10 @@ impl NewSessionInfo {
     pub fn handle_backspace(&mut self) {
         match self.entering_new_session_info {
             EnteringState::EnteringName => {
-                self.name.pop();
+                zellij_tile::graphemes::pop_cluster(&mut self.name);
             },
             EnteringState::EnteringLayoutSearch => {
-                self.layout_list.layout_search_term.pop();
+                zellij_tile::graphemes::pop_cluster(&mut self.layout_list.layout_search_term);
                 self.update_layout_search_term();
             },
         }
@@ -103,34 +105,32 @@ impl NewSessionInfo {
                 } else {
                     Some(self.name.as_str())
                 };
-                if new_session_name != current_session_name.as_ref().map(|s| s.as_str()) {
+                let switched_session =
+                    new_session_name != current_session_name.as_ref().map(|s| s.as_str());
+                if switched_session {
                     match new_session_layout {
                         Some(new_session_layout) => {
                             let cwd = self.new_session_folder.as_ref().map(|c| PathBuf::from(c));
                             switch_session_with_layout(new_session_name, new_session_layout, cwd);
-                            if self.is_welcome_screen {
-                                // the welcome screen has done its job and now we need to quit this temporary
-                                // session so as not to leave garbage sessions behind
-                                quit_zellij();
-                            } else {
-                                hide_self();
-                            }
                         },
                         None => {
                             switch_session(new_session_name);
-                            if self.is_welcome_screen {
-                                // the welcome screen has done its job and now we need to quit this temporary
-                                // session so as not to leave garbage sessions behind
-                                quit_zellij();
-                            } else {
-                                hide_self();
-                            }
                         },
                     }
                 }
                 self.name.clear();
                 self.layout_list.clear_selection();
-                hide_self();
+                if switched_session {
+                    if self.is_welcome_screen {
+                        // the welcome screen has done its job and now we need to quit this temporary
+                        // session so as not to leave garbage sessions behind
+                        quit_zellij();
+                    } else {
+                        close_self();
+                    }
+                } else {
+                    hide_self();
+                }
             },
             EnteringState::EnteringName => {
                 self.entering_new_session_info = EnteringState::EnteringLayoutSearch;

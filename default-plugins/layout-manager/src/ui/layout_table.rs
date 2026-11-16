@@ -20,7 +20,7 @@ fn create_table_row(
 
     let name_text = if let Some(indices) = matched_indices {
         // Create text with highlighted matched characters
-        let mut text = Text::new(&display_name);
+        let mut text = Text::from(display_name);
 
         // Apply base color to entire text
         text = if is_error {
@@ -35,17 +35,17 @@ fn create_table_row(
     } else {
         // No matches, use original coloring
         if is_error {
-            Text::new(&display_name).error_color_all()
+            Text::from(display_name).error_color_all()
         } else {
-            Text::new(&display_name).color_all(1)
+            Text::from(display_name).color_all(1)
         }
     };
 
     let last_modified_string = get_last_modified_string(metadata, is_builtin);
     let last_modified = if is_builtin {
-        Text::new(&last_modified_string).color_all(0)
+        Text::from(last_modified_string).color_all(0)
     } else {
-        Text::new(&last_modified_string)
+        Text::from(last_modified_string)
     };
 
     vec![name_text, last_modified]
@@ -90,7 +90,7 @@ impl LayoutsTable {
     pub fn render(&self, x: usize, y: usize, _max_rows: usize, max_cols: usize) {
         let mut table = match self.overflow_indicator(self.hidden_above) {
             Some(overflow_indicator) => {
-                Table::new().add_styled_row(vec![Text::new(" "), overflow_indicator])
+                Table::new().add_styled_row(vec![Text::from(" "), overflow_indicator])
             },
             None => Table::new().add_row(vec![" ", " "]),
         };
@@ -133,14 +133,14 @@ impl LayoutsTable {
         }
 
         if let Some(overflow_indicator) = self.overflow_indicator(self.hidden_below) {
-            table = table.add_styled_row(vec![Text::new(" "), overflow_indicator]);
+            table = table.add_styled_row(vec![Text::from(" "), overflow_indicator]);
         }
 
         print_table_with_coordinates(table, x, y, Some(max_cols), None);
     }
     fn overflow_indicator(&self, count: usize) -> Option<Text> {
         if count > 0 {
-            Some(Text::new(format!("[+{}]", count)).color_all(2))
+            Some(Text::from(format!("[+{}]", count)).color_all(2))
         } else {
             None
         }
@@ -148,7 +148,7 @@ impl LayoutsTable {
 }
 
 fn color_control_text(text: &str, keys: &[&str]) -> Text {
-    let mut colored_text = Text::new(text);
+    let mut colored_text = Text::from(text);
     for key in keys {
         colored_text = colored_text.color_substring(3, key)
     }
@@ -426,7 +426,7 @@ impl<'a> Title<'a> {
     }
 
     pub fn render(&self, x: usize, y: usize) {
-        let title = Text::new(self.text).color_all(2);
+        let title = Text::from(self.text).color_all(2);
         print_text_with_coordinates(title, x, y, None, None);
     }
 }
@@ -441,13 +441,13 @@ impl<'a> ErrorMessage<'a> {
     }
 
     pub fn render(&self, x: usize, y: usize) {
-        let title = Text::new("Error").error_color_all();
+        let title = Text::from("Error").error_color_all();
         print_text_with_coordinates(title, x, y, None, None);
 
-        let message = Text::new(self.message).error_color_all();
+        let message = Text::from(self.message).error_color_all();
         print_text_with_coordinates(message, x, y + 2, None, None);
 
-        let help = Text::new("Press any key to continue");
+        let help = Text::from("Press any key to continue");
         print_text_with_coordinates(help, x, y + 4, None, None);
     }
 }

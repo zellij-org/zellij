@@ -1,6 +1,6 @@
 use crate::output::SixelImageChunk;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use sixel_image::{SixelDeserializer, SixelImage};
@@ -66,8 +66,77 @@ pub struct SixelGrid {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     currently_parsing: Option<SixelDeserializer>,
     image_ids_to_reap: Vec<usize>,
+    images_to_check_for_emptiness: HashSet<usize>,
     sixel_parser: Option<sixel_tokenizer::Parser>,
+    size_budget: SixelSizeBudget,
     pub sixel_image_store: Rc<RefCell<SixelImageStore>>,
+}
+
+pub const MAX_SIXEL_IMAGE_BYTES: usize = 104_857_600;
+const SIXEL_PIXEL_BYTES: usize = std::mem::size_of::<sixel_image::Pixel>();
+
+#[derive(Debug, Clone, Copy, Default)]
+struct SixelSizeBudget {
+    cursor_x: usize,
+    cursor_y: usize,
+    width: usize,
+    height: usize,
+    max_height: Option<usize>,
+}
+
+impl SixelSizeBudget {
+    fn new(max_height: Option<usize>) -> Self {
+        SixelSizeBudget {
+            max_height,
+            ..Default::default()
+        }
+    }
+    fn admit(&mut self, sixel_event: &SixelEvent) -> bool {
+        let mut next = *self;
+        match sixel_event {
+            SixelEvent::RasterAttribute { ph, pv, .. } => {
+                if let Some(pv) = pv {
+                    next.height = next.height.max(*pv);
+                    next.width = next.width.max(*pv);
+                }
+                if let Some(ph) = ph {
+                    next.width = next.width.max(*ph);
+                }
+            },
+            SixelEvent::Data { .. } => {
+                next.cursor_x = next.cursor_x.saturating_add(1);
+                next.width = next.width.max(next.cursor_x);
+                next.height = next.height.max(next.cursor_y.saturating_add(6));
+            },
+            SixelEvent::Repeat { repeat_count, .. } => {
+                next.cursor_x = next.cursor_x.saturating_add(*repeat_count);
+                next.width = next.width.max(next.cursor_x);
+                next.height = next.height.max(next.cursor_y.saturating_add(6));
+            },
+            SixelEvent::GotoBeginningOfLine => {
+                next.cursor_x = 0;
+            },
+            SixelEvent::GotoNextLine => {
+                next.cursor_x = 0;
+                let advanced = next.cursor_y.saturating_add(6);
+                next.cursor_y = match next.max_height {
+                    Some(max_height) => advanced.min(max_height),
+                    None => advanced,
+                };
+            },
+            _ => {},
+        }
+        let within_budget = next
+            .width
+            .checked_mul(next.height)
+            .and_then(|pixels| pixels.checked_mul(SIXEL_PIXEL_BYTES))
+            .map(|bytes| bytes <= MAX_SIXEL_IMAGE_BYTES)
+            .unwrap_or(false);
+        if within_budget {
+            *self = next;
+        }
+        within_budget
+    }
 }
 
 impl SixelGrid {
@@ -84,17 +153,36 @@ impl SixelGrid {
         }
     }
     pub fn handle_byte(&mut self, byte: u8) {
+        let currently_parsing = &mut self.currently_parsing;
+        let size_budget = &mut self.size_budget;
         self.sixel_parser
             .as_mut()
             .unwrap()
             .advance(&byte, |sixel_event| {
-                if let Some(currently_parsing) = self.currently_parsing.as_mut() {
-                    let _ = currently_parsing.handle_event(sixel_event);
-                }
+                Self::forward_event(currently_parsing, size_budget, sixel_event);
             });
     }
     pub fn handle_event(&mut self, sixel_event: SixelEvent) {
-        if let Some(currently_parsing) = self.currently_parsing.as_mut() {
+        Self::forward_event(
+            &mut self.currently_parsing,
+            &mut self.size_budget,
+            sixel_event,
+        );
+    }
+    fn forward_event(
+        currently_parsing: &mut Option<SixelDeserializer>,
+        size_budget: &mut SixelSizeBudget,
+        sixel_event: SixelEvent,
+    ) {
+        if currently_parsing.is_none() {
+            return;
+        }
+        if !size_budget.admit(&sixel_event) {
+            log::warn!("dropping sixel image that exceeds the size limit");
+            *currently_parsing = None;
+            return;
+        }
+        if let Some(currently_parsing) = currently_parsing.as_mut() {
             let _ = currently_parsing.handle_event(sixel_event);
         }
     }
@@ -108,6 +196,7 @@ impl SixelGrid {
         dcs_params: Vec<&[u16]>,
     ) {
         self.sixel_parser = Some(sixel_tokenizer::Parser::new());
+        self.size_budget = SixelSizeBudget::new(max_height_in_pixels);
         match max_height_in_pixels {
             Some(max_height_in_pixels) => {
                 self.currently_parsing =
@@ -167,8 +256,8 @@ impl SixelGrid {
                     if let Some(intersecting_rect) =
                         pixel_rect.intersecting_rect(&image_size_and_coordinates)
                     {
-                        if intersecting_rect.x == pixel_rect.x
-                            && intersecting_rect.y == pixel_rect.y
+                        if intersecting_rect.x == 0
+                            && intersecting_rect.y == 0
                             && intersecting_rect.height == pixel_rect.height
                             && intersecting_rect.width == pixel_rect.width
                         {
@@ -195,6 +284,9 @@ impl SixelGrid {
         self.sixel_image_locations
             .iter()
             .map(|(image_id, pixel_rect)| (*image_id, pixel_rect))
+    }
+    pub fn has_images(&self) -> bool {
+        !self.sixel_image_locations.is_empty()
     }
     pub fn cut_off_rect_from_images(
         &mut self,
@@ -225,6 +317,21 @@ impl SixelGrid {
         }
     }
     pub fn drain_image_ids_to_reap(&mut self) -> Option<Vec<usize>> {
+        if !self.images_to_check_for_emptiness.is_empty() {
+            let store = self.sixel_image_store.borrow();
+            for image_id in self.images_to_check_for_emptiness.drain() {
+                let has_lit_pixels = store
+                    .sixel_images
+                    .get(&image_id)
+                    .map_or(false, |(sixel_image, _)| {
+                        sixel_image.pixels.iter().flatten().any(|pixel| pixel.on)
+                    });
+                if !has_lit_pixels {
+                    self.sixel_image_locations.remove(&image_id);
+                    self.image_ids_to_reap.push(image_id);
+                }
+            }
+        }
         let images_to_reap = self.image_ids_to_reap.drain(..);
         if images_to_reap.len() > 0 {
             Some(images_to_reap.collect())
@@ -255,6 +362,7 @@ impl SixelGrid {
             .map(|(image_id, _image_rect)| image_id)
             .collect();
         image_ids.append(&mut self.image_ids_to_reap);
+        self.images_to_check_for_emptiness.clear();
         if !image_ids.is_empty() {
             Some(image_ids)
         } else {
@@ -262,13 +370,17 @@ impl SixelGrid {
         }
     }
     pub fn next_image_id(&self) -> usize {
-        self.sixel_image_store.borrow().sixel_images.keys().len()
+        let mut store = self.sixel_image_store.borrow_mut();
+        let id = store.next_image_id;
+        store.next_image_id += 1;
+        id
     }
     pub fn new_sixel_image(&mut self, sixel_image_id: usize, sixel_image: SixelImage) {
         self.sixel_image_store
             .borrow_mut()
             .sixel_images
             .insert(sixel_image_id, (sixel_image, HashMap::new()));
+        self.images_to_check_for_emptiness.insert(sixel_image_id);
     }
     pub fn remove_pixels_from_image(&mut self, image_id: usize, pixel_rect: PixelRect) {
         if let Some((sixel_image, sixel_image_cache)) = self
@@ -285,6 +397,7 @@ impl SixelGrid {
             );
             sixel_image_cache.clear(); // TODO: more intelligent cache clearing
         }
+        self.images_to_check_for_emptiness.insert(image_id);
     }
     pub fn reap_images(&mut self, ids_to_reap: Vec<usize>) {
         for id in ids_to_reap {
@@ -428,6 +541,7 @@ type SixelImageCache = HashMap<PixelRect, String>;
 #[derive(Debug, Clone, Default)]
 pub struct SixelImageStore {
     sixel_images: HashMap<usize, (SixelImage, SixelImageCache)>,
+    next_image_id: usize,
 }
 
 impl SixelImageStore {

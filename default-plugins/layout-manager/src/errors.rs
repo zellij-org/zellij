@@ -44,7 +44,7 @@ impl ErrorScreen {
     }
 
     pub fn render(&self, rows: usize, cols: usize) {
-        if self.message.chars().count() > cols.saturating_sub(4) {
+        if zellij_tile::graphemes::display_width(&self.message) > cols.saturating_sub(4) {
             let max_width = cols.saturating_sub(4);
             let max_rows = rows.saturating_sub(4);
             let lines = wrap_text_to_width(&self.message, max_width);
@@ -52,7 +52,7 @@ impl ErrorScreen {
             let base_y = rows.saturating_sub(4 + lines.len()) / 2;
             MultiLineErrorMessage::new(lines).render(base_x, base_y, max_rows);
         } else {
-            let desired_width = self.message.chars().count();
+            let desired_width = zellij_tile::graphemes::display_width(&self.message);
             let base_y = rows.saturating_sub(5) / 2;
             let base_x = cols.saturating_sub(desired_width) / 2;
             ErrorMessage::new(&self.message).render(base_x, base_y);
@@ -83,7 +83,7 @@ impl ErrorDetailScreen {
     pub fn render(&self, rows: usize, cols: usize) {
         // Header: show layout name
         let header = format!("Error in layout: {}", self.layout_name);
-        let header_text = Text::new(&header).error_color_all();
+        let header_text = Text::from(header).error_color_all();
         print_text_with_coordinates(header_text, 1, 0, None, None);
 
         // Calculate available space for error content
@@ -128,7 +128,7 @@ impl ErrorDetailScreen {
 
             // Render omission indicator
             let indicator = format!("... {} lines omitted ...", omitted_count);
-            let indicator_text = Text::new(&indicator).color_range(0, ..);
+            let indicator_text = Text::from(indicator.clone()).color_range(0, ..);
             print_text_with_coordinates(
                 indicator_text,
                 (cols.saturating_sub(indicator.chars().count())) / 2,

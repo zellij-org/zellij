@@ -1,0 +1,61 @@
+size: 40x120
+cursor: row=14 col=36 visible shape=Default
+grid:
+|                                                                                                                        |
+| OS: 5.9.13-arch1-1 GNU/Linux                                                                                           |
+| Uptime: 10 hours, 42 minutes                                                                                           |
+| Hostname: kingdom                                                                                                      |
+| Disk usage:                                                                                                            |
+|                                                                                                                        |
+|df: /run/user/1000/doc: Operation not permitted                                                                         |
+|        /       321G / 514G  66%                                                                                        |
+|        /efi     27M /  96M  28%                                                                                        |
+|                                                                                                                        |
+| Network:                                                                                                               |
+|                                                                                                                        |
+|        wlp2s0  192.168.0.3                                                                                             |
+|                                                                                                                        |
+|[I] [20:07] kingdom:mosaic (main) |                                                                                     |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 1: cols 1-4 fg=Foreground bg=Background flags=BOLD
+row 1: cols 5-28 fg=Green bg=Background
+row 2: cols 1-8 fg=Foreground bg=Background flags=BOLD
+row 2: cols 9-28 fg=Green bg=Background
+row 3: cols 1-10 fg=Foreground bg=Background flags=BOLD
+row 3: cols 11-17 fg=Green bg=Background
+row 4: cols 1-11 fg=Foreground bg=Background flags=BOLD
+row 10: cols 1-8 fg=Foreground bg=Background flags=BOLD
+row 12: cols 8-26 fg=Magenta bg=Background
+row 14: cols 0-2 fg=White bg=Green flags=BOLD
+row 14: cols 4-11 fg=BrightBlack bg=Background
+row 14: cols 12-18 fg=Blue bg=Background
+row 14: cols 19-19 fg=BrightBlack bg=Background
+row 14: cols 20-25 fg=Yellow bg=Background
+row 14: cols 26-33 fg=Green bg=Background
+row 14: cols 34-35 fg=Red bg=Background
+images:

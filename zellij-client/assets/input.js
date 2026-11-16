@@ -7,6 +7,7 @@ import { installCustomKeyHandler } from "./key-handler.js";
 import { installMouseHandlers } from "./mouse.js";
 import { createPinchController } from "./pinch.js";
 import { installTouchGestures } from "./touch.js";
+import { initMobilePan } from "./mobile-pan.js";
 
 export { setSoftKeyboard } from "./soft-keyboard.js";
 
@@ -17,6 +18,7 @@ export function setupInputHandlers(term, fitAddon, sendFunction) {
     installCustomKeyHandler(term, sendFunction);
 
     const terminalElement = document.getElementById("terminal");
+    initMobilePan({ term });
     installMouseHandlers(term, terminalElement, sendFunction);
 
     const pinch = createPinchController(term);

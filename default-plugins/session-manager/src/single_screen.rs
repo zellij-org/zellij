@@ -112,7 +112,14 @@ pub struct SingleScreenState {
     pub new_session_folder: Option<PathBuf>,
     pub is_welcome_screen: bool,
     pub render_cache: UnifiedResultsRenderCache,
+    pub ordered_names: Option<Vec<String>>,
     fuzzy_matcher: Option<SkimMatcherV2>,
+    tab_cycle: Option<TabCycle>,
+}
+
+struct TabCycle {
+    candidates: Vec<String>,
+    position: usize,
 }
 
 impl std::fmt::Debug for SingleScreenState {
@@ -138,8 +145,21 @@ impl SingleScreenState {
         if self.search_term.is_empty() {
             self.unified_results =
                 Self::collect_all_sessions(active_sessions, resurrectable_sessions);
-            self.unified_results
-                .sort_by(|a, b| a.cmp_by_type_then_recency(b));
+            match self.ordered_names.as_ref() {
+                Some(ordered_names) => {
+                    let position = |name: &str| {
+                        ordered_names
+                            .iter()
+                            .position(|n| n == name)
+                            .unwrap_or(usize::MAX)
+                    };
+                    self.unified_results
+                        .sort_by_key(|result| position(result.session_name()));
+                },
+                None => self
+                    .unified_results
+                    .sort_by(|a, b| a.cmp_by_type_then_recency(b)),
+            }
         } else {
             self.unified_results =
                 self.collect_fuzzy_matched_sessions(active_sessions, resurrectable_sessions);
@@ -317,20 +337,102 @@ impl SingleScreenState {
         active_sessions: &[SessionUiInfo],
         resurrectable_sessions: &[(String, Duration)],
     ) {
-        let first_non_current = self.unified_results.iter().find(|r| {
-            !matches!(
-                r,
-                UnifiedSearchResult::ActiveSession {
-                    is_current_session: true,
-                    ..
-                }
-            )
+        self.step_tab_cycle(true, active_sessions, resurrectable_sessions);
+    }
+
+    pub fn tab_complete_backwards(
+        &mut self,
+        active_sessions: &[SessionUiInfo],
+        resurrectable_sessions: &[(String, Duration)],
+    ) {
+        self.step_tab_cycle(false, active_sessions, resurrectable_sessions);
+    }
+
+    pub fn reset_tab_cycle(&mut self) {
+        self.tab_cycle = None;
+    }
+
+    fn step_tab_cycle(
+        &mut self,
+        forward: bool,
+        active_sessions: &[SessionUiInfo],
+        resurrectable_sessions: &[(String, Duration)],
+    ) {
+        let continuing = self.tab_cycle.take().filter(|cycle| {
+            cycle
+                .candidates
+                .get(cycle.position)
+                .map(|name| *name == self.search_term)
+                .unwrap_or(false)
         });
-        if let Some(result) = first_non_current {
-            let name = result.session_name().to_owned();
-            self.search_term = name;
-            self.update_search_term(active_sessions, resurrectable_sessions);
+        let cycle = match continuing {
+            Some(cycle) => {
+                Self::advance_tab_cycle(cycle, forward, active_sessions, resurrectable_sessions)
+            },
+            None => self.start_tab_cycle(forward),
+        };
+        let Some(cycle) = cycle else {
+            return;
+        };
+        let name = cycle.candidates[cycle.position].clone();
+        self.search_term = name.clone();
+        self.update_search_term(active_sessions, resurrectable_sessions);
+        self.selected_index = self
+            .unified_results
+            .iter()
+            .position(|r| r.session_name() == name);
+        self.tab_cycle = Some(cycle);
+    }
+
+    fn start_tab_cycle(&self, forward: bool) -> Option<TabCycle> {
+        let candidates: Vec<String> = self
+            .unified_results
+            .iter()
+            .filter(|r| {
+                !matches!(
+                    r,
+                    UnifiedSearchResult::ActiveSession {
+                        is_current_session: true,
+                        ..
+                    }
+                )
+            })
+            .map(|r| r.session_name().to_owned())
+            .collect();
+        if candidates.is_empty() {
+            return None;
         }
+        let position = if forward { 0 } else { candidates.len() - 1 };
+        Some(TabCycle {
+            candidates,
+            position,
+        })
+    }
+
+    fn advance_tab_cycle(
+        mut cycle: TabCycle,
+        forward: bool,
+        active_sessions: &[SessionUiInfo],
+        resurrectable_sessions: &[(String, Duration)],
+    ) -> Option<TabCycle> {
+        let still_exists = |name: &str| {
+            active_sessions
+                .iter()
+                .any(|s| s.name == name && !s.is_current_session)
+                || resurrectable_sessions.iter().any(|(n, _)| n == name)
+        };
+        let len = cycle.candidates.len();
+        let next = (1..=len)
+            .map(|offset| {
+                if forward {
+                    (cycle.position + offset) % len
+                } else {
+                    (cycle.position + len - offset) % len
+                }
+            })
+            .find(|&candidate| still_exists(&cycle.candidates[candidate]))?;
+        cycle.position = next;
+        Some(cycle)
     }
 
     pub fn get_selected_result(&self) -> Option<&UnifiedSearchResult> {
@@ -932,6 +1034,116 @@ mod tests {
         assert!(state.unified_results.is_empty());
         state.tab_complete(&active, &[]);
         assert_eq!(state.search_term, "zzz"); // unchanged
+    }
+
+    #[test]
+    fn test_4_6_repeated_tab_cycles_all_sessions_and_wraps() {
+        let mut state = SingleScreenState::default();
+        let active = vec![
+            make_active_session("mine", 1, 1, 1, true, 100),
+            make_active_session("alpha", 1, 1, 1, false, 200),
+            make_active_session("beta", 1, 1, 1, false, 300),
+        ];
+        let resurrectable = vec![make_resurrectable("gamma", 100)];
+        state.update_search_term(&active, &resurrectable);
+        state.tab_complete(&active, &resurrectable);
+        assert_eq!(state.search_term, "alpha");
+        state.tab_complete(&active, &resurrectable);
+        assert_eq!(state.search_term, "beta");
+        state.tab_complete(&active, &resurrectable);
+        assert_eq!(state.search_term, "gamma");
+        state.tab_complete(&active, &resurrectable);
+        assert_eq!(state.search_term, "alpha");
+        assert_eq!(
+            state.get_selected_result().map(|r| r.session_name()),
+            Some("alpha")
+        );
+    }
+
+    #[test]
+    fn test_4_7_repeated_tab_cycles_only_fuzzy_matches() {
+        let mut state = SingleScreenState::default();
+        let active = vec![
+            make_active_session("nixpkgs", 1, 1, 1, false, 100),
+            make_active_session("nix-config", 1, 1, 1, false, 200),
+            make_active_session("work", 1, 1, 1, false, 300),
+        ];
+        state.search_term = "nix".to_string();
+        state.update_search_term(&active, &[]);
+        let expected: Vec<String> = state
+            .unified_results
+            .iter()
+            .map(|r| r.session_name().to_owned())
+            .collect();
+        assert_eq!(expected.len(), 2);
+        state.tab_complete(&active, &[]);
+        assert_eq!(state.search_term, expected[0]);
+        state.tab_complete(&active, &[]);
+        assert_eq!(state.search_term, expected[1]);
+        state.tab_complete(&active, &[]);
+        assert_eq!(state.search_term, expected[0]);
+    }
+
+    #[test]
+    fn test_4_8_backwards_tab_cycles_in_reverse_and_wraps() {
+        let mut state = SingleScreenState::default();
+        let active = vec![
+            make_active_session("mine", 1, 1, 1, true, 100),
+            make_active_session("alpha", 1, 1, 1, false, 200),
+            make_active_session("beta", 1, 1, 1, false, 300),
+            make_active_session("delta", 1, 1, 1, false, 400),
+        ];
+        state.update_search_term(&active, &[]);
+        state.tab_complete_backwards(&active, &[]);
+        assert_eq!(state.search_term, "delta");
+        state.tab_complete_backwards(&active, &[]);
+        assert_eq!(state.search_term, "beta");
+        state.tab_complete(&active, &[]);
+        assert_eq!(state.search_term, "delta");
+        state.tab_complete(&active, &[]);
+        assert_eq!(state.search_term, "alpha");
+        state.tab_complete_backwards(&active, &[]);
+        assert_eq!(state.search_term, "delta");
+    }
+
+    #[test]
+    fn test_4_9_reset_starts_new_cycle_from_current_term() {
+        let mut state = SingleScreenState::default();
+        let active = vec![
+            make_active_session("alpha", 1, 1, 1, false, 100),
+            make_active_session("beta", 1, 1, 1, false, 200),
+        ];
+        state.update_search_term(&active, &[]);
+        state.tab_complete(&active, &[]);
+        assert_eq!(state.search_term, "alpha");
+        state.reset_tab_cycle();
+        state.tab_complete(&active, &[]);
+        assert_eq!(state.search_term, "alpha");
+        state.search_term = "be".to_string();
+        state.update_search_term(&active, &[]);
+        state.tab_complete(&active, &[]);
+        assert_eq!(state.search_term, "beta");
+        state.tab_complete(&active, &[]);
+        assert_eq!(state.search_term, "beta");
+    }
+
+    #[test]
+    fn test_4_10_tab_cycle_skips_removed_sessions() {
+        let mut state = SingleScreenState::default();
+        let active = vec![
+            make_active_session("alpha", 1, 1, 1, false, 100),
+            make_active_session("beta", 1, 1, 1, false, 200),
+            make_active_session("gamma", 1, 1, 1, false, 300),
+        ];
+        state.update_search_term(&active, &[]);
+        state.tab_complete(&active, &[]);
+        assert_eq!(state.search_term, "alpha");
+        let remaining = vec![
+            make_active_session("alpha", 1, 1, 1, false, 100),
+            make_active_session("gamma", 1, 1, 1, false, 300),
+        ];
+        state.tab_complete(&remaining, &[]);
+        assert_eq!(state.search_term, "gamma");
     }
 
     // ---------------------------------------------------------------

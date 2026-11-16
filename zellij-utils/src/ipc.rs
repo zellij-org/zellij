@@ -2,7 +2,7 @@
 use crate::{
     data::{ClientId, ConnectToSession, HostTerminalThemeMode, KeyWithModifier, PaneId, Style},
     errors::{prelude::*, ErrorContext},
-    input::{actions::Action, cli_assets::CliAssets},
+    input::{actions::Action, cli_assets::CliAssets, terminal::TerminalSettings},
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::Stream as LocalSocketStream;
@@ -12,6 +12,7 @@ use std::{
     fmt::{Display, Error, Formatter},
     io::{self, Read, Write},
     marker::PhantomData,
+    time::Duration,
 };
 
 // Protobuf imports
@@ -20,6 +21,7 @@ use crate::client_server_contract::client_server_contract::{
 };
 use prost::Message;
 
+mod attention_conversion;
 mod enum_conversions;
 mod protobuf_conversion;
 
@@ -31,12 +33,17 @@ type SessionId = u64;
 /// A bidirectional byte stream that supports cloning for simultaneous read/write.
 pub trait IpcStream: Read + Write + Send + 'static {
     fn try_clone_stream(&self) -> io::Result<Box<dyn IpcStream>>;
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()>;
 }
 
 impl IpcStream for LocalSocketStream {
     fn try_clone_stream(&self) -> io::Result<Box<dyn IpcStream>> {
         use interprocess::TryClone;
         Ok(Box::new(self.try_clone()?))
+    }
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        use interprocess::local_socket::traits::Stream;
+        self.set_recv_timeout(timeout)
     }
 }
 
@@ -81,14 +88,6 @@ pub struct ColorRegister {
     pub color: String,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ResizeCause {
-    #[default]
-    Viewport,
-    RenderingPreference,
-    SizeSettled,
-}
-
 impl PixelDimensions {
     pub fn merge(&mut self, other: PixelDimensions) {
         if let Some(text_area_size) = other.text_area_size {
@@ -98,6 +97,67 @@ impl PixelDimensions {
             self.character_cell_size = Some(character_cell_size);
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileSizePayload {
+    pub cols: usize,
+    pub rows: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileActivePanePayload {
+    pub pane_id: u32,
+    pub is_plugin: bool,
+    pub tab_position: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileTabPayload {
+    pub position: usize,
+    pub name: String,
+    pub active: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobilePanePayload {
+    pub tab_position: usize,
+    pub pane_id: u32,
+    pub is_plugin: bool,
+    pub title: String,
+    pub is_floating: bool,
+    pub last_activity_secs_ago: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MobileSessionPayload {
+    pub name: String,
+    pub web_clients_allowed: bool,
+    pub tab_count: usize,
+    pub pane_count: usize,
+    pub connected_clients: usize,
+    pub creation_secs_ago: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct MobileRenderPrefsPayload {
+    pub single_pane: bool,
+    pub fit: bool,
+    pub active_pane_is_fullscreen: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct MobileStatePayload {
+    pub session_name: String,
+    pub now_secs: u64,
+    pub is_welcome_screen: bool,
+    pub desktop_client_connected: bool,
+    pub desktop_size: Option<MobileSizePayload>,
+    pub active_pane: Option<MobileActivePanePayload>,
+    pub tabs: Vec<MobileTabPayload>,
+    pub panes: Vec<MobilePanePayload>,
+    pub sessions: Vec<MobileSessionPayload>,
+    pub render_prefs: MobileRenderPrefsPayload,
 }
 
 // Types of messages sent from the client to the server
@@ -121,8 +181,6 @@ pub enum ClientToServerMsg {
     },
     TerminalResize {
         new_size: Size,
-        #[serde(default)]
-        cause: ResizeCause,
     },
     FirstClientConnected {
         cli_assets: CliAssets,
@@ -176,6 +234,59 @@ pub enum ClientToServerMsg {
     SoftKeyboardVisibilityChanged {
         visible: bool,
     },
+    NestedSessionFrameFromHost {
+        payload_bytes: Vec<u8>,
+    },
+    KittyGraphicsSupport {
+        supported: bool,
+        local_media: bool,
+    },
+    KittyZlibSupport {
+        supported: bool,
+    },
+    SixelSupport {
+        supported: bool,
+    },
+    RequestSessionList,
+    RequestSessionPreview {
+        tab_index: Option<u32>,
+        pane_id: Option<(u32, bool)>,
+        anchor: Option<crate::data::PreviewAnchor>,
+    },
+    RequestSessionAttention {
+        include_command_text: bool,
+    },
+    PeerAttentionChanged {
+        session_name: String,
+        attention: Option<crate::attention::SessionAttention>,
+    },
+    SetMobileRenderPreferences {
+        single_pane: bool,
+        fit: bool,
+    },
+    HostTerminalFocusChanged {
+        focused: bool,
+    },
+    StructuredRenderSupport {
+        supported: bool,
+        row_shifts: bool,
+    },
+    ClipboardPasteSupport {
+        supported: bool,
+        shortcut: Option<String>,
+    },
+    RenderFrameAck {
+        seq: u64,
+    },
+    FontFamilies {
+        families: Vec<String>,
+    },
+    PaneMirror {
+        payload: Vec<u8>,
+    },
+    AdoptSessionHistory {
+        history: crate::session_history::SessionHistory,
+    },
 }
 
 // Types of messages sent from the server to the client
@@ -183,6 +294,9 @@ pub enum ClientToServerMsg {
 pub enum ServerToClientMsg {
     Render {
         content: String,
+    },
+    RenderFrame {
+        frame: Vec<u8>,
     },
     UnblockInputThread,
     Exit {
@@ -200,6 +314,7 @@ pub enum ServerToClientMsg {
     },
     UnblockCliPipeInput {
         pipe_name: String,
+        exit_code: Option<i32>,
     },
     CliPipeOutput {
         pipe_name: String,
@@ -209,11 +324,20 @@ pub enum ServerToClientMsg {
     SetSoftKeyboard {
         on: bool,
     },
+    PasteFromClipboard {
+        pane_id: Option<PaneId>,
+    },
     StartWebServer,
     RenamedSession {
         name: String,
     },
     ConfigFileUpdated,
+    TerminalSettingsChanged {
+        settings: Box<TerminalSettings>,
+    },
+    HostTerminalThemeChanged {
+        mode: HostTerminalThemeMode,
+    },
     PaneRenderUpdate {
         pane_id: PaneId,
         viewport: Vec<String>,
@@ -226,6 +350,25 @@ pub enum ServerToClientMsg {
     ForwardQueryToHost {
         token: u32,
         query_bytes: Vec<u8>,
+        resolve_async: bool,
+    },
+    EmitNestedSessionFrame {
+        payload_bytes: Vec<u8>,
+    },
+    MobileState {
+        payload: MobileStatePayload,
+    },
+    HostProgramStatus {
+        status: Option<crate::attention::HostProgramStatus>,
+    },
+    SessionAttention {
+        attention: crate::attention::SessionAttention,
+    },
+    SessionPreview {
+        preview: Option<crate::data::SessionPreview>,
+    },
+    PaneMirror {
+        payload: Vec<u8>,
     },
 }
 
@@ -342,6 +485,21 @@ pub struct IpcReceiverWithContext<T> {
     _phantom: PhantomData<T>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IpcReceiveError {
+    Disconnected,
+    Undecodable,
+}
+
+impl Display for IpcReceiveError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::result::Result<(), Error> {
+        match self {
+            IpcReceiveError::Disconnected => write!(f, "the peer closed the connection"),
+            IpcReceiveError::Undecodable => write!(f, "received a message that could not be read"),
+        }
+    }
+}
+
 impl<T> IpcReceiverWithContext<T>
 where
     T: for<'de> Deserialize<'de> + Serialize,
@@ -362,28 +520,36 @@ where
     }
 
     pub fn recv_client_msg(&mut self) -> Option<(ClientToServerMsg, ErrorContext)> {
-        match read_protobuf_message::<ProtoClientToServerMsg>(&mut self.receiver) {
-            Ok(proto_msg) => match proto_msg.try_into() {
-                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
-                Err(e) => {
-                    warn!("Error converting protobuf to ClientToServerMsg: {:?}", e);
-                    None
-                },
-            },
-            Err(_e) => None,
-        }
+        self.try_recv_client_msg().ok()
     }
 
     pub fn recv_server_msg(&mut self) -> Option<(ServerToClientMsg, ErrorContext)> {
-        match read_protobuf_message::<ProtoServerToClientMsg>(&mut self.receiver) {
-            Ok(proto_msg) => match proto_msg.try_into() {
-                Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
-                Err(e) => {
-                    warn!("Error converting protobuf to ServerToClientMsg: {:?}", e);
-                    None
-                },
+        self.try_recv_server_msg().ok()
+    }
+
+    pub fn try_recv_client_msg(
+        &mut self,
+    ) -> std::result::Result<(ClientToServerMsg, ErrorContext), IpcReceiveError> {
+        let proto_msg = read_protobuf_message::<ProtoClientToServerMsg>(&mut self.receiver)?;
+        match proto_msg.try_into() {
+            Ok(rust_msg) => Ok((rust_msg, ErrorContext::default())),
+            Err(e) => {
+                warn!("Error converting protobuf to ClientToServerMsg: {:?}", e);
+                Err(IpcReceiveError::Undecodable)
             },
-            Err(_e) => None,
+        }
+    }
+
+    pub fn try_recv_server_msg(
+        &mut self,
+    ) -> std::result::Result<(ServerToClientMsg, ErrorContext), IpcReceiveError> {
+        let proto_msg = read_protobuf_message::<ProtoServerToClientMsg>(&mut self.receiver)?;
+        match proto_msg.try_into() {
+            Ok(rust_msg) => Ok((rust_msg, ErrorContext::default())),
+            Err(e) => {
+                warn!("Error converting protobuf to ServerToClientMsg: {:?}", e);
+                Err(IpcReceiveError::Undecodable)
+            },
         }
     }
 
@@ -392,19 +558,29 @@ where
         let socket = self.receiver.get_ref().try_clone_stream().unwrap();
         IpcSenderWithContext::from_boxed(socket)
     }
+
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.receiver.get_ref().set_read_timeout(timeout)
+    }
 }
 
 // Protobuf wire format utilities
-fn read_protobuf_message<T: Message + Default>(reader: &mut impl Read) -> Result<T> {
+fn read_protobuf_message<T: Message + Default>(
+    reader: &mut impl Read,
+) -> std::result::Result<T, IpcReceiveError> {
     // Read length-prefixed protobuf message
     let mut len_bytes = [0u8; 4];
-    reader.read_exact(&mut len_bytes)?;
+    reader
+        .read_exact(&mut len_bytes)
+        .map_err(|_| IpcReceiveError::Disconnected)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
 
     let mut buf = vec![0u8; len];
-    reader.read_exact(&mut buf)?;
+    reader
+        .read_exact(&mut buf)
+        .map_err(|_| IpcReceiveError::Disconnected)?;
 
-    T::decode(&buf[..]).map_err(Into::into)
+    T::decode(&buf[..]).map_err(|_| IpcReceiveError::Undecodable)
 }
 
 fn write_protobuf_message<T: Message>(writer: &mut impl Write, msg: &T) -> Result<()> {
@@ -444,31 +620,13 @@ pub fn send_protobuf_server_to_client(
 pub fn recv_protobuf_client_to_server(
     receiver: &mut IpcReceiverWithContext<ClientToServerMsg>,
 ) -> Option<(ClientToServerMsg, ErrorContext)> {
-    match read_protobuf_message::<ProtoClientToServerMsg>(&mut receiver.receiver) {
-        Ok(proto_msg) => match proto_msg.try_into() {
-            Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
-            Err(e) => {
-                warn!("Error converting protobuf message: {:?}", e);
-                None
-            },
-        },
-        Err(_e) => None,
-    }
+    receiver.try_recv_client_msg().ok()
 }
 
 pub fn recv_protobuf_server_to_client(
     receiver: &mut IpcReceiverWithContext<ServerToClientMsg>,
 ) -> Option<(ServerToClientMsg, ErrorContext)> {
-    match read_protobuf_message::<ProtoServerToClientMsg>(&mut receiver.receiver) {
-        Ok(proto_msg) => match proto_msg.try_into() {
-            Ok(rust_msg) => Some((rust_msg, ErrorContext::default())),
-            Err(e) => {
-                warn!("Error converting protobuf message: {:?}", e);
-                None
-            },
-        },
-        Err(_e) => None,
-    }
+    receiver.try_recv_server_msg().ok()
 }
 
 /// Asynchronously send `ClientToServerMsg::KillSession` to the peer at `path`
@@ -514,18 +672,14 @@ pub async fn async_send_kill_and_await(path: &std::path::Path) -> io::Result<()>
 pub async fn async_send_kill_and_await(path: &std::path::Path) -> io::Result<()> {
     let path = path.to_path_buf();
     tokio::task::spawn_blocking(move || {
-        use crate::consts::{ipc_connect, ipc_connect_reply};
-        let stream = ipc_connect(&path)?;
-        let reply = ipc_connect_reply(&path);
+        let (stream, reply_stream) = crate::pipe_pairs::connect_pair(&path)?;
         let mut sender = IpcSenderWithContext::<ClientToServerMsg>::new(stream);
         sender
             .send_client_msg(ClientToServerMsg::KillSession)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        if let Ok(reply_stream) = reply {
-            let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
-                IpcReceiverWithContext::new(reply_stream);
-            let _ = receiver.recv_server_msg();
-        }
+        let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
+            IpcReceiverWithContext::new(reply_stream);
+        let _ = receiver.recv_server_msg();
         Ok::<(), io::Error>(())
     })
     .await

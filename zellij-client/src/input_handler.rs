@@ -1,7 +1,8 @@
 //! Main input logic.
 use crate::{
-    os_input_output::ClientOsApi, stdin_ansi_parser::AnsiStdinInstruction, ClientId,
-    ClientInstruction, CommandIsExecuting, InputInstruction,
+    nested_reannounce::NestedReannounce, os_input_output::ClientOsApi,
+    stdin_ansi_parser::AnsiStdinInstruction, ClientId, ClientInstruction, CommandIsExecuting,
+    InputInstruction,
 };
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
@@ -15,6 +16,7 @@ use zellij_utils::{
         options::Options,
     },
     ipc::{ClientToServerMsg, ExitReason},
+    nested_session::{self, NestedSessionMessage},
     position::Position,
     vendored::termwiz::input::{
         InputEvent, Modifiers, MouseButtons, MouseEvent as TermwizMouseEvent,
@@ -35,6 +37,7 @@ struct InputHandler {
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
     mouse_old_event: MouseEvent,
     mouse_mode_active: bool,
+    nested_reannounce: NestedReannounce,
 }
 
 fn termwiz_mouse_convert(original_event: &mut MouseEvent, event: &TermwizMouseEvent) {
@@ -46,9 +49,9 @@ fn termwiz_mouse_convert(original_event: &mut MouseEvent, event: &TermwizMouseEv
         && button_bits.contains(MouseButtons::WHEEL_POSITIVE);
     original_event.wheel_down = button_bits.contains(MouseButtons::VERT_WHEEL)
         && !button_bits.contains(MouseButtons::WHEEL_POSITIVE);
-    original_event.wheel_right = button_bits.contains(MouseButtons::HORZ_WHEEL)
-        && button_bits.contains(MouseButtons::WHEEL_POSITIVE);
     original_event.wheel_left = button_bits.contains(MouseButtons::HORZ_WHEEL)
+        && button_bits.contains(MouseButtons::WHEEL_POSITIVE);
+    original_event.wheel_right = button_bits.contains(MouseButtons::HORZ_WHEEL)
         && !button_bits.contains(MouseButtons::WHEEL_POSITIVE);
 
     let mods = &event.modifiers;
@@ -136,6 +139,7 @@ impl InputHandler {
         mode: InputMode, // TODO: we can probably get rid of this now that we're tracking it on the
         // server instead
         receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
+        nested_reannounce: NestedReannounce,
     ) -> Self {
         InputHandler {
             mode,
@@ -148,6 +152,7 @@ impl InputHandler {
             receive_input_instructions,
             mouse_old_event: MouseEvent::new(),
             mouse_mode_active: false,
+            nested_reannounce,
         }
     }
 
@@ -180,6 +185,16 @@ impl InputHandler {
                         InputEvent::Mouse(mouse_event) => {
                             let mouse_event = from_termwiz(&mut self.mouse_old_event, mouse_event);
                             self.handle_mouse_event(&mouse_event);
+                        },
+                        InputEvent::FocusGained => {
+                            self.os_input.send_to_server(
+                                ClientToServerMsg::HostTerminalFocusChanged { focused: true },
+                            );
+                        },
+                        InputEvent::FocusLost => {
+                            self.os_input.send_to_server(
+                                ClientToServerMsg::HostTerminalFocusChanged { focused: false },
+                            );
                         },
                         InputEvent::Paste(pasted_text) => {
                             if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
@@ -232,6 +247,14 @@ impl InputHandler {
                                     None,
                                 );
                             }
+                            if self.mode == InputMode::RenameSession {
+                                self.dispatch_action(
+                                    Action::SessionNameInput {
+                                        input: pasted_text.as_bytes().to_vec(),
+                                    },
+                                    None,
+                                );
+                            }
                         },
                         _ => {},
                     }
@@ -268,6 +291,16 @@ impl InputHandler {
                             token,
                             reply_bytes,
                         });
+                },
+                Ok((
+                    InputInstruction::NestedSessionFrameFromHost(payload_bytes),
+                    _error_context,
+                )) => {
+                    self.handle_nested_session_frame_from_host(payload_bytes);
+                },
+                Ok((InputInstruction::HostTerminalFocusChanged(focused), _error_context)) => {
+                    self.os_input
+                        .send_to_server(ClientToServerMsg::HostTerminalFocusChanged { focused });
                 },
                 Ok((InputInstruction::Exit, _error_context)) => {
                     self.should_exit = true;
@@ -326,6 +359,56 @@ impl InputHandler {
             AnsiStdinInstruction::HostTerminalThemeChanged(mode) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::HostTerminalThemeChanged { mode });
+            },
+            AnsiStdinInstruction::KittyGraphicsSupport(supported) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::KittyGraphicsSupport {
+                        supported,
+                        local_media: false,
+                    });
+            },
+            AnsiStdinInstruction::KittyZlibSupport(supported) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::KittyZlibSupport { supported });
+            },
+            AnsiStdinInstruction::SixelSupport(supported) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::SixelSupport { supported });
+            },
+            AnsiStdinInstruction::GraphemeClusterMode(value) => {
+                let _ = self
+                    .send_client_instructions
+                    .send(ClientInstruction::OuterGraphemeClusterMode(value));
+            },
+            AnsiStdinInstruction::ProgramStatusSupport => {
+                let _ = self
+                    .send_client_instructions
+                    .send(ClientInstruction::HostProgramStatusSupported);
+            },
+        }
+    }
+    fn handle_nested_session_frame_from_host(&mut self, payload_bytes: Vec<u8>) {
+        self.nested_reannounce.note_host_contact();
+        let decoded = nested_session::decode_payload(&payload_bytes);
+        if let Some(message) = decoded.as_ref() {
+            self.os_input.note_host_message(message);
+        }
+        match decoded {
+            Some(NestedSessionMessage::Ping) => {
+                self.send_client_instructions
+                    .send(ClientInstruction::EmitNestedSessionFrame(
+                        nested_session::encode_payload(&NestedSessionMessage::Pong),
+                    ))
+                    .unwrap();
+            },
+            Some(_) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::NestedSessionFrameFromHost {
+                        payload_bytes,
+                    });
+            },
+            None => {
+                log::debug!("dropping undecodable nested session frame from host");
             },
         }
     }
@@ -450,6 +533,7 @@ pub(crate) fn input_loop(
     send_client_instructions: SenderWithContext<ClientInstruction>,
     default_mode: InputMode,
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
+    nested_reannounce: NestedReannounce,
 ) {
     let _handler = InputHandler::new(
         os_input,
@@ -459,6 +543,7 @@ pub(crate) fn input_loop(
         send_client_instructions,
         default_mode,
         receive_input_instructions,
+        nested_reannounce,
     )
     .handle_input();
 }

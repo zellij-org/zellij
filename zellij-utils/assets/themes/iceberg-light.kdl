@@ -3,74 +3,82 @@ themes {
         text_unselected {
             base 51 55 76
             background 220 223 231
-            emphasis_0 198 116 57
-            emphasis_1 63 131 166
+            emphasis_0 155 77 3
+            emphasis_1 33 104 138
             emphasis_2 45 83 158
-            emphasis_3 119 89 180
+            emphasis_3 112 82 172
         }
         text_selected {
             base 51 55 76
-            background 232 233 236
-            emphasis_0 198 116 57
-            emphasis_1 63 131 166
-            emphasis_2 45 83 158
-            emphasis_3 119 89 180
+            background 188 191 202
+            emphasis_0 125 60 0
+            emphasis_1 1 84 117
+            emphasis_2 37 74 148
+            emphasis_3 91 60 148
         }
         ribbon_selected {
             base 220 223 231
             background 45 83 158
-            emphasis_0 204 81 122
-            emphasis_1 198 116 57
-            emphasis_2 119 89 180
-            emphasis_3 102 142 61
+            emphasis_0 255 183 201
+            emphasis_1 231 197 172
+            emphasis_2 209 199 230
+            emphasis_3 173 217 133
         }
         ribbon_unselected {
             base 220 223 231
             background 51 55 76
-            emphasis_0 204 81 122
-            emphasis_1 51 55 76
-            emphasis_2 102 142 61
-            emphasis_3 119 89 180
+            emphasis_0 248 120 160
+            emphasis_1 161 163 173
+            emphasis_2 142 171 111
+            emphasis_3 174 145 242
+        }
+        ribbon_hover {
+            base 220 223 231
+            background 51 55 76
+            emphasis_0 248 120 160
+            emphasis_1 161 163 173
+            emphasis_2 142 171 111
+            emphasis_3 174 145 242
         }
         table_title {
             base 45 83 158
-            background 0
-            emphasis_0 198 116 57
-            emphasis_1 63 131 166
+            background 220 223 231
+            emphasis_0 155 77 3
+            emphasis_1 33 104 138
             emphasis_2 45 83 158
-            emphasis_3 119 89 180
+            emphasis_3 112 82 172
         }
         table_cell_selected {
             base 51 55 76
-            background 232 233 236
-            emphasis_0 198 116 57
-            emphasis_1 63 131 166
-            emphasis_2 45 83 158
-            emphasis_3 119 89 180
+            background 188 191 202
+            emphasis_0 125 60 0
+            emphasis_1 1 84 117
+            emphasis_2 37 74 148
+            emphasis_3 91 60 148
         }
         table_cell_unselected {
             base 51 55 76
             background 220 223 231
-            emphasis_0 198 116 57
-            emphasis_1 63 131 166
+            emphasis_0 155 77 3
+            emphasis_1 33 104 138
             emphasis_2 45 83 158
-            emphasis_3 119 89 180
+            emphasis_3 112 82 172
         }
         list_selected {
             base 51 55 76
-            background 232 233 236
-            emphasis_0 198 116 57
-            emphasis_1 63 131 166
-            emphasis_2 45 83 158
-            emphasis_3 119 89 180
+            background 188 191 202
+            emphasis_0 125 60 0
+            emphasis_1 1 84 117
+            emphasis_2 37 74 148
+            emphasis_3 91 60 148
         }
         list_unselected {
             base 51 55 76
             background 220 223 231
-            emphasis_0 198 116 57
-            emphasis_1 63 131 166
+            emphasis_0 155 77 3
+            emphasis_1 33 104 138
             emphasis_2 45 83 158
-            emphasis_3 119 89 180
+            emphasis_3 112 82 172
         }
         frame_selected {
             base 45 83 158
@@ -78,13 +86,13 @@ themes {
             emphasis_0 198 116 57
             emphasis_1 63 131 166
             emphasis_2 119 89 180
-            emphasis_3 0
+            emphasis_3 119 89 180
         }
         frame_highlight {
-            base 198 116 57
+            base 186 105 45
             background 0
             emphasis_0 119 89 180
-            emphasis_1 198 116 57
+            emphasis_1 186 105 45
             emphasis_2 198 116 57
             emphasis_3 198 116 57
         }
@@ -100,21 +108,40 @@ themes {
             base 204 81 122
             background 0
             emphasis_0 197 115 57
-            emphasis_1 0
-            emphasis_2 0
-            emphasis_3 0
+            emphasis_1 198 116 57
+            emphasis_2 119 89 180
+            emphasis_3 63 131 166
         }
         multiplayer_user_colors {
             player_1 119 89 180
-            player_2 102 142 61
-            player_3 0
-            player_4 197 115 57
+            player_2 98 137 56
+            player_3 50 88 161
+            player_4 187 106 47
             player_5 63 131 166
-            player_6 0
+            player_6 0 143 125
             player_7 204 81 122
-            player_8 0
-            player_9 0
-            player_10 0
+            player_8 169 98 163
+            player_9 156 123 0
+            player_10 99 122 202
+        }
+        // terminal_colors: https://github.com/cocopon/iceberg.vim/blob/master/colors/iceberg.vim (terminal_ansi_colors, light)
+        terminal_colors {
+            black 220 223 231
+            red 204 81 122
+            green 102 142 61
+            yellow 197 115 57
+            blue 45 83 158
+            magenta 119 89 180
+            cyan 63 131 166
+            white 51 55 76
+            bright_black 131 137 163
+            bright_red 204 55 104
+            bright_green 89 128 48
+            bright_yellow 182 102 45
+            bright_blue 34 71 142
+            bright_magenta 104 69 173
+            bright_cyan 50 118 152
+            bright_white 38 42 63
         }
     }
 }

@@ -1,0 +1,44 @@
+---
+source: zellij-server/src/panes/./unit/grapheme_grid_tests.rs
+assertion_line: 673
+expression: "fixture_snapshot(\"indic_thai_scripts\")"
+---
+00 (C): नमस्ते दुनिया
+01 (C): क्षत्रिय श्री
+02 (C): வணக்கம்
+03 (C): สวัสดีครับ ก้ำ
+04 (C): مرحبًا شُكْرًا
+05 (C): שָׁלוֹם
+06 (C): 한글 한글
+07 (C): 
+08 (C): 
+09 (C): 
+10 (C): 
+11 (C): 
+12 (C): 
+13 (C): 
+14 (C): 
+15 (C): 
+16 (C): 
+17 (C): 
+18 (C): 
+19 (C): 
+20 (C): 
+21 (C): 
+22 (C): 
+23 (C): 
+24 (C): 
+25 (C): 
+26 (C): 
+27 (C): 
+28 (C): 
+29 (C): 
+cursor: (0, 7)
+00 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+01 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+02 groups=false widths=[1, 1, 1, 1, 1]
+03 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+04 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+05 groups=false widths=[1, 1, 1, 1]
+06 groups=true widths=[2, 2, 1, 2, 2]
+07 groups=false widths=[]

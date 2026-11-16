@@ -1,0 +1,67 @@
+size: 40x120
+cursor: row=8 col=0 visible shape=Default
+grid:
+|xxxxxxxxxxxxxxxxxx👨‍ 👩‍ 👧                                                                                                 |
+|yyyyyyyyyyyyyyyyyyy你                                                                                                    |
+|zzzzzzzzzzzzzzzzzzzé̂                                                                                                    |
+|wwwwwwwwwwwwwwwwwww👍 🏽                                                                                                  |
+|vvvvvvvvvvvvvvvvvvv你 你                                                                                                  |
+|uuuuuuuuuuuuuuuuuuu⚠️ X                                                                                                  |
+|ttttttttttttttttttt⚠️                                                                                                    |
+|ssssssssssssssssss៘  q                                                                                                  |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 0: cols 18-18 fg=Foreground bg=Background flags=WIDE_CHAR
+row 0: cols 19-19 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 20-20 fg=Foreground bg=Background flags=WIDE_CHAR|GROUP_CONTINUE
+row 0: cols 21-21 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 22-22 fg=Foreground bg=Background flags=WIDE_CHAR|GROUP_CONTINUE
+row 0: cols 23-23 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 1: cols 19-19 fg=Foreground bg=Background flags=WIDE_CHAR
+row 1: cols 20-20 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 3: cols 19-19 fg=Foreground bg=Background flags=WIDE_CHAR
+row 3: cols 20-20 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 3: cols 21-21 fg=Foreground bg=Background flags=WIDE_CHAR|GROUP_CONTINUE
+row 3: cols 22-22 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 19-19 fg=Foreground bg=Background flags=WIDE_CHAR
+row 4: cols 20-20 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 21-21 fg=Foreground bg=Background flags=WIDE_CHAR
+row 4: cols 22-22 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 5: cols 19-19 fg=Foreground bg=Background flags=WIDE_CHAR
+row 5: cols 20-20 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 6: cols 19-19 fg=Foreground bg=Background flags=WIDE_CHAR
+row 6: cols 20-20 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 7: cols 18-18 fg=Foreground bg=Background flags=WIDE_CHAR
+row 7: cols 19-20 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+images:

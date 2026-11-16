@@ -1,0 +1,1370 @@
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
+use std::time::Duration;
+
+use zellij_client::os_input_output::SignalEvent;
+use zellij_client::ClientInfo;
+use zellij_utils::cli::{CliAction, CliArgs, Command};
+use zellij_utils::data::{CommandOrPlugin, ConnectToSession, LayoutInfo};
+use zellij_utils::input::actions::{Action, RunCommandAction};
+use zellij_utils::input::options::Options;
+use zellij_utils::pane_size::Size;
+use zellij_utils::setup::Setup;
+
+use crate::client_screen::{GridSnapshot, HostTerminal};
+use crate::deadline::{ProgressDeadline, SERIALIZATION_PROGRESS};
+use crate::fake_client_os_api::{FakeClientHandle, FakeClientOsApi};
+use crate::fake_pty::FakePtyHandle;
+use crate::fake_server_os_api::FakeServerOsApi;
+use crate::{keys, test_env};
+
+const GUEST_MODAL_TITLE: &str = "Nested Zellij session detected";
+
+pub struct TestRunner {
+    size: Size,
+    extra_config_kdl: String,
+    layout: Option<LayoutInfo>,
+    initial_panes: Option<Vec<CommandOrPlugin>>,
+    env: std::collections::HashMap<String, String>,
+    stdout_tap: Option<crossbeam::channel::Sender<Vec<u8>>>,
+    skip_concurrency_slot: bool,
+    host_terminal: Option<HostTerminal>,
+    cli_options: Option<Options>,
+    without_config_file: bool,
+    setup_wizard: bool,
+    session_name: Option<String>,
+}
+
+impl TestRunner {
+    pub fn new(size: Size) -> Self {
+        TestRunner {
+            size,
+            extra_config_kdl: String::new(),
+            layout: None,
+            initial_panes: None,
+            env: std::collections::HashMap::new(),
+            stdout_tap: None,
+            skip_concurrency_slot: false,
+            host_terminal: None,
+            cli_options: None,
+            without_config_file: false,
+            setup_wizard: false,
+            session_name: None,
+        }
+    }
+
+    pub fn with_session_name(mut self, session_name: &str) -> Self {
+        self.session_name = Some(session_name.to_owned());
+        self
+    }
+
+    pub fn without_config_file(mut self) -> Self {
+        self.without_config_file = true;
+        self
+    }
+
+    pub fn with_setup_wizard(mut self) -> Self {
+        self.setup_wizard = true;
+        self
+    }
+
+    pub fn with_config(mut self, extra_config_kdl: &str) -> Self {
+        self.extra_config_kdl.push('\n');
+        self.extra_config_kdl.push_str(extra_config_kdl);
+        self
+    }
+
+    pub fn with_cli_options(mut self, options: Options) -> Self {
+        self.cli_options = Some(options);
+        self
+    }
+
+    pub fn with_layout(mut self, layout: LayoutInfo) -> Self {
+        self.layout = Some(layout);
+        self
+    }
+
+    pub fn with_initial_command(mut self, command: &[&str]) -> Self {
+        let mut command: Vec<String> = command.iter().map(|part| part.to_string()).collect();
+        let run_command_action = RunCommandAction {
+            command: PathBuf::from(command.remove(0)),
+            args: command,
+            hold_on_close: true,
+            ..Default::default()
+        };
+        self.initial_panes = Some(vec![CommandOrPlugin::Command(run_command_action)]);
+        self
+    }
+
+    pub fn with_stdout_tap(mut self, sender: crossbeam::channel::Sender<Vec<u8>>) -> Self {
+        self.stdout_tap = Some(sender);
+        self
+    }
+
+    pub fn with_host_terminal(mut self, host_terminal: HostTerminal) -> Self {
+        self.host_terminal = Some(host_terminal);
+        self
+    }
+
+    pub fn skip_concurrency_slot(mut self) -> Self {
+        self.skip_concurrency_slot = true;
+        self
+    }
+
+    pub fn start(self) -> TestSession {
+        let (session_context, fake_client_os_api, fake_client_handle, client_info) = self.boot();
+        let client_thread = spawn_client_thread(
+            fake_client_os_api,
+            session_context.cli_args.clone(),
+            session_context.config.clone(),
+            session_context.config_options.clone(),
+            client_info,
+        );
+        session_context.into_session(TestClient {
+            fake_client_handle,
+            thread: Some(client_thread),
+        })
+    }
+
+    pub fn start_in_background(self) -> BackgroundTestSession {
+        let (session_context, fake_client_os_api, fake_client_handle, client_info) = self.boot();
+        let cli_args = session_context.cli_args.clone();
+        let config = session_context.config.clone();
+        let config_options = session_context.config_options.clone();
+        let detaching_client_thread = std::thread::Builder::new()
+            .name("in_process_zellij_detached_client".to_string())
+            .spawn(move || {
+                let start_detached_and_exit = true;
+                zellij_client::start_client(
+                    Box::new(fake_client_os_api),
+                    cli_args,
+                    config,
+                    config_options,
+                    client_info,
+                    None,
+                    None,
+                    false,
+                    start_detached_and_exit,
+                    None,
+                );
+            })
+            .unwrap();
+        join_detaching_client_thread_with_timeout(detaching_client_thread);
+        session_context.fake_server_os_api.shared_ptys.wait_for(
+            "the background session to start its first terminal",
+            |fake_pty_registry| (!fake_pty_registry.fake_pty_states.is_empty()).then_some(()),
+        );
+        drop(fake_client_handle);
+        crate::wait_for("the server to release the detaching client", || {
+            session_context.fake_server_os_api.connected_client_count() == 0
+        });
+        BackgroundTestSession { session_context }
+    }
+
+    fn boot(
+        self,
+    ) -> (
+        SessionContext,
+        FakeClientOsApi,
+        FakeClientHandle,
+        ClientInfo,
+    ) {
+        test_env::init();
+        let session_name = self
+            .session_name
+            .clone()
+            .unwrap_or_else(test_env::unique_session_name);
+        let data_dir = test_env::init().join("data");
+        test_env::prepare_setup_wizard(self.setup_wizard);
+
+        let cli_args = if self.without_config_file {
+            let mut options = test_env::default_test_options();
+            if let Some(cli_options) = self.cli_options.clone() {
+                options = options.merge(cli_options);
+            }
+            CliArgs {
+                config_dir: Some(test_env::empty_config_dir(&session_name)),
+                data_dir: Some(data_dir),
+                command: Some(Command::Options(options.into())),
+                ..Default::default()
+            }
+        } else {
+            let config_path = test_env::write_config(&session_name, &self.extra_config_kdl);
+            CliArgs {
+                config: Some(config_path),
+                data_dir: Some(data_dir),
+                command: self.cli_options.clone().map(Command::Options),
+                ..Default::default()
+            }
+        };
+        let (config, default_layout_info, config_options, _, _) =
+            Setup::from_cli_args(&cli_args).expect("failed to load harness config");
+
+        let concurrency_slot = if self.skip_concurrency_slot {
+            None
+        } else {
+            Some(test_env::acquire_concurrency_slot())
+        };
+
+        let fake_server_os_api = FakeServerOsApi::default();
+        let server_thread: Arc<Mutex<Option<JoinHandle<()>>>> = Arc::new(Mutex::new(None));
+        let server_spawner = in_process_server_spawner(fake_server_os_api.clone(), &server_thread);
+
+        let (fake_client_os_api, fake_client_handle) =
+            FakeClientOsApi::new_with_env(self.size, Some(server_spawner), self.env);
+        let host_terminal = self.host_terminal.unwrap_or(if self.stdout_tap.is_some() {
+            HostTerminal::Manual
+        } else {
+            HostTerminal::Basic
+        });
+        fake_client_handle
+            .client_screen
+            .set_host_terminal(host_terminal, fake_client_handle.stdin_tx.clone());
+        if let Some(stdout_tap) = self.stdout_tap {
+            fake_client_handle.client_screen.set_stdout_tap(stdout_tap);
+        }
+        let layout_info = self.layout.or(default_layout_info);
+        let client_info =
+            ClientInfo::New(session_name.clone(), layout_info, None, self.initial_panes);
+
+        (
+            SessionContext {
+                session_name,
+                size: self.size,
+                cli_args,
+                config,
+                config_options,
+                fake_server_os_api,
+                server_thread,
+                concurrency_slot,
+            },
+            fake_client_os_api,
+            fake_client_handle,
+            client_info,
+        )
+    }
+}
+
+struct SessionContext {
+    session_name: String,
+    size: Size,
+    cli_args: CliArgs,
+    config: zellij_utils::input::config::Config,
+    config_options: Options,
+    fake_server_os_api: FakeServerOsApi,
+    server_thread: Arc<Mutex<Option<JoinHandle<()>>>>,
+    concurrency_slot: Option<test_env::ConcurrencySlot>,
+}
+
+impl SessionContext {
+    fn into_session(self, main_client: TestClient) -> TestSession {
+        TestSession {
+            session_name: self.session_name,
+            size: self.size,
+            cli_args: self.cli_args,
+            config: self.config,
+            config_options: self.config_options,
+            fake_server_os_api: self.fake_server_os_api,
+            server_thread: self.server_thread,
+            main_client,
+            _concurrency_slot: self.concurrency_slot,
+            released_concurrency_slot: false,
+        }
+    }
+}
+
+pub struct BackgroundTestSession {
+    session_context: SessionContext,
+}
+
+impl BackgroundTestSession {
+    pub fn session_name(&self) -> &str {
+        &self.session_context.session_name
+    }
+
+    pub fn expect_pty_spawn(&self) -> FakePtyHandle {
+        expect_pty_spawn(&self.session_context.fake_server_os_api)
+    }
+
+    pub fn connected_client_count(&self) -> usize {
+        self.session_context
+            .fake_server_os_api
+            .connected_client_count()
+    }
+
+    pub fn attach(self, size: Size) -> TestSession {
+        self.attach_focusing(size, None)
+    }
+
+    pub fn attach_client(&self, size: Size) -> TestClient {
+        let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, None);
+        let thread = spawn_client_thread(
+            fake_client_os_api,
+            self.session_context.cli_args.clone(),
+            self.session_context.config.clone(),
+            self.session_context.config_options.clone(),
+            ClientInfo::Attach(
+                self.session_context.session_name.clone(),
+                self.session_context.config_options.clone(),
+            ),
+        );
+        TestClient {
+            fake_client_handle,
+            thread: Some(thread),
+        }
+    }
+
+    pub fn attach_focusing(self, size: Size, pane_id_to_focus: Option<(u32, bool)>) -> TestSession {
+        let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, None);
+        let client_thread = spawn_focusing_client_thread(
+            fake_client_os_api,
+            self.session_context.cli_args.clone(),
+            self.session_context.config.clone(),
+            self.session_context.config_options.clone(),
+            ClientInfo::Attach(
+                self.session_context.session_name.clone(),
+                self.session_context.config_options.clone(),
+            ),
+            pane_id_to_focus,
+        );
+        self.session_context.into_session(TestClient {
+            fake_client_handle,
+            thread: Some(client_thread),
+        })
+    }
+}
+
+fn expect_pty_spawn(fake_server_os_api: &FakeServerOsApi) -> FakePtyHandle {
+    let terminal_id = fake_server_os_api
+        .shared_ptys
+        .wait_for("a pty spawn", |fake_pty_registry| {
+            fake_pty_registry.spawn_queue.pop_front()
+        });
+    FakePtyHandle {
+        terminal_id,
+        shared_ptys: fake_server_os_api.shared_ptys.clone(),
+    }
+}
+
+fn join_detaching_client_thread_with_timeout(join_handle: JoinHandle<()>) {
+    let (done_tx, done_rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("detaching_client_join_watchdog".to_string())
+        .spawn(move || {
+            let result = join_handle.join();
+            let _ = done_tx.send(result);
+        })
+        .unwrap();
+    match done_rx.recv_timeout(CLIENT_JOIN_TIMEOUT) {
+        Ok(Ok(())) => {},
+        Ok(Err(_)) => panic!("detaching client thread panicked"),
+        Err(_) => panic!("timed out starting a session in the background"),
+    }
+}
+
+fn in_process_server_spawner(
+    fake_server_os_api: FakeServerOsApi,
+    server_thread: &Arc<Mutex<Option<JoinHandle<()>>>>,
+) -> Box<dyn FnOnce(std::path::PathBuf) + Send> {
+    let server_thread = server_thread.clone();
+    Box::new(move |socket_path: std::path::PathBuf| {
+        let install_panic_hook = false;
+        let join_handle = std::thread::Builder::new()
+            .name("in_process_zellij_server".to_string())
+            .spawn(move || {
+                zellij_server::start_server_impl(
+                    Box::new(fake_server_os_api),
+                    socket_path,
+                    install_panic_hook,
+                );
+            })
+            .unwrap();
+        *server_thread.lock().unwrap() = Some(join_handle);
+    })
+}
+
+fn new_pane_cli_action(
+    command: &[&str],
+    floating: bool,
+    close_on_exit: bool,
+    start_suspended: bool,
+    block_until_exit: bool,
+) -> CliAction {
+    CliAction::NewPane {
+        direction: None,
+        command: command.iter().map(|part| part.to_string()).collect(),
+        plugin: None,
+        cwd: None,
+        floating,
+        in_place: false,
+        close_replaced_pane: false,
+        pane_id: None,
+        name: None,
+        close_on_exit,
+        start_suspended,
+        configuration: None,
+        skip_plugin_cache: false,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        stacked: false,
+        blocking: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        block_until_exit,
+        unblock_condition: None,
+        near_current_pane: false,
+        no_focus: false,
+        borderless: None,
+        tab_id: None,
+        border_style: None,
+        notify: Default::default(),
+    }
+}
+
+fn serialization_progress(layout_path: &Path, session_dir: Option<&Path>) -> (u64, usize) {
+    let layout_bytes = std::fs::metadata(layout_path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    let files_on_disk = session_dir
+        .and_then(|dir| std::fs::read_dir(dir).ok())
+        .map(|entries| entries.flatten().count())
+        .unwrap_or(0);
+    (layout_bytes, files_on_disk)
+}
+
+fn referenced_contents_files(layout: &str) -> impl Iterator<Item = &str> {
+    layout
+        .match_indices("contents_file=\"")
+        .filter_map(|(start, marker)| {
+            let rest = &layout[start + marker.len()..];
+            rest.find('"').map(|end| &rest[..end])
+        })
+}
+
+fn spawn_client_thread(
+    fake_client_os_api: FakeClientOsApi,
+    cli_args: CliArgs,
+    config: zellij_utils::input::config::Config,
+    config_options: Options,
+    client_info: ClientInfo,
+) -> JoinHandle<Option<ConnectToSession>> {
+    spawn_client_thread_with_reconnect(
+        fake_client_os_api,
+        cli_args,
+        config,
+        config_options,
+        client_info,
+        false,
+        None,
+    )
+}
+
+fn spawn_focusing_client_thread(
+    fake_client_os_api: FakeClientOsApi,
+    cli_args: CliArgs,
+    config: zellij_utils::input::config::Config,
+    config_options: Options,
+    client_info: ClientInfo,
+    pane_id_to_focus: Option<(u32, bool)>,
+) -> JoinHandle<Option<ConnectToSession>> {
+    std::thread::Builder::new()
+        .name("in_process_zellij_client".to_string())
+        .spawn(move || {
+            zellij_client::start_client(
+                Box::new(fake_client_os_api),
+                cli_args,
+                config,
+                config_options,
+                client_info,
+                None,
+                pane_id_to_focus,
+                false,
+                false,
+                None,
+            )
+        })
+        .unwrap()
+}
+
+fn spawn_client_thread_with_reconnect(
+    fake_client_os_api: FakeClientOsApi,
+    cli_args: CliArgs,
+    config: zellij_utils::input::config::Config,
+    config_options: Options,
+    client_info: ClientInfo,
+    is_a_reconnect: bool,
+    switch_context: Option<zellij_utils::session_history::SwitchContext>,
+) -> JoinHandle<Option<ConnectToSession>> {
+    std::thread::Builder::new()
+        .name("in_process_zellij_client".to_string())
+        .spawn(move || {
+            let tab_position_to_focus = None;
+            let pane_id_to_focus = None;
+            let start_detached_and_exit = false;
+            zellij_client::start_client(
+                Box::new(fake_client_os_api),
+                cli_args,
+                config,
+                config_options,
+                client_info,
+                tab_position_to_focus,
+                pane_id_to_focus,
+                is_a_reconnect,
+                start_detached_and_exit,
+                switch_context,
+            )
+        })
+        .unwrap()
+}
+
+pub struct TestClient {
+    fake_client_handle: FakeClientHandle,
+    thread: Option<JoinHandle<Option<ConnectToSession>>>,
+}
+
+#[derive(Clone)]
+pub struct GuestResizer {
+    size: Arc<Mutex<Size>>,
+    signal_tx: crossbeam::channel::Sender<SignalEvent>,
+}
+
+impl GuestResizer {
+    pub fn resize(&self, new_size: Size) -> bool {
+        *self.size.lock().unwrap() = new_size;
+        self.signal_tx.send(SignalEvent::Resize).is_ok()
+    }
+}
+
+impl TestClient {
+    pub fn send_stdin(&self, bytes: &[u8]) {
+        self.fake_client_handle
+            .stdin_tx
+            .send(bytes.to_vec())
+            .expect("client stdin closed");
+    }
+
+    pub fn resize(&self, new_size: Size) {
+        *self.fake_client_handle.size.lock().unwrap() = new_size;
+        let _ = self.fake_client_handle.signal_tx.send(SignalEvent::Resize);
+    }
+
+    pub fn wait_until(
+        &self,
+        what: &str,
+        predicate: impl Fn(&GridSnapshot) -> bool,
+    ) -> GridSnapshot {
+        self.fake_client_handle
+            .client_screen
+            .wait_until(what, predicate)
+    }
+
+    pub fn wait_until_raw_output(&self, what: &str, predicate: impl Fn(&[u8]) -> bool) -> Vec<u8> {
+        self.fake_client_handle
+            .client_screen
+            .wait_until_raw_output(what, predicate)
+    }
+
+    pub fn snapshot(&self) -> GridSnapshot {
+        self.fake_client_handle.client_screen.snapshot()
+    }
+
+    pub fn raw_bytes(&self) -> Vec<u8> {
+        self.fake_client_handle.client_screen.raw_bytes()
+    }
+
+    pub fn received_server_messages(&self) -> Vec<String> {
+        self.fake_client_handle.received_server_messages()
+    }
+
+    pub fn received_terminal_settings(
+        &self,
+    ) -> Vec<zellij_utils::input::terminal::TerminalSettings> {
+        self.fake_client_handle.received_terminal_settings()
+    }
+
+    pub fn send_action(&self, action: zellij_utils::input::actions::Action) {
+        self.fake_client_handle.send_action(action);
+    }
+
+    pub fn has_exited(&self) -> bool {
+        self.thread
+            .as_ref()
+            .map(|thread| thread.is_finished())
+            .unwrap_or(true)
+    }
+
+    pub fn wait_for_client_to_exit(mut self) {
+        self.join();
+    }
+
+    pub fn quit(mut self) {
+        self.send_stdin(&keys::ctrl('q'));
+        self.join();
+    }
+
+    pub fn detach(mut self) {
+        self.send_stdin(&keys::ctrl('o'));
+        self.send_stdin(&keys::key('d'));
+        self.join();
+    }
+
+    fn join(&mut self) -> Option<ConnectToSession> {
+        self.thread.take().and_then(join_client_thread_with_timeout)
+    }
+}
+
+fn join_client_thread_with_timeout(
+    join_handle: JoinHandle<Option<ConnectToSession>>,
+) -> Option<ConnectToSession> {
+    let (done_tx, done_rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("nested_client_join_watchdog".to_string())
+        .spawn(move || {
+            let result = join_handle.join();
+            let _ = done_tx.send(result);
+        })
+        .unwrap();
+    match done_rx.recv_timeout(CLIENT_JOIN_TIMEOUT) {
+        Ok(Ok(reconnect)) => reconnect,
+        Ok(Err(_)) => panic!("client thread panicked"),
+        Err(mpsc::RecvTimeoutError::Timeout) => None,
+        Err(mpsc::RecvTimeoutError::Disconnected) => None,
+    }
+}
+
+fn join_server_thread_with_timeout(join_handle: JoinHandle<()>) {
+    let (done_tx, done_rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("nested_server_join_watchdog".to_string())
+        .spawn(move || {
+            let result = join_handle.join();
+            let _ = done_tx.send(result);
+        })
+        .unwrap();
+    match done_rx.recv_timeout(CLIENT_JOIN_TIMEOUT) {
+        Ok(Ok(())) => {},
+        Ok(Err(_)) => panic!("server thread panicked"),
+        Err(_) => {},
+    }
+}
+
+const CLIENT_JOIN_TIMEOUT: Duration = Duration::from_secs(10);
+
+pub struct TestSession {
+    session_name: String,
+    size: Size,
+    cli_args: CliArgs,
+    config: zellij_utils::input::config::Config,
+    config_options: Options,
+    fake_server_os_api: FakeServerOsApi,
+    server_thread: Arc<Mutex<Option<JoinHandle<()>>>>,
+    main_client: TestClient,
+    _concurrency_slot: Option<test_env::ConcurrencySlot>,
+    released_concurrency_slot: bool,
+}
+
+pub struct CliClientHandle {
+    thread: JoinHandle<i32>,
+}
+
+impl CliClientHandle {
+    pub fn wait_for_exit(self) -> i32 {
+        self.thread.join().expect("cli client thread panicked")
+    }
+}
+
+pub struct CliOutputHandle {
+    thread: JoinHandle<i32>,
+    fake_client_handle: FakeClientHandle,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CliResult {
+    pub exit_code: i32,
+    pub stdout: String,
+}
+
+impl CliOutputHandle {
+    pub fn has_exited(&self) -> bool {
+        self.thread.is_finished()
+    }
+    pub fn stdout(&self) -> String {
+        String::from_utf8_lossy(&self.fake_client_handle.client_screen.raw_bytes()).into_owned()
+    }
+    pub fn wait_for_exit(self) -> CliResult {
+        let deadline = std::time::Instant::now() + crate::default_timeout();
+        while !self.thread.is_finished() {
+            if std::time::Instant::now() > deadline {
+                panic!(
+                    "cli command did not exit in time; stdout so far: {:?}",
+                    self.stdout()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let stdout = self.stdout();
+        let exit_code = self.thread.join().expect("cli client thread panicked");
+        CliResult { exit_code, stdout }
+    }
+}
+
+pub struct CliCaller {
+    pub pane_id: Option<u32>,
+    pub stdin: Option<crossbeam::channel::Receiver<Vec<u8>>>,
+}
+
+impl CliCaller {
+    pub fn from_pane(pane_id: u32) -> Self {
+        CliCaller {
+            pane_id: Some(pane_id),
+            stdin: None,
+        }
+    }
+    pub fn with_stdin(mut self, stdin: crossbeam::channel::Receiver<Vec<u8>>) -> Self {
+        self.stdin = Some(stdin);
+        self
+    }
+    pub fn with_stdin_text(self, text: &str) -> Self {
+        let (sender, receiver) = crossbeam::channel::unbounded();
+        sender.send(text.as_bytes().to_vec()).unwrap();
+        drop(sender);
+        self.with_stdin(receiver)
+    }
+}
+
+impl TestSession {
+    pub fn session_name(&self) -> &str {
+        &self.session_name
+    }
+
+    /// The session id: the socket/pipe filename and the session-info cache folder name.
+    pub fn session_id(&self) -> String {
+        zellij_utils::sessions::resolve_session_id(&self.session_name)
+            .unwrap_or_else(|| self.session_name.clone())
+    }
+
+    /// The session's socket/pipe path, which is named by the session id.
+    pub fn socket_path(&self) -> PathBuf {
+        zellij_utils::consts::session_socket_path(&self.session_name)
+    }
+
+    pub fn expect_pty_spawn(&self) -> FakePtyHandle {
+        expect_pty_spawn(&self.fake_server_os_api)
+    }
+
+    pub fn main_client(&self) -> &TestClient {
+        &self.main_client
+    }
+
+    pub fn send_stdin(&self, bytes: &[u8]) {
+        self.main_client.send_stdin(bytes);
+    }
+
+    pub fn stdin_sender(&self) -> crossbeam::channel::Sender<Vec<u8>> {
+        self.main_client.fake_client_handle.stdin_tx.clone()
+    }
+
+    pub fn resize(&self, new_size: Size) {
+        self.main_client.resize(new_size);
+    }
+
+    pub fn resize_sender(&self) -> GuestResizer {
+        GuestResizer {
+            size: self.main_client.fake_client_handle.size.clone(),
+            signal_tx: self.main_client.fake_client_handle.signal_tx.clone(),
+        }
+    }
+
+    pub fn wait_until(
+        &self,
+        what: &str,
+        predicate: impl Fn(&GridSnapshot) -> bool,
+    ) -> GridSnapshot {
+        self.main_client.wait_until(what, predicate)
+    }
+
+    pub fn wait_until_raw_output(&self, what: &str, predicate: impl Fn(&[u8]) -> bool) -> Vec<u8> {
+        self.main_client.wait_until_raw_output(what, predicate)
+    }
+
+    pub fn snapshot(&self) -> GridSnapshot {
+        self.main_client.snapshot()
+    }
+
+    pub fn wait_briefly(
+        &self,
+        what: &str,
+        predicate: impl Fn(&GridSnapshot) -> bool,
+    ) -> GridSnapshot {
+        let deadline = std::time::Instant::now() + crate::default_timeout();
+        loop {
+            let grid_snapshot = self.snapshot();
+            if predicate(&grid_snapshot) {
+                return grid_snapshot;
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for: {}\nlast rendered grid:\n{}",
+                    what, grid_snapshot.text
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+
+    pub fn raw_bytes(&self) -> Vec<u8> {
+        self.main_client.raw_bytes()
+    }
+
+    pub fn received_server_messages(&self) -> Vec<String> {
+        self.main_client.received_server_messages()
+    }
+
+    pub fn wait_for_terminal_settings(
+        &self,
+        what: &str,
+        predicate: impl Fn(&zellij_utils::input::terminal::TerminalSettings) -> bool,
+    ) -> zellij_utils::input::terminal::TerminalSettings {
+        let deadline = std::time::Instant::now() + crate::default_timeout();
+        loop {
+            if let Some(found) = self
+                .main_client
+                .received_terminal_settings()
+                .into_iter()
+                .rev()
+                .find(|settings| predicate(settings))
+            {
+                return found;
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("timed out waiting for window settings: {}", what);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    pub fn wait_for_app_load(&self) -> GridSnapshot {
+        self.main_client.wait_until("app to load", |grid_snapshot| {
+            (grid_snapshot.status_bar_appears() || grid_snapshot.contains("Descend:"))
+                && grid_snapshot.tab_bar_appears()
+                && (grid_snapshot.cursor.is_some() || grid_snapshot.contains(GUEST_MODAL_TITLE))
+        })
+    }
+
+    pub fn written_files(&self) -> std::collections::HashMap<String, String> {
+        self.fake_server_os_api.written_files()
+    }
+
+    pub fn config_file_path(&self) -> Option<std::path::PathBuf> {
+        self.cli_args.config.clone().or_else(|| {
+            self.cli_args
+                .config_dir
+                .as_ref()
+                .map(|config_dir| config_dir.join("config.kdl"))
+        })
+    }
+
+    pub fn attach_client(&self, size: Size) -> TestClient {
+        let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, None);
+        let thread = spawn_client_thread(
+            fake_client_os_api,
+            self.cli_args.clone(),
+            self.config.clone(),
+            self.config_options.clone(),
+            ClientInfo::Attach(self.session_name.clone(), self.config_options.clone()),
+        );
+        TestClient {
+            fake_client_handle,
+            thread: Some(thread),
+        }
+    }
+
+    /// Attach a new client to a session by an explicit name — used to verify
+    /// reattaching to a session by a name it was renamed to.
+    pub fn attach_client_by_name(&self, session_name: &str, size: Size) -> TestClient {
+        let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, None);
+        let thread = spawn_client_thread(
+            fake_client_os_api,
+            self.cli_args.clone(),
+            self.config.clone(),
+            self.config_options.clone(),
+            ClientInfo::Attach(session_name.to_string(), self.config_options.clone()),
+        );
+        TestClient {
+            fake_client_handle,
+            thread: Some(thread),
+        }
+    }
+
+    pub fn attach_watcher(&self, size: Size) -> TestClient {
+        let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, None);
+        let thread = spawn_client_thread(
+            fake_client_os_api,
+            self.cli_args.clone(),
+            self.config.clone(),
+            self.config_options.clone(),
+            ClientInfo::Watch(self.session_name.clone(), self.config_options.clone()),
+        );
+        TestClient {
+            fake_client_handle,
+            thread: Some(thread),
+        }
+    }
+
+    pub fn run_cli_action(&self, cli_action: CliAction) -> i32 {
+        self.spawn_cli_client(cli_action)
+            .join()
+            .expect("cli client thread panicked")
+    }
+
+    fn spawn_cli_client(&self, cli_action: CliAction) -> JoinHandle<i32> {
+        let actions = Action::actions_from_cli(
+            cli_action,
+            Box::new(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))),
+            Some(self.config.clone()),
+        )
+        .expect("failed to build cli actions");
+        let (fake_client_os_api, _fake_client_handle) = FakeClientOsApi::new(self.size, None);
+        let session_name = self.session_name.clone();
+        std::thread::Builder::new()
+            .name("in_process_cli_client".to_string())
+            .spawn(move || {
+                zellij_client::cli_client::start_cli_client(
+                    Box::new(fake_client_os_api),
+                    &session_name,
+                    actions,
+                )
+            })
+            .unwrap()
+    }
+
+    fn cli_os_api(&self, caller: CliCaller) -> (FakeClientOsApi, FakeClientHandle) {
+        let mut env = std::collections::HashMap::new();
+        if let Some(pane_id) = caller.pane_id {
+            env.insert("ZELLIJ_PANE_ID".to_owned(), pane_id.to_string());
+        }
+        let (fake_client_os_api, fake_client_handle) =
+            FakeClientOsApi::new_with_env(self.size, None, env);
+        let fake_client_os_api = match caller.stdin {
+            Some(stdin) => fake_client_os_api.with_piped_stdin(stdin),
+            None => fake_client_os_api,
+        };
+        (fake_client_os_api, fake_client_handle)
+    }
+
+    pub fn run_prompt(&self, args: &[&str], caller: CliCaller) -> CliOutputHandle {
+        let mut command_line = vec!["prompt"];
+        command_line.extend_from_slice(args);
+        let prompt_cli =
+            <zellij_utils::cli::PromptCli as clap::Parser>::try_parse_from(command_line)
+                .expect("invalid prompt arguments");
+        let (fake_client_os_api, fake_client_handle) = self.cli_os_api(caller);
+        let session_name = self.session_name.clone();
+        let thread = std::thread::Builder::new()
+            .name("in_process_prompt_client".to_string())
+            .spawn(move || {
+                zellij_client::cli_client::start_prompt_client(
+                    Box::new(fake_client_os_api),
+                    &session_name,
+                    prompt_cli,
+                    zellij_utils::prompt::PROMPT_PLUGIN_URL.to_owned(),
+                )
+            })
+            .unwrap();
+        CliOutputHandle {
+            thread,
+            fake_client_handle,
+        }
+    }
+
+    pub fn run_cli_pipe(&self, cli_action: CliAction, caller: CliCaller) -> CliOutputHandle {
+        let actions = Action::actions_from_cli(
+            cli_action,
+            Box::new(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))),
+            Some(self.config.clone()),
+        )
+        .expect("failed to build cli actions");
+        let (fake_client_os_api, fake_client_handle) = self.cli_os_api(caller);
+        let session_name = self.session_name.clone();
+        let thread = std::thread::Builder::new()
+            .name("in_process_pipe_client".to_string())
+            .spawn(move || {
+                zellij_client::cli_client::start_cli_client(
+                    Box::new(fake_client_os_api),
+                    &session_name,
+                    actions,
+                )
+            })
+            .unwrap();
+        CliOutputHandle {
+            thread,
+            fake_client_handle,
+        }
+    }
+
+    pub fn save_session(&self) {
+        self.run_cli_action(CliAction::SaveSession);
+    }
+
+    pub fn wait_for_serialized_session(&self) {
+        // The session-info cache is keyed by session id, not the display name.
+        let layout_path = zellij_utils::consts::session_layout_cache_file_name(&self.session_id());
+        let session_dir = layout_path.parent().map(|parent| parent.to_path_buf());
+        let mut deadline = ProgressDeadline::starting_now(SERIALIZATION_PROGRESS);
+        let mut written = serialization_progress(&layout_path, session_dir.as_deref());
+        loop {
+            if let Ok(layout) = std::fs::read_to_string(&layout_path) {
+                let referenced_contents_files_exist = session_dir.as_ref().map_or(true, |dir| {
+                    referenced_contents_files(&layout).all(|name| dir.join(name).exists())
+                });
+                if referenced_contents_files_exist {
+                    return;
+                }
+            }
+            let now = std::time::Instant::now();
+            if let Some(tripped) = deadline.tripped(now) {
+                panic!(
+                    "timed out waiting for session serialization at {}\n{}",
+                    layout_path.display(),
+                    tripped
+                );
+            }
+            std::thread::sleep(
+                deadline
+                    .remaining(now)
+                    .min(std::time::Duration::from_millis(10)),
+            );
+            let written_now = serialization_progress(&layout_path, session_dir.as_deref());
+            if written_now != written {
+                written = written_now;
+                deadline.note_progress(std::time::Instant::now());
+            }
+        }
+    }
+
+    pub fn resurrect(&mut self, size: Size) {
+        // The session-info cache is keyed by session id, not the display name.
+        // register_session reuses this id when resurrecting, so the resurrected
+        // server writes back to the same folder.
+        let layout_path = zellij_utils::consts::session_layout_cache_file_name(&self.session_id());
+        assert!(
+            layout_path.exists(),
+            "no serialized layout to resurrect from at {}",
+            layout_path.display()
+        );
+        let mut cli_args = self.cli_args.clone();
+        if cli_args.config_dir.is_none() {
+            cli_args.config_dir = cli_args
+                .config
+                .as_ref()
+                .and_then(|config| config.parent().map(|parent| parent.to_path_buf()));
+        }
+        if std::mem::take(&mut self.released_concurrency_slot) {
+            self._concurrency_slot = Some(test_env::acquire_concurrency_slot());
+        }
+        let fake_server_os_api = FakeServerOsApi::default();
+        let server_thread: Arc<Mutex<Option<JoinHandle<()>>>> = Arc::new(Mutex::new(None));
+        let server_spawner = in_process_server_spawner(fake_server_os_api.clone(), &server_thread);
+        let (fake_client_os_api, fake_client_handle) =
+            FakeClientOsApi::new(size, Some(server_spawner));
+        let client_thread = spawn_client_thread(
+            fake_client_os_api,
+            cli_args,
+            self.config.clone(),
+            self.config_options.clone(),
+            ClientInfo::Resurrect(self.session_name.clone(), layout_path, false, None),
+        );
+        self.fake_server_os_api = fake_server_os_api;
+        self.server_thread = server_thread;
+        self.main_client = TestClient {
+            fake_client_handle,
+            thread: Some(client_thread),
+        };
+    }
+
+    pub fn follow_switch_into(
+        &mut self,
+        target: BackgroundTestSession,
+    ) -> (ConnectToSession, BackgroundTestSession) {
+        let connect_to_session = self
+            .main_client
+            .join()
+            .expect("the client exited without switching sessions");
+        assert_eq!(
+            connect_to_session.name.as_deref(),
+            Some(target.session_name()),
+            "the client switched to another session than expected"
+        );
+        let target = target.session_context;
+        let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(self.size, None);
+        let client_thread = spawn_client_thread_with_reconnect(
+            fake_client_os_api,
+            target.cli_args.clone(),
+            target.config.clone(),
+            target.config_options.clone(),
+            ClientInfo::Attach(target.session_name.clone(), target.config_options.clone()),
+            true,
+            connect_to_session.switch_context.clone(),
+        );
+        let previous = SessionContext {
+            session_name: std::mem::replace(&mut self.session_name, target.session_name),
+            size: self.size,
+            cli_args: std::mem::replace(&mut self.cli_args, target.cli_args),
+            config: std::mem::replace(&mut self.config, target.config),
+            config_options: std::mem::replace(&mut self.config_options, target.config_options),
+            fake_server_os_api: std::mem::replace(
+                &mut self.fake_server_os_api,
+                target.fake_server_os_api,
+            ),
+            server_thread: std::mem::replace(&mut self.server_thread, target.server_thread),
+            concurrency_slot: std::mem::replace(
+                &mut self._concurrency_slot,
+                target.concurrency_slot,
+            ),
+        };
+        self.main_client = TestClient {
+            fake_client_handle,
+            thread: Some(client_thread),
+        };
+        (
+            connect_to_session,
+            BackgroundTestSession {
+                session_context: previous,
+            },
+        )
+    }
+
+    pub fn follow_switch(&mut self) -> ConnectToSession {
+        let connect_to_session = self
+            .main_client
+            .join()
+            .expect("the client exited without switching sessions");
+        let session_name = connect_to_session
+            .name
+            .clone()
+            .unwrap_or_else(test_env::unique_session_name);
+        assert!(
+            !zellij_utils::consts::session_socket_path(&session_name).exists(),
+            "following a switch into the running session {} is not supported",
+            session_name
+        );
+        let config_options = self.config_options.clone();
+        let fake_server_os_api = FakeServerOsApi::default();
+        let server_thread: Arc<Mutex<Option<JoinHandle<()>>>> = Arc::new(Mutex::new(None));
+        let server_spawner = in_process_server_spawner(fake_server_os_api.clone(), &server_thread);
+        let (fake_client_os_api, fake_client_handle) =
+            FakeClientOsApi::new(self.size, Some(server_spawner));
+        let is_a_reconnect = true;
+        let client_thread = spawn_client_thread_with_reconnect(
+            fake_client_os_api,
+            self.cli_args.clone(),
+            self.config.clone(),
+            config_options.clone(),
+            ClientInfo::New(
+                session_name.clone(),
+                connect_to_session.layout.clone(),
+                connect_to_session.cwd.clone(),
+                None,
+            ),
+            is_a_reconnect,
+            connect_to_session.switch_context.clone(),
+        );
+        self.session_name = session_name;
+        self.config_options = config_options;
+        self.fake_server_os_api = fake_server_os_api;
+        self.server_thread = server_thread;
+        self.main_client = TestClient {
+            fake_client_handle,
+            thread: Some(client_thread),
+        };
+        connect_to_session
+    }
+
+    pub fn override_layout(&self, layout_name: &str) {
+        self.run_cli_action(CliAction::OverrideLayout {
+            layout: Some(PathBuf::from(layout_name)),
+            layout_string: None,
+            layout_dir: None,
+            retain_existing_terminal_panes: false,
+            retain_existing_plugin_panes: false,
+            apply_only_to_active_tab: false,
+        });
+    }
+
+    pub fn run_suspended_command(&self, command: &[&str]) {
+        let start_suspended = true;
+        self.run_cli_action(new_pane_cli_action(
+            command,
+            false,
+            false,
+            start_suspended,
+            false,
+        ));
+    }
+
+    pub fn run_blocking_command(&self, command: &[&str]) -> CliClientHandle {
+        let floating = false;
+        let close_on_exit = true;
+        let block_until_exit = true;
+        CliClientHandle {
+            thread: self.spawn_cli_client(new_pane_cli_action(
+                command,
+                floating,
+                close_on_exit,
+                false,
+                block_until_exit,
+            )),
+        }
+    }
+
+    pub fn run_blocking_floating_command(&self, command: &[&str]) -> CliClientHandle {
+        let floating = true;
+        let close_on_exit = true;
+        let block_until_exit = true;
+        CliClientHandle {
+            thread: self.spawn_cli_client(new_pane_cli_action(
+                command,
+                floating,
+                close_on_exit,
+                false,
+                block_until_exit,
+            )),
+        }
+    }
+
+    pub fn join_main_client(&mut self) -> Option<ConnectToSession> {
+        self.main_client.join()
+    }
+
+    pub fn wait_for_main_client_to_exit(&mut self) {
+        self.main_client.join();
+    }
+
+    pub fn detach_main_client(&mut self) {
+        let connected_clients_before_detach = self.fake_server_os_api.connected_client_count();
+        self.send_stdin(&keys::ctrl('o'));
+        self.send_stdin(&keys::key('d'));
+        self.main_client.join();
+        self.wait_for_server_to_release_a_client(connected_clients_before_detach);
+    }
+
+    fn wait_for_server_to_release_a_client(&self, connected_clients_before_detach: usize) {
+        let deadline = std::time::Instant::now() + crate::default_timeout();
+        loop {
+            if self.fake_server_os_api.connected_client_count() < connected_clients_before_detach {
+                return;
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("timed out waiting for server to release the detached client");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    pub fn quit(&mut self) {
+        if self.main_client.thread.is_some() {
+            self.send_stdin(&keys::ctrl('q'));
+            self.main_client.join();
+        }
+        if let Some(server_thread) = self.server_thread.lock().unwrap().take() {
+            join_server_thread_with_timeout(server_thread);
+        }
+        self.released_concurrency_slot |= self._concurrency_slot.take().is_some();
+    }
+
+    pub fn kill_session(&mut self) {
+        let socket_path = self.socket_path();
+        let stream = zellij_utils::consts::ipc_connect(&socket_path)
+            .unwrap_or_else(|err| panic!("failed to connect to {:?}: {:?}", socket_path, err));
+        let _ =
+            zellij_utils::ipc::IpcSenderWithContext::<zellij_utils::ipc::ClientToServerMsg>::new(
+                stream,
+            )
+            .send_client_msg(zellij_utils::ipc::ClientToServerMsg::KillSession);
+        self.main_client.join();
+        if let Some(server_thread) = self.server_thread.lock().unwrap().take() {
+            join_server_thread_with_timeout(server_thread);
+        }
+    }
+
+    fn send_quit_without_joining(&self) {
+        let _ = self
+            .main_client
+            .fake_client_handle
+            .stdin_tx
+            .send(keys::ctrl('q').to_vec());
+    }
+}
+
+impl Drop for TestSession {
+    fn drop(&mut self) {
+        if self.main_client.thread.is_some() {
+            self.send_quit_without_joining();
+        }
+    }
+}
+
+pub fn normalized(grid_snapshot: &GridSnapshot) -> String {
+    let text = replace_unique_session_name(&grid_snapshot.text);
+    let text = strip_swap_layout_indication(&text);
+    let text = strip_tip_indication(&text);
+    strip_trailing_whitespace(&text)
+}
+
+pub fn assert_same_rendered_grid(actual: &GridSnapshot, expected: &GridSnapshot, what: &str) {
+    let actual = normalized(actual);
+    let expected = normalized(expected);
+    assert!(
+        actual == expected,
+        "{what}\n--- expected grid ---\n{expected}\n--- actual grid ---\n{actual}"
+    );
+}
+
+fn strip_tip_indication(text: &str) -> String {
+    regex::Regex::new(r" Tip: [^\n]*")
+        .unwrap()
+        .replace_all(text, "")
+        .to_string()
+}
+
+fn replace_unique_session_name(text: &str) -> String {
+    regex::Regex::new(r"Zellij \(test-\d+\)")
+        .unwrap()
+        .replace_all(text, "Zellij (test)")
+        .to_string()
+}
+
+fn strip_swap_layout_indication(text: &str) -> String {
+    let swap_layout_name = "BASE|VERTICAL|HORIZONTAL|STACKED|STAGGERED|ENLARGED|SPREAD";
+    let powerline_separated_or_plain = |prefix: &str| {
+        regex::Regex::new(&format!(
+            "{} [\u{e0b0}]? ?(?:{}) ?[\u{e0b0}]?[ ]*\n",
+            prefix, swap_layout_name
+        ))
+        .unwrap()
+    };
+    let normal_mode = powerline_separated_or_plain("Alt <\\[\\]>");
+    let tmux_mode_1 = powerline_separated_or_plain("Alt \\[\\|SPACE\\|Alt \\]");
+    let tmux_mode_2 = powerline_separated_or_plain("Alt \\[\\|Alt \\]\\|SPACE");
+    let tab_bar = regex::Regex::new(&format!(
+        " {{2,}}[\u{e0b0}]? ?(?:{}) ?[\u{e0b0}]?[ ]*\n",
+        swap_layout_name
+    ))
+    .unwrap();
+    let text = normal_mode.replace_all(text, "\n");
+    let text = tmux_mode_1.replace_all(&text, "\n");
+    let text = tmux_mode_2.replace_all(&text, "\n");
+    tab_bar.replace_all(&text, "\n").to_string()
+}
+
+fn strip_trailing_whitespace(text: &str) -> String {
+    regex::Regex::new(r"\s*\n")
+        .unwrap()
+        .replace_all(text, "\n")
+        .to_string()
+}
