@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: zellij-terminal window reuse issues, font feature fixes and session facts on windows (https://github.com/zellij-org/zellij/pull/5930)
 * fix(windows): use a newer `conpty.dll` when one is next to zellij.exe, on PATH or set in `ZELLIJ_CONPTY_DLL`, fixing nested sessions, sixel images and color queries in panes (https://github.com/zellij-org/zellij/pull/5452)
 * fix: desktop app segfault on exit under Wayland (https://github.com/zellij-org/zellij/pull/5931)
+* fix: properly detect and filter out unsupported fonts (https://github.com/zellij-org/zellij/pull/5934)
 
 ## [0.46.0] - 2026-11-11
 * (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)
