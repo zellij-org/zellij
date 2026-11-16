@@ -120,16 +120,17 @@ impl ApplicationHandler<Wake> for Desktop {
         }
     }
 
-    // Quitting from the Dock or at logout reaches the app only here, after macOS has closed
-    // every window: finish it as Cmd+Q would. Any other quit is already under way by now,
-    // so this does nothing.
     fn exiting(&mut self, event_loop: &ActiveEventLoop) {
+        // Quitting from the macOS Dock or at logout lands here first. Every other quit has
+        // already been requested, so this does nothing for them.
         self.run(
             event_loop,
             Input::QuitRequested {
                 stop_sessions: false,
             },
         );
+        // The activator's Wayland objects must go before winit disconnects the display.
+        self.activation.release();
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
