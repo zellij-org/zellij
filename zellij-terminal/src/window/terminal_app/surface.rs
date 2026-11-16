@@ -80,10 +80,14 @@ impl App {
             .with_blur(self.options.blur)
             .with_inner_size(self.requested_size());
         let base = created_hidden(base);
+        let undecorated = self.appearance.look == WindowLook::Terminal && !self.options.decorations;
         let base = match self.appearance.look {
-            WindowLook::Terminal => startup_attributes(base, self.placement.startup.mode),
+            WindowLook::Terminal => {
+                startup_attributes(base, self.placement.startup.mode).with_decorations(!undecorated)
+            },
             WindowLook::Popup { position } => popup_attributes(base, position),
         };
+        let base = base.with_theme(self.options.titlebar_theme);
         let base = with_activation_token(base, self.activation_token.take());
         let attributes = with_option_as_alt(named(base), self.options.option_as_alt);
 
@@ -104,6 +108,7 @@ impl App {
         );
         self.warn_if_opaque();
         let window = window.ok_or_else(|| anyhow!("the windowing system produced no window"))?;
+        self.appearance.undecorated = undecorated;
         blur::set(&window, self.options.blur);
         set_see_through(&window, self.see_through());
         window.set_ime_purpose(ImePurpose::Terminal);

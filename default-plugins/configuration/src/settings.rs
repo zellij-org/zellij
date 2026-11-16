@@ -1402,6 +1402,20 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
             "false",
             OnlyYou,
         ),
+        SettingKey::TerminalTitlebarTheme => info(
+            "Titlebar theme",
+            "Light or dark titlebar, or follow the system",
+            Choice(&["system", "light", "dark"]),
+            "system",
+            OnlyYou,
+        ),
+        SettingKey::TerminalWindowDecorations => info(
+            "Window titlebar",
+            "Show the titlebar and borders of the window (takes effect in new windows)",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
         SettingKey::TerminalPadding => info(
             "Padding",
             "Space around the text on all sides, in pixels",
@@ -1972,7 +1986,9 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | TerminalInitialRows
         | TerminalOpacity
         | TerminalOpacityMode
-        | TerminalBlur => (C::ZellijTerminal, "Window"),
+        | TerminalBlur
+        | TerminalWindowDecorations
+        | TerminalTitlebarTheme => (C::ZellijTerminal, "Window"),
         TerminalPadding
         | TerminalPaddingTop
         | TerminalPaddingRight

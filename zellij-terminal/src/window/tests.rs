@@ -74,6 +74,8 @@ fn test_options(intercept_paste: bool) -> Options {
         startup_mode: StartupMode::Windowed,
         transparency: Transparency::OPAQUE,
         blur: false,
+        decorations: true,
+        titlebar_theme: None,
         padding: crate::config::options::Padding::default(),
         padding_balance: false,
         padding_color: PaddingColor::Background,

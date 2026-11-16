@@ -267,6 +267,7 @@ struct Mouse {
     selection: Option<Selection>,
     selecting: bool,
     pointer_hidden: bool,
+    edge: Option<desktop::grips::Grip>,
 }
 
 struct Timing {
@@ -291,6 +292,7 @@ struct Appearance {
     border: Option<crate::emulation::color::Srgb>,
     transparency_available: bool,
     warned_opaque: bool,
+    undecorated: bool,
 }
 
 pub(crate) struct Session {
@@ -442,8 +444,16 @@ impl App {
                     }
                 }
             },
-            WindowEvent::CursorMoved { position, .. } => self.on_cursor_moved(position),
-            WindowEvent::MouseInput { button, state, .. } => self.on_mouse_input(button, state),
+            WindowEvent::CursorMoved { position, .. } => {
+                if !self.hovering_edge(position) {
+                    self.on_cursor_moved(position);
+                }
+            },
+            WindowEvent::MouseInput { button, state, .. } => {
+                if !self.pressed_edge(button, state) {
+                    self.on_mouse_input(button, state);
+                }
+            },
             WindowEvent::MouseWheel { delta, phase, .. } => self.on_wheel(delta, phase),
             WindowEvent::CursorEntered { .. } => {
                 self.show_pointer();
