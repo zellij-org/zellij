@@ -1,6 +1,7 @@
 use crate::client_server_contract::client_server_contract as proto;
 use crate::input::terminal::StartupMode;
 use prost::Message;
+use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -17,7 +18,7 @@ pub enum PopupView {
     Quit,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct OpenWindowRequest {
     pub session: Option<String>,
     pub create: bool,
@@ -29,9 +30,26 @@ pub struct OpenWindowRequest {
     pub force_run_commands: bool,
     pub startup_mode: Option<StartupMode>,
     pub layout: Option<crate::data::LayoutInfo>,
+    pub rows: Option<usize>,
+    pub cols: Option<usize>,
+    pub options: Option<crate::input::options::Options>,
+    pub token: Option<String>,
+    pub remember: bool,
+    pub forget: bool,
+    pub ca_cert: Option<PathBuf>,
+    pub insecure: bool,
+    pub env: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl OpenWindowRequest {
+    pub fn remote_url(&self) -> Option<&str> {
+        self.session
+            .as_deref()
+            .filter(|name| name.starts_with("http://") || name.starts_with("https://"))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AppRequest {
     OpenWindow(OpenWindowRequest),
     ToggleTrayIcon,
@@ -230,6 +248,22 @@ impl From<&OpenWindowRequest> for proto::AppOpenWindowRequest {
             force_run_commands: request.force_run_commands,
             startup_mode: startup_mode_value(request.startup_mode),
             layout: request.layout.clone().map(Into::into),
+            rows: request.rows.map(|rows| rows as u32),
+            cols: request.cols.map(|cols| cols as u32),
+            options: request.options.clone().map(Into::into),
+            token: request.token.clone(),
+            remember: request.remember,
+            forget: request.forget,
+            ca_cert: request
+                .ca_cert
+                .as_ref()
+                .map(|path| path.display().to_string()),
+            insecure: request.insecure,
+            env: request
+                .env
+                .iter()
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .collect(),
         }
     }
 }
@@ -240,6 +274,11 @@ impl TryFrom<proto::AppOpenWindowRequest> for OpenWindowRequest {
         let layout = request
             .layout
             .map(crate::data::LayoutInfo::try_from)
+            .transpose()
+            .map_err(|e| ReadError::Undecodable(e.to_string()))?;
+        let options = request
+            .options
+            .map(crate::input::options::Options::try_from)
             .transpose()
             .map_err(|e| ReadError::Undecodable(e.to_string()))?;
         Ok(OpenWindowRequest {
@@ -253,6 +292,15 @@ impl TryFrom<proto::AppOpenWindowRequest> for OpenWindowRequest {
             force_run_commands: request.force_run_commands,
             startup_mode: startup_mode(request.startup_mode),
             layout,
+            rows: request.rows.map(|rows| rows as usize),
+            cols: request.cols.map(|cols| cols as usize),
+            options,
+            token: request.token,
+            remember: request.remember,
+            forget: request.forget,
+            ca_cert: request.ca_cert.map(PathBuf::from),
+            insecure: request.insecure,
+            env: request.env.into_iter().collect(),
         })
     }
 }
@@ -391,6 +439,18 @@ mod tests {
                 force_run_commands: true,
                 startup_mode: Some(StartupMode::Maximized),
                 layout: Some(crate::data::LayoutInfo::BuiltIn("compact".to_owned())),
+                rows: Some(30),
+                cols: Some(100),
+                options: Some(crate::input::options::Options {
+                    pane_frames: Some(false),
+                    ..Default::default()
+                }),
+                token: Some("secret".to_owned()),
+                remember: true,
+                forget: true,
+                ca_cert: Some(PathBuf::from("/etc/ca.pem")),
+                insecure: true,
+                env: BTreeMap::from([("PROJECT".to_owned(), "api".to_owned())]),
             }),
             AppRequest::OpenWindow(OpenWindowRequest::default()),
             AppRequest::ToggleTrayIcon,

@@ -3,6 +3,7 @@ use crate::text::font::script_of;
 use crate::text::font::FontFeature;
 use crate::text::font::FontId;
 use crate::text::font::FontStack;
+use crate::text::font::Glyph;
 use crate::text::font::ShapedGlyph;
 use crate::text::font::Shaping;
 use crate::text::font::LIGATURE_FEATURES;
@@ -74,6 +75,11 @@ impl FontStack {
         let Some(face) = self.faces.get(font.0).copied() else {
             return Vec::new();
         };
+        let features: &[FontFeature] = if self.is_primary(font) {
+            &self.features
+        } else {
+            &[]
+        };
         let coords = &self.coords[font.0];
         let mut shaper = self
             .shaping
@@ -81,6 +87,11 @@ impl FontStack {
             .script(script_of(text))
             .direction(Direction::LeftToRight)
             .size(self.size)
+            .features(
+                features
+                    .iter()
+                    .map(|feature| (tag_from_bytes(&feature.tag), feature.value)),
+            )
             .normalized_coords(coords.iter())
             .build();
         shaper.add_str(text);
@@ -100,6 +111,41 @@ impl FontStack {
             }
         });
         glyphs
+    }
+
+    pub(super) fn with_features(&mut self, nominal: Glyph, character: char) -> Glyph {
+        if self.features.is_empty() || !self.is_primary(nominal.font) {
+            return nominal;
+        }
+        let Some(face) = self.faces.get(nominal.font.0).copied() else {
+            return nominal;
+        };
+        let mut text = [0u8; 4];
+        let text = character.encode_utf8(&mut text);
+        let coords = &self.coords[nominal.font.0];
+        let mut shaper = self
+            .shaping
+            .builder(face)
+            .script(script_of(text))
+            .direction(Direction::LeftToRight)
+            .size(self.size)
+            .features(
+                self.features
+                    .iter()
+                    .map(|feature| (tag_from_bytes(&feature.tag), feature.value)),
+            )
+            .normalized_coords(coords.iter())
+            .build();
+        shaper.add_str(text);
+        let mut shaped = Vec::new();
+        shaper.shape_with(|cluster| shaped.extend(cluster.glyphs.iter().map(|glyph| glyph.id)));
+        match shaped[..] {
+            [glyph] if glyph != 0 => Glyph {
+                font: nominal.font,
+                glyph,
+            },
+            _ => nominal,
+        }
     }
 
     pub(super) fn shaping_text<'a>(

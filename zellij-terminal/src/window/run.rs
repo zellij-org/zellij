@@ -309,6 +309,7 @@ impl Rendering {
             title,
             session_name: String::new(),
             remote_session: false,
+            program_title: false,
             notice: None,
             retained: RetainedScene::new(),
             surfaces: None,

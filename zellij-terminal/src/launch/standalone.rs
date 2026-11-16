@@ -56,6 +56,7 @@ pub(crate) fn open_alone(
         (None, None),
         local_config,
         None,
+        None,
     ) {
         Ok(connection) => connection,
         Err(e) => {
