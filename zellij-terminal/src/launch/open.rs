@@ -29,7 +29,10 @@ pub(crate) fn load(args: &TerminalArgs, opts: &CliArgs) -> std::result::Result<L
     let settings = if args.headless {
         config::settings::Settings::default()
     } else {
-        match config::settings::load(Config::config_file_path(opts).as_deref()) {
+        match config::settings::load(
+            Config::config_file_path(opts).as_deref(),
+            opts.config_dir.as_deref(),
+        ) {
             Ok(settings) => settings,
             Err(e) => return Err(refuse(Refusal::new(format!("{:#}", e)), args, None)),
         }

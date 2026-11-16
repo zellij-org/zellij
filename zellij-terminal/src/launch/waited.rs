@@ -12,10 +12,13 @@ use zellij_utils::sessions::generate_unique_session_name;
 use zellij_utils::setup::Setup;
 
 pub(crate) fn terminal_requests(opts: &CliArgs) -> zellij_utils::input::terminal::TerminalRequests {
-    config::settings::load(Config::config_file_path(opts).as_deref())
-        .ok()
-        .and_then(|settings| settings.section.terminal_requests)
-        .unwrap_or_default()
+    config::settings::load(
+        Config::config_file_path(opts).as_deref(),
+        opts.config_dir.as_deref(),
+    )
+    .ok()
+    .and_then(|settings| settings.section.terminal_requests)
+    .unwrap_or_default()
 }
 
 pub(crate) fn run_waited(args: TerminalArgs, opts: CliArgs) -> Result<i32> {
@@ -90,7 +93,10 @@ pub(crate) fn run_in_background(args: TerminalArgs, opts: CliArgs) -> Result<()>
         Ok((_, _, config_options, _, _)) => config_options,
         Err(e) => bail!("{}", crate::window::notice::described(&e)),
     };
-    let settings = config::settings::load(Config::config_file_path(&opts).as_deref())?;
+    let settings = config::settings::load(
+        Config::config_file_path(&opts).as_deref(),
+        opts.config_dir.as_deref(),
+    )?;
     let dir = zellij_utils::consts::app_dir();
     match app::control::instance::claim(
         &dir,

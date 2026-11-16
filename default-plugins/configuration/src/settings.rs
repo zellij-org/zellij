@@ -1300,7 +1300,7 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalSystemFonts => info(
             "System fonts",
-            "Use fonts installed on this computer as fallbacks",
+            "Use fonts installed on this computer for characters the chosen font lacks",
             Toggle,
             "true",
             OnlyYou,
