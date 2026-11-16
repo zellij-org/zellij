@@ -74,6 +74,8 @@ fn test_options(intercept_paste: bool) -> Options {
         startup_mode: StartupMode::Windowed,
         transparency: Transparency::OPAQUE,
         blur: false,
+        decorations: true,
+        titlebar_theme: None,
         padding: crate::config::options::Padding::default(),
         padding_balance: false,
         padding_color: PaddingColor::Background,
@@ -440,6 +442,26 @@ fn a_disconnect_names_the_session_the_window_was_showing() {
         .session_ended(Ending::Exited(ExitReason::Disconnect));
     assert!(
         shown(&harness).contains("`zellij attach work`"),
+        "{}",
+        shown(&harness)
+    );
+}
+
+#[test]
+fn a_renamed_session_is_what_the_window_reports_and_names() {
+    let mut harness = Harness::new(0, true, "");
+    harness.app.session_name = "work".to_owned();
+    assert_eq!(
+        harness.app.on_wake(WindowWake::Renamed("play".to_owned())),
+        Verdict::Keep
+    );
+    assert_eq!(harness.app.session_name(), Some("play"));
+    assert_eq!(harness.app.title, super::run::window_title("play"));
+    harness
+        .app
+        .session_ended(Ending::Exited(ExitReason::Disconnect));
+    assert!(
+        shown(&harness).contains("`zellij attach play`"),
         "{}",
         shown(&harness)
     );

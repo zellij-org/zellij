@@ -27,11 +27,13 @@ impl SessionLink {
         Self::open_path(&crate::consts::session_socket_path(session_name))
     }
     pub fn open_path(socket_path: &Path) -> Result<Self, String> {
+        Self::connect(socket_path).map_err(|e| e.to_string())
+    }
+    fn connect(socket_path: &Path) -> std::io::Result<Self> {
         #[cfg(windows)]
-        let (stream, reply_stream) =
-            crate::pipe_pairs::connect_pair(socket_path).map_err(|e| e.to_string())?;
+        let (stream, reply_stream) = crate::pipe_pairs::connect_pair(socket_path)?;
         #[cfg(not(windows))]
-        let stream = crate::consts::ipc_connect(socket_path).map_err(|e| e.to_string())?;
+        let stream = crate::consts::ipc_connect(socket_path)?;
         let sender = IpcSenderWithContext::<ClientToServerMsg>::new(stream);
         #[cfg(windows)]
         let receiver: IpcReceiverWithContext<ServerToClientMsg> =
@@ -123,7 +125,11 @@ pub fn session_answers(session_name: &str, timeout: Duration) -> bool {
 }
 
 pub fn stop_session(session_name: &str, timeout: Duration) -> Result<(), String> {
-    let mut link = SessionLink::open(session_name)?;
+    let mut link = match SessionLink::connect(&crate::consts::session_socket_path(session_name)) {
+        Ok(link) => link,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e.to_string()),
+    };
     link.send(ClientToServerMsg::KillSession)?;
     let _ = link.recv(timeout);
     Ok(())

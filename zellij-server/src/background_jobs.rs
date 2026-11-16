@@ -552,6 +552,7 @@ pub(crate) fn background_jobs_main(
                             cwd: Some(cwd),
                             input: None,
                             timeout: None,
+                            raw_arg: None,
                         })
                         .await;
                         match output {
@@ -1690,6 +1691,26 @@ pub struct BackgroundCommand {
     pub cwd: Option<PathBuf>,
     pub input: Option<Vec<u8>>,
     pub timeout: Option<Duration>,
+    pub raw_arg: Option<String>,
+}
+
+impl BackgroundCommand {
+    pub fn shell(command_line: &str) -> Self {
+        if cfg!(windows) {
+            BackgroundCommand {
+                program: "cmd".to_owned(),
+                args: vec!["/C".to_owned()],
+                raw_arg: Some(command_line.to_owned()),
+                ..Default::default()
+            }
+        } else {
+            BackgroundCommand {
+                program: "sh".to_owned(),
+                args: vec!["-c".to_owned(), command_line.to_owned()],
+                ..Default::default()
+            }
+        }
+    }
 }
 
 pub async fn run_background_command(
@@ -1703,6 +1724,12 @@ pub async fn run_background_command(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    if let Some(raw_arg) = &command.raw_arg {
+        #[cfg(windows)]
+        process.raw_arg(raw_arg);
+        #[cfg(not(windows))]
+        process.arg(raw_arg);
+    }
     if let Some(cwd) = &command.cwd {
         process.current_dir(cwd);
     }

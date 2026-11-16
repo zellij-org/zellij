@@ -104,6 +104,11 @@ impl App {
                 blur::set(&surfaces.window, self.options.blur);
             }
         }
+        if change.titlebar_theme {
+            if let Some(surfaces) = &self.surfaces {
+                surfaces.window.set_theme(self.options.titlebar_theme);
+            }
+        }
         if change.option_as_alt {
             if let Some(surfaces) = &self.surfaces {
                 set_option_as_alt(&surfaces.window, self.options.option_as_alt);

@@ -48,6 +48,15 @@ message AppOpenWindowRequest {
   bool force_run_commands = 8;
   AppStartupMode startup_mode = 9;
   optional LayoutInfo layout = 10;
+  optional uint32 rows = 11;
+  optional uint32 cols = 12;
+  optional Options options = 13;
+  optional string token = 14;
+  bool remember = 15;
+  bool forget = 16;
+  optional string ca_cert = 17;
+  bool insecure = 18;
+  map<string, string> env = 19;
 }
 
 message AppToggleTrayIconRequest {}

@@ -87,6 +87,7 @@ pub(crate) enum WindowWake {
     Frame(Vec<u8>),
     SettingsPushed(Settings),
     ThemeMode(HostTerminalThemeMode),
+    Renamed(String),
     Finished(Ending),
 }
 
@@ -200,6 +201,10 @@ impl RenderSink for ProxySink {
     fn theme_mode(&mut self, mode: HostTerminalThemeMode) -> bool {
         self.send(WindowWake::ThemeMode(mode))
     }
+
+    fn renamed(&mut self, name: String) -> bool {
+        self.send(WindowWake::Renamed(name))
+    }
 }
 
 struct Surfaces {
@@ -232,6 +237,7 @@ pub(crate) struct App {
     origin: (i32, i32),
     clipboard: ClipboardHandle,
     title: String,
+    program_title: bool,
     session_name: String,
     remote_session: bool,
     notice: Option<Notice>,
@@ -267,6 +273,7 @@ struct Mouse {
     selection: Option<Selection>,
     selecting: bool,
     pointer_hidden: bool,
+    edge: Option<desktop::grips::Grip>,
 }
 
 struct Timing {
@@ -291,6 +298,7 @@ struct Appearance {
     border: Option<crate::emulation::color::Srgb>,
     transparency_available: bool,
     warned_opaque: bool,
+    undecorated: bool,
 }
 
 pub(crate) struct Session {
@@ -319,6 +327,10 @@ impl App {
     pub(crate) fn session_name(&self) -> Option<&str> {
         (self.sender.is_some() && !self.session_name.is_empty())
             .then_some(self.session_name.as_str())
+    }
+
+    pub(crate) fn local_session_name(&self) -> Option<&str> {
+        self.session_name().filter(|_| !self.remote_session)
     }
 
     pub(crate) fn take_failure(&mut self) -> Option<anyhow::Error> {
@@ -389,6 +401,7 @@ impl App {
                 self.theme_mode = Some(mode);
                 self.reapply(false);
             },
+            WindowWake::Renamed(name) => self.renamed(name),
             WindowWake::Finished(ending) => {
                 if self.session_ended(ending) {
                     return Verdict::Close;
@@ -442,8 +455,16 @@ impl App {
                     }
                 }
             },
-            WindowEvent::CursorMoved { position, .. } => self.on_cursor_moved(position),
-            WindowEvent::MouseInput { button, state, .. } => self.on_mouse_input(button, state),
+            WindowEvent::CursorMoved { position, .. } => {
+                if !self.hovering_edge(position) {
+                    self.on_cursor_moved(position);
+                }
+            },
+            WindowEvent::MouseInput { button, state, .. } => {
+                if !self.pressed_edge(button, state) {
+                    self.on_mouse_input(button, state);
+                }
+            },
             WindowEvent::MouseWheel { delta, phase, .. } => self.on_wheel(delta, phase),
             WindowEvent::CursorEntered { .. } => {
                 self.show_pointer();

@@ -80,6 +80,9 @@ pub trait RenderSink {
     fn theme_mode(&mut self, _mode: HostTerminalThemeMode) -> bool {
         true
     }
+    fn renamed(&mut self, _name: String) -> bool {
+        true
+    }
 }
 
 pub struct DiscardingSink;
@@ -300,6 +303,9 @@ impl<'a> Served<'a> {
                 self.settings_pushed(*settings)
             },
             ServerToClientMsg::HostTerminalThemeChanged { mode } => self.theme_changed(mode),
+            ServerToClientMsg::RenamedSession { name } => {
+                self.sink.renamed(name);
+            },
             ServerToClientMsg::Log { lines } => {
                 for line in lines {
                     log::info!("{}", line);
@@ -520,6 +526,7 @@ mod tests {
 
     #[derive(Default)]
     struct RecordingSink {
+        renames: Vec<String>,
         pushed: Vec<Settings>,
         modes: Vec<HostTerminalThemeMode>,
         endings: Vec<Ending>,
@@ -542,6 +549,10 @@ mod tests {
         }
         fn theme_mode(&mut self, mode: HostTerminalThemeMode) -> bool {
             self.modes.push(mode);
+            true
+        }
+        fn renamed(&mut self, name: String) -> bool {
+            self.renames.push(name);
             true
         }
     }
@@ -605,6 +616,18 @@ mod tests {
         run_with_sink(connection, options, &mut sink).unwrap();
         let received = server.finish();
         (sink, received[HANDSHAKE_MESSAGES..].to_vec())
+    }
+
+    #[test]
+    fn a_session_rename_reaches_the_window() {
+        let (sink, _replies) = driven(options(), |side| {
+            side.send(ServerToClientMsg::RenamedSession {
+                name: "renamed".to_owned(),
+            });
+            side.send(background_query());
+        });
+
+        assert_eq!(sink.renames, vec!["renamed".to_owned()]);
     }
 
     #[test]

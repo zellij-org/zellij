@@ -143,6 +143,10 @@ impl PointerState {
         Self::default()
     }
 
+    pub fn holding(&self) -> bool {
+        self.held.any()
+    }
+
     pub fn set_origin(&mut self, x: i32, y: i32) {
         self.origin = (x as f64, y as f64);
     }

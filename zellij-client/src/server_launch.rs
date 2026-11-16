@@ -25,6 +25,7 @@ pub struct ServerLaunch {
     pub socket_path: PathBuf,
     pub debug: bool,
     pub env: BTreeMap<String, String>,
+    pub clear_env: bool,
     pub cwd: Option<PathBuf>,
 }
 
@@ -35,6 +36,7 @@ impl ServerLaunch {
             socket_path: socket_path.to_owned(),
             debug: false,
             env: BTreeMap::new(),
+            clear_env: false,
             cwd: None,
         }
     }
@@ -52,6 +54,9 @@ impl ServerLaunch {
 
     fn command(&self) -> Command {
         let mut cmd = Command::new(&self.program);
+        if self.clear_env {
+            cmd.env_clear();
+        }
         cmd.args(self.args()).envs(&self.env);
         if let Some(cwd) = &self.cwd {
             cmd.current_dir(cwd);

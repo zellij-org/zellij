@@ -60,9 +60,10 @@ impl FontStack {
     }
 
     pub(super) fn search(&mut self, style: FaceStyle, character: char) -> Option<Glyph> {
-        for font in self.faces_for(style) {
+        let faces: Vec<FontId> = self.faces_for(style).collect();
+        for font in faces {
             if let Some(glyph) = self.map(font, character) {
-                return Some(glyph);
+                return Some(self.with_features(glyph, character));
             }
         }
         if is_private_use(character) {
