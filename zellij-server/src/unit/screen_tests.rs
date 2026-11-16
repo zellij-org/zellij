@@ -10055,6 +10055,37 @@ fn empty_reply_falls_back_to_cached_palette_register() {
 }
 
 #[test]
+fn partial_palette_batch_reply_is_completed_from_cache() {
+    // The client gives up on a forward after a fixed deadline; a host
+    // answering one register per frame only gets through part of a batch.
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, capture) = create_new_screen_with_forward_capture(size);
+    let pane = PaneId::Terminal(1);
+    screen.update_terminal_color_registers(vec![
+        (1, "rgb:1111/1111/1111".to_string()),
+        (2, "rgb:2222/2222/2222".to_string()),
+    ]);
+    let batch = HostQuery::PaletteRegisters {
+        registers: vec![(1, OscTerminator::St), (2, OscTerminator::Bel)],
+    };
+    let token = screen.forward_host_query(pane, batch);
+    let _ = capture.drain_forward_queries();
+
+    let host_reply = b"\x1b]4;1;rgb:abab/abab/abab\x1b\\".to_vec();
+    screen
+        .handle_forwarded_reply_from_host(token, host_reply)
+        .expect("ok");
+
+    let writes = capture.drain_pty_writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        std::str::from_utf8(&writes[0].0).unwrap(),
+        "\u{1b}]4;1;rgb:abab/abab/abab\u{1b}\\\u{1b}]4;2;rgb:2222/2222/2222\u{7}",
+        "the host's answer is kept; the missing register comes from the cache"
+    );
+}
+
+#[test]
 fn empty_reply_with_no_cache_writes_empty() {
     // No background override, no palette, no pixel dims: synthesis
     // returns empty and the pane receives an empty write — the app
@@ -11110,6 +11141,74 @@ fn empty_reply_with_paused_pane_drains_buffer_without_phantom_write() {
         pane.drain_pending_pty_input().is_empty(),
         "queue fully consumed by post-resume processing"
     );
+}
+
+#[test]
+fn full_palette_query_burst_is_forwarded_as_one_batch() {
+    // notcurses sends OSC 4 for all 256 registers, then DA1, and blocks
+    // on the DA1 reply. One host round trip per register stalls it for
+    // seconds over SSH; the whole burst must share one forward.
+    use crate::host_query::{HostQuery, OscTerminator};
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    let mut input: Vec<u8> = (0..=255u8)
+        .flat_map(|i| format!("\x1b]4;{};?\x1b\\", i).into_bytes())
+        .collect();
+    input.extend_from_slice(b"\x1b[c");
+    pane.handle_pty_bytes(input);
+
+    let queries = pane.drain_forwarded_queries();
+    let expected: Vec<(u8, OscTerminator)> = (0..=255u8).map(|i| (i, OscTerminator::St)).collect();
+    assert_eq!(
+        queries,
+        vec![HostQuery::PaletteRegisters {
+            registers: expected
+        }]
+    );
+    assert!(
+        pane.drain_messages_to_pty().is_empty(),
+        "DA1 must stay queued behind the palette forward"
+    );
+    assert_eq!(pane.drain_pending_pty_input(), b"\x1b[c".to_vec());
+}
+
+#[test]
+fn palette_query_batch_stops_at_a_setter() {
+    // A setter must not run before the reply to the getters queued
+    // ahead of it, so batching stops there and leaves it in the queue.
+    use crate::host_query::{HostQuery, OscTerminator};
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    let mut input = b"\x1b]4;1;?\x07\x1b]4;2;?\x07".to_vec();
+    input.extend_from_slice(b"\x1b]4;3;rgb:ff/00/00\x07\x1b]4;4;?\x07");
+    pane.handle_pty_bytes(input);
+
+    let queries = pane.drain_forwarded_queries();
+    assert_eq!(
+        queries,
+        vec![HostQuery::PaletteRegisters {
+            registers: vec![(1, OscTerminator::Bel), (2, OscTerminator::Bel)]
+        }]
+    );
+    assert_eq!(
+        pane.drain_pending_pty_input(),
+        b"\x1b]4;3;rgb:ff/00/00\x07\x1b]4;4;?\x07".to_vec()
+    );
+}
+
+#[test]
+fn single_palette_query_is_not_batched() {
+    use crate::host_query::{HostQuery, OscTerminator};
+    let mut pane = new_terminal_pane_for_pause_test(1);
+    pane.handle_pty_bytes(b"\x1b]4;7;?\x1b\\after".to_vec());
+
+    assert_eq!(
+        pane.drain_forwarded_queries(),
+        vec![HostQuery::PaletteRegister {
+            index: 7,
+            terminator: OscTerminator::St
+        }]
+    );
+    // The ST's final `\` is consumed with the query; the text stays queued.
+    assert_eq!(pane.drain_pending_pty_input(), b"after".to_vec());
 }
 
 fn create_non_mirrored_screen(size: Size) -> Screen {

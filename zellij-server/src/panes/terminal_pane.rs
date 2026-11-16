@@ -1,3 +1,4 @@
+use crate::host_query::{HostQuery, OscTerminator};
 use crate::output::{CharacterChunk, KittyImageChunk, SixelImageChunk};
 use crate::panes::kitty_graphics::{
     InterceptorResult, KittyApcInterceptor, KittyHostSupport, KittyImageStore,
@@ -40,6 +41,7 @@ use zellij_utils::{
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
+const MAX_PALETTE_QUERY_BATCH: usize = 256;
 
 // Some keys in different formats but are used in the code
 const LEFT_ARROW: &[u8] = &[27, 91, 68];
@@ -869,8 +871,20 @@ impl Pane for TerminalPane {
         self.grid.pending_messages_to_pty.drain(..).collect()
     }
 
-    fn drain_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
-        self.grid.pending_forwarded_queries.drain(..).collect()
+    fn drain_forwarded_queries(&mut self) -> Vec<HostQuery> {
+        self.batch_pending_palette_queries();
+        let queries: Vec<HostQuery> = self.grid.pending_forwarded_queries.drain(..).collect();
+        let registers: Vec<_> = queries
+            .iter()
+            .filter_map(|query| match query {
+                HostQuery::PaletteRegister { index, terminator } => Some((*index, *terminator)),
+                _ => None,
+            })
+            .collect();
+        if registers.len() < 2 || registers.len() < queries.len() {
+            return queries;
+        }
+        vec![HostQuery::PaletteRegisters { registers }]
     }
 
     fn drain_nested_session_messages(&mut self) -> Vec<NestedSessionMessage> {
@@ -1575,7 +1589,62 @@ impl Pane for TerminalPane {
     }
 }
 
+/// Length of a complete `OSC 4 ; N ; ?` getter (BEL or ST terminated) at
+/// the start of `bytes`, if there is one.
+fn palette_query_len(bytes: &[u8]) -> Option<usize> {
+    let params = bytes.strip_prefix(b"\x1b]4;")?;
+    let digits = params
+        .iter()
+        .take(3)
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    std::str::from_utf8(&params[..digits])
+        .ok()?
+        .parse::<u8>()
+        .ok()?;
+    let suffix = &params[digits..];
+    let suffix_len = if suffix.starts_with(b";?\x07") {
+        3
+    } else if suffix.starts_with(b";?\x1b\\") {
+        4
+    } else {
+        return None;
+    };
+    Some(4 + digits + suffix_len)
+}
+
 impl TerminalPane {
+    /// When the parser paused on a palette getter, feed the palette getters
+    /// queued right behind it so they share its host round trip: apps such
+    /// as notcurses query all 256 registers at once, and one round trip each
+    /// stalls them for seconds over SSH. Stops at any other byte, so a setter
+    /// or a locally answered query never overtakes the pending host reply.
+    fn batch_pending_palette_queries(&mut self) {
+        let Some(HostQuery::PaletteRegister { terminator, .. }) =
+            self.grid.pending_forwarded_queries.last()
+        else {
+            return;
+        };
+        let ends_with_st = *terminator == OscTerminator::St;
+        let bytes = self.pending_pty_input.make_contiguous();
+        let mut consumed = 0;
+        // An ST-terminated OSC is dispatched at its ESC: the parser paused
+        // in the escape state, right before the final `\`.
+        if ends_with_st && bytes.first() == Some(&b'\\') {
+            self.vte_parser.feed(&mut self.grid, &bytes[..1]);
+            consumed = 1;
+        }
+        while self.grid.pending_forwarded_queries.len() < MAX_PALETTE_QUERY_BATCH {
+            let Some(len) = palette_query_len(&bytes[consumed..]) else {
+                break;
+            };
+            self.vte_parser
+                .feed(&mut self.grid, &bytes[consumed..consumed + len]);
+            consumed += len;
+        }
+        self.pending_pty_input.drain(..consumed);
+    }
+
     fn title_with_bell_indicator(&self, title: String) -> String {
         if self.has_bell_notification && !self.attention_markers_enabled {
             format!("{} [!]", title)

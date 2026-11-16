@@ -56,6 +56,10 @@ pub enum HostQuery {
         index: u8,
         terminator: OscTerminator,
     },
+    /// Consecutive `OSC 4 ; N ; ?` queries sent as one batch, so a full
+    /// palette refresh costs one host round trip instead of one per
+    /// register.
+    PaletteRegisters { registers: Vec<(u8, OscTerminator)> },
     ClipboardContent {
         selection: char,
         terminator: OscTerminator,
@@ -94,6 +98,12 @@ impl HostQuery {
                 v.extend_from_slice(terminator.as_bytes());
                 v
             },
+            HostQuery::PaletteRegisters { registers } => registers
+                .iter()
+                .flat_map(|&(index, terminator)| {
+                    HostQuery::PaletteRegister { index, terminator }.to_query_bytes()
+                })
+                .collect(),
             HostQuery::ClipboardContent {
                 selection,
                 terminator,

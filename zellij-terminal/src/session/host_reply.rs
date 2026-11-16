@@ -23,9 +23,17 @@ pub fn answer(
     {
         return reply;
     }
-    match parse(query_bytes) {
-        Some((query, terminator)) => reply(query, geometry, paints, terminator),
-        None => Vec::new(),
+    // The server sends consecutive palette queries as one batch.
+    let mut replies = Vec::new();
+    let mut rest = query_bytes;
+    while let Some((query, terminator, tail)) = parse(rest) {
+        replies.extend(reply(query, geometry, paints, terminator));
+        rest = tail;
+    }
+    if rest.is_empty() {
+        replies
+    } else {
+        Vec::new()
     }
 }
 
@@ -54,31 +62,37 @@ fn reply(query: Query, geometry: Geometry, paints: &Paints, terminator: &[u8]) -
     reply
 }
 
-fn parse(bytes: &[u8]) -> Option<(Query, &'static [u8])> {
-    match bytes {
-        b"\x1b[14t" => return Some((Query::TextAreaPixelSize, b"")),
-        b"\x1b[16t" => return Some((Query::CharacterCellPixelSize, b"")),
-        _ => {},
+/// The query at the start of `bytes`, its terminator and the bytes after it.
+fn parse(bytes: &[u8]) -> Option<(Query, &'static [u8], &[u8])> {
+    if let Some(tail) = bytes.strip_prefix(b"\x1b[14t") {
+        return Some((Query::TextAreaPixelSize, b"", tail));
+    }
+    if let Some(tail) = bytes.strip_prefix(b"\x1b[16t") {
+        return Some((Query::CharacterCellPixelSize, b"", tail));
     }
     let rest = bytes.strip_prefix(b"\x1b]")?;
     if let Some(rest) = rest.strip_prefix(b"10;?") {
-        return terminator(rest).map(|terminator| (Query::DefaultForeground, terminator));
+        return terminator(rest)
+            .map(|(terminator, tail)| (Query::DefaultForeground, terminator, tail));
     }
     if let Some(rest) = rest.strip_prefix(b"11;?") {
-        return terminator(rest).map(|terminator| (Query::DefaultBackground, terminator));
+        return terminator(rest)
+            .map(|(terminator, tail)| (Query::DefaultBackground, terminator, tail));
     }
     let rest = rest.strip_prefix(b"4;")?;
     let separator = rest.iter().position(|byte| *byte == b';')?;
     let index: u8 = std::str::from_utf8(&rest[..separator]).ok()?.parse().ok()?;
     let rest = rest[separator + 1..].strip_prefix(b"?")?;
-    terminator(rest).map(|terminator| (Query::PaletteRegister(index), terminator))
+    terminator(rest).map(|(terminator, tail)| (Query::PaletteRegister(index), terminator, tail))
 }
 
-fn terminator(bytes: &[u8]) -> Option<&'static [u8]> {
-    match bytes {
-        b"\x07" => Some(b"\x07"),
-        b"\x1b\\" => Some(b"\x1b\\"),
-        _ => None,
+fn terminator(bytes: &[u8]) -> Option<(&'static [u8], &[u8])> {
+    if let Some(tail) = bytes.strip_prefix(b"\x07") {
+        Some((b"\x07", tail))
+    } else {
+        bytes
+            .strip_prefix(b"\x1b\\")
+            .map(|tail| (&b"\x1b\\"[..], tail))
     }
 }
 
@@ -237,8 +251,35 @@ mod tests {
             &b"\x1b]4;;?\x1b\\"[..],
             &b"\x1b]4;1;\x1b\\"[..],
             &b"\x1b]4;-1;?\x1b\\"[..],
+            &b"\x1b]4;1;?\x1b\\\x1b]12;?\x1b\\"[..],
         ] {
             assert!(answered(query).is_empty(), "{:?}", query);
         }
+    }
+
+    #[test]
+    fn a_batch_of_palette_queries_gets_one_answer_each() {
+        let query: Vec<u8> = (0u8..=255)
+            .flat_map(|index| format!("\x1b]4;{};?\x1b\\", index).into_bytes())
+            .chain(b"\x1b]4;7;?\x07".to_vec())
+            .collect();
+        let expected: Vec<u8> = (0u8..=255)
+            .flat_map(|index| {
+                format!(
+                    "\x1b]4;{};{}\x1b\\",
+                    index,
+                    xparse_color(Paints::default().indexed(index))
+                )
+                .into_bytes()
+            })
+            .chain(
+                format!(
+                    "\x1b]4;7;{}\x07",
+                    xparse_color(Paints::default().indexed(7))
+                )
+                .into_bytes(),
+            )
+            .collect();
+        assert_eq!(answered(&query), expected);
     }
 }

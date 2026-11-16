@@ -2293,6 +2293,18 @@ const SERVER_FORWARD_TIMEOUT_MS: u64 = 1000;
 
 const SERVER_CLIPBOARD_FORWARD_TIMEOUT_MS: u64 = 35_000;
 
+/// Registers answered by the `OSC 4 ; N ; <color>` replies in `reply`.
+fn answered_palette_registers(reply: &[u8]) -> HashSet<u8> {
+    reply
+        .split(|byte| *byte == 0x1b)
+        .filter_map(|osc| {
+            let params = osc.strip_prefix(b"]4;")?;
+            let end = params.iter().position(|byte| *byte == b';')?;
+            std::str::from_utf8(&params[..end]).ok()?.parse().ok()
+        })
+        .collect()
+}
+
 const RECENTLY_DISCONNECTED_CLIENTS_LIMIT: usize = 256;
 
 pub(crate) const ECHO_WINDOW: Duration = Duration::from_millis(50);
@@ -4143,10 +4155,12 @@ impl Screen {
             let PendingForwardEntry { pane_id, query } = entry;
             match pane_id {
                 PaneId::Terminal(_) => {
-                    let payload = if reply_bytes.is_empty() {
-                        self.synthesize_cached_reply(&query)
-                    } else {
-                        reply_bytes
+                    let payload = match &query {
+                        crate::host_query::HostQuery::PaletteRegisters { registers } => {
+                            self.complete_palette_reply(registers, reply_bytes)
+                        },
+                        _ if reply_bytes.is_empty() => self.synthesize_cached_reply(&query),
+                        _ => reply_bytes,
                     };
                     // Route via Tab so the reply lands on the pane in
                     // the correct stream position and any PTY input
@@ -5819,6 +5833,9 @@ impl Screen {
                     Vec::new()
                 }
             },
+            HostQuery::PaletteRegisters { registers } => {
+                self.complete_palette_reply(registers, Vec::new())
+            },
             HostQuery::ClipboardContent { .. } => query.empty_reply_bytes(),
             // Should not reach here: ColorPaletteMode short-circuits in
             // `forward_host_query` before any cache-fallback path runs.
@@ -5827,6 +5844,27 @@ impl Screen {
                 HostTerminalThemeMode::Light => b"\x1b[?997;2n".to_vec(),
             },
         }
+    }
+
+    /// Append a cached reply for every register of a palette batch that
+    /// `reply` does not answer. The client gives up on a forward after a
+    /// fixed deadline, and a host that answers one register per frame
+    /// (VTE) only gets through part of a full palette batch before it.
+    fn complete_palette_reply(
+        &self,
+        registers: &[(u8, crate::host_query::OscTerminator)],
+        mut reply: Vec<u8>,
+    ) -> Vec<u8> {
+        use crate::host_query::HostQuery;
+        let answered = answered_palette_registers(&reply);
+        for &(index, terminator) in registers {
+            if !answered.contains(&index) {
+                reply.extend(
+                    self.synthesize_cached_reply(&HostQuery::PaletteRegister { index, terminator }),
+                );
+            }
+        }
+        reply
     }
 
     pub fn render(&mut self, plugin_render_assets: Option<Vec<PluginRenderAsset>>) -> Result<()> {
