@@ -2064,6 +2064,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 })
             },
             "Copy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "SmartCopy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Clear" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Confirm" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Deny" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
