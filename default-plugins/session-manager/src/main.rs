@@ -722,7 +722,7 @@ impl State {
     }
 
     fn sessions_live_target(&self) -> Option<SessionsLiveTarget> {
-        if self.on_exited_header() {
+        if self.is_welcome_screen || self.on_exited_header() {
             return None;
         }
         let (name, running, _) = self.selected_session()?;
@@ -3358,6 +3358,9 @@ impl State {
                 },
             })
     }
+    fn preview_needs_fetch(&self, is_running: bool) -> bool {
+        !is_running || self.sessions_live_target().is_none()
+    }
     fn request_preview_for_selection(&mut self) {
         if !matches!(self.panel.size, Some(PanelSize::Manager)) {
             return;
@@ -3368,7 +3371,7 @@ impl State {
         }
         match self.selected_session() {
             Some((name, is_running, _)) => {
-                let fetch = !is_running || self.sessions_live_target().is_none();
+                let fetch = self.preview_needs_fetch(is_running);
                 let (tab, pane) = if self.panel.tree.node_session == name {
                     match self.panel.tree.node {
                         session_tree::TreeNode::Exited
@@ -5262,6 +5265,26 @@ mod sessions_live_view_tests {
         assert!(
             state.pending_delete_exited,
             "it also works from an exited row"
+        );
+    }
+
+    #[test]
+    fn the_welcome_screen_fetches_a_preview_for_a_running_session_with_known_tabs() {
+        let mut state = sessions_browser();
+        assert_eq!(
+            state.selected_session(),
+            Some(("api".to_owned(), true, false))
+        );
+        assert!(
+            !state.preview_needs_fetch(true),
+            "inside a session the live view shows the pane"
+        );
+        state.is_welcome_screen = true;
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(shown(&state), None);
+        assert!(
+            state.preview_needs_fetch(true),
+            "the welcome screen has no live view, so it asks for a snapshot"
         );
     }
 
