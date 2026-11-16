@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: accept backspace in addition to del where relevant in interfaces like the session-manager (https://github.com/zellij-org/zellij/pull/5952)
 * fix: honor stack-list orientation in fullscreen (https://github.com/zellij-org/zellij/pull/5922)
 * fix: the plugin manager lists the running plugins again (https://github.com/zellij-org/zellij/pull/5954)
+* fix: the auto-start snippet starting zellij in shells that aren't interactive terminal shells, such as the desktop login shell (https://github.com/zellij-org/zellij/pull/5936)
 
 ## [0.46.0] - 2026-11-11
 * (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)
