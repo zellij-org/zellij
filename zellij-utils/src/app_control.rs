@@ -60,6 +60,7 @@ pub enum AppRequest {
     },
     Ping,
     Describe,
+    QuitApp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,6 +77,7 @@ pub struct AppState {
     pub live_sessions: Vec<String>,
     pub tray_icon: bool,
     pub focused_session: Option<String>,
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -179,6 +181,14 @@ pub fn send_app_request_to(socket: &Path, request: &AppRequest) -> Result<AppRep
     let _ = reply_stream.set_recv_timeout(Some(APP_REQUEST_TIMEOUT));
     write_request(&mut stream, request).map_err(|e| e.to_string())?;
     read_reply(&mut reply_stream).map_err(|e| e.to_string())
+}
+
+pub fn is_older_app(reported: Option<&str>, ours: &str) -> bool {
+    use crate::desktop_integration::version_number;
+    match (reported.and_then(version_number), version_number(ours)) {
+        (Some(theirs), Some(ours)) => theirs < ours,
+        _ => false,
+    }
 }
 
 pub fn app_is_running() -> bool {
@@ -324,6 +334,7 @@ impl From<&AppRequest> for proto::AppControlRequest {
             },
             AppRequest::Ping => Request::Ping(proto::AppPingRequest {}),
             AppRequest::Describe => Request::Describe(proto::AppDescribeRequest {}),
+            AppRequest::QuitApp => Request::QuitApp(proto::AppQuitAppRequest {}),
         };
         proto::AppControlRequest {
             request: Some(request),
@@ -349,6 +360,7 @@ impl TryFrom<proto::AppControlRequest> for AppRequest {
                 .ok_or(ReadError::Unknown),
             Request::Ping(_) => Ok(AppRequest::Ping),
             Request::Describe(_) => Ok(AppRequest::Describe),
+            Request::QuitApp(_) => Ok(AppRequest::QuitApp),
         }
     }
 }
@@ -376,6 +388,7 @@ impl From<&AppReply> for proto::AppControlReply {
                 live_sessions: state.live_sessions.clone(),
                 tray_icon: state.tray_icon,
                 focused_session: state.focused_session.clone(),
+                version: state.version.clone(),
             }),
         };
         proto::AppControlReply { reply: Some(reply) }
@@ -404,6 +417,7 @@ impl TryFrom<proto::AppControlReply> for AppReply {
                 live_sessions: state.live_sessions,
                 tray_icon: state.tray_icon,
                 focused_session: state.focused_session,
+                version: state.version,
             }),
         })
     }
@@ -465,6 +479,7 @@ mod tests {
             },
             AppRequest::Ping,
             AppRequest::Describe,
+            AppRequest::QuitApp,
         ];
         for request in requests {
             assert_eq!(request_roundtrip(&request), request);
@@ -486,6 +501,7 @@ mod tests {
                 live_sessions: vec!["api".to_owned()],
                 tray_icon: false,
                 focused_session: Some("api".to_owned()),
+                version: Some("0.46.1".to_owned()),
             }),
             AppReply::State(AppState {
                 panel: Some(PanelState {
@@ -498,6 +514,16 @@ mod tests {
         for reply in replies {
             assert_eq!(reply_roundtrip(&reply), reply);
         }
+    }
+
+    #[test]
+    fn only_an_app_that_reports_a_lower_version_is_older() {
+        assert!(is_older_app(Some("0.46.1"), "0.46.2"));
+        assert!(is_older_app(Some("0.46.9"), "0.47.0"));
+        assert!(!is_older_app(None, "0.46.2"));
+        assert!(!is_older_app(Some("0.46.2"), "0.46.2"));
+        assert!(!is_older_app(Some("0.47.0"), "0.46.2"));
+        assert!(!is_older_app(Some("not a version"), "0.46.2"));
     }
 
     #[test]
