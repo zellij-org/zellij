@@ -359,14 +359,6 @@ fn special_runs_never_join_the_desktop_app() {
             ..windowed()
         },
         TerminalArgs {
-            rows: Some(10),
-            ..windowed()
-        },
-        TerminalArgs {
-            cols: Some(10),
-            ..windowed()
-        },
-        TerminalArgs {
             duration_secs: Some(1),
             ..windowed()
         },
@@ -397,6 +389,93 @@ fn the_request_handed_to_the_app_keeps_the_window_flags() {
     assert_eq!(request.cwd, std::env::current_dir().ok());
     assert_eq!(request.pane_id, None);
     assert_eq!(request.layout, None);
+}
+
+fn with_attach(attach: zellij_utils::cli::AttachArgs) -> TerminalArgs {
+    TerminalArgs {
+        attach,
+        ..windowed()
+    }
+}
+
+#[test]
+fn sizes_indexes_session_options_and_remote_urls_join_the_desktop_app() {
+    use zellij_utils::cli::SessionCommand;
+    for args in [
+        TerminalArgs {
+            rows: Some(10),
+            ..windowed()
+        },
+        TerminalArgs {
+            cols: Some(10),
+            ..windowed()
+        },
+        with_attach(AttachArgs {
+            index: Some(0),
+            ..AttachArgs::default()
+        }),
+        with_attach(AttachArgs {
+            options: Some(Box::new(SessionCommand::Options(SessionOptions::default()))),
+            ..AttachArgs::default()
+        }),
+        with_attach(AttachArgs {
+            session_name: Some("https://example.com/api".to_owned()),
+            ..AttachArgs::default()
+        }),
+    ] {
+        assert!(hosted_by_the_app_with(&args, false), "{:?}", args);
+    }
+}
+
+#[test]
+fn the_request_handed_to_the_app_carries_sizes_session_options_and_remote_access() {
+    use zellij_utils::cli::SessionCommand;
+    let options = SessionOptions {
+        pane_frames: Some(false),
+        ..SessionOptions::default()
+    };
+    let args = TerminalArgs {
+        rows: Some(30),
+        cols: Some(100),
+        ..with_attach(AttachArgs {
+            session_name: Some("https://example.com/api".to_owned()),
+            options: Some(Box::new(SessionCommand::Options(options.clone()))),
+            token: Some("secret".to_owned()),
+            remember: true,
+            ca_cert: Some(PathBuf::from("/etc/ca.pem")),
+            insecure: true,
+            ..AttachArgs::default()
+        })
+    };
+    let request = window_request(&args);
+    assert_eq!(request.rows, Some(30));
+    assert_eq!(request.cols, Some(100));
+    assert_eq!(request.options, Some(options));
+    assert_eq!(request.remote_url(), Some("https://example.com/api"));
+    assert_eq!(request.token.as_deref(), Some("secret"));
+    assert!(request.remember);
+    assert!(!request.forget);
+    assert_eq!(request.ca_cert, Some(PathBuf::from("/etc/ca.pem")));
+    assert!(request.insecure);
+}
+
+#[test]
+fn the_app_loads_its_own_options_without_the_ones_of_the_launch_that_started_it() {
+    use zellij_utils::cli::{Command, SessionCommand};
+    let args = with_attach(AttachArgs {
+        options: Some(Box::new(SessionCommand::Options(SessionOptions::default()))),
+        ..AttachArgs::default()
+    });
+    let opts = CliArgs {
+        command: Some(Command::Terminal(args.clone())),
+        ..CliArgs::default()
+    };
+    let (args, opts) = without_session_options(&args, &opts);
+    assert!(args.attach.options.is_none());
+    match opts.command {
+        Some(Command::Terminal(terminal)) => assert!(terminal.attach.options.is_none()),
+        other => panic!("{:?}", other),
+    }
 }
 
 #[test]
@@ -548,6 +627,28 @@ fn a_window_request_creating_an_unknown_session_starts_it_in_its_folder() {
         },
         other => panic!("a new named session resolved to {:?}", other),
     }
+}
+
+#[test]
+fn a_window_request_with_session_options_resolves_with_them() {
+    let name = format!("zellij-terminal-options-{}", std::process::id());
+    let dialer = dialer();
+    let request = OpenWindowRequest {
+        session: Some(name),
+        create: true,
+        options: Some(SessionOptions {
+            pane_frames: Some(false),
+            ..SessionOptions::default()
+        }),
+        ..Default::default()
+    };
+    assert_eq!(dialer.options_for(&request).pane_frames, Some(false));
+    assert_eq!(
+        dialer
+            .options_for(&OpenWindowRequest::default())
+            .pane_frames,
+        None
+    );
 }
 
 fn capabilities() -> session::connection::Capabilities {

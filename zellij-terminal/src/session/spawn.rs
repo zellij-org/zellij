@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, bail, Context, Result};
 use zellij_client::ServerLaunch;
 use zellij_utils::consts::ZELLIJ_SOCK_DIR;
-use zellij_utils::envs::{SESSION_NAME_ENV_KEY, ZELLIJ_ENV_KEY};
+use zellij_utils::envs::{SESSION_NAME_ENV_KEY, SOCKET_DIR_ENV_KEY, ZELLIJ_ENV_KEY};
 use zellij_utils::shared::set_permissions;
 
 pub const ADVERTISED_TERM: &str = "xterm-256color";
@@ -22,6 +22,36 @@ pub fn forget_launching_session() {
     for key in LAUNCHING_SESSION_VARS {
         std::env::remove_var(key);
     }
+}
+
+const LAUNCH_ONLY_VARS: [&str; 2] = ["XDG_ACTIVATION_TOKEN", "DESKTOP_STARTUP_ID"];
+
+fn belongs_to_the_launch(name: &str) -> bool {
+    LAUNCHING_SESSION_VARS.contains(&name) || LAUNCH_ONLY_VARS.contains(&name)
+}
+
+pub fn launcher_env() -> BTreeMap<String, String> {
+    std::env::vars_os()
+        .filter_map(|(name, value)| Some((name.into_string().ok()?, value.into_string().ok()?)))
+        .filter(|(name, _)| !belongs_to_the_launch(name))
+        .collect()
+}
+
+pub fn inherit_launcher_env(launch: &mut ServerLaunch, launcher: &BTreeMap<String, String>) {
+    if launcher.is_empty() {
+        return;
+    }
+    let mut env: BTreeMap<String, String> = launcher
+        .iter()
+        .filter(|(name, _)| !belongs_to_the_launch(name) && name.as_str() != SOCKET_DIR_ENV_KEY)
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect();
+    if let Ok(socket_dir) = std::env::var(SOCKET_DIR_ENV_KEY) {
+        env.insert(SOCKET_DIR_ENV_KEY.to_owned(), socket_dir);
+    }
+    env.extend(std::mem::take(&mut launch.env));
+    launch.env = env;
+    launch.clear_env = true;
 }
 
 pub fn advertised_host_terminal_env() -> BTreeMap<String, String> {
@@ -164,6 +194,40 @@ mod tests {
     #[test]
     fn the_shell_is_not_named_and_so_is_inherited() {
         assert!(!command().env.contains_key("SHELL"));
+        assert!(!command().clear_env);
+    }
+
+    #[test]
+    fn a_server_started_for_a_launch_gets_the_launcher_environment_instead_of_the_app_one() {
+        let mut launch = command();
+        let launcher = BTreeMap::from([
+            ("PROJECT".to_owned(), "api".to_owned()),
+            ("TERM".to_owned(), "dumb".to_owned()),
+            (
+                SESSION_NAME_ENV_KEY.to_owned(),
+                "launching-shell".to_owned(),
+            ),
+            ("XDG_ACTIVATION_TOKEN".to_owned(), "used".to_owned()),
+        ]);
+        inherit_launcher_env(&mut launch, &launcher);
+        assert!(launch.clear_env);
+        assert_eq!(launch.env.get("PROJECT").map(String::as_str), Some("api"));
+        assert_eq!(
+            launch.env.get("TERM").map(String::as_str),
+            Some("xterm-256color")
+        );
+        assert_eq!(
+            launch.env.get(SESSION_NAME_ENV_KEY).map(String::as_str),
+            Some("window-test")
+        );
+        assert!(!launch.env.contains_key("XDG_ACTIVATION_TOKEN"));
+    }
+
+    #[test]
+    fn without_a_launcher_environment_the_server_inherits_the_app_one() {
+        let mut launch = command();
+        inherit_launcher_env(&mut launch, &BTreeMap::new());
+        assert!(!launch.clear_env);
     }
 
     #[cfg(unix)]

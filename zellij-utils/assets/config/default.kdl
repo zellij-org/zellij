@@ -156,7 +156,9 @@ context_menu {
 
 // Bars a new session starts with hidden: "none" (Default), "all", or bar names
 // separated by commas, eg. "tab-bar,status-bar". Hidden bars come back with the
-// "Show bars" right-click menu item or the ToggleBars action.
+// "Show bars" right-click menu item or the ToggleBars action. A ToggleBars
+// action without bar names hides every bar the next time it hides; to toggle
+// only the bars set here, name them, eg. ToggleBars "status-bar".
 //
 // bars_hidden_on_start "all"
 
@@ -598,7 +600,7 @@ context_menu {
 //
 // osc8_hyperlinks false
 
-// A command to run (will be wrapped with sh -c and provided the RESURRECT_COMMAND env variable)
+// A command to run (will be wrapped with sh -c, or cmd /C on Windows, and provided the RESURRECT_COMMAND env variable)
 // after Zellij attempts to discover a command inside a pane when resurrecting sessions, the STDOUT
 // of this command will be used instead of the discovered RESURRECT_COMMAND
 // can be useful for removing wrappers around commands
@@ -658,6 +660,7 @@ context_menu {
 // The first matching rule decides the order; within a rule, running sessions come first,
 // then the most recently used
 // Facts: directory, git_repo, git_branch, git_worktree, hostname, or a custom `fact`
+// A custom fact's command runs in the session's folder with sh -c, or cmd /C on Windows
 // fact "project" command="echo $PROJECT" column="project" at="live"
 // script "~/.config/zellij/rank.sh" timeout_ms=300 hide_unlisted=false
 // record "~/.config/zellij/record.sh"

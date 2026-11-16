@@ -14,6 +14,7 @@ use crate::launch::refuse;
 use crate::launch::remembered;
 use crate::launch::switch;
 use crate::launch::window_request;
+use crate::launch::without_session_options;
 use crate::launch::Loaded;
 use crate::launch::Plan;
 use crate::launch::Reach;
@@ -22,7 +23,7 @@ use crate::launch::Target;
 use crate::platform::os;
 use crate::session::client_loop::LoopOptions;
 use crate::session::connection::{Capabilities, Detacher, Geometry, Opening};
-use crate::{app, config, session, window};
+use crate::{app, config, remote, session, window};
 use anyhow::{anyhow, bail, Result};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -48,7 +49,8 @@ pub(crate) fn launch_app(args: TerminalArgs, opts: CliArgs, loaded: Option<Loade
             app::Intent::TogglePanel { view, token },
         ),
         None => {
-            let request = window_request(&args);
+            let mut request = window_request(&args);
+            request.env = session::spawn::launcher_env();
             (
                 AppRequest::OpenWindow(request.clone()),
                 app::Intent::Open { request, token },
@@ -60,6 +62,7 @@ pub(crate) fn launch_app(args: TerminalArgs, opts: CliArgs, loaded: Option<Loade
         Ok(app::control::instance::Claim::Handed(AppReply::Refused(text))) => bail!("{}", text),
         Ok(app::control::instance::Claim::Handed(_)) => Ok(()),
         Ok(app::control::instance::Claim::Primary(instance)) => {
+            let (args, opts) = without_session_options(&args, &opts);
             let (config_options, settings) = match loaded.map_or_else(|| load(&args, &opts), Ok) {
                 Ok(loaded) => loaded,
                 Err(done) => return done,
@@ -207,19 +210,34 @@ impl Dialer {
         request: &OpenWindowRequest,
         geometry: Geometry,
     ) -> Result<session::connection::Connection> {
+        let (reach, local_config) = match request.remote_url() {
+            Some(_) => (
+                Reach::Remote(Box::new(remote_attach(request))),
+                remote::watched_config(&self.opts),
+            ),
+            None => (Reach::Local(self.client_info(request)?), Default::default()),
+        };
         let target = Target {
-            reach: Reach::Local(self.client_info(request)?),
+            reach,
             opening: Opening::Participant(self.capabilities),
         };
         connect(
             &target,
             &self.opts,
-            &self.config_options,
+            &self.options_for(request),
             geometry,
             (None, request.pane_id),
-            Default::default(),
+            local_config,
             None,
+            Some(&request.env).filter(|env| !env.is_empty()),
         )
+    }
+
+    pub(crate) fn options_for(&self, request: &OpenWindowRequest) -> SessionOptions {
+        match &request.options {
+            Some(options) => self.config_options.merge_from_cli(options.clone()),
+            None => self.config_options.clone(),
+        }
     }
 
     pub(crate) fn client_info(&self, request: &OpenWindowRequest) -> Result<ClientInfo> {
@@ -257,7 +275,7 @@ impl Dialer {
                 };
                 let mut resolved = session_resolution::resolve_attach(
                     &attach,
-                    self.config_options.clone(),
+                    self.options_for(request),
                     false,
                     None,
                 )
@@ -275,6 +293,18 @@ impl Dialer {
             },
         };
         Ok(info)
+    }
+}
+
+fn remote_attach(request: &OpenWindowRequest) -> AttachArgs {
+    AttachArgs {
+        session_name: request.session.clone(),
+        token: request.token.clone(),
+        remember: request.remember,
+        forget: request.forget,
+        ca_cert: request.ca_cert.clone(),
+        insecure: request.insecure,
+        ..AttachArgs::default()
     }
 }
 
@@ -322,6 +352,7 @@ impl Dialer {
             (None, None),
             Default::default(),
             None,
+            None,
         )
     }
 }
@@ -350,6 +381,8 @@ impl window::WindowMaker for Launcher {
         let args = TerminalArgs {
             cell_width: 10,
             cell_height: 20,
+            rows: request.rows,
+            cols: request.cols,
             ..TerminalArgs::default()
         };
         let saved = remembered(&args, &options);

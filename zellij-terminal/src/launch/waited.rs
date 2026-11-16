@@ -2,6 +2,7 @@ use crate::launch::hosted_by_the_app;
 use crate::launch::open;
 use crate::launch::run_app;
 use crate::launch::starting_folder;
+use crate::launch::window_request;
 use crate::{app, config, session};
 use anyhow::{anyhow, bail, Result};
 use zellij_utils::app_control::{AppRequest, OpenWindowRequest};
@@ -23,10 +24,18 @@ pub(crate) fn run_waited(args: TerminalArgs, opts: CliArgs) -> Result<i32> {
         cwd: starting_folder(&args),
         hold: args.hold,
     };
-    if hosted_by_the_app(&args) && session::terminal_request::ensure_app_running() {
+    let hosted = hosted_by_the_app(&args)
+        && args.attach.remote_url().is_none()
+        && args.attach.index.is_none();
+    if hosted && session::terminal_request::ensure_app_running() {
+        let launched = window_request(&args);
         let request = OpenWindowRequest {
             startup_mode: args.startup_mode,
             force_run_commands: args.attach.force_run_commands,
+            rows: launched.rows,
+            cols: launched.cols,
+            options: launched.options,
+            env: session::spawn::launcher_env(),
             ..Default::default()
         };
         match session::terminal_request::run_in_app(&waited, terminal_requests(&opts), request) {
