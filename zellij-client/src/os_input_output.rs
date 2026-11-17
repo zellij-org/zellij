@@ -29,6 +29,7 @@ use zellij_utils::{
 };
 
 const SIGWINCH_CB_THROTTLE_DURATION: time::Duration = time::Duration::from_millis(50);
+const RUNNING_SERVER_CONNECT_LIMIT: time::Duration = time::Duration::from_secs(2);
 
 pub(crate) const ENABLE_MOUSE_SUPPORT: &str =
     "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1003h\u{1b}[?1015h\u{1b}[?1006h";
@@ -181,6 +182,9 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     /// Establish a connection with the server socket, waiting for the server to start listening.
     /// Fails only when the server refuses this client.
     fn connect_to_server(&self, path: &Path) -> std::io::Result<()>;
+    fn connect_to_running_server(&self, path: &Path) -> std::io::Result<()> {
+        self.connect_to_server(path)
+    }
     fn spawn_server(&self, socket_path: &Path, debug: bool) -> Result<(), std::io::Error> {
         crate::spawn_server(socket_path, debug)
     }
@@ -346,7 +350,13 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn connect_to_server(&self, path: &Path) -> std::io::Result<()> {
-        let (sender, receiver) = connect_ipc(path)?;
+        let (sender, receiver) = connect_ipc(path, None)?;
+        *self.send_instructions_to_server.lock().unwrap() = Some(sender);
+        *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
+        Ok(())
+    }
+    fn connect_to_running_server(&self, path: &Path) -> std::io::Result<()> {
+        let (sender, receiver) = connect_ipc(path, Some(RUNNING_SERVER_CONNECT_LIMIT))?;
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
         Ok(())

@@ -17681,6 +17681,7 @@ struct DeliveredFrame {
     geometry: Option<zellij_utils::structured_render::GeometryRecord>,
     scroll: zellij_utils::structured_render::ScrollRecord,
     graphics: Vec<zellij_utils::structured_render::GraphicsRecord>,
+    sideband: Vec<u8>,
 }
 
 fn drain_frames(server_receiver: &ServerReceiver) -> HashMap<ClientId, DeliveredFrame> {
@@ -17723,6 +17724,7 @@ fn decode_delivered(payload: &crate::output::RenderPayload) -> DeliveredFrame {
         geometry: view.geometry(),
         scroll: view.scroll(),
         graphics: view.graphics(),
+        sideband: view.sideband().to_vec(),
     }
 }
 
@@ -17812,8 +17814,13 @@ fn a_client_that_stops_acknowledging_is_repainted_in_full_after_the_deadline() {
             "the abandoned frame must no longer be in flight"
         );
         assert!(
-            !state.overlay.is_dirty(),
-            "the pending overlay must be discarded"
+            !state.overlay.holds_screen_changes(),
+            "the pending screen changes must be discarded"
+        );
+        assert_eq!(
+            state.overlay.sideband(),
+            CLIPBOARD_SEQUENCE.repeat(2).as_bytes(),
+            "the copies queued with the abandoned frame must be kept"
         );
         assert!(
             state.force_full_repaint,
@@ -17843,10 +17850,20 @@ fn a_client_that_stops_acknowledging_is_repainted_in_full_after_the_deadline() {
     screen
         .handle_render_frame_ack(client_id, recovery.seq)
         .expect("TEST");
+    let kept = delivered_frame(&server_receiver, client_id)
+        .expect("the copies kept from the abandoned frame must follow the recovery frame");
+    assert_eq!(
+        kept.sideband,
+        CLIPBOARD_SEQUENCE.repeat(2).into_bytes(),
+        "every copy queued with the abandoned frame must reach the client"
+    );
+    screen
+        .handle_render_frame_ack(client_id, kept.seq)
+        .expect("TEST");
     assert_eq!(
         structured_client_with(&screen, client_id, |state| state.in_flight),
         None,
-        "the recovery frame must be acknowledged like any other"
+        "the frames that follow a recovery must be acknowledged like any other"
     );
 }
 
@@ -17939,6 +17956,10 @@ fn a_resize_discards_the_pending_overlay_and_forces_a_full_repaint() {
         (after_resize.cols, after_resize.rows),
         (resized.cols as u16, resized.rows as u16),
         "the frame that follows a resize must carry the new viewport"
+    );
+    assert!(
+        String::from_utf8_lossy(&after_resize.sideband).contains(CLIPBOARD_SEQUENCE),
+        "a copy queued while the client was being resized must still reach it"
     );
     structured_client_with(&screen, client_id, |state| {
         assert_eq!(

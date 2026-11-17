@@ -335,6 +335,7 @@ fn main() {
             .session
             .as_ref()
             .cloned()
+            .or_else(|| commands::session_of_this_pane(1))
             .or_else(|| envs::get_session_name().ok())
         {
             let config = Config::try_from(&opts).ok();

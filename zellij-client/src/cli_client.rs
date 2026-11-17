@@ -30,7 +30,7 @@ pub fn start_cli_client(
             .unwrap_or_else(|| sock_dir.join(session_name))
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
+    if let Err(e) = os_input.connect_to_running_server(&*zellij_ipc_pipe) {
         eprintln!("{}", crate::connect_error_message(e));
         process::exit(1);
     }
@@ -432,7 +432,7 @@ pub fn start_prompt_client(
             .unwrap_or_else(|| sock_dir.join(session_name))
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
+    if let Err(e) = os_input.connect_to_running_server(&*zellij_ipc_pipe) {
         eprintln!("{}", crate::connect_error_message(e));
         process::exit(1);
     }
@@ -819,7 +819,7 @@ pub fn start_subscribe_client(
             .unwrap_or_else(|| sock_dir.join(session_name))
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
+    if let Err(e) = os_input.connect_to_running_server(&*zellij_ipc_pipe) {
         eprintln!("{}", crate::connect_error_message(e));
         process::exit(1);
     }

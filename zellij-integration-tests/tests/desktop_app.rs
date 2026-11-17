@@ -1684,6 +1684,323 @@ impl Desktop {
     }
 }
 
+impl Desktop {
+    fn launch_with_env(&mut self, extra: &[&str], env: &[(&str, &str)]) -> usize {
+        let index = self.apps.len();
+        let log = std::fs::File::create(self.log_path(index)).unwrap();
+        let child = self
+            .terminal_command(extra)
+            .envs(env.iter().copied())
+            .stdout(log.try_clone().unwrap())
+            .stderr(log)
+            .spawn()
+            .expect("the zellij executable starts");
+        self.apps.push(child);
+        index
+    }
+
+    fn cli(&self, args: &[&str], env: &[(&str, &str)]) -> std::process::Output {
+        let mut child = self
+            .command(args)
+            .env("ZELLIJ_SOCKET_DIR", self.socket_dir())
+            .envs(env.iter().copied())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("the zellij cli runs");
+        let deadline = Instant::now() + LIMIT;
+        while child.try_wait().unwrap().is_none() {
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let output = child.wait_with_output().unwrap();
+                panic!(
+                    "`zellij {}` hung\nstderr: {}",
+                    args.join(" "),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        child.wait_with_output().unwrap()
+    }
+
+    fn create_background_session_with_env(&self, name: &str, env: &[(&str, &str)]) {
+        let output = self.cli(&["attach", "--create-background", name], env);
+        assert!(
+            output.status.success(),
+            "the background session {} started",
+            name
+        );
+        self.wait_for_shell_in(name);
+    }
+
+    fn wait_for_shell_in(&self, session: &str) {
+        self.wait_for(&format!("a shell to run in {}", session), || {
+            self.pane_lines_of(session)
+                .map(|lines| {
+                    lines
+                        .iter()
+                        .flat_map(|line| line.lines())
+                        .any(|line| line.contains("terminal_"))
+                })
+                .unwrap_or(false)
+        });
+    }
+
+    fn session_id_of(&self, session: &str) -> Option<String> {
+        self.session_index()
+            .and_then(|index| index.session_id(session).ok().flatten())
+    }
+
+    fn wait_for_file(&self, path: &Path, expected: &str) {
+        let deadline = Instant::now() + LIMIT;
+        loop {
+            let read = std::fs::read_to_string(path).ok();
+            if read.as_deref() == Some(expected) {
+                return;
+            }
+            if Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for {} to read {:?}, it reads {:?}\n{}",
+                    path.display(),
+                    expected,
+                    read,
+                    self.logs()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn report_from_a_new_pane(&self, session: &str, script: &str, file: &Path) {
+        let script = format!("{} > '{}'", script, file.display());
+        let output = self.cli(
+            &["--session", session, "run", "--", "sh", "-c", &script],
+            &[],
+        );
+        assert!(
+            output.status.success(),
+            "a pane runs in {}: {}",
+            session,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn system_clipboard(&self) -> Option<String> {
+        std::env::set_var("DISPLAY", &self.display);
+        std::env::remove_var("WAYLAND_DISPLAY");
+        arboard::Clipboard::new().ok()?.get_text().ok()
+    }
+
+    fn copy_from_a_pane(&self, session: &str, text: &str) {
+        use base64::engine::general_purpose::STANDARD;
+        use base64::Engine as _;
+        let script = format!("printf '\\033]52;c;{}\\007'", STANDARD.encode(text));
+        let output = self.cli(
+            &["--session", session, "run", "--", "sh", "-c", &script],
+            &[],
+        );
+        assert!(
+            output.status.success(),
+            "a pane runs in {}: {}",
+            session,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let deadline = Instant::now() + LIMIT;
+        loop {
+            let clipboard = self.system_clipboard();
+            if clipboard.as_deref() == Some(text) {
+                return;
+            }
+            if Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for {:?} to reach the system clipboard, it holds {:?}\nscreen:\n{}\n{}",
+                    text,
+                    clipboard,
+                    self.screen_of(session).unwrap_or_default(),
+                    self.logs()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+}
+
+#[test]
+fn panes_of_the_app_name_zellij_and_not_the_terminal_the_app_was_started_from() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.launch_with_env(
+        &[],
+        &[
+            ("TERM_PROGRAM", "iTerm.app"),
+            ("TERM_PROGRAM_VERSION", "3.5.0"),
+            ("ITERM_SESSION_ID", "w0t0p0"),
+            ("KITTY_WINDOW_ID", "3"),
+            ("TERMINFO", "/somewhere/terminfo"),
+        ],
+    );
+    let state = desktop.wait_for_state("the first window on a new session", |state| {
+        state.windows.len() == 1 && state.windows[0].session.is_some()
+    });
+    let session = state.windows[0].session.clone().unwrap();
+    desktop.wait_for_shell_in(&session);
+
+    let report = desktop.root.path().join("terminal-identity.txt");
+    desktop.report_from_a_new_pane(
+        &session,
+        "printf '%s|%s|%s|%s|%s' \"$TERM_PROGRAM\" \"$TERM_PROGRAM_VERSION\" \"$ITERM_SESSION_ID\" \"$KITTY_WINDOW_ID\" \"$TERMINFO\"",
+        &report,
+    );
+    desktop.wait_for_file(
+        &report,
+        &format!("zellij|{}|||", zellij_utils::consts::VERSION),
+    );
+}
+
+#[test]
+fn a_pane_opened_after_the_window_attaches_uses_the_display_of_the_window() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.create_background_session_with_env(
+        "displays",
+        &[("DISPLAY", ":stale"), ("WAYLAND_DISPLAY", "stale-wayland")],
+    );
+    let script = "printf '%s|%s' \"$DISPLAY\" \"$WAYLAND_DISPLAY\"";
+
+    let before = desktop.root.path().join("display-before.txt");
+    desktop.report_from_a_new_pane("displays", script, &before);
+    desktop.wait_for_file(&before, ":stale|stale-wayland");
+
+    desktop.launch(&["displays"]);
+    desktop.wait_for_state("a window on the session", |state| {
+        windows_on(state, "displays") == 1
+    });
+    desktop.wait_for_client_count("displays", 1);
+
+    let after = desktop.root.path().join("display-after.txt");
+    desktop.report_from_a_new_pane("displays", script, &after);
+    let expected = format!("{}|", desktop.display);
+    desktop.wait_for_file(&after, &expected);
+}
+
+#[test]
+fn copying_still_reaches_the_system_clipboard_after_the_window_is_closed_and_reopened() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    let session = desktop.start_app();
+    desktop.wait_for_client_count(&session, 1);
+    desktop.wait_for_shell_in(&session);
+    desktop.copy_from_a_pane(&session, "first copy");
+
+    let client = desktop.only_client_of(&session);
+    desktop.act_as(&session, client, Action::Detach);
+    desktop.wait_for_state("the window to close while the app keeps running", |state| {
+        windows_on(state, &session) == 0
+    });
+    desktop.wait_for_client_count(&session, 0);
+
+    assert_eq!(
+        send_app_request_to(
+            &desktop.control_socket(),
+            &AppRequest::OpenWindow(OpenWindowRequest {
+                session: Some(session.clone()),
+                create: false,
+                ..Default::default()
+            })
+        ),
+        Ok(AppReply::Done)
+    );
+    desktop.wait_for_state("a window on the session again", |state| {
+        windows_on(state, &session) == 1
+    });
+    desktop.wait_for_client_count(&session, 1);
+    desktop.copy_from_a_pane(&session, "second copy");
+}
+
+#[test]
+fn zellij_run_from_a_pane_of_a_renamed_session_reaches_it_and_never_the_session_that_took_its_name()
+{
+    let Some(desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.create_background_session_with_env("work", &[]);
+    desktop.create_background_session_with_env("other", &[]);
+    let id = desktop
+        .session_id_of("work")
+        .expect("the session index knows the session");
+    desktop.act_on(
+        "work",
+        vec![Action::RenameSession {
+            name: "renamed".to_owned(),
+        }],
+    );
+    desktop.wait_for("the rename to reach the session index", || {
+        desktop.session_id_of("renamed").as_deref() == Some(id.as_str())
+    });
+    desktop.create_background_session_with_env("work", &[]);
+    let impostor = desktop.session_id_of("work").unwrap();
+    assert_ne!(impostor, id);
+
+    let report = desktop.root.path().join("reached.txt");
+    let script = format!(
+        "printf '%s' \"$ZELLIJ_SESSION_ID\" > '{}'",
+        report.display()
+    );
+    let pane_env = [
+        ("ZELLIJ", "0"),
+        ("ZELLIJ_SESSION_NAME", "work"),
+        ("ZELLIJ_SESSION_ID", id.as_str()),
+    ];
+    let output = desktop.cli(&["run", "--", "sh", "-c", &script], &pane_env);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    desktop.wait_for_file(&report, &id);
+
+    let ended = [
+        ("ZELLIJ", "0"),
+        ("ZELLIJ_SESSION_NAME", "work"),
+        ("ZELLIJ_SESSION_ID", "000000000000"),
+    ];
+    std::fs::remove_file(&report).unwrap();
+    let output = desktop.cli(&["run", "--", "sh", "-c", &script], &ended);
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("has ended"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !report.exists(),
+        "a pane of an ended session must not open a pane anywhere"
+    );
+}
+
+#[test]
+fn zellij_action_from_a_pane_whose_session_name_is_gone_fails_instead_of_hanging() {
+    let Some(desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.create_background_session_with_env("one", &[]);
+    desktop.create_background_session_with_env("two", &[]);
+    let output = desktop.cli(
+        &["action", "rename-tab", "nowhere"],
+        &[("ZELLIJ", "0"), ("ZELLIJ_SESSION_NAME", "gone")],
+    );
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("the session is not running"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 /// A minimal XDND drag source, to drop files on the real window under Xvfb.
 mod xdnd {
     use std::path::Path;

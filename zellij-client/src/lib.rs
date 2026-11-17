@@ -447,6 +447,9 @@ fn ipc_pipe_length_error(ipc_pipe: &Path) -> Option<String> {
 }
 
 pub(crate) fn connect_error_message(error: io::Error) -> String {
+    if error.kind() == io::ErrorKind::NotFound {
+        return "Error: the session is not running".to_owned();
+    }
     let mut message = format!("Error: cannot connect to the session: {}", error);
     if cfg!(windows) {
         message.push_str(

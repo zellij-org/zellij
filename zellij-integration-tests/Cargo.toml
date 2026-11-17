@@ -37,3 +37,4 @@ zellij-terminal = { path = "../zellij-terminal", version = "0.46.0", features = 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 # Acts as an XDND drag source in the desktop app tests; already in the tree through winit.
 x11rb = { version = "0.13", default-features = false }
+arboard = { workspace = true }

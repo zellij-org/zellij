@@ -414,7 +414,7 @@ impl<'a> Served<'a> {
             .options
             .clipboard
             .as_ref()
-            .and_then(|clipboard| clipboard.lock().ok().and_then(|mut c| c.get()))
+            .and_then(|clipboard| clipboard::lock(clipboard).get())
             .filter(|text| !text.is_empty());
         match text {
             Some(chars) => send(self.sender, clipboard::paste_message_into(chars, pane_id)),

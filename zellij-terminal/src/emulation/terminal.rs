@@ -188,13 +188,16 @@ impl TerminalState {
     ) -> Result<FrameApplied, FrameError> {
         let view = structured_render::decode(frame).map_err(FrameError::Undecodable)?;
         before(self, &view);
-        let applied = self
-            .screen
-            .apply(&view)
-            .map_err(|error| FrameError::Unapplicable {
-                seq: view.header().seq,
-                error,
-            })?;
+        let applied = match self.screen.apply(&view) {
+            Ok(applied) => applied,
+            Err(error) => {
+                self.consume_sideband(view.sideband());
+                return Err(FrameError::Unapplicable {
+                    seq: view.header().seq,
+                    error,
+                });
+            },
+        };
         if applied.cleared {
             self.graphics.clear();
             self.sixels.clear();
@@ -650,6 +653,21 @@ mod tests {
             .unwrap();
         assert_eq!(state.take_copied_text().as_deref(), Some("copied"));
         assert_eq!(state.take_copied_text(), None);
+    }
+
+    #[test]
+    fn a_copy_carried_by_a_frame_the_viewport_moved_past_still_reaches_the_clipboard() {
+        let mut state = TerminalState::new(2, 8);
+        let mut reshaped = FrameBuilder::new(4, 1, 2);
+        reshaped.push_row(0, 0, &run("no"));
+        reshaped
+            .sideband_mut()
+            .extend_from_slice(b"\x1b]52;c;Y29waWVk\x1b\\");
+        assert!(matches!(
+            state.apply_frame(&reshaped.finish()),
+            Err(FrameError::Unapplicable { seq: 2, .. })
+        ));
+        assert_eq!(state.take_copied_text().as_deref(), Some("copied"));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::engine::Engine as _;
@@ -7,77 +7,200 @@ use zellij_utils::ipc::ClientToServerMsg;
 
 pub type ClipboardHandle = Arc<Mutex<Clipboard>>;
 
+pub fn lock(handle: &ClipboardHandle) -> MutexGuard<'_, Clipboard> {
+    handle.lock().unwrap_or_else(|poisoned| {
+        report!("the clipboard was in use by a thread that crashed; using it anyway");
+        handle.clear_poison();
+        poisoned.into_inner()
+    })
+}
+
+pub trait SystemClipboard: Send {
+    fn set_text(&mut self, text: &str) -> Result<(), arboard::Error>;
+    fn get_text(&mut self) -> Result<String, arboard::Error>;
+    fn get_primary(&mut self) -> Option<String>;
+    fn set_primary(&mut self, text: &str);
+}
+
+impl SystemClipboard for arboard::Clipboard {
+    fn set_text(&mut self, text: &str) -> Result<(), arboard::Error> {
+        arboard::Clipboard::set_text(self, text)
+    }
+
+    fn get_text(&mut self) -> Result<String, arboard::Error> {
+        arboard::Clipboard::get_text(self)
+    }
+
+    fn get_primary(&mut self) -> Option<String> {
+        primary_text(self)
+    }
+
+    fn set_primary(&mut self, text: &str) {
+        set_primary_text(self, text)
+    }
+}
+
+pub type SystemClipboardOpener =
+    Box<dyn FnMut() -> Result<Box<dyn SystemClipboard>, arboard::Error> + Send>;
+
 pub struct Clipboard {
     backend: Backend,
+    opener: Option<SystemClipboardOpener>,
+    reported_unavailable: bool,
 }
 
 enum Backend {
-    System(Box<arboard::Clipboard>),
+    System(Box<dyn SystemClipboard>),
     Memory { clipboard: String, primary: String },
+}
+
+impl Backend {
+    fn memory() -> Self {
+        Backend::Memory {
+            clipboard: String::new(),
+            primary: String::new(),
+        }
+    }
 }
 
 impl Clipboard {
     pub fn open() -> Self {
-        match arboard::Clipboard::new() {
-            Ok(clipboard) => Self {
-                backend: Backend::System(Box::new(clipboard)),
+        Self::open_with(Box::new(|| {
+            arboard::Clipboard::new()
+                .map(|clipboard| Box::new(clipboard) as Box<dyn SystemClipboard>)
+        }))
+    }
+
+    pub fn open_with(opener: SystemClipboardOpener) -> Self {
+        let mut clipboard = Self {
+            backend: Backend::memory(),
+            opener: Some(opener),
+            reported_unavailable: false,
+        };
+        clipboard.reopen();
+        clipboard
+    }
+
+    #[cfg(test)]
+    pub fn in_memory() -> Self {
+        Self {
+            backend: Backend::memory(),
+            opener: None,
+            reported_unavailable: false,
+        }
+    }
+
+    fn reopen(&mut self) -> bool {
+        let Some(opener) = self.opener.as_mut() else {
+            return false;
+        };
+        match opener() {
+            Ok(mut clipboard) => {
+                if let Backend::Memory {
+                    clipboard: kept, ..
+                } = &self.backend
+                {
+                    if !kept.is_empty() {
+                        if let Err(e) = clipboard.set_text(kept) {
+                            report!("failed to hand a copy over to the clipboard: {}", e);
+                        }
+                    }
+                }
+                self.backend = Backend::System(clipboard);
+                self.reported_unavailable = false;
+                true
             },
             Err(e) => {
-                report!(
-                    "no system clipboard ({}); copy and paste stay inside this window",
-                    e
-                );
-                Self::in_memory()
+                if !self.reported_unavailable {
+                    report!(
+                        "no system clipboard ({}); copy and paste stay inside this window \
+                         until it can be reached",
+                        e
+                    );
+                    self.reported_unavailable = true;
+                }
+                if matches!(self.backend, Backend::System(_)) {
+                    self.backend = Backend::memory();
+                }
+                false
             },
         }
     }
 
-    pub fn in_memory() -> Self {
-        Self {
-            backend: Backend::Memory {
-                clipboard: String::new(),
-                primary: String::new(),
-            },
+    fn with_system<T>(
+        &mut self,
+        what: &str,
+        mut f: impl FnMut(&mut dyn SystemClipboard) -> Result<T, arboard::Error>,
+    ) -> Option<Result<T, arboard::Error>> {
+        if let Backend::System(clipboard) = &mut self.backend {
+            match f(clipboard.as_mut()) {
+                Err(e) if is_connection_failure(&e) => {
+                    report!(
+                        "failed to {} the clipboard ({}); reconnecting to it",
+                        what,
+                        e
+                    );
+                },
+                result => return Some(result),
+            }
+        }
+        if !self.reopen() {
+            return None;
+        }
+        match &mut self.backend {
+            Backend::System(clipboard) => Some(f(clipboard.as_mut())),
+            Backend::Memory { .. } => None,
         }
     }
 
     pub fn set(&mut self, text: &str) {
-        match &mut self.backend {
-            Backend::System(clipboard) => {
-                if let Err(e) = clipboard.set_text(text) {
-                    report!("failed to write the clipboard: {}", e);
+        match self.with_system("write", |clipboard| clipboard.set_text(text)) {
+            Some(Ok(())) => {},
+            Some(Err(e)) => report!("failed to write the clipboard: {}", e),
+            None => {
+                if let Backend::Memory { clipboard, .. } = &mut self.backend {
+                    clipboard.clear();
+                    clipboard.push_str(text);
                 }
-            },
-            Backend::Memory { clipboard, .. } => {
-                clipboard.clear();
-                clipboard.push_str(text);
             },
         }
     }
 
     pub fn get(&mut self) -> Option<String> {
-        match &mut self.backend {
-            Backend::System(clipboard) => reported(clipboard.get_text(), true),
-            Backend::Memory { clipboard, .. } => (!clipboard.is_empty()).then(|| clipboard.clone()),
+        match self.with_system("read", |clipboard| clipboard.get_text()) {
+            Some(read) => reported(read, true),
+            None => match &self.backend {
+                Backend::Memory { clipboard, .. } => {
+                    (!clipboard.is_empty()).then(|| clipboard.clone())
+                },
+                Backend::System(_) => None,
+            },
         }
     }
 
     pub fn get_primary(&mut self) -> Option<String> {
         match &mut self.backend {
-            Backend::System(clipboard) => primary_text(clipboard),
+            Backend::System(clipboard) => clipboard.get_primary(),
             Backend::Memory { primary, .. } => (!primary.is_empty()).then(|| primary.clone()),
         }
     }
 
     pub fn set_primary(&mut self, text: &str) {
         match &mut self.backend {
-            Backend::System(clipboard) => set_primary_text(clipboard, text),
+            Backend::System(clipboard) => clipboard.set_primary(text),
             Backend::Memory { primary, .. } => {
                 primary.clear();
                 primary.push_str(text);
             },
         }
     }
+}
+
+fn is_connection_failure(error: &arboard::Error) -> bool {
+    matches!(
+        error,
+        arboard::Error::ClipboardOccupied | arboard::Error::Unknown { .. }
+    )
 }
 
 #[cfg(freedesktop)]
@@ -131,12 +254,7 @@ fn reported(read: Result<String, arboard::Error>, announce_empty: bool) -> Optio
 
 pub fn osc52_reply(query_bytes: &[u8], clipboard: &ClipboardHandle) -> Option<Vec<u8>> {
     let (selection, terminator) = parse_osc52_query(query_bytes)?;
-    let text = clipboard
-        .lock()
-        .map_err(|_| ())
-        .ok()
-        .and_then(|mut clipboard| clipboard.get())
-        .unwrap_or_default();
+    let text = lock(clipboard).get().unwrap_or_default();
 
     let mut reply = format!("\u{1b}]52;{};{}", selection, BASE64.encode(text)).into_bytes();
     reply.extend_from_slice(terminator);
@@ -229,6 +347,159 @@ mod tests {
         let mut clipboard = Clipboard::in_memory();
         clipboard.set(text);
         Arc::new(Mutex::new(clipboard))
+    }
+
+    #[derive(Default)]
+    struct FakeSystem {
+        opens: usize,
+        refused_opens: usize,
+        lost_connections: usize,
+        text: String,
+    }
+
+    struct FakeConnection {
+        system: Arc<Mutex<FakeSystem>>,
+        lost: bool,
+    }
+
+    impl SystemClipboard for FakeConnection {
+        fn set_text(&mut self, text: &str) -> Result<(), arboard::Error> {
+            if self.lost {
+                return Err(arboard::Error::Unknown {
+                    description: "the connection to the display was lost".to_owned(),
+                });
+            }
+            self.system.lock().unwrap().text = text.to_owned();
+            Ok(())
+        }
+
+        fn get_text(&mut self) -> Result<String, arboard::Error> {
+            if self.lost {
+                return Err(arboard::Error::Unknown {
+                    description: "the connection to the display was lost".to_owned(),
+                });
+            }
+            let text = self.system.lock().unwrap().text.clone();
+            if text.is_empty() {
+                Err(arboard::Error::ContentNotAvailable)
+            } else {
+                Ok(text)
+            }
+        }
+
+        fn get_primary(&mut self) -> Option<String> {
+            None
+        }
+
+        fn set_primary(&mut self, _text: &str) {}
+    }
+
+    fn fake_system(system: &Arc<Mutex<FakeSystem>>) -> Clipboard {
+        let system = system.clone();
+        Clipboard::open_with(Box::new(move || {
+            let mut state = system.lock().unwrap();
+            state.opens += 1;
+            if state.refused_opens > 0 {
+                state.refused_opens -= 1;
+                return Err(arboard::Error::Unknown {
+                    description: "no display".to_owned(),
+                });
+            }
+            let lost = state.lost_connections > 0;
+            if lost {
+                state.lost_connections -= 1;
+            }
+            Ok(Box::new(FakeConnection {
+                system: system.clone(),
+                lost,
+            }) as Box<dyn SystemClipboard>)
+        }))
+    }
+
+    #[test]
+    fn a_system_clipboard_that_was_unreachable_at_startup_is_used_once_it_can_be_reached() {
+        let system = Arc::new(Mutex::new(FakeSystem {
+            refused_opens: 2,
+            ..FakeSystem::default()
+        }));
+        let mut clipboard = fake_system(&system);
+        clipboard.set("made while unreachable");
+        assert_eq!(system.lock().unwrap().text, "");
+
+        assert_eq!(clipboard.get().as_deref(), Some("made while unreachable"));
+        assert_eq!(
+            system.lock().unwrap().text,
+            "made while unreachable",
+            "the copy kept in the window is handed over once the clipboard is reached"
+        );
+
+        clipboard.set("copied");
+        assert_eq!(system.lock().unwrap().text, "copied");
+        assert_eq!(system.lock().unwrap().opens, 3);
+    }
+
+    #[test]
+    fn a_lost_connection_to_the_system_clipboard_is_reopened_and_the_copy_retried() {
+        let system = Arc::new(Mutex::new(FakeSystem {
+            lost_connections: 1,
+            ..FakeSystem::default()
+        }));
+        let mut clipboard = fake_system(&system);
+        clipboard.set("copied");
+        assert_eq!(system.lock().unwrap().text, "copied");
+        assert_eq!(system.lock().unwrap().opens, 2);
+
+        clipboard.set("again");
+        assert_eq!(system.lock().unwrap().text, "again");
+        assert_eq!(
+            system.lock().unwrap().opens,
+            2,
+            "a working connection is kept"
+        );
+    }
+
+    #[test]
+    fn a_copy_made_while_the_system_clipboard_cannot_be_reopened_is_kept_until_it_can() {
+        let system = Arc::new(Mutex::new(FakeSystem {
+            lost_connections: 1,
+            ..FakeSystem::default()
+        }));
+        let mut clipboard = fake_system(&system);
+        system.lock().unwrap().refused_opens = 1;
+        clipboard.set("copied");
+        assert_eq!(system.lock().unwrap().text, "");
+
+        assert_eq!(clipboard.get().as_deref(), Some("copied"));
+        assert_eq!(system.lock().unwrap().text, "copied");
+    }
+
+    #[test]
+    fn an_empty_system_clipboard_is_not_mistaken_for_a_lost_connection() {
+        let system = Arc::new(Mutex::new(FakeSystem::default()));
+        let mut clipboard = fake_system(&system);
+        assert_eq!(clipboard.get(), None);
+        assert_eq!(system.lock().unwrap().opens, 1);
+    }
+
+    #[test]
+    fn a_thread_that_crashed_while_copying_does_not_end_copying_for_everyone() {
+        let clipboard = handle("before");
+        let shared = clipboard.clone();
+        let crashed = std::thread::spawn(move || {
+            let _held = shared.lock().unwrap();
+            panic!("a connection thread crashed");
+        })
+        .join();
+        assert!(crashed.is_err());
+        assert!(clipboard.is_poisoned());
+
+        lock(&clipboard).set("after");
+        assert_eq!(lock(&clipboard).get().as_deref(), Some("after"));
+        assert!(!clipboard.is_poisoned());
+        assert_eq!(
+            osc52_reply(b"\x1b]52;c;?\x1b\\", &clipboard).unwrap(),
+            b"\x1b]52;c;YWZ0ZXI=\x1b\\"
+        );
     }
 
     #[test]
