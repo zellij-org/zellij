@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(windows): custom session facts and the resurrect hook keep the quotes in their commands (https://github.com/zellij-org/zellij/pull/5940)
 * fix(windows): run the resurrect hook only for the commands in panes, not for every process (https://github.com/zellij-org/zellij/pull/5941)
 * fix: set TERMINAL_PROGRAM and fix zellij action after session rename (https://github.com/zellij-org/zellij/pull/5942)
+* feat: `zellij events` to allow subscribing to events from the CLI (https://github.com/zellij-org/zellij/pull/5943)
 
 ## [0.46.0] - 2026-11-11
 * (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)
