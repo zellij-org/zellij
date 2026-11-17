@@ -287,6 +287,9 @@ pub enum ClientToServerMsg {
     AdoptSessionHistory {
         history: crate::session_history::SessionHistory,
     },
+    SubscribeToEvents {
+        filter: crate::session_events::CliEventFilter,
+    },
 }
 
 // Types of messages sent from the server to the client
@@ -369,6 +372,9 @@ pub enum ServerToClientMsg {
     },
     PaneMirror {
         payload: Vec<u8>,
+    },
+    SessionEvent {
+        json: String,
     },
 }
 

@@ -1,4 +1,5 @@
 use crate::data::{Direction, InputMode, Resize, UnblockCondition};
+use crate::session_events::CliEventType;
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
@@ -166,6 +167,12 @@ pub enum Command {
         "zellij [--session <OTHER SESSION NAME>] subscribe [OPTIONS] --pane-id..."
     ))]
     Subscribe(SubscribeCli),
+
+    #[clap(
+        about = "Stream structured session events (pane, tab, focus, mode, client and session changes) as JSON lines",
+        override_usage("zellij [--session <OTHER SESSION NAME>] events [OPTIONS]")
+    )]
+    Events(EventsCli),
 
     #[clap(
         about = "Show a UI element to the person at the terminal and print their answer (e.g. zellij prompt confirm \"Deploy?\")",
@@ -748,6 +755,39 @@ pub struct SubscribeCli {
 pub enum SubscribeFormat {
     Raw,
     Json,
+}
+
+#[derive(Debug, Parser, Clone, Serialize, Deserialize)]
+pub struct EventsCli {
+    #[clap(
+        short = 't',
+        long = "type",
+        value_enum,
+        num_args(1..),
+        help = "Only emit events of these types (e.g. --type pane_focused tab_created)"
+    )]
+    pub event_types: Vec<CliEventType>,
+
+    #[clap(
+        short,
+        long,
+        num_args(1..),
+        help = "Only emit events about these panes (e.g. terminal_1, plugin_2, or a bare number like 1)"
+    )]
+    pub pane_id: Vec<String>,
+
+    #[clap(
+        long,
+        num_args(1..),
+        help = "Only emit events about these tabs or panes in them (stable tab ids, as shown by list-tabs)"
+    )]
+    pub tab_id: Vec<usize>,
+
+    #[clap(
+        long,
+        help = "Do not emit the initial_state event describing the session when listening starts"
+    )]
+    pub no_initial_state: bool,
 }
 
 #[derive(Debug, Clone, Args, Serialize, Deserialize)]
@@ -2418,6 +2458,56 @@ mod tests {
     fn subscribe_requires_pane_id() {
         let result = try_parse(&["subscribe"]);
         assert!(result.is_err());
+    }
+
+    fn parse_events(args: &[&str]) -> EventsCli {
+        let cli = try_parse(args).unwrap();
+        match cli.command {
+            Some(Command::Events(e)) => e,
+            other => panic!("Expected Events, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn events_defaults() {
+        let e = parse_events(&["events"]);
+        assert!(e.event_types.is_empty());
+        assert!(e.pane_id.is_empty());
+        assert!(e.tab_id.is_empty());
+        assert!(!e.no_initial_state);
+    }
+
+    #[test]
+    fn events_with_filters() {
+        let e = parse_events(&[
+            "events",
+            "--type",
+            "pane_focused",
+            "tab_created",
+            "-t",
+            "mode_changed",
+            "--pane-id",
+            "terminal_1",
+            "--tab-id",
+            "2",
+            "--no-initial-state",
+        ]);
+        assert_eq!(
+            e.event_types,
+            vec![
+                CliEventType::PaneFocused,
+                CliEventType::TabCreated,
+                CliEventType::ModeChanged
+            ]
+        );
+        assert_eq!(e.pane_id, vec!["terminal_1".to_string()]);
+        assert_eq!(e.tab_id, vec![2]);
+        assert!(e.no_initial_state);
+    }
+
+    #[test]
+    fn events_rejects_unknown_type() {
+        assert!(try_parse(&["events", "--type", "not_an_event"]).is_err());
     }
 
     fn parse_set_resurrect_command(args: &[&str]) -> Result<CliAction, clap::Error> {
