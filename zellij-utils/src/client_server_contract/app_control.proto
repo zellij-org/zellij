@@ -11,6 +11,7 @@ message AppControlRequest {
     AppTogglePanelRequest toggle_panel = 4;
     AppPingRequest ping = 5;
     AppDescribeRequest describe = 6;
+    AppQuitAppRequest quit_app = 7;
   }
 }
 
@@ -74,6 +75,8 @@ message AppPingRequest {}
 
 message AppDescribeRequest {}
 
+message AppQuitAppRequest {}
+
 message AppDoneReply {}
 
 message AppRefusedReply {
@@ -86,6 +89,7 @@ message AppStateReply {
   repeated string live_sessions = 3;
   bool tray_icon = 4;
   optional string focused_session = 5;
+  optional string version = 6;
 }
 
 message AppWindowState {

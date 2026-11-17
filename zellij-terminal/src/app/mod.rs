@@ -106,6 +106,7 @@ pub fn request_intents(request: AppRequest) -> (AppReply, Vec<Intent>) {
             ),
         },
         AppRequest::ToggleTrayIcon => (AppReply::Done, vec![]),
+        AppRequest::QuitApp => (AppReply::Done, vec![Intent::QuitApp]),
         AppRequest::TogglePanel { view, token } => {
             (AppReply::Done, vec![Intent::TogglePanel { view, token }])
         },

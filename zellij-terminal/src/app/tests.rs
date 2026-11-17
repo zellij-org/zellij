@@ -182,6 +182,10 @@ fn the_tray_menu_turns_into_intents_and_pause_dims_the_icon() {
         background.on_tray(TrayEvent::Menu(MenuAction::QuitAll), now),
         vec![Intent::ConfirmQuitAll]
     );
+    assert_eq!(
+        background.on_tray(TrayEvent::Menu(MenuAction::QuitApp), now),
+        vec![Intent::QuitApp]
+    );
     background.on_tray(TrayEvent::Menu(MenuAction::PauseHour), now);
     assert!(background.policy().paused);
     assert!(background.tray_state().look.dimmed);
@@ -251,6 +255,10 @@ fn a_second_launch_naming_a_session_routes_and_a_plain_one_opens() {
     assert!(matches!(intents[..], [Intent::Open { .. }]));
     let (_, intents) = request_intents(AppRequest::Ping);
     assert!(intents.is_empty());
+    assert_eq!(
+        request_intents(AppRequest::QuitApp),
+        (AppReply::Done, vec![Intent::QuitApp])
+    );
 }
 
 #[test]

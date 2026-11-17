@@ -12,7 +12,7 @@ pub(crate) use open::{
 };
 pub(crate) use panel::{panel_border, panel_layout, panel_look};
 pub(crate) use plan::{configured, plan, remembered, starting_folder, Plan};
-pub(crate) use standalone::{installed_font_families, open_alone, refuse};
+pub(crate) use standalone::{fallback_surface, installed_font_families, open_alone, refuse};
 pub(crate) use target::{connect, resolve, switch, Reach, Refusal, Target};
 pub(crate) use waited::{run_in_background, run_waited};
 

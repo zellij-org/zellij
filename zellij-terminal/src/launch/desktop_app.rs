@@ -58,7 +58,25 @@ pub(crate) fn launch_app(args: TerminalArgs, opts: CliArgs, loaded: Option<Loade
         },
     };
     let dir = zellij_utils::consts::app_dir();
-    match app::control::instance::claim(&dir, &handed, app::control::instance::HANDOFF_WAIT) {
+    let claimed = match app::control::instance::older_app(&dir) {
+        Some(version) if !args.headless => match close_older(&dir, &version) {
+            Ok(true) => {
+                return relaunch()
+                    .or_else(|e| refuse(Refusal::new(format!("{:#}", e)), &args, None))
+            },
+            Ok(false) => return Ok(()),
+            Err(e) => return refuse(Refusal::new(format!("{:#}", e)), &args, None),
+        },
+        Some(version) => {
+            report!(
+                "an older Zellij app ({}) is running and keeps handling this request",
+                version
+            );
+            app::control::instance::claim(&dir, &handed, app::control::instance::HANDOFF_WAIT)
+        },
+        None => app::control::instance::claim(&dir, &handed, app::control::instance::HANDOFF_WAIT),
+    };
+    match claimed {
         Ok(app::control::instance::Claim::Handed(AppReply::Refused(text))) => bail!("{}", text),
         Ok(app::control::instance::Claim::Handed(_)) => Ok(()),
         Ok(app::control::instance::Claim::Primary(instance)) => {
@@ -89,6 +107,52 @@ pub(crate) fn launch_app(args: TerminalArgs, opts: CliArgs, loaded: Option<Loade
             open_alone(args, opts, config_options, settings)
         },
     }
+}
+
+fn close_older(dir: &std::path::Path, version: &str) -> Result<bool> {
+    let question = older_app_question(version);
+    let (fonts, options) = crate::launch::fallback_surface()?;
+    if !window::notice::ask(&question, fonts, &options)? {
+        return Ok(false);
+    }
+    app::control::instance::close_running(dir, app::control::instance::QUIT_WAIT)?;
+    Ok(true)
+}
+
+fn relaunch() -> Result<()> {
+    let program = std::env::current_exe()
+        .map_err(|e| anyhow!("failed to locate this executable to start it again: {}", e))?;
+    let mut command = std::process::Command::new(program);
+    command.args(std::env::args_os().skip(1));
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let error = command.exec();
+        bail!(
+            "Zellij could not start again after closing the older app: {}",
+            error
+        )
+    }
+    #[cfg(not(unix))]
+    {
+        os::detach_from_terminal(&mut command);
+        command.spawn().map_err(|e| {
+            anyhow!(
+                "Zellij could not start again after closing the older app: {}",
+                e
+            )
+        })?;
+        Ok(())
+    }
+}
+
+fn older_app_question(version: &str) -> String {
+    format!(
+        "An older Zellij app ({}) is running.\n\n\
+         Press Enter to close it and continue. Your sessions keep running.\n\n\
+         Press Escape, or close this window, to cancel.",
+        version
+    )
 }
 
 pub(crate) fn run_app(
