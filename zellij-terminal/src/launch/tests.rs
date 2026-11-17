@@ -651,6 +651,40 @@ fn a_window_request_with_session_options_resolves_with_them() {
     );
 }
 
+#[test]
+fn a_frame_style_in_the_request_wins_over_pane_frames_off_in_the_config() {
+    use zellij_utils::input::options::PaneFrameStyle;
+    let config_file = SessionOptions {
+        pane_frames: Some(false),
+        ..SessionOptions::default()
+    };
+    let mut dialer = dialer();
+    dialer.config_options = config_file.clone();
+    // As on the server, which merges the client's options over the config file.
+    let on_the_server = |request: &OpenWindowRequest| {
+        PaneFrameStyle::from_options(&config_file.merge(dialer.options_for(request)))
+    };
+    for style in [
+        PaneFrameStyle::Full,
+        PaneFrameStyle::Titles,
+        PaneFrameStyle::None,
+    ] {
+        let request = OpenWindowRequest {
+            options: Some(SessionOptions {
+                pane_frame_style: Some(style),
+                ..SessionOptions::default()
+            }),
+            ..Default::default()
+        };
+        assert_eq!(on_the_server(&request), style);
+    }
+    assert_eq!(
+        on_the_server(&OpenWindowRequest::default()),
+        PaneFrameStyle::None,
+        "without a style in the request, the config's choice stands"
+    );
+}
+
 fn capabilities() -> session::connection::Capabilities {
     session::connection::Capabilities {
         local_media: false,

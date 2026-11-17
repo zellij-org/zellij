@@ -6716,6 +6716,7 @@ dependencies = [
  "glutin-winit",
  "humantime",
  "interprocess",
+ "kdl",
  "khronos-egl",
  "libc",
  "libloading",

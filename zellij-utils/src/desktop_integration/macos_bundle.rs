@@ -326,6 +326,34 @@ fn info_plist(source: Build) -> String {
     <true/>
     <key>LSMinimumSystemVersion</key>
     <string>{MINIMUM_SYSTEM_VERSION}</string>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Shell script</string>
+            <key>CFBundleTypeRole</key>
+            <string>Shell</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.apple.terminal.shell-script</string>
+                <string>public.unix-executable</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Folder</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.folder</string>
+            </array>
+        </dict>
+    </array>
     <key>{SOURCE_LENGTH_KEY}</key>
     <string>{source_len}</string>
     <key>{SOURCE_MODIFIED_KEY}</key>
@@ -481,6 +509,47 @@ mod tests {
             Some("zellij.icns")
         );
         assert_eq!(plist_string(&plist, "CFBundlePackageType"), Some("APPL"));
+    }
+
+    #[test]
+    fn the_plist_is_valid_and_offers_scripts_and_folders_without_becoming_their_default() {
+        let rig = Rig::new();
+        let bundle = rig.install().unwrap();
+        let plist = bundle.join("Contents").join("Info.plist");
+        let lint = Command::new("/usr/bin/plutil")
+            .arg("-lint")
+            .arg(&plist)
+            .output()
+            .unwrap();
+        assert!(
+            lint.status.success(),
+            "{}",
+            String::from_utf8_lossy(&lint.stdout)
+        );
+        let read = |key_path: &str| {
+            let output = Command::new("/usr/bin/plutil")
+                .args(["-extract", key_path, "raw", "-o", "-"])
+                .arg(&plist)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&output.stdout).trim().to_owned()
+        };
+        assert_eq!(read("CFBundleDocumentTypes.0.LSHandlerRank"), "Alternate");
+        assert_eq!(read("CFBundleDocumentTypes.0.CFBundleTypeRole"), "Shell");
+        assert_eq!(
+            read("CFBundleDocumentTypes.0.LSItemContentTypes.0"),
+            "com.apple.terminal.shell-script"
+        );
+        assert_eq!(
+            read("CFBundleDocumentTypes.0.LSItemContentTypes.1"),
+            "public.unix-executable"
+        );
+        assert_eq!(read("CFBundleDocumentTypes.1.LSHandlerRank"), "Alternate");
+        assert_eq!(read("CFBundleDocumentTypes.1.CFBundleTypeRole"), "Viewer");
+        assert_eq!(
+            read("CFBundleDocumentTypes.1.LSItemContentTypes.0"),
+            "public.folder"
+        );
     }
 
     #[test]

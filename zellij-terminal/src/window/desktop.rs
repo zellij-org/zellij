@@ -397,6 +397,9 @@ impl Desktop {
             Some(hosting) => {
                 hosting.background.start_on_main_thread();
                 let first = hosting.first.take();
+                // An opened file's window replaces the default one.
+                #[cfg(target_os = "macos")]
+                let first = first.filter(|_| !crate::app::desktop::macos_open::opened_any());
                 first.map(|intent| hosting.background.adjust_intent(intent))
             },
             None => None,
