@@ -22,12 +22,12 @@ use crate::{
         PeerAttentionChangedMsg, QueryTerminalSizeMsg, RenamedSessionMsg, RenderFrameAckMsg,
         RenderFrameMsg, RenderMsg, RequestSessionAttentionMsg, RequestSessionListMsg,
         RequestSessionPreviewMsg, ServerPaneMirrorMsg, ServerToClientMsg as ProtoServerToClientMsg,
-        SessionAttentionMsg, SessionPreviewMsg, SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg,
-        SixelSupportMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
-        StructuredRenderSupportMsg, SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg,
-        SwitchSessionMsg, TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg,
-        TerminalResizeMsg, TerminalSettingsMsg, UnblockCliPipeInputMsg, UnblockInputThreadMsg,
-        WebServerStartedMsg,
+        SessionAttentionMsg, SessionEventMsg, SessionPreviewMsg, SetMobileRenderPreferencesMsg,
+        SetSoftKeyboardMsg, SixelSupportMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
+        StructuredRenderSupportMsg, SubscribeToEventsMsg, SubscribeToPaneRendersMsg,
+        SubscribedPaneClosedMsg, SwitchSessionMsg, TabMetadata as ProtoTabMetadata,
+        TerminalPixelDimensionsMsg, TerminalResizeMsg, TerminalSettingsMsg, UnblockCliPipeInputMsg,
+        UnblockInputThreadMsg, WebServerStartedMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
@@ -37,6 +37,7 @@ use crate::{
         MobileRenderPrefsPayload, MobileSessionPayload, MobileSizePayload, MobileStatePayload,
         MobileTabPayload, PaneReference, PixelDimensions, ServerToClientMsg,
     },
+    session_events::{CliEventFilter, CliEventType},
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -249,6 +250,18 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             ClientToServerMsg::AdoptSessionHistory { history } => {
                 client_to_server_msg::Message::AdoptSessionHistory(AdoptSessionHistoryMsg {
                     history: Some(history.into()),
+                })
+            },
+            ClientToServerMsg::SubscribeToEvents { filter } => {
+                client_to_server_msg::Message::SubscribeToEvents(SubscribeToEventsMsg {
+                    event_types: filter
+                        .event_types
+                        .iter()
+                        .map(|t| t.as_str().to_owned())
+                        .collect(),
+                    pane_ids: filter.pane_ids.into_iter().map(|id| id.into()).collect(),
+                    tab_ids: filter.tab_ids.into_iter().map(|id| id as u32).collect(),
+                    initial_state: filter.initial_state,
                 })
             },
         };
@@ -488,6 +501,26 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                     history: msg.history.map(Into::into).unwrap_or_default(),
                 })
             },
+            Some(client_to_server_msg::Message::SubscribeToEvents(msg)) => {
+                let event_types = msg
+                    .event_types
+                    .iter()
+                    .map(|t| CliEventType::from_str(t).map_err(|e| anyhow!(e)))
+                    .collect::<Result<Vec<_>>>()?;
+                let pane_ids = msg
+                    .pane_ids
+                    .into_iter()
+                    .map(|p| p.try_into())
+                    .collect::<Result<Vec<PaneId>>>()?;
+                Ok(ClientToServerMsg::SubscribeToEvents {
+                    filter: CliEventFilter {
+                        event_types,
+                        pane_ids,
+                        tab_ids: msg.tab_ids.into_iter().map(|id| id as usize).collect(),
+                        initial_state: msg.initial_state,
+                    },
+                })
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -630,6 +663,9 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             },
             ServerToClientMsg::PaneMirror { payload } => {
                 server_to_client_msg::Message::PaneMirror(ServerPaneMirrorMsg { payload })
+            },
+            ServerToClientMsg::SessionEvent { json } => {
+                server_to_client_msg::Message::SessionEvent(SessionEventMsg { json })
             },
         };
 
@@ -931,6 +967,9 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                 Ok(ServerToClientMsg::PaneMirror {
                     payload: msg.payload,
                 })
+            },
+            Some(server_to_client_msg::Message::SessionEvent(msg)) => {
+                Ok(ServerToClientMsg::SessionEvent { json: msg.json })
             },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
         }

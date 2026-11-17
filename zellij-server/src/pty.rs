@@ -15,7 +15,10 @@ use crate::{
 };
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 use tokio::task::JoinHandle;
 use zellij_utils::{
     data::{
@@ -33,6 +36,7 @@ use zellij_utils::{
         },
     },
     pane_size::Size,
+    session_events::CliEvent,
     session_serialization,
 };
 
@@ -2377,6 +2381,7 @@ impl Pty {
                             None,
                             Event::CwdChanged(pane_id.into(), cwd.clone(), focused_client_ids),
                         )]));
+                    self.notify_event_subscribers_of_cwd(pane_id, cwd);
                     self.terminal_cwds.insert(*terminal_id, cwd.clone());
                     if self.session_context_pane == Some(pane_id) {
                         self.report_session_context(ContextTrigger::FolderChanged);
@@ -2446,6 +2451,17 @@ impl Pty {
                 let _ = self
                     .bus
                     .senders
+                    .send_to_screen(ScreenInstruction::NotifyEventSubscribers(
+                        CliEvent::PaneCommandChanged {
+                            pane_id: pane_id.into(),
+                            tab_id: None,
+                            command: command.clone(),
+                            is_foreground,
+                        },
+                    ));
+                let _ = self
+                    .bus
+                    .senders
                     .send_to_plugin(PluginInstruction::Update(vec![(
                         None,
                         None,
@@ -2488,6 +2504,19 @@ impl Pty {
         }
     }
 
+    fn notify_event_subscribers_of_cwd(&self, pane_id: PaneId, cwd: &Path) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_screen(ScreenInstruction::NotifyEventSubscribers(
+                CliEvent::PaneCwdChanged {
+                    pane_id: pane_id.into(),
+                    tab_id: None,
+                    cwd: cwd.display().to_string(),
+                },
+            ));
+    }
+
     pub fn notify_cwd_from_osc7(&mut self, terminal_id: u32, path: PathBuf) {
         use std::sync::atomic::Ordering;
 
@@ -2509,6 +2538,7 @@ impl Pty {
                     None,
                     Event::CwdChanged(pane_id.into(), path.clone(), focused_client_ids),
                 )]));
+            self.notify_event_subscribers_of_cwd(pane_id, &path);
             self.terminal_cwds.insert(terminal_id, path);
             if self.session_context_pane == Some(pane_id) {
                 self.report_session_context(ContextTrigger::FolderChanged);

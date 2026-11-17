@@ -47,6 +47,7 @@ fn server_message_name(msg: &ServerToClientMsg) -> String {
         ServerToClientMsg::TerminalSettingsChanged { .. } => "TerminalSettingsChanged",
         ServerToClientMsg::PaneRenderUpdate { .. } => "PaneRenderUpdate",
         ServerToClientMsg::SubscribedPaneClosed { .. } => "SubscribedPaneClosed",
+        ServerToClientMsg::SessionEvent { .. } => "SessionEvent",
         ServerToClientMsg::ForwardQueryToHost { .. } => "ForwardQueryToHost",
         ServerToClientMsg::MobileState { .. } => "MobileState",
         ServerToClientMsg::HostProgramStatus { .. } => "HostProgramStatus",

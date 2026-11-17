@@ -593,20 +593,33 @@ pub(crate) fn subscribe_to_session(
     requested_session_name: Option<String>,
     _config: Option<Config>,
 ) {
-    let session_name = match requested_session_name
-        .is_none()
-        .then(|| session_of_this_pane(1))
-        .flatten()
-    {
-        Some(session_name) => session_name,
-        None => session_to_subscribe_to(requested_session_name),
-    };
+    let session_name = session_to_subscribe_from_here(requested_session_name);
     let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
     zellij_client::cli_client::start_subscribe_client(
         Box::new(os_input),
         &session_name,
         subscribe_cli,
     );
+}
+
+pub(crate) fn stream_session_events(
+    events_cli: zellij_utils::cli::EventsCli,
+    requested_session_name: Option<String>,
+) {
+    let session_name = session_to_subscribe_from_here(requested_session_name);
+    let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
+    zellij_client::cli_client::start_events_client(Box::new(os_input), &session_name, events_cli);
+}
+
+fn session_to_subscribe_from_here(requested_session_name: Option<String>) -> String {
+    match requested_session_name
+        .is_none()
+        .then(|| session_of_this_pane(1))
+        .flatten()
+    {
+        Some(session_name) => session_name,
+        None => session_to_subscribe_to(requested_session_name),
+    }
 }
 
 pub(crate) fn session_of_this_pane(exit_code: i32) -> Option<String> {

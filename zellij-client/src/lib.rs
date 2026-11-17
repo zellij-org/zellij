@@ -273,6 +273,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             // Subscribe-only messages — not handled by regular interactive clients
             ServerToClientMsg::PaneRenderUpdate { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SubscribedPaneClosed { .. } => ClientInstruction::UnblockInputThread,
+            ServerToClientMsg::SessionEvent { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SetSoftKeyboard { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::MobileState { .. } => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::HostTerminalThemeChanged { .. } => {

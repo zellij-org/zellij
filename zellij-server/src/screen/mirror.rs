@@ -633,26 +633,36 @@ impl Screen {
                 key,
                 raw_bytes,
                 is_kitty_keyboard_protocol,
-            } => tab
-                .write_to_pane_id(
-                    &Some(key),
-                    raw_bytes,
-                    is_kitty_keyboard_protocol,
-                    pane_id,
-                    None,
-                    None,
-                )
-                .map(|_| ()),
-            MirrorInput::Bytes(bytes) => tab
-                .write_to_pane_id(&None, bytes, false, pane_id, None, None)
-                .map(|_| ()),
+            } => tab.write_to_pane_id(
+                &Some(key),
+                raw_bytes,
+                is_kitty_keyboard_protocol,
+                pane_id,
+                None,
+                None,
+            ),
+            MirrorInput::Bytes(bytes) => {
+                tab.write_to_pane_id(&None, bytes, false, pane_id, None, None)
+            },
             MirrorInput::Paste(bytes) => tab.paste_to_pane_id(bytes, pane_id, None),
-            MirrorInput::Mouse(event) => tab.send_mouse_event_to_pane_id(pane_id, &event),
+            MirrorInput::Mouse(event) => tab
+                .send_mouse_event_to_pane_id(pane_id, &event)
+                .map(|_| false),
         };
-        match result {
-            Ok(()) if typed => tab.note_typed_input(pane_id),
-            Ok(()) => {},
-            Err(e) => log::error!("Failed to write mirror input to {:?}: {}", pane_id, e),
+        let should_update_ui = match result {
+            Ok(should_update_ui) => {
+                if typed {
+                    tab.note_typed_input(pane_id);
+                }
+                should_update_ui
+            },
+            Err(e) => {
+                log::error!("Failed to write mirror input to {:?}: {}", pane_id, e);
+                false
+            },
+        };
+        if should_update_ui {
+            let _ = self.log_and_report_session_state();
         }
         self.note_attention_input();
         if claims && self.pane_mirrors.reclaim(subscriber_id, Instant::now()) {

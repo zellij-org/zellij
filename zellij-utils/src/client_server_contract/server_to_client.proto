@@ -32,6 +32,7 @@ message ServerToClientMsg {
     SessionPreviewMsg session_preview = 25;
     ServerPaneMirrorMsg pane_mirror = 26;
     PasteFromClipboardMsg paste_from_clipboard = 27;
+    SessionEventMsg session_event = 28;
   }
 }
 
@@ -131,6 +132,10 @@ message PaneRenderUpdateMsg {
 
 message SubscribedPaneClosedMsg {
   PaneId pane_id = 1;
+}
+
+message SessionEventMsg {
+  string json = 1;
 }
 
 message ForwardQueryToHostMsg {
