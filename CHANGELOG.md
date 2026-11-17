@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: desktop app segfault on exit under Wayland (https://github.com/zellij-org/zellij/pull/5931)
 * fix: properly detect and filter out unsupported fonts (https://github.com/zellij-org/zellij/pull/5934)
 * feat: desktop upgrade path (https://github.com/zellij-org/zellij/pull/5939)
+* fix(windows): custom session facts and the resurrect hook keep the quotes in their commands (https://github.com/zellij-org/zellij/pull/5940)
 
 ## [0.46.0] - 2026-11-11
 * (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)

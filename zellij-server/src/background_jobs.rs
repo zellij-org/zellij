@@ -1697,10 +1697,13 @@ pub struct BackgroundCommand {
 impl BackgroundCommand {
     pub fn shell(command_line: &str) -> Self {
         if cfg!(windows) {
+            // With /S, cmd removes only the outer quotes added here, so quotes in the
+            // command stay as written. /D skips AutoRun commands from the registry,
+            // which would otherwise run first and add to the output.
             BackgroundCommand {
                 program: "cmd".to_owned(),
-                args: vec!["/C".to_owned()],
-                raw_arg: Some(command_line.to_owned()),
+                args: vec!["/D".to_owned(), "/S".to_owned(), "/C".to_owned()],
+                raw_arg: Some(format!("\"{}\"", command_line)),
                 ..Default::default()
             }
         } else {

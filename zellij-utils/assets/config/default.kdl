@@ -661,6 +661,7 @@ context_menu {
 // then the most recently used
 // Facts: directory, git_repo, git_branch, git_worktree, hostname, or a custom `fact`
 // A custom fact's command runs in the session's folder with sh -c, or cmd /C on Windows
+// (where variables are written %PROJECT% instead of $PROJECT)
 // fact "project" command="echo $PROJECT" column="project" at="live"
 // script "~/.config/zellij/rank.sh" timeout_ms=300 hide_unlisted=false
 // record "~/.config/zellij/record.sh"

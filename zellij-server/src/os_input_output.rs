@@ -847,9 +847,13 @@ fn run_command_hook(
     original_command: &str,
     hook_script: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
+    use std::os::windows::process::CommandExt;
+    // Passed as a raw argument because .arg() escapes quotes as \", which cmd
+    // doesn't understand. /D /S and the outer quotes work as in
+    // BackgroundCommand::shell.
     let output = Command::new("cmd")
-        .arg("/C")
-        .arg(hook_script)
+        .args(["/D", "/S", "/C"])
+        .raw_arg(format!("\"{}\"", hook_script))
         .env("RESURRECT_COMMAND", original_command)
         .output()?;
     if !output.status.success() {
