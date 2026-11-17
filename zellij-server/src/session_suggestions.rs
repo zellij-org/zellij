@@ -1282,6 +1282,19 @@ mod tests {
         assert!(stdout.contains("fact value"), "{}", stdout);
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn a_custom_fact_command_can_quote_its_program_and_arguments() {
+        let result = run_background_command_blocking(BackgroundCommand {
+            timeout: Some(Duration::from_secs(5)),
+            ..BackgroundCommand::shell(r#""%SystemRoot%\System32\where.exe" "cmd""#)
+        })
+        .unwrap();
+        assert_eq!(result.exit_code, Some(0));
+        let stdout = String::from_utf8_lossy(&result.stdout);
+        assert!(stdout.to_lowercase().contains("cmd.exe"), "{}", stdout);
+    }
+
     #[cfg(unix)]
     #[test]
     fn commands_receive_their_input() {

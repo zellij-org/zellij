@@ -409,3 +409,10 @@ fn the_pane_environment_is_added_to_and_removed_from_the_child_environment() {
     assert!(output.contains(expected), "got: '{}'", output);
     assert!(std::env::var("ZELLIJ_PANE_ENV_TEST").is_err());
 }
+
+#[cfg(windows)]
+#[test]
+fn the_resurrect_hook_keeps_the_quotes_in_its_command() {
+    let output = run_command_hook("vim foo.txt", r#"echo "%RESURRECT_COMMAND%""#).unwrap();
+    assert_eq!(output, r#""vim foo.txt""#);
+}
