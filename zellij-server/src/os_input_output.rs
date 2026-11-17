@@ -705,12 +705,13 @@ impl ServerOsApi for ServerOsInputOutput {
         post_hook: &Option<String>,
     ) -> HashMap<u32, Vec<String>> {
         // Use ppid-based discovery on Windows, because it has no controlling-terminal
-        // foreground group.
-        let ppids_to_cmds = self.get_all_cmds_by_ppid(post_hook);
+        // foreground group. The hook runs afterwards, so only for the panes' commands
+        // rather than for every process on the system.
+        let ppids_to_cmds = self.get_all_cmds_by_ppid(&None);
         let mut cmds = HashMap::new();
         for &(terminal_id, shell_pid) in panes {
             if let Some(cmd) = ppids_to_cmds.get(&shell_pid.to_string()) {
-                cmds.insert(terminal_id, cmd.clone());
+                cmds.insert(terminal_id, apply_post_command_hook(cmd.clone(), post_hook));
             }
         }
         cmds
