@@ -115,7 +115,7 @@ pub(crate) fn connect(
         opts,
         config_options,
         geometry.size(),
-        session::spawn::advertised_host_terminal_env(),
+        session::spawn::attaching_host_terminal_env(),
         focus.0,
         focus.1,
         switch_context,

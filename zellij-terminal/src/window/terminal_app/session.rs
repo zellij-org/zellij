@@ -45,6 +45,9 @@ impl App {
                 self.stop_momentum();
                 report!("dropping a frame the viewport has moved past: {}", error);
                 self.acknowledge(seq);
+                self.copy();
+                self.retitle();
+                self.attend();
                 return;
             },
             Err(FrameError::Undecodable(e)) => {

@@ -199,12 +199,6 @@ impl App {
         &self,
         f: impl FnOnce(&mut Clipboard) -> T,
     ) -> Option<T> {
-        match self.clipboard.lock() {
-            Ok(mut clipboard) => Some(f(&mut clipboard)),
-            Err(_) => {
-                report!("the clipboard mutex was poisoned");
-                None
-            },
-        }
+        Some(f(&mut clipboard::lock(&self.clipboard)))
     }
 }

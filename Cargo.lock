@@ -6623,6 +6623,7 @@ name = "zellij-integration-tests"
 version = "0.46.0"
 dependencies = [
  "anyhow",
+ "arboard",
  "async-trait",
  "base64",
  "clap",

@@ -1342,6 +1342,24 @@ fn a_frame_for_a_viewport_the_screen_has_moved_past_is_acknowledged_and_dropped(
 }
 
 #[test]
+fn a_copy_carried_by_a_frame_the_screen_has_moved_past_still_reaches_the_clipboard() {
+    let mut harness = Harness::new(1, true, "before");
+    let size = harness.app.state.size();
+    let mut stale = zellij_utils::structured_render::FrameBuilder::new(size.cols as u16 - 1, 4, 24);
+    stale.push_row(0, 0, &[zellij_utils::structured_render::WireCell::BLANK]);
+    stale
+        .sideband_mut()
+        .extend_from_slice(b"\x1b]52;c;Y29waWVk\x1b\\");
+    harness.app.on_frame(&stale.finish());
+    assert_eq!(harness.app.state.size(), size);
+    assert_eq!(harness.clipboard_text().as_deref(), Some("copied"));
+    assert_eq!(
+        harness.sent(),
+        vec![ClientToServerMsg::RenderFrameAck { seq: 24 }]
+    );
+}
+
+#[test]
 fn a_reflow_reports_the_new_size_without_reshaping_the_screen_locally() {
     let mut harness = Harness::new(2, true, "");
     let before = harness.app.state.size();

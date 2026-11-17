@@ -26,6 +26,20 @@ pub fn set_session_name(v: String) {
     set_var(SESSION_NAME_ENV_KEY, v);
 }
 
+pub const SESSION_ID_ENV_KEY: &str = "ZELLIJ_SESSION_ID";
+
+pub fn get_session_id() -> Option<String> {
+    var(SESSION_ID_ENV_KEY).ok().filter(|id| !id.is_empty())
+}
+
+pub fn set_session_id(id: &str) {
+    if id.is_empty() {
+        std::env::remove_var(SESSION_ID_ENV_KEY);
+    } else {
+        set_var(SESSION_ID_ENV_KEY, id);
+    }
+}
+
 pub const SOCKET_DIR_ENV_KEY: &str = "ZELLIJ_SOCKET_DIR";
 
 pub const ENV_BEFORE_CONFIG_KEY: &str = "ZELLIJ_ENV_BEFORE_CONFIG";

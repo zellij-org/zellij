@@ -3726,8 +3726,12 @@ impl Screen {
                     continue;
                 }
                 if state.delivery_deadline_expired() {
+                    let sideband = structured_render::decode(frame)
+                        .map(|view| view.sideband().to_vec())
+                        .unwrap_or_default();
                     let size = state.size;
                     state.reset_viewport(size);
+                    state.overlay.keep_sideband(&sideband);
                     payloads.remove(&client_id);
                     abandoned.push(client_id);
                     continue;
@@ -3735,6 +3739,7 @@ impl Screen {
                 let view = structured_render::decode(frame)
                     .map_err(|e| anyhow!("{}: {}", err_context, e))?;
                 if !view.shifts().is_empty() {
+                    state.overlay.keep_sideband(view.sideband());
                     payloads.remove(&client_id);
                     abandoned.push(client_id);
                     shifted.push(client_id);

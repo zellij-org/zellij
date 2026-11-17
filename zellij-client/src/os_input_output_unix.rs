@@ -79,14 +79,23 @@ impl Iterator for BlockingSignalIterator {
 /// Connects to the server at `path`, waiting for it to start listening.
 pub(crate) fn connect_ipc(
     path: &Path,
+    give_up_after: Option<std::time::Duration>,
 ) -> std::io::Result<(
     IpcSenderWithContext<zellij_utils::ipc::ClientToServerMsg>,
     IpcReceiverWithContext<zellij_utils::ipc::ServerToClientMsg>,
 )> {
+    let started = std::time::Instant::now();
     let socket = loop {
         match zellij_utils::consts::ipc_connect(path) {
             Ok(socket) => break socket,
-            Err(_) => std::thread::sleep(std::time::Duration::from_millis(50)),
+            Err(e) => {
+                if let Some(limit) = give_up_after {
+                    if e.kind() == io::ErrorKind::NotFound || started.elapsed() >= limit {
+                        return Err(e);
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50))
+            },
         }
     };
     let sender = IpcSenderWithContext::new(socket);
@@ -110,4 +119,50 @@ pub(crate) fn disable_mouse_support(stdout: &mut dyn Write) -> Result<()> {
         .context(err_context)?;
     stdout.flush().context(err_context)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_session_whose_socket_is_gone_is_reported_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let started = Instant::now();
+        let error = connect_ipc(&dir.path().join("gone"), Some(Duration::from_secs(30)))
+            .err()
+            .expect("there is nothing to connect to");
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert_eq!(
+            crate::connect_error_message(error),
+            "Error: the session is not running"
+        );
+    }
+
+    #[test]
+    fn a_socket_nobody_listens_on_is_given_up_on_after_the_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stale");
+        drop(std::os::unix::net::UnixListener::bind(&path).unwrap());
+        assert!(path.exists());
+        let limit = Duration::from_millis(300);
+        let started = Instant::now();
+        let error = connect_ipc(&path, Some(limit))
+            .err()
+            .expect("nobody listens on a stale socket");
+        assert_ne!(error.kind(), io::ErrorKind::NotFound);
+        assert!(started.elapsed() >= limit);
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(crate::connect_error_message(error).starts_with("Error: cannot connect"));
+    }
+
+    #[test]
+    fn a_server_that_is_listening_is_reached_within_the_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("live");
+        let _listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        assert!(connect_ipc(&path, Some(Duration::from_secs(5))).is_ok());
+    }
 }

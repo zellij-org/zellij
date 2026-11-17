@@ -90,6 +90,56 @@ pub fn display_name_for_session_id(id: &str) -> String {
     session_index::session_name_for_id(id).unwrap_or_else(|| id.to_owned())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaneSession {
+    Running(String),
+    Ended(String),
+    Unknown,
+}
+
+impl PaneSession {
+    pub fn ended_message(name: &str) -> String {
+        format!("The session this pane belonged to ('{}') has ended.", name)
+    }
+}
+
+pub fn this_panes_session() -> PaneSession {
+    let Some(id) = envs::get_session_id() else {
+        return PaneSession::Unknown;
+    };
+    let running: Vec<String> = get_sessions()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    pane_session_from(
+        Some(id),
+        envs::get_session_name().ok(),
+        session_index::session_name_for_id,
+        session_index::session_id_for_name,
+        &running,
+    )
+}
+
+pub fn pane_session_from(
+    id: Option<String>,
+    name: Option<String>,
+    name_for_id: impl Fn(&str) -> Option<String>,
+    id_for_name: impl Fn(&str) -> Option<String>,
+    running: &[String],
+) -> PaneSession {
+    let Some(id) = id.filter(|id| !id.is_empty()) else {
+        return PaneSession::Unknown;
+    };
+    let current = name_for_id(&id).unwrap_or_else(|| id.clone());
+    let same_session = id_for_name(&current).unwrap_or_else(|| current.clone()) == id;
+    if same_session && running.contains(&current) {
+        PaneSession::Running(current)
+    } else {
+        PaneSession::Ended(name.unwrap_or(current))
+    }
+}
+
 fn session_name(names_by_id: &HashMap<String, String>, id: String) -> String {
     names_by_id.get(&id).cloned().unwrap_or(id)
 }
@@ -969,6 +1019,95 @@ mod session_id_tests {
             id
         );
         assert_ne!(id, generate_session_id());
+    }
+
+    fn index(entries: &[(&str, &str)]) -> HashMap<String, String> {
+        entries
+            .iter()
+            .map(|(id, name)| (id.to_string(), name.to_string()))
+            .collect()
+    }
+
+    fn resolve(
+        id: Option<&str>,
+        name: &str,
+        names_by_id: &HashMap<String, String>,
+        running: &[&str],
+    ) -> PaneSession {
+        let running: Vec<String> = running.iter().map(|name| name.to_string()).collect();
+        pane_session_from(
+            id.map(str::to_owned),
+            Some(name.to_owned()),
+            |id| names_by_id.get(id).cloned(),
+            |name| {
+                names_by_id
+                    .iter()
+                    .find(|(_, known)| known.as_str() == name)
+                    .map(|(id, _)| id.clone())
+            },
+            &running,
+        )
+    }
+
+    #[test]
+    fn a_pane_of_a_running_session_reaches_it_by_its_name() {
+        let names = index(&[("a1", "work")]);
+        assert_eq!(
+            resolve(Some("a1"), "work", &names, &["work"]),
+            PaneSession::Running("work".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_pane_of_a_renamed_session_reaches_it_by_its_new_name() {
+        let names = index(&[("a1", "renamed")]);
+        assert_eq!(
+            resolve(Some("a1"), "work", &names, &["renamed"]),
+            PaneSession::Running("renamed".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_session_that_took_the_old_name_is_never_reached_from_a_renamed_sessions_pane() {
+        let names = index(&[("a1", "renamed"), ("b2", "work")]);
+        assert_eq!(
+            resolve(Some("a1"), "work", &names, &["renamed", "work"]),
+            PaneSession::Running("renamed".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_pane_of_an_ended_session_is_not_sent_to_whichever_session_runs() {
+        let names = index(&[("b2", "work")]);
+        assert_eq!(
+            resolve(Some("a1"), "work", &names, &["work"]),
+            PaneSession::Ended("work".to_owned())
+        );
+        let names = index(&[("a1", "work")]);
+        assert_eq!(
+            resolve(Some("a1"), "work", &names, &["other"]),
+            PaneSession::Ended("work".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_session_from_before_ids_is_its_own_id() {
+        assert_eq!(
+            resolve(Some("work"), "work", &HashMap::new(), &["work"]),
+            PaneSession::Running("work".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_pane_without_an_id_is_left_to_the_name_it_carries() {
+        assert_eq!(
+            resolve(None, "work", &HashMap::new(), &["work"]),
+            PaneSession::Unknown
+        );
+        assert_eq!(
+            resolve(Some(""), "work", &HashMap::new(), &["work"]),
+            PaneSession::Unknown
+        );
     }
 }
 
