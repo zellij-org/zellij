@@ -74,9 +74,7 @@ pub(crate) fn launch_app(args: TerminalArgs, opts: CliArgs, loaded: Option<Loade
             );
             app::control::instance::claim(&dir, &handed, app::control::instance::HANDOFF_WAIT)
         },
-        None => {
-            app::control::instance::claim(&dir, &handed, app::control::instance::HANDOFF_WAIT)
-        },
+        None => app::control::instance::claim(&dir, &handed, app::control::instance::HANDOFF_WAIT),
     };
     match claimed {
         Ok(app::control::instance::Claim::Handed(AppReply::Refused(text))) => bail!("{}", text),
@@ -130,14 +128,20 @@ fn relaunch() -> Result<()> {
     {
         use std::os::unix::process::CommandExt;
         let error = command.exec();
-        bail!("Zellij could not start again after closing the older app: {}", error)
+        bail!(
+            "Zellij could not start again after closing the older app: {}",
+            error
+        )
     }
     #[cfg(not(unix))]
     {
         os::detach_from_terminal(&mut command);
-        command
-            .spawn()
-            .map_err(|e| anyhow!("Zellij could not start again after closing the older app: {}", e))?;
+        command.spawn().map_err(|e| {
+            anyhow!(
+                "Zellij could not start again after closing the older app: {}",
+                e
+            )
+        })?;
         Ok(())
     }
 }

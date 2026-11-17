@@ -71,7 +71,10 @@ pub fn close_running(dir: &Path, wait: Duration) -> Result<()> {
     match send_app_request_to(&dir.join(APP_CONTROL_SOCKET_NAME), &AppRequest::QuitApp) {
         Ok(AppReply::Done) => wait_for_release(dir, wait),
         Ok(AppReply::Refused(reason)) => bail!("the older Zellij app did not close: {}", reason),
-        Ok(other) => bail!("the older Zellij app answered {:?} instead of closing", other),
+        Ok(other) => bail!(
+            "the older Zellij app answered {:?} instead of closing",
+            other
+        ),
         Err(e) => bail!("the older Zellij app could not be asked to close: {}", e),
     }
 }
@@ -305,12 +308,10 @@ mod tests {
         let (quit, asked_to_quit) = channel();
         let holder = instance
             .serve(move |request| match request {
-                AppRequest::Describe => {
-                    AppReply::State(zellij_utils::app_control::AppState {
-                        version: version.clone(),
-                        ..Default::default()
-                    })
-                },
+                AppRequest::Describe => AppReply::State(zellij_utils::app_control::AppState {
+                    version: version.clone(),
+                    ..Default::default()
+                }),
                 AppRequest::QuitApp => {
                     let _ = quit.send(());
                     AppReply::Done
