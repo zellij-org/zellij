@@ -1,9 +1,9 @@
 use crate::file_list_view::FsEntry;
 use crate::platform::Platform;
+use crate::shared::format_file_size;
 use crate::shared::{calculate_list_bounds, render_list_tip};
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
-use crate::shared::format_file_size;
 use zellij_tile::prelude::*;
 
 #[derive(Default, Debug)]
