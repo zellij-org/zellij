@@ -1,7 +1,7 @@
 use crate::platform::Platform;
 use crate::shared::{calculate_list_bounds, render_list_tip};
 use crate::state::refresh_directory;
-use pretty_bytes::converter::convert as pretty_bytes;
+use crate::shared::format_file_size;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use zellij_tile::prelude::*;
@@ -129,7 +129,7 @@ impl FileListView {
                 let mut file_or_folder_name = entry.name();
                 let size = entry
                     .size()
-                    .map(|s| pretty_bytes(s as f64))
+                    .map(format_file_size)
                     .unwrap_or("".to_owned());
                 if entry.is_folder() {
                     file_or_folder_name.push(self.platform.separator());
