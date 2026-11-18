@@ -266,8 +266,8 @@ pub(crate) fn stdin_loop(
                     Err(e) => {
                         if e == STDIN_EOF {
                             log::info!("STDIN reached EOF, the host terminal is gone");
-                            let _ = send_input_instructions
-                                .send(InputInstruction::HostTerminalClosed);
+                            let _ =
+                                send_input_instructions.send(InputInstruction::HostTerminalClosed);
                             break;
                         } else if e == "Session ended" {
                             log::debug!("Switched sessions, signing this thread off...");
