@@ -66,6 +66,7 @@ fn every_option_set() -> Options {
         ),
         show_startup_tips: Some(false),
         show_release_notes: Some(false),
+        show_setup_screen: Some(false),
         advanced_mouse_actions: Some(false),
         mouse_scroll_resize: Some(false),
         scroll_mode_sync: Some(false),

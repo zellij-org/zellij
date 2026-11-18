@@ -557,6 +557,12 @@ context_menu {
 //
 // show_release_notes false
 
+// Whether to offer the desktop integration setup screen when a new session starts
+// (Requires restart)
+// Default: true
+//
+// show_setup_screen false
+
 // Whether to enable mouse hover effects and pane grouping functionality
 // Default: true
 //

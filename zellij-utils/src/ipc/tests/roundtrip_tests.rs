@@ -549,6 +549,7 @@ fn test_client_messages() {
                 stacked_pane_list_orientation: Some(StackListOrientation::Horizontal),
                 show_startup_tips: Some(true),
                 show_release_notes: Some(true),
+                show_setup_screen: Some(true),
                 advanced_mouse_actions: Some(true),
                 mouse_scroll_resize: Some(true),
                 scroll_mode_sync: Some(true),

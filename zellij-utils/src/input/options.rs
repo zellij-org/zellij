@@ -488,6 +488,12 @@ pub struct Options {
     #[serde(default)]
     pub show_release_notes: Option<bool>,
 
+    /// Whether to offer the desktop integration setup screen when a new session starts
+    /// default is true
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub show_setup_screen: Option<bool>,
+
     /// Whether to enable mouse hover effects and pane grouping functionality
     /// default is true
     #[clap(long, value_parser)]
@@ -802,6 +808,7 @@ impl Options {
             .or(self.stacked_pane_list_orientation);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
+        let show_setup_screen = other.show_setup_screen.or(self.show_setup_screen);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
         let mouse_scroll_resize = other.mouse_scroll_resize.or(self.mouse_scroll_resize);
         let scroll_mode_sync = other.scroll_mode_sync.or(self.scroll_mode_sync);
@@ -908,6 +915,7 @@ impl Options {
             stacked_pane_list,
             show_startup_tips,
             show_release_notes,
+            show_setup_screen,
             advanced_mouse_actions,
             mouse_scroll_resize,
             scroll_mode_sync,
@@ -1031,6 +1039,7 @@ impl Options {
             .or(self.stacked_pane_list_orientation);
         let show_startup_tips = other.show_startup_tips.or(self.show_startup_tips);
         let show_release_notes = other.show_release_notes.or(self.show_release_notes);
+        let show_setup_screen = other.show_setup_screen.or(self.show_setup_screen);
         let advanced_mouse_actions = other.advanced_mouse_actions.or(self.advanced_mouse_actions);
         let mouse_scroll_resize = other.mouse_scroll_resize.or(self.mouse_scroll_resize);
         let scroll_mode_sync = other.scroll_mode_sync.or(self.scroll_mode_sync);
@@ -1140,6 +1149,7 @@ impl Options {
             stacked_pane_list,
             show_startup_tips,
             show_release_notes,
+            show_setup_screen,
             advanced_mouse_actions,
             mouse_scroll_resize,
             scroll_mode_sync,

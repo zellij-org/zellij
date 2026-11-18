@@ -1381,6 +1381,7 @@ message Options {
   optional bool hidden_bars_notification = 86;
   optional bool mode_hints_when_bars_hidden = 87;
   optional string stacked_pane_list_orientation = 88;
+  optional bool show_setup_screen = 89;
 }
 
 enum OnForceClose {
