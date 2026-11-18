@@ -364,6 +364,32 @@ fn a_listed_feature_changes_what_the_shaper_draws() {
 }
 
 #[test]
+fn a_lone_character_is_looked_up_as_the_shaper_draws_it_with_the_listed_features() {
+    let mut stack = FontStack::build_with(
+        &FontOptions {
+            system_fonts: false,
+            features: vec![FontFeature::parse("zero").unwrap()],
+            ..FontOptions::default()
+        },
+        None,
+    )
+    .unwrap();
+    let font = stack.primary_of(FaceStyle::Regular);
+    for character in ['0', 'a', '-', '>', 'é'] {
+        let looked_up = glyph_of(&mut stack, FaceStyle::Regular, character);
+        assert_eq!(looked_up.font, font);
+        let shaped: Vec<GlyphId> = stack
+            .shape_cluster(font, &character.to_string())
+            .iter()
+            .map(|g| g.glyph)
+            .collect();
+        if let [single] = shaped[..] {
+            assert_eq!(looked_up.glyph, single, "{:?}", character);
+        }
+    }
+}
+
+#[test]
 fn a_requested_weight_picks_the_matching_installed_face() {
     let Some(discovery) = synthetic_discovery() else {
         return;
@@ -1679,4 +1705,41 @@ fn without_the_bundled_emoji_an_installed_emoji_font_is_used_before_the_symbols(
             text
         );
     }
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+#[test]
+fn a_font_installed_beside_its_web_font_copy_is_used_rather_than_the_embedded_one() {
+    let directory = tempfile::TempDir::new().unwrap();
+    crate::text::discovery::a_web_font_beside_a_desktop_font(directory.path());
+    let Some(discovery) = Discovery::synthetic(directory.path()) else {
+        eprintln!("fontconfig is unavailable here; family selection is untested");
+        return;
+    };
+    let stack = FontStack::build_with(&requested("Iosevka Term"), Some(discovery)).unwrap();
+    assert!(
+        stack.primary[0].0 >= 7,
+        "the font fell back to the embedded face: {:?}",
+        stack.primary
+    );
+}
+
+#[test]
+fn a_chosen_family_is_used_even_when_system_fonts_are_off() {
+    let Some(discovery) = synthetic_discovery() else {
+        return;
+    };
+    let mut options = requested("Iosevka Term");
+    options.system_fonts = false;
+    let mut stack = FontStack::build_with(&options, Some(discovery)).unwrap();
+    assert!(
+        stack.primary[0].0 >= 7,
+        "system_fonts off blocked the chosen family: {:?}",
+        stack.primary
+    );
+    stack.lookup(FaceStyle::Regular, '\u{10fffd}');
+    assert_eq!(
+        stack.discovery_queries, 0,
+        "system_fonts off still consulted the system for a missing character"
+    );
 }

@@ -142,6 +142,9 @@ impl FontStack {
     }
 
     pub(super) fn adopt_system_emoji(&mut self) {
+        if !self.system_fallbacks {
+            return;
+        }
         let Some(discovery) = self.discovery else {
             return;
         };

@@ -17769,6 +17769,7 @@ struct DeliveredFrame {
     geometry: Option<zellij_utils::structured_render::GeometryRecord>,
     scroll: zellij_utils::structured_render::ScrollRecord,
     graphics: Vec<zellij_utils::structured_render::GraphicsRecord>,
+    sideband: Vec<u8>,
 }
 
 fn drain_frames(server_receiver: &ServerReceiver) -> HashMap<ClientId, DeliveredFrame> {
@@ -17811,6 +17812,7 @@ fn decode_delivered(payload: &crate::output::RenderPayload) -> DeliveredFrame {
         geometry: view.geometry(),
         scroll: view.scroll(),
         graphics: view.graphics(),
+        sideband: view.sideband().to_vec(),
     }
 }
 
@@ -17900,8 +17902,13 @@ fn a_client_that_stops_acknowledging_is_repainted_in_full_after_the_deadline() {
             "the abandoned frame must no longer be in flight"
         );
         assert!(
-            !state.overlay.is_dirty(),
-            "the pending overlay must be discarded"
+            !state.overlay.holds_screen_changes(),
+            "the pending screen changes must be discarded"
+        );
+        assert_eq!(
+            state.overlay.sideband(),
+            CLIPBOARD_SEQUENCE.repeat(2).as_bytes(),
+            "the copies queued with the abandoned frame must be kept"
         );
         assert!(
             state.force_full_repaint,
@@ -17931,10 +17938,20 @@ fn a_client_that_stops_acknowledging_is_repainted_in_full_after_the_deadline() {
     screen
         .handle_render_frame_ack(client_id, recovery.seq)
         .expect("TEST");
+    let kept = delivered_frame(&server_receiver, client_id)
+        .expect("the copies kept from the abandoned frame must follow the recovery frame");
+    assert_eq!(
+        kept.sideband,
+        CLIPBOARD_SEQUENCE.repeat(2).into_bytes(),
+        "every copy queued with the abandoned frame must reach the client"
+    );
+    screen
+        .handle_render_frame_ack(client_id, kept.seq)
+        .expect("TEST");
     assert_eq!(
         structured_client_with(&screen, client_id, |state| state.in_flight),
         None,
-        "the recovery frame must be acknowledged like any other"
+        "the frames that follow a recovery must be acknowledged like any other"
     );
 }
 
@@ -18027,6 +18044,10 @@ fn a_resize_discards_the_pending_overlay_and_forces_a_full_repaint() {
         (after_resize.cols, after_resize.rows),
         (resized.cols as u16, resized.rows as u16),
         "the frame that follows a resize must carry the new viewport"
+    );
+    assert!(
+        String::from_utf8_lossy(&after_resize.sideband).contains(CLIPBOARD_SEQUENCE),
+        "a copy queued while the client was being resized must still reach it"
     );
     structured_client_with(&screen, client_id, |state| {
         assert_eq!(
@@ -20496,4 +20517,604 @@ fn a_client_following_row_shifts_ends_up_with_the_same_screen_as_a_full_repaint(
         "a shifted frame must not resend every row"
     );
     assert_eq!(client.screen(), expected.screen());
+}
+
+fn session_events_for(
+    messages: &Arc<Mutex<HashMap<ClientId, Vec<ServerToClientMsg>>>>,
+    client_id: ClientId,
+) -> Vec<serde_json::Value> {
+    messages
+        .lock()
+        .unwrap()
+        .get(&client_id)
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|m| match m {
+            ServerToClientMsg::SessionEvent { json } => {
+                Some(serde_json::from_str(json).expect("session event is valid json"))
+            },
+            _ => None,
+        })
+        .collect()
+}
+
+fn event_names(events: &[serde_json::Value]) -> Vec<String> {
+    events
+        .iter()
+        .map(|e| e["event"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+fn events_filter(initial_state: bool) -> zellij_utils::session_events::CliEventFilter {
+    zellij_utils::session_events::CliEventFilter {
+        initial_state,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn events_subscriber_receives_initial_state() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+
+    screen.subscribe_to_events(100, events_filter(true));
+
+    let events = session_events_for(&messages, 100);
+    assert_eq!(event_names(&events), vec!["initial_state"]);
+    let panes = events[0]["panes"].as_array().unwrap();
+    assert!(panes.iter().any(|p| p["pane_id"] == "terminal_1"));
+    assert_eq!(events[0]["tabs"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn events_subscriber_without_initial_state_gets_nothing_until_a_change() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+
+    screen.subscribe_to_events(100, events_filter(false));
+    screen.log_and_report_session_state().unwrap();
+    screen.log_and_report_session_state().unwrap();
+
+    assert!(session_events_for(&messages, 100).is_empty());
+}
+
+#[test]
+fn events_new_tab_emits_tab_created_and_pane_opened() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.subscribe_to_events(100, events_filter(false));
+
+    new_tab(&mut screen, 2, 1);
+    screen.log_and_report_session_state().unwrap();
+
+    let events = session_events_for(&messages, 100);
+    let names = event_names(&events);
+    assert!(names.contains(&"tab_created".to_owned()), "{:?}", names);
+    let opened: Vec<&serde_json::Value> = events
+        .iter()
+        .filter(|e| e["event"] == "pane_opened")
+        .collect();
+    assert_eq!(opened.len(), 1, "{:?}", names);
+    assert_eq!(opened[0]["pane"]["pane_id"], "terminal_2");
+    assert!(
+        names.iter().position(|n| n == "tab_created")
+            < names.iter().position(|n| n == "pane_opened")
+    );
+}
+
+#[test]
+fn events_closing_tab_emits_pane_closed_then_tab_closed() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.subscribe_to_events(100, events_filter(false));
+
+    let _ = screen.close_tab(1);
+    screen.log_and_report_session_state().unwrap();
+
+    let events = session_events_for(&messages, 100);
+    let names = event_names(&events);
+    let pane_closed = names.iter().position(|n| n == "pane_closed");
+    let tab_closed = names.iter().position(|n| n == "tab_closed");
+    assert!(pane_closed.is_some(), "{:?}", names);
+    assert!(tab_closed.is_some(), "{:?}", names);
+    assert!(pane_closed < tab_closed);
+    let closed_tab_id = events[tab_closed.unwrap()]["tab_id"].clone();
+    assert_eq!(events[pane_closed.unwrap()]["tab_id"], closed_tab_id);
+}
+
+#[test]
+fn events_type_filter_is_applied() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.subscribe_to_events(
+        100,
+        zellij_utils::session_events::CliEventFilter {
+            event_types: vec![zellij_utils::session_events::CliEventType::TabCreated],
+            initial_state: true,
+            ..Default::default()
+        },
+    );
+
+    new_tab(&mut screen, 2, 1);
+    screen.log_and_report_session_state().unwrap();
+
+    let names = event_names(&session_events_for(&messages, 100));
+    assert_eq!(names, vec!["initial_state", "tab_created"]);
+}
+
+#[test]
+fn events_pane_filter_scopes_events_and_initial_state() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.subscribe_to_events(
+        100,
+        zellij_utils::session_events::CliEventFilter {
+            pane_ids: vec![zellij_utils::data::PaneId::Terminal(1)],
+            initial_state: true,
+            ..Default::default()
+        },
+    );
+
+    new_tab(&mut screen, 2, 1);
+    screen.log_and_report_session_state().unwrap();
+
+    let events = session_events_for(&messages, 100);
+    assert_eq!(events[0]["event"], "initial_state");
+    let panes = events[0]["panes"].as_array().unwrap();
+    assert_eq!(panes.len(), 1);
+    assert_eq!(panes[0]["pane_id"], "terminal_1");
+    assert!(events
+        .iter()
+        .all(|e| e["event"] != "pane_opened" && e["event"] != "tab_created"));
+}
+
+#[test]
+fn events_session_rename_is_reported() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.subscribe_to_events(100, events_filter(false));
+
+    let previous_name = screen.session_name.clone();
+    screen.session_name = "renamed-session".to_owned();
+    screen.log_and_report_session_state().unwrap();
+
+    let events = session_events_for(&messages, 100);
+    assert_eq!(event_names(&events), vec!["session_renamed"]);
+    assert_eq!(events[0]["name"], "renamed-session");
+    assert_eq!(events[0]["previous_name"], previous_name.as_str());
+}
+
+#[test]
+fn events_cwd_change_carries_tab_id() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.subscribe_to_events(100, events_filter(false));
+
+    screen.notify_event_subscribers(zellij_utils::session_events::CliEvent::PaneCwdChanged {
+        pane_id: zellij_utils::data::PaneId::Terminal(1),
+        tab_id: None,
+        cwd: "/tmp".to_owned(),
+    });
+
+    let events = session_events_for(&messages, 100);
+    assert_eq!(event_names(&events), vec!["pane_cwd_changed"]);
+    assert_eq!(events[0]["pane_id"], "terminal_1");
+    assert_eq!(events[0]["cwd"], "/tmp");
+    assert!(events[0]["tab_id"].is_u64());
+}
+
+#[test]
+fn events_subscriber_removed_on_remove_client() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, _messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+
+    screen.subscribe_to_events(100, events_filter(false));
+    assert!(screen.event_subscribers.contains(&100));
+
+    let _ = screen.remove_client(100);
+    assert!(!screen.event_subscribers.contains(&100));
+    assert!(screen.event_subscribers.is_empty());
+}
+
+#[test]
+fn events_session_ending_notifies_and_exits_subscribers() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+    screen.subscribe_to_events(100, events_filter(false));
+
+    screen.end_event_subscriptions();
+
+    assert_eq!(
+        event_names(&session_events_for(&messages, 100)),
+        vec!["session_ending"]
+    );
+    let msgs = messages.lock().unwrap();
+    assert!(matches!(
+        msgs.get(&100).unwrap().last(),
+        Some(ServerToClientMsg::Exit {
+            exit_reason: ExitReason::Normal
+        })
+    ));
+    drop(msgs);
+    assert!(screen.event_subscribers.is_empty());
+}
+
+#[test]
+fn events_mode_change_is_reported_without_a_full_snapshot() {
+    let size = Size { cols: 80, rows: 20 };
+    let (mut screen, messages) = create_new_screen_with_message_capture(size);
+    new_tab(&mut screen, 1, 0);
+    if !screen.connected_clients.borrow().contains_key(&1) {
+        screen.add_client(1, false).unwrap();
+    }
+    screen.subscribe_to_events(100, events_filter(false));
+
+    screen.change_mode(InputMode::Locked, None, 1).unwrap();
+    screen.change_mode(InputMode::Locked, None, 1).unwrap();
+
+    let events = session_events_for(&messages, 100);
+    assert_eq!(event_names(&events), vec!["mode_changed"]);
+    assert_eq!(events[0]["client_id"], 1);
+    assert_eq!(events[0]["mode"], "locked");
+    assert_eq!(events[0]["previous_mode"], "normal");
+
+    screen.log_and_report_session_state().unwrap();
+    assert_eq!(session_events_for(&messages, 100).len(), 1);
+}
+
+const REPORT_MARKER: &str = "report-marker";
+
+fn terminal_title_in_report(job: &BackgroundJob, terminal_id: u32) -> Option<String> {
+    match job {
+        BackgroundJob::ReportSessionInfo(_, session_info) => session_info
+            .panes
+            .panes
+            .values()
+            .flatten()
+            .find(|pane| !pane.is_plugin && pane.id == terminal_id)
+            .map(|pane| pane.title.clone()),
+        _ => None,
+    }
+}
+
+struct EventListenerRun {
+    events: Vec<serde_json::Value>,
+    reports_during_instructions: usize,
+}
+
+fn run_with_event_listener(
+    pane_count: usize,
+    instructions: Vec<ScreenInstruction>,
+) -> EventListenerRun {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.drop_all_pty_messages();
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = (0..pane_count)
+        .map(|_| TiledPaneLayout::default())
+        .collect();
+    let received_background_jobs = mock_screen.received_background_jobs.clone();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let marker_terminal_id = (pane_count - 1) as u32;
+    let rename_marker = |marker: &str| {
+        ScreenInstruction::RenamePaneWithPaneId(
+            PaneId::Terminal(marker_terminal_id),
+            marker.as_bytes().to_vec(),
+            None,
+        )
+    };
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::SubscribeToEvents {
+            client_id: 100,
+            filter: zellij_utils::session_events::CliEventFilter::default(),
+        });
+    let _ = mock_screen.to_screen.send(rename_marker(REPORT_MARKER));
+    for instruction in instructions {
+        let _ = mock_screen.to_screen.send(instruction);
+    }
+    let _ = mock_screen.to_screen.send(rename_marker("end-marker"));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::Exit);
+    let _ = screen_thread.join();
+    mock_screen.teardown(vec![server_thread, plugin_thread]);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !received_background_jobs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|job| matches!(job, BackgroundJob::Exit))
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "background jobs were not drained"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+
+    let reports_during_instructions = received_background_jobs
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|job| {
+            terminal_title_in_report(job, marker_terminal_id).as_deref() == Some(REPORT_MARKER)
+        })
+        .count()
+        - 1;
+    let events = session_events_for(&mock_screen.os_input.server_to_client_messages, 100)
+        .into_iter()
+        .filter(|e| {
+            e["event"] != "session_ending"
+                && !(e["event"] == "pane_renamed"
+                    && e["pane_id"] == format!("terminal_{}", marker_terminal_id))
+        })
+        .collect();
+    EventListenerRun {
+        events,
+        reports_during_instructions,
+    }
+}
+
+#[test]
+fn listener_run_without_instructions_has_no_reports_or_events() {
+    let run = run_with_event_listener(2, vec![]);
+    assert_eq!(run.reports_during_instructions, 0);
+    assert!(run.events.is_empty(), "{:?}", run.events);
+}
+
+#[test]
+fn focus_next_pane_reports_the_focus_change() {
+    let run = run_with_event_listener(2, vec![ScreenInstruction::FocusNextPane(1, None)]);
+    assert_eq!(run.reports_during_instructions, 1);
+    assert_eq!(event_names(&run.events), vec!["pane_focused"]);
+}
+
+#[test]
+fn focus_next_pane_with_a_single_pane_does_not_report() {
+    let run = run_with_event_listener(1, vec![ScreenInstruction::FocusNextPane(1, None)]);
+    assert_eq!(run.reports_during_instructions, 0);
+    assert!(run.events.is_empty(), "{:?}", run.events);
+}
+
+#[test]
+fn toggling_fullscreen_by_pane_id_reports() {
+    let run = run_with_event_listener(
+        2,
+        vec![ScreenInstruction::TogglePaneIdFullscreen(PaneId::Terminal(
+            0,
+        ))],
+    );
+    assert_eq!(run.reports_during_instructions, 1);
+    assert!(event_names(&run.events).contains(&"pane_fullscreen_changed".to_owned()));
+}
+
+#[test]
+fn toggling_fullscreen_of_a_missing_pane_does_not_report() {
+    let run = run_with_event_listener(
+        2,
+        vec![ScreenInstruction::TogglePaneIdFullscreen(PaneId::Terminal(
+            42,
+        ))],
+    );
+    assert_eq!(run.reports_during_instructions, 0);
+    assert!(run.events.is_empty(), "{:?}", run.events);
+}
+
+#[test]
+fn floating_a_pane_by_pane_id_reports() {
+    let run = run_with_event_listener(
+        2,
+        vec![ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(
+            PaneId::Terminal(0),
+        )],
+    );
+    assert_eq!(run.reports_during_instructions, 1);
+    assert!(event_names(&run.events).contains(&"pane_floating_changed".to_owned()));
+}
+
+#[test]
+fn moving_a_pane_between_layers_reports() {
+    let run = run_with_event_listener(
+        2,
+        vec![ScreenInstruction::MovePaneBetweenLayersForPaneId(
+            PaneId::Terminal(0),
+            Some(1),
+        )],
+    );
+    assert_eq!(run.reports_during_instructions, 1);
+    assert!(event_names(&run.events).contains(&"pane_floating_changed".to_owned()));
+}
+
+#[test]
+fn moving_a_missing_pane_between_layers_does_not_report() {
+    let run = run_with_event_listener(
+        2,
+        vec![
+            ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(PaneId::Terminal(42)),
+            ScreenInstruction::MovePaneBetweenLayersForPaneId(PaneId::Terminal(42), Some(1)),
+        ],
+    );
+    assert_eq!(run.reports_during_instructions, 0);
+    assert!(run.events.is_empty(), "{:?}", run.events);
+}
+
+#[test]
+fn undoing_a_pane_rename_by_pane_id_reports_the_restored_title() {
+    let run = run_with_event_listener(
+        2,
+        vec![
+            ScreenInstruction::RenamePaneWithPaneId(PaneId::Terminal(0), b"draft".to_vec(), None),
+            ScreenInstruction::UndoRenamePaneWithPaneId(PaneId::Terminal(0), None),
+        ],
+    );
+    assert_eq!(run.reports_during_instructions, 2);
+    assert_eq!(
+        event_names(&run.events),
+        vec!["pane_renamed", "pane_renamed"]
+    );
+    assert_eq!(run.events[0]["title"], "draft");
+    assert_eq!(run.events[1]["previous_title"], "draft");
+}
+
+#[test]
+fn undoing_a_pane_rename_that_changes_nothing_does_not_report() {
+    let run = run_with_event_listener(
+        2,
+        vec![
+            ScreenInstruction::UndoRenamePaneWithPaneId(PaneId::Terminal(0), None),
+            ScreenInstruction::UndoRenamePaneWithPaneId(PaneId::Terminal(42), None),
+        ],
+    );
+    assert_eq!(run.reports_during_instructions, 0);
+    assert!(run.events.is_empty(), "{:?}", run.events);
+}
+
+#[test]
+fn undoing_the_active_pane_rename_reports_only_when_the_title_changes() {
+    let run = run_with_event_listener(
+        2,
+        vec![
+            ScreenInstruction::UndoRenamePane(1, None),
+            ScreenInstruction::RenamePaneWithPaneId(PaneId::Terminal(0), b"draft".to_vec(), None),
+            ScreenInstruction::UndoRenamePane(1, None),
+        ],
+    );
+    assert_eq!(run.reports_during_instructions, 2);
+    assert_eq!(
+        event_names(&run.events),
+        vec!["pane_renamed", "pane_renamed"]
+    );
+    assert_eq!(run.events[1]["previous_title"], "draft");
+}
+
+#[test]
+fn stacking_panes_reports() {
+    let run = run_with_event_listener(
+        3,
+        vec![ScreenInstruction::StackPanes(
+            vec![PaneId::Terminal(0), PaneId::Terminal(1)],
+            1,
+            None,
+        )],
+    );
+    assert!(run.reports_during_instructions >= 1);
+}
+
+#[test]
+fn stacking_missing_panes_does_not_report() {
+    let run = run_with_event_listener(
+        2,
+        vec![ScreenInstruction::StackPanes(
+            vec![PaneId::Terminal(41), PaneId::Terminal(42)],
+            1,
+            None,
+        )],
+    );
+    assert_eq!(run.reports_during_instructions, 0);
+    assert!(run.events.is_empty(), "{:?}", run.events);
+}
+
+#[test]
+fn rerunning_a_running_or_missing_pane_does_not_report() {
+    let run = run_with_event_listener(
+        2,
+        vec![
+            ScreenInstruction::RerunCommandPane(0, None),
+            ScreenInstruction::RerunCommandPane(42, None),
+        ],
+    );
+    assert_eq!(run.reports_during_instructions, 0);
+    assert!(run.events.is_empty(), "{:?}", run.events);
+}
+
+#[test]
+fn rerunning_a_held_command_pane_reports() {
+    let run = run_with_event_listener(
+        2,
+        vec![
+            ScreenInstruction::HoldPane(PaneId::Terminal(0), Some(1), RunCommand::default()),
+            ScreenInstruction::RerunCommandPane(0, None),
+        ],
+    );
+    assert!(run.reports_during_instructions >= 2);
+    assert!(event_names(&run.events).contains(&"pane_exited".to_owned()));
+}
+
+#[test]
+fn ordinary_writes_and_pastes_to_a_pane_do_not_report() {
+    let run = run_with_event_listener(
+        2,
+        vec![
+            ScreenInstruction::WriteToPaneId(b"ls\r".to_vec(), PaneId::Terminal(0), None),
+            ScreenInstruction::WriteKeyToPaneId(
+                Some(zellij_utils::data::KeyWithModifier::new(
+                    zellij_utils::data::BareKey::Char('a'),
+                )),
+                b"a".to_vec(),
+                false,
+                PaneId::Terminal(0),
+                None,
+            ),
+            ScreenInstruction::Paste(b"pasted".to_vec(), Some(PaneId::Terminal(0)), 1, None),
+            ScreenInstruction::Paste(b"pasted".to_vec(), None, 1, None),
+        ],
+    );
+    assert_eq!(run.reports_during_instructions, 0);
+    assert!(run.events.is_empty(), "{:?}", run.events);
+}
+
+#[test]
+fn ctrl_c_written_to_a_held_pane_closes_it_and_reports() {
+    let run = run_with_event_listener(
+        2,
+        vec![
+            ScreenInstruction::HoldPane(PaneId::Terminal(0), Some(1), RunCommand::default()),
+            ScreenInstruction::WriteToPaneId(vec![3], PaneId::Terminal(0), None),
+        ],
+    );
+    assert!(run.reports_during_instructions >= 2);
+    let names = event_names(&run.events);
+    assert!(names.contains(&"pane_closed".to_owned()), "{:?}", names);
+}
+
+#[test]
+fn pasting_into_a_held_pane_reports_its_closing() {
+    let run = run_with_event_listener(
+        2,
+        vec![
+            ScreenInstruction::HoldPane(PaneId::Terminal(0), Some(1), RunCommand::default()),
+            ScreenInstruction::Paste(vec![3], Some(PaneId::Terminal(0)), 1, None),
+        ],
+    );
+    let names = event_names(&run.events);
+    assert!(names.contains(&"pane_closed".to_owned()), "{:?}", names);
 }

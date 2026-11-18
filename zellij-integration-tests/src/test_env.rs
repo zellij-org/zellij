@@ -87,6 +87,7 @@ fn isolate_process_environment(test_root: &Path) {
     std::env::set_var("XDG_RUNTIME_DIR", test_root.join("runtime"));
     std::env::remove_var("ZELLIJ");
     std::env::remove_var("ZELLIJ_SESSION_NAME");
+    std::env::remove_var("ZELLIJ_SESSION_ID");
     std::env::remove_var("ZELLIJ_CONFIG_FILE");
     std::env::remove_var("ZELLIJ_CONFIG_DIR");
     std::env::set_current_dir(test_root.join("cwd")).unwrap();

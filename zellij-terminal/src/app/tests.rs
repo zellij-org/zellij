@@ -182,6 +182,10 @@ fn the_tray_menu_turns_into_intents_and_pause_dims_the_icon() {
         background.on_tray(TrayEvent::Menu(MenuAction::QuitAll), now),
         vec![Intent::ConfirmQuitAll]
     );
+    assert_eq!(
+        background.on_tray(TrayEvent::Menu(MenuAction::QuitApp), now),
+        vec![Intent::QuitApp]
+    );
     background.on_tray(TrayEvent::Menu(MenuAction::PauseHour), now);
     assert!(background.policy().paused);
     assert!(background.tray_state().look.dimmed);
@@ -227,23 +231,34 @@ fn the_close_notice_is_sent_once() {
 
 #[test]
 fn a_second_launch_naming_a_session_routes_and_a_plain_one_opens() {
-    let (reply, intents) = request_intents(AppRequest::OpenWindow(OpenWindowRequest {
+    let named = OpenWindowRequest {
         session: Some("api".to_owned()),
+        cwd: Some(std::path::PathBuf::from("/srv/api")),
+        env: std::collections::BTreeMap::from([("PROJECT".to_owned(), "api".to_owned())]),
         ..Default::default()
-    }));
+    };
+    let (reply, intents) = request_intents(AppRequest::OpenWindow(named.clone()));
     assert_eq!(reply, AppReply::Done);
     assert_eq!(
         intents,
-        vec![Intent::Route {
-            session: "api".to_owned(),
-            pane: None,
+        vec![Intent::RouteRequest {
+            request: named,
             token: None
         }]
     );
+    let (_, intents) = request_intents(AppRequest::OpenWindow(OpenWindowRequest {
+        session: Some("https://example.com/api".to_owned()),
+        ..Default::default()
+    }));
+    assert!(matches!(intents[..], [Intent::Open { .. }]));
     let (_, intents) = request_intents(AppRequest::OpenWindow(Default::default()));
     assert!(matches!(intents[..], [Intent::Open { .. }]));
     let (_, intents) = request_intents(AppRequest::Ping);
     assert!(intents.is_empty());
+    assert_eq!(
+        request_intents(AppRequest::QuitApp),
+        (AppReply::Done, vec![Intent::QuitApp])
+    );
 }
 
 #[test]

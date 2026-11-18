@@ -74,6 +74,8 @@ fn test_options(intercept_paste: bool) -> Options {
         startup_mode: StartupMode::Windowed,
         transparency: Transparency::OPAQUE,
         blur: false,
+        decorations: true,
+        titlebar_theme: None,
         padding: crate::config::options::Padding::default(),
         padding_balance: false,
         padding_color: PaddingColor::Background,
@@ -440,6 +442,26 @@ fn a_disconnect_names_the_session_the_window_was_showing() {
         .session_ended(Ending::Exited(ExitReason::Disconnect));
     assert!(
         shown(&harness).contains("`zellij attach work`"),
+        "{}",
+        shown(&harness)
+    );
+}
+
+#[test]
+fn a_renamed_session_is_what_the_window_reports_and_names() {
+    let mut harness = Harness::new(0, true, "");
+    harness.app.session_name = "work".to_owned();
+    assert_eq!(
+        harness.app.on_wake(WindowWake::Renamed("play".to_owned())),
+        Verdict::Keep
+    );
+    assert_eq!(harness.app.session_name(), Some("play"));
+    assert_eq!(harness.app.title, super::run::window_title("play"));
+    harness
+        .app
+        .session_ended(Ending::Exited(ExitReason::Disconnect));
+    assert!(
+        shown(&harness).contains("`zellij attach play`"),
         "{}",
         shown(&harness)
     );
@@ -1316,6 +1338,24 @@ fn a_frame_for_a_viewport_the_screen_has_moved_past_is_acknowledged_and_dropped(
     assert_eq!(
         harness.sent(),
         vec![ClientToServerMsg::RenderFrameAck { seq: 23 }]
+    );
+}
+
+#[test]
+fn a_copy_carried_by_a_frame_the_screen_has_moved_past_still_reaches_the_clipboard() {
+    let mut harness = Harness::new(1, true, "before");
+    let size = harness.app.state.size();
+    let mut stale = zellij_utils::structured_render::FrameBuilder::new(size.cols as u16 - 1, 4, 24);
+    stale.push_row(0, 0, &[zellij_utils::structured_render::WireCell::BLANK]);
+    stale
+        .sideband_mut()
+        .extend_from_slice(b"\x1b]52;c;Y29waWVk\x1b\\");
+    harness.app.on_frame(&stale.finish());
+    assert_eq!(harness.app.state.size(), size);
+    assert_eq!(harness.clipboard_text().as_deref(), Some("copied"));
+    assert_eq!(
+        harness.sent(),
+        vec![ClientToServerMsg::RenderFrameAck { seq: 24 }]
     );
 }
 

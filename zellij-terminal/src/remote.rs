@@ -323,7 +323,9 @@ pub fn open(
     let session_name = session_name_of(url);
     let (outbound_tx, outbound_rx) = unbounded_channel();
     let (inbound_tx, inbound_rx) = mpsc::channel();
-    let config_path = local_config.as_ref().map(|config| config.path.clone());
+    let config_files = local_config
+        .as_ref()
+        .map(|config| (config.path.clone(), config.dir.clone()));
     let config_changes =
         local_config.map(|config| watch_local_config(runtime.handle(), config.clone()));
     runtime.spawn(pump(
@@ -331,7 +333,7 @@ pub fn open(
         outbound_rx,
         inbound_tx,
         config_changes,
-        config_path,
+        config_files,
     ));
 
     Ok(Connection {
@@ -384,8 +386,8 @@ fn session_name_of(url: &str) -> String {
         .to_owned()
 }
 
-fn local_settings(path: &Path) -> Option<ServerToClientMsg> {
-    match crate::config::settings::load(Some(path)) {
+fn local_settings(path: &Path, dir: Option<&Path>) -> Option<ServerToClientMsg> {
+    match crate::config::settings::load(Some(path), dir) {
         Ok(settings) => Some(ServerToClientMsg::TerminalSettingsChanged {
             settings: Box::new(settings),
         }),
@@ -403,9 +405,9 @@ fn local_settings(path: &Path) -> Option<ServerToClientMsg> {
 
 fn push_local_settings(
     inbound_tx: &Sender<ServerToClientMsg>,
-    config_path: Option<&Path>,
+    config_files: Option<&(PathBuf, Option<PathBuf>)>,
 ) -> std::result::Result<(), ()> {
-    match config_path.and_then(local_settings) {
+    match config_files.and_then(|(path, dir)| local_settings(path, dir.as_deref())) {
         Some(msg) => inbound_tx.send(msg).map_err(|_| ()),
         None => Ok(()),
     }
@@ -416,13 +418,13 @@ async fn pump(
     mut outbound_rx: tokio::sync::mpsc::UnboundedReceiver<Outbound>,
     inbound_tx: Sender<ServerToClientMsg>,
     mut config_changes: Option<UnboundedReceiver<()>>,
-    config_path: Option<PathBuf>,
+    config_files: Option<(PathBuf, Option<PathBuf>)>,
 ) {
     let web_client_id = connections.web_client_id.clone();
     let mut terminal_ws = connections.terminal_ws;
     let (mut control_tx, mut control_rx) = connections.control_ws.split();
 
-    if push_local_settings(&inbound_tx, config_path.as_deref()).is_err() {
+    if push_local_settings(&inbound_tx, config_files.as_ref()).is_err() {
         return;
     }
     loop {
@@ -430,7 +432,7 @@ async fn pump(
             change = next_config_change(&mut config_changes) => {
                 match change {
                     Some(()) => {
-                        if push_local_settings(&inbound_tx, config_path.as_deref()).is_err() {
+                        if push_local_settings(&inbound_tx, config_files.as_ref()).is_err() {
                             break;
                         }
                     },
@@ -822,7 +824,7 @@ mod tests {
         let directory = tempfile::TempDir::new().unwrap();
         let path = directory.path().join("config.kdl");
         std::fs::write(&path, "terminal {\n font \"Local Mono\"\n}\n").unwrap();
-        match local_settings(&path) {
+        match local_settings(&path, None) {
             Some(ServerToClientMsg::TerminalSettingsChanged { settings }) => {
                 assert_eq!(settings.section.font.as_deref(), Some("Local Mono"));
             },
@@ -836,7 +838,7 @@ mod tests {
         let path = directory.path().join("config.kdl");
         std::fs::write(&path, "terminal {\n font_size \"enormous\"\n}\n").unwrap();
         assert!(
-            local_settings(&path).is_none(),
+            local_settings(&path, None).is_none(),
             "a configuration that does not parse replaced the options in force"
         );
     }

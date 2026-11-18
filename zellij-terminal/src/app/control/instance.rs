@@ -4,10 +4,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use interprocess::local_socket::prelude::*;
 use zellij_utils::app_control::{
-    read_request, refusal_for, send_app_request_to, write_reply, AppReply, AppRequest,
+    describe_app_at, is_older_app, read_request, refusal_for, send_app_request_to, write_reply,
+    AppReply, AppRequest,
 };
 use zellij_utils::consts::{APP_CONTROL_SOCKET_NAME, APP_LOCK_FILE_NAME};
 
@@ -18,6 +19,7 @@ use crate::app::control::ipc::{self, Listeners};
 mod os;
 
 pub const HANDOFF_WAIT: Duration = Duration::from_secs(3);
+pub const QUIT_WAIT: Duration = Duration::from_secs(10);
 
 pub enum Claim {
     Primary(Instance),
@@ -37,12 +39,7 @@ pub fn claim(dir: &Path, request: &AppRequest, wait: Duration) -> Result<Claim> 
     let control = dir.join(APP_CONTROL_SOCKET_NAME);
     let deadline = Instant::now() + wait;
     loop {
-        let lock = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(&lock_path)
-            .with_context(|| format!("failed to open {}", lock_path.display()))?;
+        let lock = open_lock(&lock_path)?;
         match lock.try_lock() {
             Ok(()) => return become_primary(lock, control).map(Claim::Primary),
             Err(TryLockError::WouldBlock) => {},
@@ -62,6 +59,54 @@ pub fn claim(dir: &Path, request: &AppRequest, wait: Duration) -> Result<Claim> 
             Err(_) => std::thread::sleep(Duration::from_millis(100)),
         }
     }
+}
+
+pub fn older_app(dir: &Path) -> Option<String> {
+    let state = describe_app_at(&dir.join(APP_CONTROL_SOCKET_NAME)).ok()?;
+    let version = state.version?;
+    is_older_app(Some(&version), zellij_utils::consts::VERSION).then_some(version)
+}
+
+pub fn close_running(dir: &Path, wait: Duration) -> Result<()> {
+    match send_app_request_to(&dir.join(APP_CONTROL_SOCKET_NAME), &AppRequest::QuitApp) {
+        Ok(AppReply::Done) => wait_for_release(dir, wait),
+        Ok(AppReply::Refused(reason)) => bail!("the older Zellij app did not close: {}", reason),
+        Ok(other) => bail!(
+            "the older Zellij app answered {:?} instead of closing",
+            other
+        ),
+        Err(e) => bail!("the older Zellij app could not be asked to close: {}", e),
+    }
+}
+
+fn wait_for_release(dir: &Path, wait: Duration) -> Result<()> {
+    let lock_path = dir.join(APP_LOCK_FILE_NAME);
+    let deadline = Instant::now() + wait;
+    loop {
+        let lock = open_lock(&lock_path)?;
+        match lock.try_lock() {
+            Ok(()) => return Ok(()),
+            Err(TryLockError::WouldBlock) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(100))
+            },
+            Err(TryLockError::WouldBlock) => bail!(
+                "the older Zellij app did not close within {} seconds",
+                wait.as_secs()
+            ),
+            Err(TryLockError::Error(e)) => {
+                return Err(e).with_context(|| format!("failed to lock {}", lock_path.display()))
+            },
+        }
+    }
+}
+
+fn open_lock(lock_path: &Path) -> Result<File> {
+    OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(lock_path)
+        .with_context(|| format!("failed to open {}", lock_path.display()))
 }
 
 fn become_primary(mut lock: File, control: PathBuf) -> Result<Instance> {
@@ -252,6 +297,84 @@ mod tests {
         }
         drop(holder);
         assert!(!control.exists(), "a clean exit removes the new socket");
+    }
+
+    fn serving(dir: &Path, version: Option<&str>) -> (Holder, std::sync::mpsc::Receiver<()>) {
+        let instance = match claim(dir, &request(), HANDOFF_WAIT).unwrap() {
+            Claim::Primary(instance) => instance,
+            Claim::Handed(_) => panic!("nothing was running yet"),
+        };
+        let version = version.map(str::to_owned);
+        let (quit, asked_to_quit) = channel();
+        let holder = instance
+            .serve(move |request| match request {
+                AppRequest::Describe => AppReply::State(zellij_utils::app_control::AppState {
+                    version: version.clone(),
+                    ..Default::default()
+                }),
+                AppRequest::QuitApp => {
+                    let _ = quit.send(());
+                    AppReply::Done
+                },
+                _ => AppReply::Done,
+            })
+            .unwrap();
+        (holder, asked_to_quit)
+    }
+
+    #[test]
+    fn only_an_app_reporting_an_older_version_is_offered_for_replacement() {
+        let dir = tempfile::TempDir::new().unwrap();
+        assert_eq!(older_app(dir.path()), None, "no app is running");
+        for (reported, older) in [
+            (None, false),
+            (Some(zellij_utils::consts::VERSION), false),
+            (Some("999.0.0"), false),
+            (Some("0.0.1"), true),
+        ] {
+            let (holder, _) = serving(dir.path(), reported);
+            assert_eq!(
+                older_app(dir.path()),
+                older.then(|| "0.0.1".to_owned()),
+                "{:?}",
+                reported
+            );
+            drop(holder);
+        }
+    }
+
+    #[test]
+    fn an_older_app_is_asked_to_quit_and_its_place_is_free_once_it_lets_go() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let (holder, asked_to_quit) = serving(dir.path(), Some("0.0.1"));
+        let releasing = std::thread::spawn(move || {
+            asked_to_quit.recv_timeout(Duration::from_secs(2)).unwrap();
+            std::thread::sleep(Duration::from_millis(200));
+            drop(holder);
+        });
+        close_running(dir.path(), QUIT_WAIT).unwrap();
+        releasing.join().unwrap();
+        match claim(dir.path(), &request(), HANDOFF_WAIT).unwrap() {
+            Claim::Primary(_) => {},
+            Claim::Handed(_) => panic!("the older app has gone"),
+        }
+    }
+
+    #[test]
+    fn an_app_that_refuses_or_keeps_running_is_not_replaced() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let instance = match claim(dir.path(), &request(), HANDOFF_WAIT).unwrap() {
+            Claim::Primary(instance) => instance,
+            Claim::Handed(_) => panic!("nothing was running yet"),
+        };
+        let refusing = instance
+            .serve(|_| AppReply::Refused("busy".to_owned()))
+            .unwrap();
+        let error = close_running(dir.path(), QUIT_WAIT).err().unwrap();
+        assert!(format!("{:#}", error).contains("busy"), "{:#}", error);
+        drop(refusing);
+        let (_stubborn, _) = serving(dir.path(), Some("0.0.1"));
+        assert!(close_running(dir.path(), Duration::from_millis(300)).is_err());
     }
 
     #[test]

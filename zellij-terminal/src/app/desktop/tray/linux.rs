@@ -772,7 +772,7 @@ mod tests {
         let layout = menu_layout(&menu(&MenuState::default()), 0);
         assert_eq!(layout.signature(), "(ia{sv}av)");
         let children = layout.items()[2].items();
-        assert_eq!(children.len(), 11);
+        assert_eq!(children.len(), 12);
         let pause = children[6].items();
         assert_eq!(pause[0], Value::I32(5));
         assert_eq!(pause[2].items().len(), 3);

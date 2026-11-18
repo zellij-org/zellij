@@ -285,6 +285,13 @@ impl FontOptions {
             FaceStyle::BoldItalic => self.bold_italic_family.as_deref(),
         }
     }
+
+    fn names_a_family(&self) -> bool {
+        self.family.is_some()
+            || [FaceStyle::Bold, FaceStyle::Italic, FaceStyle::BoldItalic]
+                .into_iter()
+                .any(|style| self.style_family(style).is_some())
+    }
 }
 
 impl Default for FontOptions {
@@ -402,11 +409,12 @@ pub struct FontStack {
     cluster_fonts: HashMap<FaceStyle, HashMap<String, Option<FontId>>>,
     shaped: HashMap<(FontId, Shaping), HashMap<String, Rc<[ShapedGlyph]>>>,
     discovery_queries: usize,
+    system_fallbacks: bool,
 }
 
 impl FontStack {
     pub fn build(options: &FontOptions) -> Result<Self> {
-        let discovery = if options.system_fonts {
+        let discovery = if options.system_fonts || options.names_a_family() {
             Discovery::open()
         } else {
             None
@@ -471,11 +479,17 @@ impl FontStack {
             cluster_fonts: HashMap::new(),
             shaped: HashMap::new(),
             discovery_queries: 0,
+            system_fallbacks: options.system_fonts,
         };
 
         if let Some(family) = &options.family {
             match stack.requested_family(family) {
                 Some(primary) => stack.primary = primary,
+                None if stack.discovery.is_none() => report!(
+                    "system font discovery is unavailable, so the font family {:?} \
+                     cannot be used; rendering with the embedded font instead",
+                    family
+                ),
                 None => report!(
                     "no font family named {:?} resolved; \
                      rendering with the embedded font instead",

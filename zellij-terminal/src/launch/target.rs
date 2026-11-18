@@ -2,6 +2,7 @@ use crate::launch::starting_folder;
 use crate::session::connection::{Capabilities, Geometry, Opening};
 use crate::{remote, session};
 use anyhow::{anyhow, Result};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use zellij_client::session_resolution::{self, ResolutionFailure};
 use zellij_client::{first_message, ClientInfo};
@@ -103,6 +104,7 @@ pub(crate) fn connect(
     focus: (Option<usize>, Option<(u32, bool)>),
     local_config: remote::LocalConfig,
     switch_context: Option<zellij_utils::session_history::SwitchContext>,
+    launch_env: Option<&BTreeMap<String, String>>,
 ) -> Result<session::connection::Connection> {
     let info = match &target.reach {
         Reach::Local(info) => info,
@@ -113,14 +115,14 @@ pub(crate) fn connect(
         opts,
         config_options,
         geometry.size(),
-        session::spawn::advertised_host_terminal_env(),
+        session::spawn::attaching_host_terminal_env(),
         focus.0,
         focus.1,
         switch_context,
     );
     let session_name = info.get_session_name().to_owned();
     let socket_path = if handshake.starts_server {
-        start_server(&session_name)?
+        start_server(&session_name, launch_env)?
     } else {
         session::connection::socket_path(&session_name)?
     };
@@ -183,11 +185,15 @@ pub(crate) fn switch(
         (to.tab_position, to.pane_id),
         Default::default(),
         to.switch_context.clone(),
+        None,
     )
 }
 
 // Returns the new session's socket path, which is named by a freshly registered session id.
-pub(crate) fn start_server(session_name: &str) -> Result<PathBuf> {
+pub(crate) fn start_server(
+    session_name: &str,
+    launch_env: Option<&BTreeMap<String, String>>,
+) -> Result<PathBuf> {
     let cwd = session::spawn::resolve_cwd(None)?;
     let program = session::spawn::resolve_program()?;
     session::spawn::prepare_socket_dir()?;
@@ -196,11 +202,10 @@ pub(crate) fn start_server(session_name: &str) -> Result<PathBuf> {
         zellij_utils::consts::prepare_private_dir(parent)
             .map_err(|e| anyhow!("failed to create {:?}: {}", parent, e))?;
     }
-    session::spawn::spawn(&session::spawn::server_command(
-        program,
-        &socket_path,
-        session_name,
-        &cwd,
-    ))?;
+    let mut launch = session::spawn::server_command(program, &socket_path, session_name, &cwd);
+    if let Some(launch_env) = launch_env {
+        session::spawn::inherit_launcher_env(&mut launch, launch_env);
+    }
+    session::spawn::spawn(&launch)?;
     Ok(socket_path)
 }

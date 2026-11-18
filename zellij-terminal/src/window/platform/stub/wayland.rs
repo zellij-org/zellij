@@ -33,6 +33,8 @@ impl Activation {
     ) {
     }
 
+    pub(in crate::window) fn release(&mut self) {}
+
     pub(in crate::window) fn pump(&mut self) {}
 
     pub(in crate::window) fn token(&mut self, _window: Option<&Window>) -> Option<String> {

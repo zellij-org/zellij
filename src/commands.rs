@@ -13,7 +13,7 @@ use zellij_client::{
 use zellij_utils::sessions::{
     assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
     generate_unique_session_name, get_active_session, get_resurrectable_sessions, get_sessions,
-    kill_session as kill_session_impl, ActiveSession,
+    kill_session as kill_session_impl, this_panes_session, ActiveSession, PaneSession,
 };
 
 #[cfg(feature = "web_server_capability")]
@@ -537,6 +537,12 @@ pub(crate) fn send_action_to_session(
             },
         }
     }
+    if requested_session_name.is_none() {
+        if let Some(session_name) = session_of_this_pane(1) {
+            attach_with_cli_client(cli_action, &session_name, config);
+            return;
+        }
+    }
     match get_active_session() {
         ActiveSession::None => {
             eprintln!("There is no active session!");
@@ -587,7 +593,48 @@ pub(crate) fn subscribe_to_session(
     requested_session_name: Option<String>,
     _config: Option<Config>,
 ) {
-    let session_name = match get_active_session() {
+    let session_name = session_to_subscribe_from_here(requested_session_name);
+    let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
+    zellij_client::cli_client::start_subscribe_client(
+        Box::new(os_input),
+        &session_name,
+        subscribe_cli,
+    );
+}
+
+pub(crate) fn stream_session_events(
+    events_cli: zellij_utils::cli::EventsCli,
+    requested_session_name: Option<String>,
+) {
+    let session_name = session_to_subscribe_from_here(requested_session_name);
+    let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
+    zellij_client::cli_client::start_events_client(Box::new(os_input), &session_name, events_cli);
+}
+
+fn session_to_subscribe_from_here(requested_session_name: Option<String>) -> String {
+    match requested_session_name
+        .is_none()
+        .then(|| session_of_this_pane(1))
+        .flatten()
+    {
+        Some(session_name) => session_name,
+        None => session_to_subscribe_to(requested_session_name),
+    }
+}
+
+pub(crate) fn session_of_this_pane(exit_code: i32) -> Option<String> {
+    match this_panes_session() {
+        PaneSession::Running(session_name) => Some(session_name),
+        PaneSession::Ended(session_name) => {
+            eprintln!("{}", PaneSession::ended_message(&session_name));
+            process::exit(exit_code);
+        },
+        PaneSession::Unknown => None,
+    }
+}
+
+fn session_to_subscribe_to(requested_session_name: Option<String>) -> String {
+    match get_active_session() {
         ActiveSession::None => {
             eprintln!("There is no active session!");
             std::process::exit(1);
@@ -630,13 +677,7 @@ pub(crate) fn subscribe_to_session(
                 std::process::exit(1);
             }
         },
-    };
-    let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
-    zellij_client::cli_client::start_subscribe_client(
-        Box::new(os_input),
-        &session_name,
-        subscribe_cli,
-    );
+    }
 }
 
 pub(crate) fn prompt_in_session(
@@ -644,7 +685,10 @@ pub(crate) fn prompt_in_session(
     requested_session_name: Option<String>,
     config: Option<Config>,
 ) -> ! {
-    let session_name = match requested_session_name.or_else(|| envs::get_session_name().ok()) {
+    let session_name = match requested_session_name
+        .or_else(|| session_of_this_pane(zellij_utils::prompt::EXIT_ERROR))
+        .or_else(|| envs::get_session_name().ok())
+    {
         Some(session_name) => session_name,
         None => {
             eprintln!("zellij prompt must be run inside a Zellij session");

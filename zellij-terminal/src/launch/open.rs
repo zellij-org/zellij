@@ -5,8 +5,10 @@ use crate::launch::refuse;
 use crate::launch::starting_folder;
 use crate::launch::Refusal;
 use anyhow::Result;
+use zellij_client::session_resolution;
+use zellij_client::ClientInfo;
 use zellij_utils::app_control::OpenWindowRequest;
-use zellij_utils::cli::{CliArgs, TerminalArgs};
+use zellij_utils::cli::{CliArgs, Command, SessionCommand, TerminalArgs};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options as SessionOptions;
 use zellij_utils::setup::Setup;
@@ -27,7 +29,10 @@ pub(crate) fn load(args: &TerminalArgs, opts: &CliArgs) -> std::result::Result<L
     let settings = if args.headless {
         config::settings::Settings::default()
     } else {
-        match config::settings::load(Config::config_file_path(opts).as_deref()) {
+        match config::settings::load(
+            Config::config_file_path(opts).as_deref(),
+            opts.config_dir.as_deref(),
+        ) {
             Ok(settings) => settings,
             Err(e) => return Err(refuse(Refusal::new(format!("{:#}", e)), args, None)),
         }
@@ -47,9 +52,50 @@ pub(crate) fn open(args: TerminalArgs, opts: CliArgs) -> Result<()> {
         Err(done) => return done,
     };
     if hosted_by_the_app(&args) {
-        return launch_app(args, opts, Some((config_options, settings)));
+        let args = match with_the_index_resolved(args, &config_options) {
+            Ok(args) => args,
+            Err(done) => return done,
+        };
+        let loaded = args
+            .attach
+            .options
+            .is_none()
+            .then_some((config_options, settings));
+        return launch_app(args, opts, loaded);
     }
     open_alone(args, opts, config_options, settings)
+}
+
+fn with_the_index_resolved(
+    mut args: TerminalArgs,
+    config_options: &SessionOptions,
+) -> std::result::Result<TerminalArgs, Result<()>> {
+    if args.attach.index.is_none() || args.attach.remote_url().is_some() {
+        return Ok(args);
+    }
+    let resolved =
+        match session_resolution::resolve_attach(&args.attach, config_options.clone(), false, None)
+        {
+            Ok(resolved) => resolved,
+            Err(failure) => return Err(refuse(Refusal::from(failure), &args, None)),
+        };
+    args.attach.session_name = Some(resolved.client.get_session_name().to_owned());
+    args.attach.create = matches!(resolved.client, ClientInfo::New(..));
+    args.attach.index = None;
+    Ok(args)
+}
+
+pub(crate) fn without_session_options(
+    args: &TerminalArgs,
+    opts: &CliArgs,
+) -> (TerminalArgs, CliArgs) {
+    let mut args = args.clone();
+    args.attach.options = None;
+    let mut opts = opts.clone();
+    if let Some(Command::Terminal(terminal_args)) = opts.command.as_mut() {
+        terminal_args.attach.options = None;
+    }
+    (args, opts)
 }
 
 pub(crate) fn panel_view(args: &TerminalArgs) -> Option<zellij_utils::app_control::PopupView> {
@@ -80,11 +126,6 @@ pub(crate) fn hosted_by_the_app_with(args: &TerminalArgs, standalone_env: bool) 
         && !args.watch
         && args.record.is_none()
         && args.duration_secs.is_none()
-        && args.rows.is_none()
-        && args.cols.is_none()
-        && args.attach.remote_url().is_none()
-        && args.attach.index.is_none()
-        && args.attach.options.is_none()
 }
 
 pub(crate) fn window_request(args: &TerminalArgs) -> OpenWindowRequest {
@@ -99,5 +140,18 @@ pub(crate) fn window_request(args: &TerminalArgs) -> OpenWindowRequest {
         force_run_commands: args.attach.force_run_commands,
         startup_mode: args.startup_mode,
         layout: None,
+        rows: args.rows,
+        cols: args.cols,
+        options: args
+            .attach
+            .options
+            .as_deref()
+            .map(|SessionCommand::Options(options)| options.clone()),
+        token: args.attach.token.clone(),
+        remember: args.attach.remember,
+        forget: args.attach.forget,
+        ca_cert: args.attach.ca_cert.clone(),
+        insecure: args.attach.insecure,
+        env: Default::default(),
     }
 }

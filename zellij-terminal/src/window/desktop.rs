@@ -89,7 +89,7 @@ impl Facts for World<'_> {
     fn session_of(&self, key: u64) -> Option<String> {
         self.windows
             .get(&key)
-            .and_then(|app| app.session_name().map(str::to_owned))
+            .and_then(|app| app.local_session_name().map(str::to_owned))
     }
     fn has_session(&self, name: &str) -> bool {
         self.background
@@ -374,7 +374,7 @@ impl Desktop {
                 .windows
                 .values()
                 .map(|app| zellij_utils::app_control::WindowState {
-                    session: app.session_name().map(str::to_owned),
+                    session: app.local_session_name().map(str::to_owned),
                 })
                 .collect(),
             panel: self.conductor.panel_state(),
@@ -384,7 +384,8 @@ impl Desktop {
                 .conductor
                 .most_recent_window()
                 .and_then(|key| self.windows.get(&key))
-                .and_then(|app| app.session_name().map(str::to_owned)),
+                .and_then(|app| app.local_session_name().map(str::to_owned)),
+            version: Some(zellij_utils::consts::VERSION.to_owned()),
         }
     }
 

@@ -9,12 +9,13 @@ use std::{fs, path::PathBuf};
 use crate::os_input_output::ClientOsApi;
 use uuid::Uuid;
 use zellij_utils::{
-    cli::{PromptCli, PromptElementCli, SubscribeCli, SubscribeFormat},
+    cli::{EventsCli, PromptCli, PromptElementCli, SubscribeCli, SubscribeFormat},
     data::{OutsideClick, PaneId, PipePopupPlacement},
     errors::prelude::*,
     input::actions::Action,
     ipc::{ClientToServerMsg, ExitReason, IpcReceiveError, ServerToClientMsg},
     prompt::{self, ChoiceItem, PromptElement},
+    session_events::CliEventFilter,
 };
 
 pub fn start_cli_client(
@@ -30,7 +31,7 @@ pub fn start_cli_client(
             .unwrap_or_else(|| sock_dir.join(session_name))
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
+    if let Err(e) = os_input.connect_to_running_server(&*zellij_ipc_pipe) {
         eprintln!("{}", crate::connect_error_message(e));
         process::exit(1);
     }
@@ -432,7 +433,7 @@ pub fn start_prompt_client(
             .unwrap_or_else(|| sock_dir.join(session_name))
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
+    if let Err(e) = os_input.connect_to_running_server(&*zellij_ipc_pipe) {
         eprintln!("{}", crate::connect_error_message(e));
         process::exit(1);
     }
@@ -819,7 +820,7 @@ pub fn start_subscribe_client(
             .unwrap_or_else(|| sock_dir.join(session_name))
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
-    if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
+    if let Err(e) = os_input.connect_to_running_server(&*zellij_ipc_pipe) {
         eprintln!("{}", crate::connect_error_message(e));
         process::exit(1);
     }
@@ -898,6 +899,68 @@ pub fn start_subscribe_client(
                     },
                 }
                 if remaining_panes.is_empty() {
+                    break;
+                }
+            },
+            Some((ServerToClientMsg::Exit { .. }, _)) => break,
+            Some((ServerToClientMsg::LogError { lines }, _)) => {
+                for line in lines {
+                    eprintln!("{}", line);
+                }
+                process::exit(2);
+            },
+            None => break,
+            _ => {},
+        }
+    }
+
+    os_input.send_to_server(ClientToServerMsg::ClientExited);
+}
+
+pub fn start_events_client(
+    os_input: Box<dyn ClientOsApi>,
+    session_name: &str,
+    events_cli: EventsCli,
+) {
+    let pane_ids: Vec<PaneId> = events_cli
+        .pane_id
+        .iter()
+        .map(|s| {
+            PaneId::from_str(s).unwrap_or_else(|e| {
+                eprintln!("Invalid pane ID '{}': {}", s, e);
+                process::exit(2);
+            })
+        })
+        .collect();
+
+    let zellij_ipc_pipe: PathBuf = {
+        let sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
+        fs::create_dir_all(&sock_dir).unwrap();
+        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
+        zellij_utils::sessions::resolve_session_socket_path(session_name)
+            .unwrap_or_else(|| sock_dir.join(session_name))
+    };
+    crate::check_ipc_pipe_length(&zellij_ipc_pipe);
+    if let Err(e) = os_input.connect_to_server(&*zellij_ipc_pipe) {
+        eprintln!("{}", crate::connect_error_message(e));
+        process::exit(1);
+    }
+
+    os_input.send_to_server(ClientToServerMsg::SubscribeToEvents {
+        filter: CliEventFilter {
+            event_types: events_cli.event_types,
+            pane_ids,
+            tab_ids: events_cli.tab_id,
+            initial_state: !events_cli.no_initial_state,
+        },
+    });
+
+    let mut stdout = os_input.get_stdout_writer();
+
+    loop {
+        match os_input.recv_from_server() {
+            Some((ServerToClientMsg::SessionEvent { json }, _)) => {
+                if writeln!(stdout, "{}", json).is_err() || stdout.flush().is_err() {
                     break;
                 }
             },

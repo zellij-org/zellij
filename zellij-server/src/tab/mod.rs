@@ -5512,15 +5512,25 @@ impl Tab {
         bytes: Vec<u8>,
         pane_id: PaneId,
         completion: Option<NotificationEnd>,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let bracketed_paste_begin = vec![27, 91, 50, 48, 48, 126];
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126];
         let bytes = without_paste_markers(bytes);
 
-        self.write_to_pane_id(&None, bracketed_paste_begin, false, pane_id, None, None)?;
-        self.write_to_pane_id(&None, bytes, false, pane_id, None, None)?;
-        self.write_to_pane_id(&None, bracketed_paste_end, false, pane_id, None, completion)?;
-        Ok(())
+        let mut should_update_ui = false;
+        let writes = [
+            (bracketed_paste_begin, None),
+            (bytes, None),
+            (bracketed_paste_end, completion),
+        ];
+        for (bytes, completion) in writes {
+            match self.write_to_pane_id(&None, bytes, false, pane_id, None, completion) {
+                Ok(updated) => should_update_ui |= updated,
+                Err(_) if should_update_ui => return Ok(true),
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(should_update_ui)
     }
 
     pub fn send_mouse_event_to_pane_id(
@@ -5583,13 +5593,13 @@ impl Tab {
         bytes: Vec<u8>,
         client_id: ClientId,
         completion: Option<NotificationEnd>,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let err_context = || format!("failed to paste to active terminal for client {client_id}");
         if let Some(PaneId::Plugin(plugin_id)) = self.live_view_focus(client_id) {
             if self.live_views.borrow().is_captured(plugin_id, client_id) {
                 self.live_views.borrow_mut().send_paste(client_id, bytes);
                 drop(completion);
-                return Ok(());
+                return Ok(false);
             }
         }
         let active_pane_id = self
@@ -9209,7 +9219,7 @@ impl Tab {
         &mut self,
         terminal_pane_id: u32,
         completion_tx: Option<NotificationEnd>,
-    ) {
+    ) -> bool {
         let pane_id = PaneId::Terminal(terminal_pane_id);
         match self
             .floating_panes
@@ -9225,8 +9235,10 @@ impl Tab {
                         command_to_rerun,
                         completion_tx,
                     ));
+                    true
                 } else {
-                    log::error!("Pane is still running!")
+                    log::error!("Pane is still running!");
+                    false
                 }
             },
             None => {
@@ -9234,6 +9246,7 @@ impl Tab {
                     "Failed to find terminal pane with id {} to rerun in tab",
                     terminal_pane_id
                 );
+                false
             },
         }
     }

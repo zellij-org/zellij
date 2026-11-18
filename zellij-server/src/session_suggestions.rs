@@ -626,11 +626,9 @@ impl SessionSuggestionsService {
         let mut facts = BTreeMap::new();
         for fact in self.config.facts.iter().filter(|f| f.at == timing) {
             let output = run_background_command_blocking(BackgroundCommand {
-                program: "sh".to_owned(),
-                args: vec!["-c".to_owned(), fact.command.clone()],
                 cwd: folder.map(|f| f.to_path_buf()),
                 timeout: Some(FACT_TIMEOUT),
-                ..Default::default()
+                ..BackgroundCommand::shell(&fact.command)
             });
             if let Ok(output) = output {
                 if output.exit_code == Some(0) {
@@ -1270,6 +1268,31 @@ mod tests {
             Err(crate::background_jobs::BackgroundCommandError::TimedOut)
         ));
         assert!(started.elapsed() < Duration::from_secs(4));
+    }
+
+    #[test]
+    fn a_custom_fact_command_runs_in_the_platform_shell() {
+        let result = run_background_command_blocking(BackgroundCommand {
+            timeout: Some(Duration::from_secs(5)),
+            ..BackgroundCommand::shell("echo \"fact value\"")
+        })
+        .unwrap();
+        assert_eq!(result.exit_code, Some(0));
+        let stdout = String::from_utf8_lossy(&result.stdout);
+        assert!(stdout.contains("fact value"), "{}", stdout);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_custom_fact_command_can_quote_its_program_and_arguments() {
+        let result = run_background_command_blocking(BackgroundCommand {
+            timeout: Some(Duration::from_secs(5)),
+            ..BackgroundCommand::shell(r#""%SystemRoot%\System32\where.exe" "cmd""#)
+        })
+        .unwrap();
+        assert_eq!(result.exit_code, Some(0));
+        let stdout = String::from_utf8_lossy(&result.stdout);
+        assert!(stdout.to_lowercase().contains("cmd.exe"), "{}", stdout);
     }
 
     #[cfg(unix)]

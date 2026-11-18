@@ -1300,7 +1300,7 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::TerminalSystemFonts => info(
             "System fonts",
-            "Use fonts installed on this computer as fallbacks",
+            "Use fonts installed on this computer for characters the chosen font lacks",
             Toggle,
             "true",
             OnlyYou,
@@ -1400,6 +1400,20 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
             "Blur what shows through a see-through window",
             Toggle,
             "false",
+            OnlyYou,
+        ),
+        SettingKey::TerminalTitlebarTheme => info(
+            "Titlebar theme",
+            "Light or dark titlebar, or follow the system",
+            Choice(&["system", "light", "dark"]),
+            "system",
+            OnlyYou,
+        ),
+        SettingKey::TerminalWindowDecorations => info(
+            "Window titlebar",
+            "Show the titlebar and borders of the window (takes effect in new windows)",
+            Toggle,
+            "true",
             OnlyYou,
         ),
         SettingKey::TerminalPadding => info(
@@ -1972,7 +1986,9 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | TerminalInitialRows
         | TerminalOpacity
         | TerminalOpacityMode
-        | TerminalBlur => (C::ZellijTerminal, "Window"),
+        | TerminalBlur
+        | TerminalWindowDecorations
+        | TerminalTitlebarTheme => (C::ZellijTerminal, "Window"),
         TerminalPadding
         | TerminalPaddingTop
         | TerminalPaddingRight

@@ -1,6 +1,7 @@
 use crate::client_server_contract::client_server_contract as proto;
 use crate::input::terminal::StartupMode;
 use prost::Message;
+use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -17,7 +18,7 @@ pub enum PopupView {
     Quit,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct OpenWindowRequest {
     pub session: Option<String>,
     pub create: bool,
@@ -29,9 +30,26 @@ pub struct OpenWindowRequest {
     pub force_run_commands: bool,
     pub startup_mode: Option<StartupMode>,
     pub layout: Option<crate::data::LayoutInfo>,
+    pub rows: Option<usize>,
+    pub cols: Option<usize>,
+    pub options: Option<crate::input::options::Options>,
+    pub token: Option<String>,
+    pub remember: bool,
+    pub forget: bool,
+    pub ca_cert: Option<PathBuf>,
+    pub insecure: bool,
+    pub env: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl OpenWindowRequest {
+    pub fn remote_url(&self) -> Option<&str> {
+        self.session
+            .as_deref()
+            .filter(|name| name.starts_with("http://") || name.starts_with("https://"))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AppRequest {
     OpenWindow(OpenWindowRequest),
     ToggleTrayIcon,
@@ -42,6 +60,7 @@ pub enum AppRequest {
     },
     Ping,
     Describe,
+    QuitApp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +77,7 @@ pub struct AppState {
     pub live_sessions: Vec<String>,
     pub tray_icon: bool,
     pub focused_session: Option<String>,
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -163,6 +183,14 @@ pub fn send_app_request_to(socket: &Path, request: &AppRequest) -> Result<AppRep
     read_reply(&mut reply_stream).map_err(|e| e.to_string())
 }
 
+pub fn is_older_app(reported: Option<&str>, ours: &str) -> bool {
+    use crate::desktop_integration::version_number;
+    match (reported.and_then(version_number), version_number(ours)) {
+        (Some(theirs), Some(ours)) => theirs < ours,
+        _ => false,
+    }
+}
+
 pub fn app_is_running() -> bool {
     matches!(send_app_request(&AppRequest::Ping), Ok(AppReply::Done))
 }
@@ -230,6 +258,22 @@ impl From<&OpenWindowRequest> for proto::AppOpenWindowRequest {
             force_run_commands: request.force_run_commands,
             startup_mode: startup_mode_value(request.startup_mode),
             layout: request.layout.clone().map(Into::into),
+            rows: request.rows.map(|rows| rows as u32),
+            cols: request.cols.map(|cols| cols as u32),
+            options: request.options.clone().map(Into::into),
+            token: request.token.clone(),
+            remember: request.remember,
+            forget: request.forget,
+            ca_cert: request
+                .ca_cert
+                .as_ref()
+                .map(|path| path.display().to_string()),
+            insecure: request.insecure,
+            env: request
+                .env
+                .iter()
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .collect(),
         }
     }
 }
@@ -240,6 +284,11 @@ impl TryFrom<proto::AppOpenWindowRequest> for OpenWindowRequest {
         let layout = request
             .layout
             .map(crate::data::LayoutInfo::try_from)
+            .transpose()
+            .map_err(|e| ReadError::Undecodable(e.to_string()))?;
+        let options = request
+            .options
+            .map(crate::input::options::Options::try_from)
             .transpose()
             .map_err(|e| ReadError::Undecodable(e.to_string()))?;
         Ok(OpenWindowRequest {
@@ -253,6 +302,15 @@ impl TryFrom<proto::AppOpenWindowRequest> for OpenWindowRequest {
             force_run_commands: request.force_run_commands,
             startup_mode: startup_mode(request.startup_mode),
             layout,
+            rows: request.rows.map(|rows| rows as usize),
+            cols: request.cols.map(|cols| cols as usize),
+            options,
+            token: request.token,
+            remember: request.remember,
+            forget: request.forget,
+            ca_cert: request.ca_cert.map(PathBuf::from),
+            insecure: request.insecure,
+            env: request.env.into_iter().collect(),
         })
     }
 }
@@ -276,6 +334,7 @@ impl From<&AppRequest> for proto::AppControlRequest {
             },
             AppRequest::Ping => Request::Ping(proto::AppPingRequest {}),
             AppRequest::Describe => Request::Describe(proto::AppDescribeRequest {}),
+            AppRequest::QuitApp => Request::QuitApp(proto::AppQuitAppRequest {}),
         };
         proto::AppControlRequest {
             request: Some(request),
@@ -301,6 +360,7 @@ impl TryFrom<proto::AppControlRequest> for AppRequest {
                 .ok_or(ReadError::Unknown),
             Request::Ping(_) => Ok(AppRequest::Ping),
             Request::Describe(_) => Ok(AppRequest::Describe),
+            Request::QuitApp(_) => Ok(AppRequest::QuitApp),
         }
     }
 }
@@ -328,6 +388,7 @@ impl From<&AppReply> for proto::AppControlReply {
                 live_sessions: state.live_sessions.clone(),
                 tray_icon: state.tray_icon,
                 focused_session: state.focused_session.clone(),
+                version: state.version.clone(),
             }),
         };
         proto::AppControlReply { reply: Some(reply) }
@@ -356,6 +417,7 @@ impl TryFrom<proto::AppControlReply> for AppReply {
                 live_sessions: state.live_sessions,
                 tray_icon: state.tray_icon,
                 focused_session: state.focused_session,
+                version: state.version,
             }),
         })
     }
@@ -391,6 +453,18 @@ mod tests {
                 force_run_commands: true,
                 startup_mode: Some(StartupMode::Maximized),
                 layout: Some(crate::data::LayoutInfo::BuiltIn("compact".to_owned())),
+                rows: Some(30),
+                cols: Some(100),
+                options: Some(crate::input::options::Options {
+                    pane_frames: Some(false),
+                    ..Default::default()
+                }),
+                token: Some("secret".to_owned()),
+                remember: true,
+                forget: true,
+                ca_cert: Some(PathBuf::from("/etc/ca.pem")),
+                insecure: true,
+                env: BTreeMap::from([("PROJECT".to_owned(), "api".to_owned())]),
             }),
             AppRequest::OpenWindow(OpenWindowRequest::default()),
             AppRequest::ToggleTrayIcon,
@@ -405,6 +479,7 @@ mod tests {
             },
             AppRequest::Ping,
             AppRequest::Describe,
+            AppRequest::QuitApp,
         ];
         for request in requests {
             assert_eq!(request_roundtrip(&request), request);
@@ -426,6 +501,7 @@ mod tests {
                 live_sessions: vec!["api".to_owned()],
                 tray_icon: false,
                 focused_session: Some("api".to_owned()),
+                version: Some("0.46.1".to_owned()),
             }),
             AppReply::State(AppState {
                 panel: Some(PanelState {
@@ -438,6 +514,16 @@ mod tests {
         for reply in replies {
             assert_eq!(reply_roundtrip(&reply), reply);
         }
+    }
+
+    #[test]
+    fn only_an_app_that_reports_a_lower_version_is_older() {
+        assert!(is_older_app(Some("0.46.1"), "0.46.2"));
+        assert!(is_older_app(Some("0.46.9"), "0.47.0"));
+        assert!(!is_older_app(None, "0.46.2"));
+        assert!(!is_older_app(Some("0.46.2"), "0.46.2"));
+        assert!(!is_older_app(Some("0.47.0"), "0.46.2"));
+        assert!(!is_older_app(Some("not a version"), "0.46.2"));
     }
 
     #[test]

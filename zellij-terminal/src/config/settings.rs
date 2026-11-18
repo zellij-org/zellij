@@ -7,7 +7,7 @@ pub use zellij_utils::input::terminal::TerminalSettings as Settings;
 use zellij_utils::input::theme::Themes;
 use zellij_utils::setup::get_default_themes;
 
-pub fn load(config_file_path: Option<&Path>) -> Result<Settings> {
+pub fn load(config_file_path: Option<&Path>, config_dir: Option<&Path>) -> Result<Settings> {
     let Some(path) = config_file_path else {
         return Ok(Settings::default());
     };
@@ -23,7 +23,7 @@ pub fn load(config_file_path: Option<&Path>) -> Result<Settings> {
     };
 
     config.themes = config.themes.merge(get_default_themes());
-    if let Some(theme_dir) = theme_dir(&config, path) {
+    if let Some(theme_dir) = theme_dir(&config, config_dir) {
         let themes = Themes::from_dir(theme_dir.clone())
             .map_err(|e| anyhow::anyhow!("{}", e))
             .with_context(|| format!("failed to read the themes in {:?}", theme_dir))?;
@@ -33,12 +33,18 @@ pub fn load(config_file_path: Option<&Path>) -> Result<Settings> {
     Ok(Settings::from_config(&config))
 }
 
-fn theme_dir(config: &Config, config_file_path: &Path) -> Option<PathBuf> {
+fn theme_dir(config: &Config, config_dir: Option<&Path>) -> Option<PathBuf> {
     config
         .options
         .theme_dir
         .clone()
-        .or_else(|| home::get_theme_dir(config_file_path.parent().map(Path::to_path_buf)))
+        .or_else(|| {
+            home::get_theme_dir(
+                config_dir
+                    .map(Path::to_path_buf)
+                    .or_else(home::find_default_config_dir),
+            )
+        })
         .filter(|dir| dir.is_dir())
 }
 
@@ -47,6 +53,33 @@ mod tests {
     use super::*;
     use zellij_utils::data::{HostTerminalThemeMode, PaletteColor};
     use zellij_utils::input::terminal::TerminalConfig;
+
+    fn load(config_file_path: Option<&Path>) -> Result<Settings> {
+        super::load(config_file_path, None)
+    }
+
+    #[test]
+    fn themes_are_read_from_the_config_directory_the_session_reads_them_from() {
+        let elsewhere = tempfile::TempDir::new().unwrap();
+        let config_file_path = elsewhere.path().join("config.kdl");
+        std::fs::write(&config_file_path, "theme \"dir-theme\"\n").unwrap();
+        let config_dir = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir(config_dir.path().join("themes")).unwrap();
+        std::fs::write(
+            config_dir.path().join("themes").join("dir-theme.kdl"),
+            format!("themes {{\n{}\n}}\n", theme("dir-theme", 3)),
+        )
+        .unwrap();
+
+        let settings = super::load(Some(&config_file_path), Some(config_dir.path())).unwrap();
+        assert_eq!(
+            settings
+                .theme
+                .map(|theme| theme.palette.text_unselected.background),
+            Some(PaletteColor::Rgb((3, 3, 3))),
+            "a theme in the config directory was not found"
+        );
+    }
 
     fn written(config: &str) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::TempDir::new().unwrap();

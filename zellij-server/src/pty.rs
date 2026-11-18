@@ -15,7 +15,10 @@ use crate::{
 };
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 use tokio::task::JoinHandle;
 use zellij_utils::{
     data::{
@@ -33,6 +36,7 @@ use zellij_utils::{
         },
     },
     pane_size::Size,
+    session_events::CliEvent,
     session_serialization,
 };
 
@@ -252,9 +256,11 @@ pub(crate) struct Pty {
     terminals_with_prompt_markers: HashSet<u32>,
     terminals_with_shell_cwd: HashSet<u32>,
     resurrect_commands: HashMap<u32, ResurrectCommand>,
+    session_id: Option<String>,
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: String) -> Result<()> {
+    pty.set_session_id(&session_id);
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -1027,6 +1033,7 @@ impl Pty {
             terminals_with_prompt_markers: HashSet::new(),
             terminals_with_shell_cwd: HashSet::new(),
             resurrect_commands: HashMap::new(),
+            session_id: None,
         }
     }
     pub fn get_default_terminal(
@@ -2374,6 +2381,7 @@ impl Pty {
                             None,
                             Event::CwdChanged(pane_id.into(), cwd.clone(), focused_client_ids),
                         )]));
+                    self.notify_event_subscribers_of_cwd(pane_id, cwd);
                     self.terminal_cwds.insert(*terminal_id, cwd.clone());
                     if self.session_context_pane == Some(pane_id) {
                         self.report_session_context(ContextTrigger::FolderChanged);
@@ -2443,6 +2451,17 @@ impl Pty {
                 let _ = self
                     .bus
                     .senders
+                    .send_to_screen(ScreenInstruction::NotifyEventSubscribers(
+                        CliEvent::PaneCommandChanged {
+                            pane_id: pane_id.into(),
+                            tab_id: None,
+                            command: command.clone(),
+                            is_foreground,
+                        },
+                    ));
+                let _ = self
+                    .bus
+                    .senders
                     .send_to_plugin(PluginInstruction::Update(vec![(
                         None,
                         None,
@@ -2468,6 +2487,34 @@ impl Pty {
         self.default_editor = default_editor;
         self.post_command_discovery_hook = post_command_discovery_hook;
         self.pane_env = pane_env;
+        self.add_session_id_to_pane_env();
+    }
+
+    pub fn set_session_id(&mut self, session_id: &str) {
+        self.session_id = (!session_id.is_empty()).then(|| session_id.to_owned());
+        self.add_session_id_to_pane_env();
+    }
+
+    fn add_session_id_to_pane_env(&mut self) {
+        if let Some(session_id) = &self.session_id {
+            self.pane_env.insert(
+                zellij_utils::envs::SESSION_ID_ENV_KEY.to_owned(),
+                Some(session_id.clone()),
+            );
+        }
+    }
+
+    fn notify_event_subscribers_of_cwd(&self, pane_id: PaneId, cwd: &Path) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_screen(ScreenInstruction::NotifyEventSubscribers(
+                CliEvent::PaneCwdChanged {
+                    pane_id: pane_id.into(),
+                    tab_id: None,
+                    cwd: cwd.display().to_string(),
+                },
+            ));
     }
 
     pub fn notify_cwd_from_osc7(&mut self, terminal_id: u32, path: PathBuf) {
@@ -2491,6 +2538,7 @@ impl Pty {
                     None,
                     Event::CwdChanged(pane_id.into(), path.clone(), focused_client_ids),
                 )]));
+            self.notify_event_subscribers_of_cwd(pane_id, &path);
             self.terminal_cwds.insert(terminal_id, path);
             if self.session_context_pane == Some(pane_id) {
                 self.report_session_context(ContextTrigger::FolderChanged);

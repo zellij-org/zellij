@@ -4042,7 +4042,7 @@ impl PreviewAnchor {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AppControlRequest {
-    #[prost(oneof="app_control_request::Request", tags="1, 2, 3, 4, 5, 6")]
+    #[prost(oneof="app_control_request::Request", tags="1, 2, 3, 4, 5, 6, 7")]
     pub request: ::core::option::Option<app_control_request::Request>,
 }
 /// Nested message and enum types in `AppControlRequest`.
@@ -4062,6 +4062,8 @@ pub mod app_control_request {
         Ping(super::AppPingRequest),
         #[prost(message, tag="6")]
         Describe(super::AppDescribeRequest),
+        #[prost(message, tag="7")]
+        QuitApp(super::AppQuitAppRequest),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -4106,6 +4108,24 @@ pub struct AppOpenWindowRequest {
     pub startup_mode: i32,
     #[prost(message, optional, tag="10")]
     pub layout: ::core::option::Option<LayoutInfo>,
+    #[prost(uint32, optional, tag="11")]
+    pub rows: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="12")]
+    pub cols: ::core::option::Option<u32>,
+    #[prost(message, optional, tag="13")]
+    pub options: ::core::option::Option<Options>,
+    #[prost(string, optional, tag="14")]
+    pub token: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="15")]
+    pub remember: bool,
+    #[prost(bool, tag="16")]
+    pub forget: bool,
+    #[prost(string, optional, tag="17")]
+    pub ca_cert: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="18")]
+    pub insecure: bool,
+    #[prost(map="string, string", tag="19")]
+    pub env: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4135,6 +4155,10 @@ pub struct AppDescribeRequest {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppQuitAppRequest {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AppDoneReply {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -4156,6 +4180,8 @@ pub struct AppStateReply {
     pub tray_icon: bool,
     #[prost(string, optional, tag="5")]
     pub focused_session: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="6")]
+    pub version: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4241,7 +4267,7 @@ impl AppStartupMode {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -4323,6 +4349,8 @@ pub mod client_to_server_msg {
         AdoptSessionHistory(super::AdoptSessionHistoryMsg),
         #[prost(message, tag="37")]
         ClipboardPasteSupport(super::ClipboardPasteSupportMsg),
+        #[prost(message, tag="38")]
+        SubscribeToEvents(super::SubscribeToEventsMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -4447,6 +4475,18 @@ pub struct SubscribeToPaneRendersMsg {
     pub scrollback: ::core::option::Option<u32>,
     #[prost(bool, tag="3")]
     pub ansi: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubscribeToEventsMsg {
+    #[prost(string, repeated, tag="1")]
+    pub event_types: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="2")]
+    pub pane_ids: ::prost::alloc::vec::Vec<PaneId>,
+    #[prost(uint32, repeated, tag="3")]
+    pub tab_ids: ::prost::alloc::vec::Vec<u32>,
+    #[prost(bool, tag="4")]
+    pub initial_state: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4792,7 +4832,7 @@ impl MirrorCloseReason {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerToClientMsg {
-    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27")]
+    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28")]
     pub message: ::core::option::Option<server_to_client_msg::Message>,
 }
 /// Nested message and enum types in `ServerToClientMsg`.
@@ -4854,6 +4894,8 @@ pub mod server_to_client_msg {
         PaneMirror(super::ServerPaneMirrorMsg),
         #[prost(message, tag="27")]
         PasteFromClipboard(super::PasteFromClipboardMsg),
+        #[prost(message, tag="28")]
+        SessionEvent(super::SessionEventMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -5002,6 +5044,12 @@ pub struct PaneRenderUpdateMsg {
 pub struct SubscribedPaneClosedMsg {
     #[prost(message, optional, tag="1")]
     pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionEventMsg {
+    #[prost(string, tag="1")]
+    pub json: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

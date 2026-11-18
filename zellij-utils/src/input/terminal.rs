@@ -225,6 +225,47 @@ impl OpacityMode {
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TitlebarTheme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl TitlebarTheme {
+    pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
+        let named = kdl
+            .entries()
+            .iter()
+            .next()
+            .and_then(|entry| entry.value().as_string());
+        match named.map(str::to_ascii_lowercase).as_deref() {
+            Some("system") => Ok(TitlebarTheme::System),
+            Some("light") => Ok(TitlebarTheme::Light),
+            Some("dark") => Ok(TitlebarTheme::Dark),
+            _ => Err(ConfigError::new_kdl_error(
+                "titlebar_theme must be \"system\", \"light\" or \"dark\"".to_owned(),
+                kdl.span().offset(),
+                kdl.span().len(),
+            )),
+        }
+    }
+
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut node = KdlNode::new("titlebar_theme");
+        node.push(KdlValue::String(
+            match self {
+                TitlebarTheme::System => "system",
+                TitlebarTheme::Light => "light",
+                TitlebarTheme::Dark => "dark",
+            }
+            .to_owned(),
+        ));
+        node
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PaddingColor {
     #[default]
     Background,
@@ -483,6 +524,8 @@ pub struct TerminalConfig {
     pub opacity: Option<f32>,
     pub opacity_mode: Option<OpacityMode>,
     pub blur: Option<bool>,
+    pub window_decorations: Option<bool>,
+    pub titlebar_theme: Option<TitlebarTheme>,
     pub macos_option_as_alt: Option<OptionAsAlt>,
     pub theme: Option<TerminalTheme>,
     pub padding: Option<f32>,
@@ -584,6 +627,12 @@ impl TerminalConfig {
         }
         if let Some(blur) = kdl_get_child_entry_bool_value!(kdl, "blur") {
             window.blur = Some(blur);
+        }
+        if let Some(decorations) = kdl_get_child_entry_bool_value!(kdl, "window_decorations") {
+            window.window_decorations = Some(decorations);
+        }
+        if let Some(titlebar_theme) = kdl_get_child!(kdl, "titlebar_theme") {
+            window.titlebar_theme = Some(TitlebarTheme::from_kdl(titlebar_theme)?);
         }
         if let Some(option_as_alt) = kdl_get_child!(kdl, "macos_option_as_alt") {
             window.macos_option_as_alt = Some(OptionAsAlt::from_kdl(option_as_alt)?);
@@ -774,6 +823,14 @@ impl TerminalConfig {
             blur_node.push(KdlValue::Bool(blur));
             children.nodes_mut().push(blur_node);
         }
+        if let Some(decorations) = self.window_decorations {
+            let mut decorations_node = KdlNode::new("window_decorations");
+            decorations_node.push(KdlValue::Bool(decorations));
+            children.nodes_mut().push(decorations_node);
+        }
+        if let Some(titlebar_theme) = self.titlebar_theme {
+            children.nodes_mut().push(titlebar_theme.to_kdl());
+        }
         if let Some(option_as_alt) = self.macos_option_as_alt {
             children.nodes_mut().push(option_as_alt.to_kdl());
         }
@@ -920,6 +977,8 @@ impl TerminalConfig {
         merged.opacity = other.opacity.or(merged.opacity);
         merged.opacity_mode = other.opacity_mode.or(merged.opacity_mode);
         merged.blur = other.blur.or(merged.blur);
+        merged.window_decorations = other.window_decorations.or(merged.window_decorations);
+        merged.titlebar_theme = other.titlebar_theme.or(merged.titlebar_theme);
         merged.macos_option_as_alt = other.macos_option_as_alt.or(merged.macos_option_as_alt);
         merged.theme = match (merged.theme, other.theme) {
             (Some(mine), Some(theirs)) => Some(mine.merge(theirs)),
@@ -2080,6 +2139,44 @@ mod tests {
         assert_eq!(merged.reuse_session_windows, Some(true));
         let kept = parsed.merge(TerminalConfig::default());
         assert_eq!(kept.reuse_session_windows, Some(false));
+    }
+
+    #[test]
+    fn window_decorations_round_trip_through_kdl_and_merge() {
+        let parsed = section("terminal {\n window_decorations false\n}").unwrap();
+        assert_eq!(parsed.window_decorations, Some(false));
+        let emitted = parsed.to_kdl().unwrap().to_string();
+        assert!(emitted.contains("window_decorations false"), "{}", emitted);
+        assert_eq!(section(&emitted).unwrap(), parsed, "{}", emitted);
+
+        let empty = section("terminal {\n}").unwrap();
+        assert_eq!(empty.window_decorations, None);
+
+        let merged = parsed.clone().merge(TerminalConfig {
+            window_decorations: Some(true),
+            ..TerminalConfig::default()
+        });
+        assert_eq!(merged.window_decorations, Some(true));
+        let kept = parsed.merge(TerminalConfig::default());
+        assert_eq!(kept.window_decorations, Some(false));
+    }
+
+    #[test]
+    fn titlebar_theme_round_trips_through_kdl_and_rejects_other_names() {
+        for (name, theme) in [
+            ("system", TitlebarTheme::System),
+            ("light", TitlebarTheme::Light),
+            ("Dark", TitlebarTheme::Dark),
+        ] {
+            let parsed =
+                section(&format!("terminal {{\n titlebar_theme \"{}\"\n}}", name)).unwrap();
+            assert_eq!(parsed.titlebar_theme, Some(theme), "{}", name);
+            let emitted = parsed.to_kdl().unwrap().to_string();
+            assert_eq!(section(&emitted).unwrap(), parsed, "{}", emitted);
+        }
+        assert!(section("terminal {\n titlebar_theme \"auto\"\n}").is_err());
+        assert_eq!(section("terminal {\n}").unwrap().titlebar_theme, None);
+        assert_eq!(TitlebarTheme::default(), TitlebarTheme::System);
     }
 
     #[test]

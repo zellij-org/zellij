@@ -3656,6 +3656,17 @@ pub(crate) fn route_thread_main(
                                 retry_queue
                             );
                         },
+                        ClientToServerMsg::SubscribeToEvents { ref filter } => {
+                            let _ = send_to_screen_or_retry_queue!(
+                                senders,
+                                ScreenInstruction::SubscribeToEvents {
+                                    client_id,
+                                    filter: filter.clone(),
+                                },
+                                instruction,
+                                retry_queue
+                            );
+                        },
                         ClientToServerMsg::SoftKeyboardVisibilityChanged { visible } => {
                             if let Some(senders) = senders.as_ref() {
                                 let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(

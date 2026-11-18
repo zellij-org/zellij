@@ -329,27 +329,24 @@ impl Conductor {
                     session,
                     pane,
                     token,
-                } => match route(&session, pane, &self.attached(facts)) {
-                    Route::Raise { window, pane } => {
-                        effects.push(Effect::RaiseWindow {
-                            key: window,
-                            pane,
-                            tab: None,
-                            history: None,
-                            token,
-                            requester: None,
-                        });
-                        self.note_focus(window);
-                    },
-                    Route::Open { session, pane } => self.open(
-                        OpenWindowRequest {
-                            session: Some(session),
-                            pane_id: pane_focus(pane),
-                            ..Default::default()
-                        },
-                        token,
-                        effects,
-                    ),
+                } => self.route_to(
+                    &session,
+                    pane,
+                    token,
+                    OpenWindowRequest::default(),
+                    facts,
+                    effects,
+                ),
+                Intent::RouteRequest { request, token } => {
+                    let session = request.session.clone().unwrap_or_default();
+                    let pane = request.pane_id.map(|(id, plugin)| {
+                        if plugin {
+                            PaneId::Plugin(id)
+                        } else {
+                            PaneId::Terminal(id)
+                        }
+                    });
+                    self.route_to(&session, pane, token, request, facts, effects)
                 },
                 Intent::Popup { view, at, token } => {
                     self.toggle_panel(view, at, token, now, effects)
@@ -378,6 +375,39 @@ impl Conductor {
                     }
                 },
             }
+        }
+    }
+
+    fn route_to(
+        &mut self,
+        session: &str,
+        pane: Option<PaneId>,
+        token: Option<String>,
+        opening: OpenWindowRequest,
+        facts: &dyn Facts,
+        effects: &mut Vec<Effect>,
+    ) {
+        match route(session, pane, &self.attached(facts)) {
+            Route::Raise { window, pane } => {
+                effects.push(Effect::RaiseWindow {
+                    key: window,
+                    pane,
+                    tab: None,
+                    history: None,
+                    token,
+                    requester: None,
+                });
+                self.note_focus(window);
+            },
+            Route::Open { session, pane } => self.open(
+                OpenWindowRequest {
+                    session: Some(session),
+                    pane_id: pane_focus(pane),
+                    ..opening
+                },
+                token,
+                effects,
+            ),
         }
     }
 
@@ -1160,6 +1190,34 @@ mod tests {
                     ..Default::default()
                 },
                 token: Some("t".to_owned())
+            }]
+        );
+    }
+
+    #[test]
+    fn a_routed_request_without_a_window_on_the_session_opens_it_as_it_was_asked() {
+        let mut rig = Rig::hosted();
+        rig.window_on("docs");
+        let request = OpenWindowRequest {
+            session: Some("api".to_owned()),
+            cwd: Some(std::path::PathBuf::from("/srv/api")),
+            rows: Some(30),
+            env: std::collections::BTreeMap::from([("PROJECT".to_owned(), "api".to_owned())]),
+            ..Default::default()
+        };
+        let effects = rig.intent(
+            0,
+            Intent::RouteRequest {
+                request: request.clone(),
+                token: None,
+            },
+        );
+        assert_eq!(
+            effects,
+            vec![Effect::OpenWindow {
+                ticket: 2,
+                request,
+                token: None
             }]
         );
     }

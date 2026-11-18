@@ -28,6 +28,29 @@ pub fn host_terminal_env() -> BTreeMap<String, String> {
 
 pub const DESKTOP_TERMINAL_ENV_KEY: &str = "ZELLIJ_DESKTOP_TERMINAL";
 
+pub const DESKTOP_DISPLAY_ENV_KEY: &str = "ZELLIJ_DESKTOP_DISPLAY_ENV";
+
+pub const DESKTOP_DISPLAY_ENV_VARS: [&str; 4] = [
+    "WAYLAND_DISPLAY",
+    "DISPLAY",
+    "XAUTHORITY",
+    "DBUS_SESSION_BUS_ADDRESS",
+];
+
+pub fn desktop_display_env(
+    host_terminal_env: &BTreeMap<String, String>,
+) -> Option<Vec<(&'static str, Option<String>)>> {
+    if !host_terminal_env.contains_key(DESKTOP_DISPLAY_ENV_KEY) {
+        return None;
+    }
+    Some(
+        DESKTOP_DISPLAY_ENV_VARS
+            .iter()
+            .map(|name| (*name, host_terminal_env.get(*name).cloned()))
+            .collect(),
+    )
+}
+
 pub fn client_location(
     host_terminal_env: &BTreeMap<String, String>,
     is_web_client: bool,
@@ -220,6 +243,39 @@ mod tests {
             Some("from a terminal"),
             "a terminal cannot pass itself off as a desktop window"
         );
+    }
+
+    #[test]
+    fn only_a_window_that_vouches_for_its_display_env_has_it_adopted() {
+        let env = |entries: &[(&str, &str)]| -> BTreeMap<String, String> {
+            entries
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect()
+        };
+        assert_eq!(
+            desktop_display_env(&env(&[("WAYLAND_DISPLAY", "wayland-1")])),
+            None
+        );
+        assert_eq!(
+            desktop_display_env(&env(&[
+                (DESKTOP_DISPLAY_ENV_KEY, "1"),
+                ("WAYLAND_DISPLAY", "wayland-1"),
+                ("DISPLAY", ":1"),
+            ])),
+            Some(vec![
+                ("WAYLAND_DISPLAY", Some("wayland-1".to_owned())),
+                ("DISPLAY", Some(":1".to_owned())),
+                ("XAUTHORITY", None),
+                ("DBUS_SESSION_BUS_ADDRESS", None),
+            ]),
+            "a variable the window lacks is one the panes must not keep either"
+        );
+        let from_a_terminal = host_terminal_env_from(|name| match name {
+            DESKTOP_DISPLAY_ENV_KEY | "DISPLAY" => Some("1".to_owned()),
+            _ => None,
+        });
+        assert_eq!(desktop_display_env(&from_a_terminal), None);
     }
 
     #[test]
