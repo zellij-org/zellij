@@ -137,6 +137,8 @@ impl std::fmt::Debug for ClientOsInputOutput {
     }
 }
 
+pub(crate) const STDIN_EOF: &str = "EOF";
+
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij client requires.
 pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
@@ -263,10 +265,14 @@ impl ClientOsApi for ClientOsInputOutput {
             None => {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
-                let buffer = stdin.fill_buf().unwrap();
-                let length = buffer.len();
+                let buffer = match stdin.fill_buf() {
+                    Ok(buffer) if buffer.is_empty() && cfg!(unix) => return Err(STDIN_EOF),
+                    Ok(buffer) => buffer,
+                    Err(_) if cfg!(unix) => return Err(STDIN_EOF),
+                    Err(_) => return Err("failed to read from stdin"),
+                };
                 let read_bytes = Vec::from(buffer);
-                stdin.consume(length);
+                stdin.consume(read_bytes.len());
 
                 let session_name_after_reading_from_stdin =
                     { self.session_name.lock().unwrap().clone() };
