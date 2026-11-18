@@ -8,6 +8,5 @@ license.workspace = true
 
 [dependencies]
 zellij-tile = { path = "../../zellij-tile" }
-pretty-bytes = { workspace = true }
 fuzzy-matcher = { workspace = true }
 unicode-width = { workspace = true }
