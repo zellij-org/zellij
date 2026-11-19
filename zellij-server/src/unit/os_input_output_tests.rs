@@ -78,7 +78,6 @@ fn send_sigint_to_process() {
 mod client_sender_dead_socket {
     use super::*;
 
-    use std::os::unix::io::{FromRawFd, IntoRawFd};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Once;
     use std::time::{Duration, Instant};
@@ -119,7 +118,9 @@ mod client_sender_dead_socket {
         let (ours, theirs) = std::os::unix::net::UnixStream::pair()
             .expect("a unix socketpair for the dead-client fixture");
         drop(theirs); // the client is gone
-        let stream = unsafe { LocalSocketStream::from_raw_fd(ours.into_raw_fd()) };
+        let stream = LocalSocketStream::from(
+            interprocess::os::unix::uds_local_socket::Stream::from(ours),
+        );
         IpcSenderWithContext::new(stream)
     }
 
@@ -149,7 +150,9 @@ mod client_sender_dead_socket {
         // loop logged one line for each of them.
         const MESSAGES: usize = 64;
         for i in 0..MESSAGES {
-            let _ = client_sender.send_or_buffer(ServerToClientMsg::Render(format!("msg {i}")));
+            let _ = client_sender.send_or_buffer(ServerToClientMsg::Render {
+                content: format!("msg {i}"),
+            });
             std::thread::sleep(Duration::from_millis(2));
         }
         wait_for_the_first_failure(Duration::from_secs(5));
@@ -168,7 +171,9 @@ mod client_sender_dead_socket {
         let mut refused = false;
         while Instant::now() < deadline && !refused {
             refused = client_sender
-                .send_or_buffer(ServerToClientMsg::Render("after the failure".to_string()))
+                .send_or_buffer(ServerToClientMsg::Render {
+                    content: "after the failure".to_string(),
+                })
                 .is_err();
             std::thread::sleep(Duration::from_millis(10));
         }

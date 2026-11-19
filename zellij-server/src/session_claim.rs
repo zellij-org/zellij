@@ -8,7 +8,7 @@
 //! and a listener still accepting on the path (a server started before this lock existed) counts
 //! as live too. It runs before daemonizing, so a refusal is the spawning client's non-zero exit.
 
-use interprocess::local_socket::LocalSocketStream;
+use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
 use nix::fcntl::{flock, FlockArg};
 use std::ffi::OsString;
 use std::fs::{File, OpenOptions};
@@ -57,10 +57,13 @@ pub fn claim_session_name(socket_path: &Path) -> Result<File, String> {
             lock_path
         ));
     }
-    if let Ok(stream) = LocalSocketStream::connect(socket_path) {
+    if let Ok(stream) = socket_path
+        .to_fs_name::<GenericFilePath>()
+        .and_then(LocalSocketStream::connect)
+    {
         // The status probe `zellij list-sessions` sends; the server answers and drops us.
-        let mut sender = IpcSenderWithContext::new(stream);
-        if let Err(e) = sender.send(ClientToServerMsg::ConnStatus) {
+        let mut sender: IpcSenderWithContext<ClientToServerMsg> = IpcSenderWithContext::new(stream);
+        if let Err(e) = sender.send_client_msg(ClientToServerMsg::ConnStatus) {
             log::warn!("status probe to the live server on {:?}: {}", socket_path, e);
         }
         return Err(format!(

@@ -5249,7 +5249,7 @@ pub fn send_cli_close_tab_by_id_action() {
 /// the state it could build.
 #[test]
 fn a_plugin_thread_that_has_exited_does_not_end_the_session_state_report() {
-    let mut screen = create_new_screen(Size { rows: 24, cols: 80 }, false);
+    let mut screen = create_new_screen(Size { rows: 24, cols: 80 }, false, false);
     screen.bus.senders.should_silently_fail = false;
     // the plugin thread exits: its receiver goes away, so every send to it fails
     let (to_plugin, plugin_receiver) = channels::unbounded();
