@@ -5956,33 +5956,52 @@ impl Tab {
     pub fn are_floating_panes_visible(&self) -> bool {
         self.floating_panes.panes_are_visible()
     }
+    // Fullscreen dissolves stack lists into in-grid stacks, which makes focus walk their
+    // members on the up/down axis regardless of the orientation the list was built with.
+    // Leave fullscreen for the length of the move so the lists are re-formed and the same
+    // orientation rules as outside fullscreen apply, then expand the pane we landed on.
+    fn move_focus_fullscreen(&mut self, client_id: ClientId, direction: Direction) -> bool {
+        let covers_ui = self.tiled_panes.fullscreen_covers_ui();
+        self.tiled_panes.unset_fullscreen();
+        self.sync_stacked_pane_list_mode();
+        let moved = match direction {
+            Direction::Left => self.move_focus_left(client_id).unwrap_or(false),
+            Direction::Right => self.move_focus_right(client_id).unwrap_or(false),
+            Direction::Up => self.move_focus_up(client_id).unwrap_or(false),
+            Direction::Down => self.move_focus_down(client_id).unwrap_or(false),
+        };
+        self.dissolve_stack_lists_for_classic_mutation();
+        self.tiled_panes
+            .reenter_active_pane_fullscreen(client_id, covers_ui);
+        moved
+    }
     pub fn focus_pane_left_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
             return false;
         }
 
-        return self.tiled_panes.focus_pane_left_fullscreen(client_id);
+        self.move_focus_fullscreen(client_id, Direction::Left)
     }
     pub fn focus_pane_right_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
             return false;
         }
 
-        return self.tiled_panes.focus_pane_right_fullscreen(client_id);
+        self.move_focus_fullscreen(client_id, Direction::Right)
     }
     pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
             return false;
         }
 
-        return self.tiled_panes.focus_pane_up_fullscreen(client_id);
+        self.move_focus_fullscreen(client_id, Direction::Up)
     }
     pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
             return false;
         }
 
-        return self.tiled_panes.focus_pane_down_fullscreen(client_id);
+        self.move_focus_fullscreen(client_id, Direction::Down)
     }
     pub fn switch_next_pane_fullscreen(&mut self, client_id: ClientId) {
         if !self.is_fullscreen_active() {
