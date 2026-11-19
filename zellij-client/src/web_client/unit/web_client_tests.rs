@@ -2831,7 +2831,7 @@ mod parse_stdin_raw_bytes {
             .get_sent_messages()
             .into_iter()
             .filter_map(|msg| match msg {
-                ClientToServerMsg::Key(_, raw_bytes, _) => Some(raw_bytes),
+                ClientToServerMsg::Key { raw_bytes, .. } => Some(raw_bytes),
                 _ => None,
             })
             .collect()
@@ -2875,7 +2875,7 @@ mod session_size_follows_the_active_client {
         let mut t = ConnectionTable::default();
         let mocks: Vec<MockClientOsApi> = clients.iter().map(|_| MockClientOsApi::new()).collect();
         for (id, mock) in clients.iter().zip(&mocks) {
-            t.add_new_client(id.to_string(), Box::new(mock.clone()));
+            t.add_new_client(id.to_string(), Box::new(mock.clone()), false);
             t.set_client_session(id, "s".to_string());
         }
         (t, mocks)
@@ -2974,7 +2974,7 @@ mod session_size_follows_the_active_client {
     fn clients_of_other_sessions_are_never_touched() {
         let (mut t, mocks) = table_with(&["a", "b"]);
         let elsewhere = MockClientOsApi::new();
-        t.add_new_client("x".to_string(), Box::new(elsewhere.clone()));
+        t.add_new_client("x".to_string(), Box::new(elsewhere.clone()), false);
         t.set_client_session("x", "other-session".to_string());
         send_resizes(t.on_terminal_resize("a", BIG));
         send_resizes(t.on_user_input("a"));
