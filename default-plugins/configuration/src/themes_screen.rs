@@ -8,10 +8,10 @@ use zellij_utils::input::config_blocks::{
 use crate::blocks_screen::check_name;
 use crate::contrast::{slot_contrasts, suggest_for_all, SlotContrast, LOW_CONTRAST};
 use crate::page::{
-    changed_by, is_click, is_plain, is_shift_tab, markers, note_dropdown, outside_overlays,
-    print_dim, print_heading, truncate, typed, under_overlay, ButtonRow, ColumnLayout, ColumnStyle,
-    Effect, Page, PageResponse, RowLook, RowScroll, BESIDE_SHORT_FIELD, DIM, SHORT_FIELD_WIDTH,
-    SHORT_LABEL_WIDTH,
+    changed_by, is_click, is_delete_key, is_plain, is_shift_tab, markers, note_dropdown,
+    outside_overlays, print_dim, print_heading, truncate, typed, under_overlay, ButtonRow,
+    ColumnLayout, ColumnStyle, Effect, Page, PageResponse, RowLook, RowScroll, BESIDE_SHORT_FIELD,
+    DIM, SHORT_FIELD_WIDTH, SHORT_LABEL_WIDTH,
 };
 use crate::theme_sample::{render_sample, SAMPLE_MIN_WIDTH};
 use crate::ui_components::print_link;
@@ -1005,7 +1005,7 @@ impl ThemesScreen {
             self.open_name_form(NamePurpose::New);
         } else if typed(key, 'n') {
             self.request_rename();
-        } else if is_plain(key, BareKey::Delete) {
+        } else if is_delete_key(key) {
             self.request_delete();
         } else if typed(key, 'r') {
             self.revert_selected();

@@ -14597,6 +14597,46 @@ pub fn session_update_reports_a_muted_session() {
 
 #[test]
 #[ignore]
+pub fn session_update_lists_the_running_plugins_of_the_current_session() {
+    let run = run_attention_fixture(&WITH_PANE_READ, |sender| {
+        send_event(
+            sender,
+            Event::SessionUpdate(
+                vec![
+                    zellij_utils::data::SessionInfo {
+                        name: "current-session".to_owned(),
+                        is_current_session: true,
+                        ..Default::default()
+                    },
+                    zellij_utils::data::SessionInfo {
+                        name: "other-session".to_owned(),
+                        ..Default::default()
+                    },
+                ],
+                vec![],
+            ),
+        )
+    });
+    let rendered = run.rendered();
+    // the fixture re-prints every event it received on each render, so count per rendering
+    let renderings = rendered.matches("name: \"current-session\"").count();
+    assert!(renderings > 0, "{}", rendered);
+    assert_eq!(
+        rendered.matches("PluginInfo { location: \"file:").count(),
+        renderings,
+        "only the current session lists the running fixture plugin: {}",
+        rendered
+    );
+    assert!(
+        rendered.contains("fixture-plugin-for-tests.wasm")
+            && rendered.contains("\"attention_fixture\": \"true\""),
+        "{}",
+        rendered
+    );
+}
+
+#[test]
+#[ignore]
 pub fn a_session_pane_preview_is_asked_for_with_its_anchor() {
     let run = run_attention_fixture(&WITH_PANE_READ, |sender| press_super(sender, 't'));
     let asked = run.background_jobs.iter().any(|job| {

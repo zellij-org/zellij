@@ -64,6 +64,7 @@ windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Graphic
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
+kdl = { workspace = true }
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"

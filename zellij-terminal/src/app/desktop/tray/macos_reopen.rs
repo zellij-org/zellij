@@ -3,12 +3,12 @@
 
 use std::sync::OnceLock;
 
-use objc2::ffi::class_addMethod;
-use objc2::runtime::{AnyClass, AnyObject, Bool, Imp, Sel};
+use objc2::runtime::{AnyObject, Bool, Imp, Sel};
 use objc2::{sel, MainThreadMarker};
 use objc2_app_kit::NSApplication;
 
 use super::{MenuAction, TrayEvent, TrayEvents};
+use crate::app::desktop::macos_delegate::add_app_delegate_method;
 
 static EVENTS: OnceLock<TrayEvents> = OnceLock::new();
 
@@ -19,38 +19,19 @@ fn reopen_opens_a_window(has_visible_windows: bool, any_minimized: bool) -> bool
 
 /// Call on the main thread, after winit has set up its app delegate.
 pub fn install_reopen_handler(events: TrayEvents) {
-    let Some(mtm) = MainThreadMarker::new() else {
-        return;
-    };
-    let app = NSApplication::sharedApplication(mtm);
-    let Some(delegate) = app.delegate() else {
-        log::warn!("the app has no delegate, so opening it again will not open a window");
-        return;
-    };
     if EVENTS.set(events).is_err() {
-        return;
-    }
-    let delegate: &AnyObject = delegate.as_ref();
-    let class: &AnyClass = delegate.class();
-    let selector = sel!(applicationShouldHandleReopen:hasVisibleWindows:);
-    if class.instance_method(selector).is_some() {
-        log::warn!("the app delegate already handles reopening, so it is left as it is");
         return;
     }
     type Handler = extern "C-unwind" fn(&AnyObject, Sel, &AnyObject, Bool) -> Bool;
     let handler: Handler = should_handle_reopen;
     // SAFETY: the function matches the method's Objective-C signature, which the type
     // encoding states: returns BOOL, takes self, _cmd, an NSApplication and a BOOL.
-    let added = unsafe {
-        class_addMethod(
-            class as *const AnyClass as *mut AnyClass,
-            selector,
+    unsafe {
+        add_app_delegate_method(
+            sel!(applicationShouldHandleReopen:hasVisibleWindows:),
             std::mem::transmute::<Handler, Imp>(handler),
-            c"B@:@B".as_ptr(),
+            c"B@:@B",
         )
-    };
-    if !added.as_bool() {
-        log::warn!("the reopen handler could not be added to the app delegate");
     }
 }
 

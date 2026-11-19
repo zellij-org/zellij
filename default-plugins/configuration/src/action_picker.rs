@@ -2,9 +2,9 @@ use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
 use zellij_tile::prelude::*;
 
 use crate::page::{
-    action_argument_range, action_display_text, is_click, is_move_key, is_plain, is_shift_tab,
-    mode_label, print_dim, short_action_text, truncate, typed, ColumnLayout, RowLook, RowScroll,
-    DIM,
+    action_argument_range, action_display_text, is_click, is_delete_key, is_move_key, is_plain,
+    is_shift_tab, mode_label, print_dim, short_action_text, truncate, typed, ColumnLayout, RowLook,
+    RowScroll, DIM,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1340,7 +1340,7 @@ impl ActionPicker {
         {
             self.actions.swap(self.selected, self.selected - 1);
             self.selected -= 1;
-        } else if is_plain(key, BareKey::Delete) && self.selected < self.actions.len() {
+        } else if is_delete_key(key) && self.selected < self.actions.len() {
             self.actions.remove(self.selected);
             self.selected = self.selected.min(self.row_count() - 1);
         } else if typed(key, 'a') {

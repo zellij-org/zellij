@@ -96,6 +96,7 @@ pub(crate) struct State {
     last_cols: usize,
     desktop_offer: DesktopOffer,
     sessions_live_layout: Option<inbox::LiveLayout>,
+    backspace_erased_text: bool,
 }
 
 #[derive(Default)]
@@ -1257,6 +1258,7 @@ impl State {
         if self.inbox_is_shown() {
             return self.handle_inbox_key(key);
         }
+        let key = self.backspace_as_delete(key);
         if let Some(should_render) = self.handle_panel_key(&key) {
             return should_render;
         }
@@ -1266,6 +1268,34 @@ impl State {
             ActiveScreen::ResurrectSession => self.handle_resurrect_session_key(key),
             ActiveScreen::SingleScreen => self.handle_single_screen_key(key),
         }
+    }
+    fn erasable_text(&self) -> Option<&str> {
+        if self.renaming_session_name.is_some() {
+            return None;
+        }
+        match self.active_screen {
+            ActiveScreen::NewSession => None,
+            ActiveScreen::AttachToSession => Some(&self.search_term),
+            ActiveScreen::ResurrectSession => Some(&self.resurrectable_sessions.search_term),
+            ActiveScreen::SingleScreen => match self.single_screen_state.mode {
+                SingleScreenMode::SearchAndSelect => Some(&self.single_screen_state.search_term),
+                SingleScreenMode::SelectingLayout => None,
+            },
+        }
+    }
+    fn backspace_as_delete(&mut self, mut key: KeyWithModifier) -> KeyWithModifier {
+        let is_backspace = key.bare_key == BareKey::Backspace
+            && (key.has_no_modifiers() || key.has_only_modifiers(&[KeyModifier::Shift]));
+        if !is_backspace {
+            self.backspace_erased_text = false;
+            return key;
+        }
+        match self.erasable_text().map(|text| text.is_empty()) {
+            Some(false) => self.backspace_erased_text = true,
+            Some(true) if !self.backspace_erased_text => key.bare_key = BareKey::Delete,
+            _ => {},
+        }
+        key
     }
     fn handle_new_session_key(&mut self, key: KeyWithModifier) -> bool {
         let mut should_render = false;

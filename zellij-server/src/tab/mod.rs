@@ -469,6 +469,8 @@ pub(crate) struct Tab {
     pending_vte_events: HashMap<u32, Vec<VteBytes>>,
     pub selecting_with_mouse_in_pane: Option<PaneId>, // this is only pub for the tests
     pane_being_resized_with_mouse: Option<PaneResizeState>,
+    // the client whose press started the selection, resize or move held above
+    mouse_gesture_owner: Option<ClientId>,
     link_handler: Rc<RefCell<LinkHandler>>,
     clipboard_provider: ClipboardProvider,
     // TODO: used only to focus the pane when the layout is loaded
@@ -1350,6 +1352,7 @@ impl Tab {
             connected_clients,
             selecting_with_mouse_in_pane: None,
             pane_being_resized_with_mouse: None,
+            mouse_gesture_owner: None,
             link_handler: Rc::new(RefCell::new(LinkHandler::new())),
             clipboard_provider,
             focus_pane_id: None,
@@ -3043,9 +3046,7 @@ impl Tab {
             } else {
                 None
             };
-            if is_last_connected_client {
-                self.forget_held_mouse_gestures();
-            }
+            self.forget_mouse_gestures_held_by(client_id, is_last_connected_client);
         }
         let was_dimmed = self.dimmed_clients.contains(&client_id);
         self.mode_info.borrow_mut().remove(&client_id);
@@ -3060,6 +3061,13 @@ impl Tab {
             self.set_force_render();
         }
     }
+    // The release that would end a gesture goes wherever its client is now, so a gesture
+    // started by a client that leaves this tab would otherwise swallow the next press here
+    fn forget_mouse_gestures_held_by(&mut self, client_id: ClientId, no_client_is_left: bool) {
+        if no_client_is_left || self.mouse_gesture_owner == Some(client_id) {
+            self.forget_held_mouse_gestures();
+        }
+    }
     fn forget_held_mouse_gestures(&mut self) {
         if let Some(pane_id) = self.selecting_with_mouse_in_pane.take() {
             if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
@@ -3068,6 +3076,12 @@ impl Tab {
         }
         self.pane_being_resized_with_mouse = None;
         self.floating_panes.forget_pane_being_moved_with_mouse();
+        self.mouse_gesture_owner = None;
+    }
+    fn tab_wide_mouse_gesture_is_held(&self) -> bool {
+        self.selecting_with_mouse_in_pane.is_some()
+            || self.pane_being_resized_with_mouse.is_some()
+            || self.floating_panes.pane_is_being_moved_with_mouse()
     }
     pub fn drain_connected_clients(
         &mut self,
@@ -3089,6 +3103,8 @@ impl Tab {
             .remove(&client_id)
             .unwrap_or_else(|| self.default_mode_info.clone());
         self.connected_clients.borrow_mut().remove(&client_id);
+        let no_client_is_left = self.connected_clients.borrow().is_empty();
+        self.forget_mouse_gestures_held_by(client_id, no_client_is_left);
         self.pane_drawings.remove(&client_id);
         self.mouse_click_tracker.remove(&client_id);
         (client_id, client_mode_info)
@@ -5940,33 +5956,52 @@ impl Tab {
     pub fn are_floating_panes_visible(&self) -> bool {
         self.floating_panes.panes_are_visible()
     }
+    // Fullscreen dissolves stack lists into in-grid stacks, which makes focus walk their
+    // members on the up/down axis regardless of the orientation the list was built with.
+    // Leave fullscreen for the length of the move so the lists are re-formed and the same
+    // orientation rules as outside fullscreen apply, then expand the pane we landed on.
+    fn move_focus_fullscreen(&mut self, client_id: ClientId, direction: Direction) -> bool {
+        let covers_ui = self.tiled_panes.fullscreen_covers_ui();
+        self.tiled_panes.unset_fullscreen();
+        self.sync_stacked_pane_list_mode();
+        let moved = match direction {
+            Direction::Left => self.move_focus_left(client_id).unwrap_or(false),
+            Direction::Right => self.move_focus_right(client_id).unwrap_or(false),
+            Direction::Up => self.move_focus_up(client_id).unwrap_or(false),
+            Direction::Down => self.move_focus_down(client_id).unwrap_or(false),
+        };
+        self.dissolve_stack_lists_for_classic_mutation();
+        self.tiled_panes
+            .reenter_active_pane_fullscreen(client_id, covers_ui);
+        moved
+    }
     pub fn focus_pane_left_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
             return false;
         }
 
-        return self.tiled_panes.focus_pane_left_fullscreen(client_id);
+        self.move_focus_fullscreen(client_id, Direction::Left)
     }
     pub fn focus_pane_right_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
             return false;
         }
 
-        return self.tiled_panes.focus_pane_right_fullscreen(client_id);
+        self.move_focus_fullscreen(client_id, Direction::Right)
     }
     pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
             return false;
         }
 
-        return self.tiled_panes.focus_pane_up_fullscreen(client_id);
+        self.move_focus_fullscreen(client_id, Direction::Up)
     }
     pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
             return false;
         }
 
-        return self.tiled_panes.focus_pane_down_fullscreen(client_id);
+        self.move_focus_fullscreen(client_id, Direction::Down)
     }
     pub fn switch_next_pane_fullscreen(&mut self, client_id: ClientId) {
         if !self.is_fullscreen_active() {

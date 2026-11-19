@@ -8,8 +8,8 @@ use crate::page::{
     BESIDE_SHORT_FIELD, DIM, SHORT_FIELD_WIDTH, SHORT_LABEL_WIDTH,
 };
 use crate::page::{
-    actions_summary, changed_by, is_click, is_move_key, is_plain, is_shift_tab, markers,
-    print_heading, truncate, typed, ColumnLayout, Effect, RowLook, RowScroll,
+    actions_summary, changed_by, is_click, is_delete_key, is_move_key, is_plain, is_shift_tab,
+    markers, print_heading, truncate, typed, ColumnLayout, Effect, RowLook, RowScroll,
 };
 
 const FORM_LABEL_WIDTH: usize = 9;
@@ -1998,7 +1998,7 @@ impl SectionedList {
                         return Some(true);
                     }
                 }
-                if is_plain(key, BareKey::Delete) {
+                if is_delete_key(key) {
                     if let Row::Entry(section, entry) = self.selected {
                         self.sections[section].request_delete(entry);
                         return Some(true);
@@ -2432,7 +2432,7 @@ impl SectionedList {
             if !self.sections[section].add_separator(after) {
                 return false;
             }
-        } else if typed(key, 'd') || is_plain(key, BareKey::Delete) {
+        } else if typed(key, 'd') || is_delete_key(key) {
             match self.selected {
                 Row::Entry(section, entry) => self.sections[section].request_delete(entry),
                 _ => return false,

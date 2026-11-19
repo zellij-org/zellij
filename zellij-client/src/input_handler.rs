@@ -302,6 +302,11 @@ impl InputHandler {
                     self.os_input
                         .send_to_server(ClientToServerMsg::HostTerminalFocusChanged { focused });
                 },
+                Ok((InputInstruction::HostTerminalClosed, _error_context)) => {
+                    let action = self.options.on_force_close.unwrap_or_default().into();
+                    self.dispatch_action(action, None);
+                    self.should_exit = true;
+                },
                 Ok((InputInstruction::Exit, _error_context)) => {
                     self.should_exit = true;
                 },

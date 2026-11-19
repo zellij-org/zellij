@@ -36,6 +36,7 @@ use zellij_utils::data::ConnectToSession;
 use zellij_utils::input::actions::initial_panes_from_cli;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options as SessionOptions;
+use zellij_utils::input::options::PaneFrameStyle;
 use zellij_utils::sessions::generate_unique_session_name;
 
 pub(crate) fn launch_app(args: TerminalArgs, opts: CliArgs, loaded: Option<Loaded>) -> Result<()> {
@@ -172,6 +173,11 @@ pub(crate) fn run_app(
     let config_path = Config::config_file_path(&opts);
     let windowing = window::Windowing::bring_up()?;
     let poster = window::AppPoster::new(windowing.proxy());
+    #[cfg(target_os = "macos")]
+    app::desktop::macos_open::install_open_handler(
+        poster.clone(),
+        config_options.default_shell.as_deref(),
+    );
     let holder = {
         let poster = poster.clone();
         instance.serve(move |request| match request {
@@ -299,7 +305,15 @@ impl Dialer {
 
     pub(crate) fn options_for(&self, request: &OpenWindowRequest) -> SessionOptions {
         match &request.options {
-            Some(options) => self.config_options.merge_from_cli(options.clone()),
+            Some(options) => {
+                let mut merged = self.config_options.merge_from_cli(options.clone());
+                // `pane_frames false` in the config would hide the requested style, also on
+                // the server, which merges the config file again.
+                if let (Some(style), None) = (options.pane_frame_style, options.pane_frames) {
+                    merged.pane_frames = Some(style != PaneFrameStyle::None);
+                }
+                merged
+            },
             None => self.config_options.clone(),
         }
     }

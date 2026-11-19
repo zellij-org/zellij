@@ -1121,6 +1121,7 @@ impl WasmBridge {
                 }
             }
         }
+        self.fill_in_current_session_plugins(&mut updates);
         updates = self.dispatch_shared_updates(updates, shutdown_sender.clone());
         let plugins_to_update: Vec<(
             PluginId,
@@ -1234,6 +1235,23 @@ impl WasmBridge {
             }
         }
         Ok(())
+    }
+    // The screen reports the current session without its plugins, because only this thread
+    // knows which plugins are running.
+    fn fill_in_current_session_plugins(
+        &self,
+        updates: &mut [(Option<PluginId>, Option<ClientId>, Event)],
+    ) {
+        let mut plugin_list = None;
+        for (_plugin_id, _client_id, event) in updates.iter_mut() {
+            if let Event::SessionUpdate(sessions, _resurrectable_sessions) = event {
+                let plugin_list = plugin_list
+                    .get_or_insert_with(|| self.plugin_map.lock().unwrap().list_plugins());
+                for session in sessions.iter_mut().filter(|s| s.is_current_session) {
+                    session.populate_plugin_list(plugin_list.clone());
+                }
+            }
+        }
     }
     pub fn get_plugin_cwd(&self, plugin_id: PluginId, client_id: ClientId) -> Option<PathBuf> {
         if let Some(instance_id) = self.shared_instance_of(plugin_id) {
