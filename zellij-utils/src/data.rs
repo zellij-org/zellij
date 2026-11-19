@@ -5582,6 +5582,7 @@ setting_keys! {
     StackedPaneListOrientation => (TopLevel, "stacked_pane_list_orientation", false, Text),
     ShowStartupTips => (TopLevel, "show_startup_tips", true, Flag),
     ShowReleaseNotes => (TopLevel, "show_release_notes", true, Flag),
+    ShowSetupScreen => (TopLevel, "show_setup_screen", true, Flag),
     AdvancedMouseActions => (TopLevel, "advanced_mouse_actions", false, Flag),
     MouseScrollResize => (TopLevel, "mouse_scroll_resize", false, Flag),
     ScrollModeSync => (TopLevel, "scroll_mode_sync", false, Flag),

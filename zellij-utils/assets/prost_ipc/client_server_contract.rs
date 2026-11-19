@@ -2346,6 +2346,8 @@ pub struct Options {
     pub mode_hints_when_bars_hidden: ::core::option::Option<bool>,
     #[prost(string, optional, tag="88")]
     pub stacked_pane_list_orientation: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="89")]
+    pub show_setup_screen: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]

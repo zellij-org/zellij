@@ -3960,25 +3960,27 @@ pub fn start_server_impl(
                     };
                 let created_from_welcome_screen = switch_context.startup_card
                     == Some(zellij_utils::input::attention::StartupCard::Never);
-                let should_launch_setup_wizard = session_may_show_setup(
-                    is_resumed_session,
-                    layout_is_welcome_screen,
-                    created_from_welcome_screen,
-                    initial_panes
-                        .as_ref()
-                        .map(|p| !p.is_empty())
-                        .unwrap_or(false),
-                )
-                    && zellij_utils::desktop_integration::platform::should_offer_setup(
-                        successfully_written_config,
-                    );
-
                 let runtime_config_options = match &cli_assets.configuration_options {
                     Some(configuration_options) => {
                         config.options.merge(configuration_options.clone())
                     },
                     None => config.options.clone(),
                 };
+
+                let should_launch_setup_wizard =
+                    runtime_config_options.show_setup_screen.unwrap_or(true)
+                        && session_may_show_setup(
+                            is_resumed_session,
+                            layout_is_welcome_screen,
+                            created_from_welcome_screen,
+                            initial_panes
+                                .as_ref()
+                                .map(|p| !p.is_empty())
+                                .unwrap_or(false),
+                        )
+                        && zellij_utils::desktop_integration::platform::should_offer_setup(
+                            successfully_written_config,
+                        );
 
                 let client_attributes = ClientAttributes {
                     size: cli_assets.terminal_window_size,

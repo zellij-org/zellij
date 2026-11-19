@@ -1094,6 +1094,13 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
             "true",
             Everyone,
         ),
+        SettingKey::ShowSetupScreen => info(
+            "Setup screen",
+            "Offer desktop integration when a session starts",
+            Toggle,
+            "true",
+            Everyone,
+        ),
         SettingKey::SupportKittyKeyboardProtocol => info(
             "Kitty keyboard protocol",
             "Use the kitty keyboard protocol when available",
@@ -1890,7 +1897,7 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
     use Category as C;
     use SettingKey::*;
     match key {
-        ShowStartupTips | ShowReleaseNotes => (C::General, "Startup"),
+        ShowStartupTips | ShowReleaseNotes | ShowSetupScreen => (C::General, "Startup"),
         OnQuit | OnForceClose => (C::General, "Quitting"),
         DefaultShell | DefaultCwd | DefaultLayout => (C::General, "Starting points"),
         NestedSessionHandling => (C::General, "Nested sessions"),

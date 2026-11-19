@@ -3437,6 +3437,9 @@ impl Options {
         let show_release_notes =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_release_notes")
                 .map(|(v, _)| v);
+        let show_setup_screen =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_setup_screen")
+                .map(|(v, _)| v);
         let advanced_mouse_actions =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "advanced_mouse_actions")
                 .map(|(v, _)| v);
@@ -3632,6 +3635,7 @@ impl Options {
             stacked_pane_list_orientation,
             show_startup_tips,
             show_release_notes,
+            show_setup_screen,
             advanced_mouse_actions,
             mouse_scroll_resize,
             scroll_mode_sync,
@@ -5085,6 +5089,34 @@ impl Options {
             None
         }
     }
+    fn show_setup_screen_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Whether to offer the desktop integration setup screen when a new session starts",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("show_setup_screen");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(show_setup_screen) = self.show_setup_screen {
+            let mut node = create_node(show_setup_screen);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn advanced_mouse_actions_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}",
@@ -5903,6 +5935,9 @@ impl Options {
         }
         if let Some(show_release_notes) = self.show_release_notes_to_kdl(add_comments) {
             nodes.push(show_release_notes);
+        }
+        if let Some(show_setup_screen) = self.show_setup_screen_to_kdl(add_comments) {
+            nodes.push(show_setup_screen);
         }
         if let Some(advanced_mouse_actions) = self.advanced_mouse_actions_to_kdl(add_comments) {
             nodes.push(advanced_mouse_actions);
