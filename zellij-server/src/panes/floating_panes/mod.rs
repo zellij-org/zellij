@@ -458,6 +458,8 @@ impl FloatingPanes {
             floating_pane_layout.height.clone(),
             viewport.cols,
             viewport.rows,
+            viewport.x,
+            viewport.y,
         );
         if let Some(is_pinned) = &floating_pane_layout.pinned {
             position.is_pinned = *is_pinned;

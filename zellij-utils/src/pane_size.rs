@@ -278,6 +278,8 @@ impl PaneGeom {
         height: Option<PercentOrFixed>,
         viewport_cols: usize,
         viewport_rows: usize,
+        viewport_x: usize,
+        viewport_y: usize,
     ) {
         if let Some(width) = &width {
             self.cols = Dimension::fixed(width.to_fixed(viewport_cols));
@@ -285,14 +287,28 @@ impl PaneGeom {
         if let Some(height) = &height {
             self.rows = Dimension::fixed(height.to_fixed(viewport_rows));
         }
+        // Percent x/y are relative to the viewport origin (so a left/top sidebar that
+        // shifts the viewport is honored). Fixed x/y stay absolute screen coordinates
+        // (DrawFloatingPane and plugin APIs pass screen positions). Auto-centering is
+        // inside the viewport.
         self.x = match &x {
-            Some(x) => x.to_fixed(viewport_cols),
-            None if width.is_some() => viewport_cols.saturating_sub(self.cols.as_usize()) / 2,
+            Some(PercentOrFixed::Percent(p)) => {
+                viewport_x + PercentOrFixed::Percent(*p).to_fixed(viewport_cols)
+            },
+            Some(PercentOrFixed::Fixed(v)) => *v,
+            None if width.is_some() => {
+                viewport_x + viewport_cols.saturating_sub(self.cols.as_usize()) / 2
+            },
             None => self.x,
         };
         self.y = match &y {
-            Some(y) => y.to_fixed(viewport_rows),
-            None if height.is_some() => viewport_rows.saturating_sub(self.rows.as_usize()) / 2,
+            Some(PercentOrFixed::Percent(p)) => {
+                viewport_y + PercentOrFixed::Percent(*p).to_fixed(viewport_rows)
+            },
+            Some(PercentOrFixed::Fixed(v)) => *v,
+            None if height.is_some() => {
+                viewport_y + viewport_rows.saturating_sub(self.rows.as_usize()) / 2
+            },
             None => self.y,
         };
     }
@@ -308,6 +324,8 @@ impl PaneGeom {
             floating_pane_coordinates.height,
             viewport.cols,
             viewport.rows,
+            viewport.x,
+            viewport.y,
         );
         if self.x < viewport.x {
             self.x = viewport.x;
@@ -510,5 +528,68 @@ impl From<&Size> for PaneGeom {
             cols,
             ..Default::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod floating_pane_position_tests {
+    use super::*;
+    use crate::input::layout::PercentOrFixed;
+
+    #[test]
+    fn apply_floating_pane_position_offsets_percent_by_viewport_origin() {
+        let mut geom = PaneGeom::default();
+        geom.apply_floating_pane_position(
+            Some(PercentOrFixed::Percent(5)),
+            Some(PercentOrFixed::Percent(10)),
+            Some(PercentOrFixed::Percent(90)),
+            Some(PercentOrFixed::Percent(80)),
+            125, // viewport cols
+            40,  // viewport rows
+            32,  // viewport x (left sidebar)
+            1,   // viewport y
+        );
+        assert_eq!(geom.cols.as_usize(), 112); // 90% of 125
+        assert_eq!(geom.rows.as_usize(), 32); // 80% of 40
+        assert_eq!(geom.x, 32 + 6); // viewport.x + 5% of 125
+        assert_eq!(geom.y, 1 + 4); // viewport.y + 10% of 40
+    }
+
+    #[test]
+    fn apply_floating_pane_position_keeps_fixed_as_screen_coords() {
+        let mut geom = PaneGeom::default();
+        geom.apply_floating_pane_position(
+            Some(PercentOrFixed::Fixed(11)),
+            Some(PercentOrFixed::Fixed(5)),
+            Some(PercentOrFixed::Fixed(59)),
+            Some(PercentOrFixed::Fixed(10)),
+            125,
+            40,
+            32,
+            1,
+        );
+        assert_eq!(geom.cols.as_usize(), 59);
+        assert_eq!(geom.rows.as_usize(), 10);
+        assert_eq!(geom.x, 11); // absolute, not +viewport.x
+        assert_eq!(geom.y, 5);
+    }
+
+    #[test]
+    fn apply_floating_pane_position_centers_inside_viewport() {
+        let mut geom = PaneGeom::default();
+        geom.apply_floating_pane_position(
+            None,
+            None,
+            Some(PercentOrFixed::Fixed(50)),
+            Some(PercentOrFixed::Fixed(10)),
+            100,
+            40,
+            20,
+            2,
+        );
+        assert_eq!(geom.cols.as_usize(), 50);
+        assert_eq!(geom.rows.as_usize(), 10);
+        assert_eq!(geom.x, 20 + (100 - 50) / 2);
+        assert_eq!(geom.y, 2 + (40 - 10) / 2);
     }
 }
