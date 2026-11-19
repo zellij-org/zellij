@@ -8,8 +8,8 @@ use crate::page::{
     BESIDE_SHORT_FIELD, DIM, SHORT_FIELD_WIDTH, SHORT_LABEL_WIDTH,
 };
 use crate::page::{
-    actions_summary, changed_by, is_click, is_delete_key, is_move_key, is_plain, is_shift_tab, markers,
-    print_heading, truncate, typed, ColumnLayout, Effect, RowLook, RowScroll,
+    actions_summary, changed_by, is_click, is_delete_key, is_move_key, is_plain, is_shift_tab,
+    markers, print_heading, truncate, typed, ColumnLayout, Effect, RowLook, RowScroll,
 };
 
 const FORM_LABEL_WIDTH: usize = 9;

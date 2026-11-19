@@ -888,7 +888,8 @@ impl SetupScreen {
                 }
             },
             BareKey::Delete | BareKey::Backspace
-                if self.step == Step::Choose && self.can_uninstall() => {
+                if self.step == Step::Choose && self.can_uninstall() =>
+            {
                 let own_pane = PaneId::Plugin(self.own_plugin_id);
                 self.ask_to_uninstall(PromptPlacement::Pane(own_pane));
             },

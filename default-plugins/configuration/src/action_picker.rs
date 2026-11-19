@@ -2,9 +2,9 @@ use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
 use zellij_tile::prelude::*;
 
 use crate::page::{
-    action_argument_range, action_display_text, is_click, is_delete_key, is_move_key, is_plain, is_shift_tab,
-    mode_label, print_dim, short_action_text, truncate, typed, ColumnLayout, RowLook, RowScroll,
-    DIM,
+    action_argument_range, action_display_text, is_click, is_delete_key, is_move_key, is_plain,
+    is_shift_tab, mode_label, print_dim, short_action_text, truncate, typed, ColumnLayout, RowLook,
+    RowScroll, DIM,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
