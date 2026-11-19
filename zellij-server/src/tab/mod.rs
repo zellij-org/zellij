@@ -5970,6 +5970,7 @@ impl Tab {
             Direction::Up => self.move_focus_up(client_id).unwrap_or(false),
             Direction::Down => self.move_focus_down(client_id).unwrap_or(false),
         };
+        self.dissolve_stack_lists_for_classic_mutation();
         self.tiled_panes
             .reenter_active_pane_fullscreen(client_id, covers_ui);
         moved
