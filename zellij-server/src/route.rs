@@ -273,6 +273,14 @@ fn spawns_command_pane(action: &Action) -> bool {
     }
 }
 
+fn is_attributed_to_ephemeral_cli_client(
+    client_id: ClientId,
+    cli_client_id: Option<ClientId>,
+    is_cli_client: bool,
+) -> bool {
+    is_cli_client && cli_client_id == Some(client_id)
+}
+
 fn action_presses_escape(action: &Action) -> bool {
     match action {
         Action::Write {
@@ -407,13 +415,15 @@ fn route_action_with_origin(
     if !action.is_mouse_action() {
         // mouse actions should only send InputReceived to plugins
         // if they do not result in text being marked, this is handled in Tab
-        senders
-            .send_to_plugin(PluginInstruction::Update(vec![(
-                None,
-                Some(client_id),
-                Event::InputReceived,
-            )]))
-            .with_context(err_context)?;
+        if !is_attributed_to_ephemeral_cli_client(client_id, cli_client_id, is_cli_client) {
+            senders
+                .send_to_plugin(PluginInstruction::Update(vec![(
+                    None,
+                    Some(client_id),
+                    Event::InputReceived,
+                )]))
+                .with_context(err_context)?;
+        }
         if crate::session_suggestions::should_report_activity() {
             let _ = senders.send_to_background_jobs(BackgroundJob::SessionSuggestions(
                 crate::session_suggestions::SessionSuggestionsJob::Activity,
@@ -4499,6 +4509,22 @@ mod tests {
             chars: "ls".to_owned()
         }));
         assert!(!action_submits_input(&Action::Quit));
+    }
+
+    #[test]
+    fn cli_actions_falling_back_to_the_cli_client_id_are_ephemeral() {
+        assert!(is_attributed_to_ephemeral_cli_client(7, Some(7), true));
+    }
+
+    #[test]
+    fn cli_actions_attributed_to_an_attached_client_are_not_ephemeral() {
+        assert!(!is_attributed_to_ephemeral_cli_client(1, Some(7), true));
+    }
+
+    #[test]
+    fn non_cli_actions_on_their_own_connection_are_not_ephemeral() {
+        assert!(!is_attributed_to_ephemeral_cli_client(3, Some(3), false));
+        assert!(!is_attributed_to_ephemeral_cli_client(3, None, false));
     }
 
     #[test]
