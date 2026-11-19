@@ -1,5 +1,5 @@
 use super::*;
-use crate::os_input_output::ServerOsApi;
+use crate::os_input_output::{NullAsyncReader, ServerOsApi};
 use crate::plugins::PluginInstruction;
 use crate::thread_bus::Bus;
 use interprocess::local_socket::Stream as LocalSocketStream;
@@ -150,7 +150,7 @@ impl ServerOsApi for MockOsApi {
         _: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _pane_env: &crate::os_input_output::PaneEnv,
     ) -> anyhow::Result<(Box<dyn AsyncReader>, Option<u32>)> {
-        unimplemented!()
+        Ok((Box::new(NullAsyncReader), None))
     }
     fn clear_terminal_id(&self, _: u32) -> anyhow::Result<()> {
         Ok(())
@@ -646,4 +646,42 @@ fn resurrect_command_for_unknown_terminal_is_rejected() {
 
     assert!(result.is_err());
     assert!(pty.resurrect_commands.is_empty());
+}
+
+struct SetOnDrop(Arc<AtomicBool>);
+
+impl Drop for SetOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+#[test]
+fn rerun_aborts_the_retired_reader_task() {
+    let mock = MockOsApi::new();
+    let (mut pty, _rx) = make_pty_with_plugin_receiver(mock);
+
+    let dropped = Arc::new(AtomicBool::new(false));
+    let guard = SetOnDrop(dropped.clone());
+    let retired = crate::global_async_runtime::get_tokio_runtime().spawn(async move {
+        let _guard = guard;
+        std::future::pending::<()>().await;
+    });
+    pty.task_handles.insert(1, retired);
+
+    pty.rerun_command_in_pane(PaneId::Terminal(1), RunCommand::default())
+        .unwrap();
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    while !dropped.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(
+        dropped.load(Ordering::SeqCst),
+        "rerun should abort the retired reader task rather than detach it"
+    );
+    assert!(
+        pty.task_handles.contains_key(&1),
+        "rerun should install a new reader task"
+    );
 }
