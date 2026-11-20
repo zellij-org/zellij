@@ -2762,3 +2762,73 @@ fn plugin_aliases_with_different_names_are_not_equivalent() {
     );
     assert!(!requested.is_equivalent_to_run(&running));
 }
+
+#[test]
+fn a_layout_file_with_a_non_kdl_extension_is_loaded_by_path() {
+    use crate::data::{LayoutInfo, LayoutMetadata};
+    use crate::input::config::Config;
+    use std::fs;
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    let layout_path = dir.path().join("my-layout.zellij");
+    fs::write(
+        &layout_path,
+        r#"
+layout {
+    pane
+    pane
+}
+"#,
+    )
+    .unwrap();
+
+    // layout_dir deliberately does not contain the file; the File info carries
+    // the absolute path the user supplied on the CLI.
+    let empty_layout_dir = tempdir().unwrap();
+    let result = Layout::from_layout_info_with_config(
+        &Some(empty_layout_dir.path().to_path_buf()),
+        &LayoutInfo::File(layout_path.display().to_string(), LayoutMetadata::default()),
+        Some(Config::default()),
+    );
+
+    let (layout, _) = result.unwrap_or_else(|e| {
+        panic!(
+            "a layout file given by path with a non-kdl extension failed to load:\n  {:?}",
+            e
+        )
+    });
+    let (tiled, _floating) = layout.new_tab();
+    assert_eq!(tiled.children.len(), 2);
+}
+
+#[test]
+fn layout_dir_loads_the_kdl_fallback_when_the_bare_name_does_not_exist() {
+    use std::fs;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("fallback.kdl"), "layout { pane pane }").unwrap();
+
+    let (_, stringified, _) =
+        Layout::stringified_from_dir(&PathBuf::from("fallback"), Some(&dir.path().to_path_buf()))
+            .unwrap();
+    assert_eq!(stringified.trim(), "layout { pane pane }");
+}
+
+#[test]
+fn layout_dir_prefers_the_exact_file_over_the_kdl_fallback() {
+    use std::fs;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("exact"), "layout { pane }").unwrap();
+    fs::write(dir.path().join("exact.kdl"), "layout { pane pane }").unwrap();
+
+    let (_, stringified, _) =
+        Layout::stringified_from_dir(&PathBuf::from("exact"), Some(&dir.path().to_path_buf()))
+            .unwrap();
+    assert_eq!(stringified.trim(), "layout { pane }");
+}
