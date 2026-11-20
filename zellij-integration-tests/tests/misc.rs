@@ -46,7 +46,6 @@ fn focus_next_pane_via_tmux_mode() {
 
     zellij.send_stdin(&keys::ctrl('b'));
     zellij.send_stdin(&keys::key('o'));
-    zellij.send_stdin(&keys::ENTER);
 
     let grid_snapshot = zellij.wait_until("focus cycled to the other pane", |grid_snapshot| {
         grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(2).row(2))
