@@ -1651,6 +1651,7 @@ impl From<crate::input::actions::Action>
             ShowBarsAction,
             ShowFloatingPanesAction,
             SkipConfirmAction,
+            SmartCopyAction,
             StackPanesAction,
             StartOrReloadPluginAction,
             StartRenamePaneByPaneIdAction,
@@ -2293,6 +2294,9 @@ impl From<crate::input::actions::Action>
                 })
             },
             crate::input::actions::Action::Copy => ActionType::Copy(CopyAction {}),
+            crate::input::actions::Action::SmartCopy => {
+                ActionType::SmartCopy(SmartCopyAction {})
+            },
             crate::input::actions::Action::Confirm => ActionType::Confirm(ConfirmAction {}),
             crate::input::actions::Action::Deny => ActionType::Deny(DenyAction {}),
             crate::input::actions::Action::SkipConfirm { action } => {
@@ -3387,6 +3391,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::Copy(_) => Ok(crate::input::actions::Action::Copy),
+            ActionType::SmartCopy(_) => Ok(crate::input::actions::Action::SmartCopy),
             ActionType::Confirm(_) => Ok(crate::input::actions::Action::Confirm),
             ActionType::Deny(_) => Ok(crate::input::actions::Action::Deny),
             ActionType::SkipConfirm(skip_confirm_action) => {

@@ -20,8 +20,8 @@ use zellij_utils::{
     channels::SenderWithContext,
     data::{
         BareKey, ConnectToSession, Direction, Event, GetFocusedPaneInfoResponse, InputMode,
-        KeyModifier, ListPanesResponse, ListTabsResponse, NewPanePlacement, PaneListEntry,
-        ResizeStrategy, TabInfo, UnblockCondition,
+        KeyModifier, KeyWithModifier, ListPanesResponse, ListTabsResponse, NewPanePlacement,
+        PaneListEntry, ResizeStrategy, TabInfo, UnblockCondition,
     },
     envs,
     errors::{prelude::*, ErrorContext},
@@ -380,6 +380,9 @@ pub(crate) fn route_action(
         default_shell,
         seen_cli_pipes,
         default_mode,
+        None,
+        None,
+        None,
         os_input,
         is_cli_client,
         None,
@@ -414,6 +417,9 @@ pub(crate) fn route_bound_mouse_action(
         None,
         default_mode,
         None,
+        None,
+        None,
+        None,
         false,
         origin_pane_id,
     )
@@ -428,6 +434,9 @@ fn route_action_with_origin(
     default_shell: Option<TerminalAction>,
     mut seen_cli_pipes: Option<&mut HashSet<String>>,
     default_mode: InputMode,
+    key_with_modifier: Option<KeyWithModifier>,
+    raw_bytes: Option<Vec<u8>>,
+    is_kitty_keyboard_protocol: Option<bool>,
     os_input: Option<Box<dyn ServerOsApi>>,
     is_cli_client: bool,
     origin_pane_id: Option<PaneId>,
@@ -1829,6 +1838,16 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
+        Action::SmartCopy => {
+            senders
+                .send_to_screen(ScreenInstruction::SmartCopy(
+                    key_with_modifier,
+                    raw_bytes,
+                    is_kitty_keyboard_protocol,
+                    client_id,
+                ))
+                .with_context(err_context)?;
+        },
         Action::Confirm => {
             // no-op, these are deprecated and should be removed when we upgrade the server/client
             // contract
@@ -3125,7 +3144,7 @@ pub(crate) fn route_thread_main(
                                         im,
                                         dim,
                                         &key,
-                                        raw_bytes,
+                                        raw_bytes.clone(),
                                         is_kitty_keyboard_protocol,
                                         in_key_passthrough,
                                         has_focused_popup,
@@ -3137,10 +3156,20 @@ pub(crate) fn route_thread_main(
                                         s.session_configuration
                                             .get_client_default_input_mode(&client_id),
                                         key_actions,
+                                        key.clone(),
+                                        raw_bytes,
+                                        is_kitty_keyboard_protocol,
                                     ))
                                 });
-                            if let Some((senders, default_shell, client_input_mode, key_actions)) =
-                                dispatch_inputs
+                            if let Some((
+                                senders,
+                                default_shell,
+                                client_input_mode,
+                                key_actions,
+                                key,
+                                raw_bytes,
+                                is_kitty_keyboard_protocol,
+                            )) = dispatch_inputs
                             {
                                 for key_action in key_actions {
                                     let action = match key_action {
@@ -3222,6 +3251,9 @@ pub(crate) fn route_thread_main(
                                         default_shell.clone(),
                                         Some(&mut seen_cli_pipes),
                                         client_input_mode,
+                                        Some(key.clone()),
+                                        Some(raw_bytes.clone()),
+                                        Some(is_kitty_keyboard_protocol),
                                         Some(os_input.clone()),
                                         false,
                                         origin_pane_id,
