@@ -1376,6 +1376,10 @@ impl Action {
                 // cwd should only be specified in a plugin alias if it was explicitly given to us,
                 // otherwise the current_dir might override a cwd defined in the alias itself
                 let alias_cwd = cwd.clone().map(|cwd| current_dir.join(cwd));
+                // Without a command, the pane runs the default shell. An explicit --cwd has
+                // to travel with it; otherwise the server uses the focused pane's folder.
+                let default_shell_in_cwd =
+                    alias_cwd.clone().map(RunCommandAction::default_shell_in);
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir.clone()));
@@ -1412,7 +1416,7 @@ impl Action {
                             ..Default::default()
                         })
                     } else {
-                        None
+                        default_shell_in_cwd
                     };
 
                     let placement = if floating {
@@ -1575,7 +1579,7 @@ impl Action {
                 } else {
                     if floating {
                         Ok(vec![Action::NewFloatingPane {
-                            command: None,
+                            command: default_shell_in_cwd,
                             pane_name: name,
                             coordinates: FloatingPaneCoordinates::merge_border_style(
                                 FloatingPaneCoordinates::new(
@@ -1589,7 +1593,7 @@ impl Action {
                         }])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane {
-                            command: None,
+                            command: default_shell_in_cwd,
                             pane_name: name,
                             near_current_pane,
                             no_focus,
@@ -1599,7 +1603,7 @@ impl Action {
                         }])
                     } else if stacked {
                         Ok(vec![Action::NewStackedPane {
-                            command: None,
+                            command: default_shell_in_cwd,
                             pane_name: name,
                             near_current_pane,
                             no_focus,
@@ -1608,7 +1612,7 @@ impl Action {
                     } else {
                         Ok(vec![Action::NewTiledPane {
                             direction,
-                            command: None,
+                            command: default_shell_in_cwd,
                             pane_name: name,
                             near_current_pane,
                             no_focus,
@@ -4270,6 +4274,48 @@ mod tests {
                 );
             },
             other => panic!("Expected NewTiledPane action, got {:?}", other),
+        }
+    }
+
+    // The command of the new pane action that `zellij action new-pane` sends, run from /tmp.
+    fn new_pane_command(
+        cwd: Option<&str>,
+        floating: bool,
+        blocking: bool,
+    ) -> Option<RunCommandAction> {
+        let mut cli_action = new_pane_cli_action(floating, None);
+        if let CliAction::NewPane {
+            cwd: cli_cwd,
+            blocking: cli_blocking,
+            ..
+        } = &mut cli_action
+        {
+            *cli_cwd = cwd.map(PathBuf::from);
+            *cli_blocking = blocking;
+        }
+        let actions =
+            Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None).unwrap();
+        match actions.into_iter().next() {
+            Some(Action::NewTiledPane { command, .. })
+            | Some(Action::NewFloatingPane { command, .. })
+            | Some(Action::NewBlockingPane { command, .. }) => command,
+            other => panic!("Expected a new pane action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn new_pane_with_a_cwd_and_no_command_asks_for_the_default_shell_there() {
+        for (floating, blocking) in [(false, false), (true, false), (false, true)] {
+            let command = new_pane_command(Some("project"), floating, blocking).unwrap();
+            assert!(command.requests_default_shell());
+            assert_eq!(command.cwd, Some(PathBuf::from("/tmp").join("project")));
+        }
+    }
+
+    #[test]
+    fn new_pane_without_a_cwd_or_command_leaves_the_folder_to_the_server() {
+        for (floating, blocking) in [(false, false), (true, false), (false, true)] {
+            assert_eq!(new_pane_command(None, floating, blocking), None);
         }
     }
 

@@ -277,6 +277,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
             ) => {
                 let err_context =
                     || format!("failed to spawn terminal for {:?}", client_or_tab_index);
+                let (terminal_action, default_shell_cwd) = take_default_shell_cwd(terminal_action);
 
                 let (hold_on_close, run_command, pane_title, open_file_payload) =
                     match &terminal_action {
@@ -310,6 +311,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     )),
                     _ => None,
                 };
+                let terminal_action =
+                    pty.with_default_shell_cwd(terminal_action, default_shell_cwd);
                 match pty
                     .spawn_terminal(terminal_action, client_or_tab_index, origin_pane_id)
                     .with_context(err_context)
@@ -419,6 +422,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                         client_id_tab_index_or_pane_id
                     )
                 };
+                let (terminal_action, default_shell_cwd) = take_default_shell_cwd(terminal_action);
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
                     Some(TerminalAction::RunCommand(run_command)) => (
                         run_command.hold_on_close,
@@ -442,6 +446,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     )),
                     _ => None,
                 };
+                let terminal_action =
+                    pty.with_default_shell_cwd(terminal_action, default_shell_cwd);
                 match pty
                     .spawn_terminal(
                         terminal_action,
@@ -1074,6 +1080,16 @@ impl Pty {
                 })
             },
         }
+    }
+    /// Puts back a default shell request split off by [`take_default_shell_cwd`], once the pane's
+    /// title and record of what it runs have been worked out as for any new pane.
+    fn with_default_shell_cwd(
+        &self,
+        terminal_action: Option<TerminalAction>,
+        default_shell_cwd: Option<PathBuf>,
+    ) -> Option<TerminalAction> {
+        terminal_action
+            .or_else(|| default_shell_cwd.map(|cwd| self.get_default_terminal(Some(cwd), None)))
     }
     fn cwd_of_pane(&self, pane_id: &PaneId) -> Option<PathBuf> {
         match pane_id {
@@ -2720,6 +2736,22 @@ fn send_command_not_found_to_screen(
         ))
         .with_context(err_context)?;
     Ok(())
+}
+
+/// Splits a request for the default shell in a given folder (`new-pane --cwd` without a
+/// command, when no default shell is configured) into no action and that folder.
+///
+/// The pane then gets the title and the record of what it runs that any new pane gets, rather
+/// than those of a command pane with an empty command.
+fn take_default_shell_cwd(
+    terminal_action: Option<TerminalAction>,
+) -> (Option<TerminalAction>, Option<PathBuf>) {
+    match terminal_action {
+        Some(TerminalAction::RunCommand(command)) if command.requests_default_shell() => {
+            (None, command.cwd)
+        },
+        terminal_action => (terminal_action, None),
+    }
 }
 
 pub fn get_default_shell() -> PathBuf {

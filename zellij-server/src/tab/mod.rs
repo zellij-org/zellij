@@ -3278,12 +3278,21 @@ impl Tab {
         Ok(())
     }
     fn normalize_invoked_with_for_default_shell(&self, invoked_with: Option<Run>) -> Option<Run> {
-        let default_shell_run_command = Run::Command(RunCommand {
-            command: self.default_shell.clone(),
-            use_terminal_title: true,
-            ..Default::default()
-        });
-        if invoked_with == Some(default_shell_run_command) {
+        // The default shell started in a given folder (as with `new-pane --cwd`) is still the
+        // default shell: the pane's folder is tracked apart from what it runs.
+        let is_default_shell = match &invoked_with {
+            Some(Run::Command(run_command)) => {
+                *run_command
+                    == RunCommand {
+                        command: self.default_shell.clone(),
+                        cwd: run_command.cwd.clone(),
+                        use_terminal_title: true,
+                        ..Default::default()
+                    }
+            },
+            _ => false,
+        };
+        if is_default_shell {
             None
         } else {
             invoked_with

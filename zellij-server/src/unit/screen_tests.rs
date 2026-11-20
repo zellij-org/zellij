@@ -3995,6 +3995,79 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
 }
 
 #[test]
+pub fn send_cli_new_pane_action_with_cwd_and_no_command() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let cli_new_pane_action = CliAction::NewPane {
+        direction: None,
+        command: vec![],
+        plugin: None,
+        cwd: Some("/some/folder".into()),
+        floating: false,
+        in_place: false,
+        close_replaced_pane: false,
+        pane_id: None,
+        name: None,
+        close_on_exit: false,
+        start_suspended: false,
+        configuration: None,
+        skip_plugin_cache: false,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        stacked: false,
+        blocking: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        block_until_exit: false,
+        unblock_condition: None,
+        near_current_pane: false,
+        no_focus: false,
+        borderless: None,
+        tab_id: None,
+        border_style: None,
+        notify: Default::default(),
+    };
+    send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+
+    let spawned =
+        received_pty_instructions.lock().unwrap().iter().find_map(
+            |instruction| match instruction {
+                PtyInstruction::SpawnTerminal(terminal_action, ..) => Some(terminal_action.clone()),
+                _ => None,
+            },
+        );
+    match spawned {
+        Some(Some(TerminalAction::RunCommand(command))) => {
+            assert!(
+                command.requests_default_shell(),
+                "the pane runs the default shell, not {:?}",
+                command.command
+            );
+            assert_eq!(command.cwd, Some(PathBuf::from("/some/folder")));
+        },
+        other => panic!("Expected a default shell request, got {:?}", other),
+    }
+}
+
+#[test]
 pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
     let size = Size {
         cols: 121,
