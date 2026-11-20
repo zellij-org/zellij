@@ -5640,6 +5640,7 @@ setting_keys! {
     TerminalFontWeight => (Terminal, "font_weight", false, Number),
     TerminalSystemFonts => (Terminal, "system_fonts", false, Flag),
     TerminalLigatures => (Terminal, "ligatures", false, Flag),
+    TerminalHinting => (Terminal, "hinting", false, Flag),
     TerminalFontFeatures => (Terminal, "font_features", false, List),
     TerminalCursorStyle => (Terminal, "cursor_style", false, Text),
     TerminalCursorBlink => (Terminal, "cursor_blink", false, Flag),

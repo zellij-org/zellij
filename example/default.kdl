@@ -752,6 +752,11 @@ web_client {
 //     // != are drawn as one shape.
 //     ligatures true
 //
+//     // Whether glyph outlines are snapped to the pixel grid using the font's
+//     // hints, which keeps letter heights consistent at small sizes. Turn it
+//     // on if letters look shorter than in other terminals.
+//     hinting false
+//
 //     // Weight of the regular face: a number from 100 to 900, or one of
 //     // "thin", "extralight", "light", "regular", "medium", "semibold",
 //     // "bold", "extrabold" or "black". Bold text uses a face 300 heavier,

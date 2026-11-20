@@ -510,6 +510,7 @@ pub struct TerminalConfig {
     pub font_size: Option<f32>,
     pub system_fonts: Option<bool>,
     pub ligatures: Option<bool>,
+    pub hinting: Option<bool>,
     pub cursor_style: Option<CursorStyle>,
     pub cursor_blink: Option<bool>,
     pub paste_keys: Option<Vec<KeyWithModifier>>,
@@ -581,6 +582,9 @@ impl TerminalConfig {
         }
         if let Some(ligatures) = kdl_get_child_entry_bool_value!(kdl, "ligatures") {
             window.ligatures = Some(ligatures);
+        }
+        if let Some(hinting) = kdl_get_child_entry_bool_value!(kdl, "hinting") {
+            window.hinting = Some(hinting);
         }
         if let Some(cursor_style) = kdl_get_child!(kdl, "cursor_style") {
             window.cursor_style = Some(CursorStyle::from_kdl(cursor_style)?);
@@ -762,6 +766,11 @@ impl TerminalConfig {
             let mut ligatures_node = KdlNode::new("ligatures");
             ligatures_node.push(KdlValue::Bool(ligatures));
             children.nodes_mut().push(ligatures_node);
+        }
+        if let Some(hinting) = self.hinting {
+            let mut hinting_node = KdlNode::new("hinting");
+            hinting_node.push(KdlValue::Bool(hinting));
+            children.nodes_mut().push(hinting_node);
         }
         if let Some(cursor_style) = self.cursor_style {
             children.nodes_mut().push(cursor_style.to_kdl());
@@ -963,6 +972,7 @@ impl TerminalConfig {
         merged.font_size = other.font_size.or(merged.font_size);
         merged.system_fonts = other.system_fonts.or(merged.system_fonts);
         merged.ligatures = other.ligatures.or(merged.ligatures);
+        merged.hinting = other.hinting.or(merged.hinting);
         merged.cursor_style = other.cursor_style.or(merged.cursor_style);
         merged.cursor_blink = other.cursor_blink.or(merged.cursor_blink);
         merged.paste_keys = other.paste_keys.or(merged.paste_keys);
@@ -1372,6 +1382,7 @@ mod tests {
                 font_size 18
                 system_fonts false
                 ligatures false
+                hinting false
                 cursor_style "bar"
                 cursor_blink true
                 paste_keys "Ctrl Shift v" "Shift Insert"
@@ -1403,6 +1414,7 @@ mod tests {
         assert_eq!(parsed.font_size, Some(18.0));
         assert_eq!(parsed.system_fonts, Some(false));
         assert_eq!(parsed.ligatures, Some(false));
+        assert_eq!(parsed.hinting, Some(false));
         assert_eq!(parsed.cursor_style, Some(CursorStyle::Bar));
         assert_eq!(parsed.cursor_blink, Some(true));
         assert_eq!(
