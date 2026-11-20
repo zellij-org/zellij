@@ -6522,14 +6522,14 @@ impl Handler for Grid {
                     },
                     6 => {
                         // CPR - cursor position report
-
-                        // Note that this is relative to scrolling region.
-                        let offset = self.scroll_region.0; // scroll_region_top
-                        let position_report = format!(
-                            "\u{1b}[{};{}R",
-                            (self.cursor.y + 1).saturating_sub(offset).max(1),
-                            self.cursor.x + 1
-                        );
+                        //
+                        // ECMA-48 / xterm: report absolute screen coordinates unless
+                        // origin mode (DECOM) is set. Zellij does not track DECOM, so
+                        // never subtract scroll_region.top. Reporting relative to the
+                        // region mis-anchored TUIs that pin a top strip with DECSTBM
+                        // and clamped rows above the region to 1 (see #5797).
+                        let position_report =
+                            format!("\u{1b}[{};{}R", self.cursor.y + 1, self.cursor.x + 1);
                         self.pending_messages_to_pty
                             .push(position_report.as_bytes().to_vec());
                     },
