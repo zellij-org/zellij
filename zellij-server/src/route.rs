@@ -27,7 +27,7 @@ use zellij_utils::{
     errors::{prelude::*, ErrorContext},
     input::{
         actions::{Action, SearchDirection, SearchOption},
-        command::TerminalAction,
+        command::{RunCommandAction, TerminalAction},
     },
     ipc::{
         ClientToServerMsg, ExitReason, IpcReceiveError, IpcReceiverWithContext, ServerToClientMsg,
@@ -262,12 +262,36 @@ fn new_pane_routing(
     }
 }
 
+/// The terminal action for a new pane: its own command, or the default shell.
+///
+/// A request for the default shell in a given folder (`new-pane --cwd` without a command)
+/// takes the configured default shell when there is one. Otherwise it goes on as it is, and
+/// the pty thread starts the shell it would start for any new pane.
+fn new_pane_terminal_action(
+    command: Option<RunCommandAction>,
+    default_shell: &Option<TerminalAction>,
+) -> Option<TerminalAction> {
+    match (command, default_shell) {
+        (Some(command), Some(default_shell)) if command.requests_default_shell() => {
+            let mut default_shell = default_shell.clone();
+            if let Some(cwd) = command.cwd {
+                default_shell.change_cwd(cwd);
+            }
+            Some(default_shell)
+        },
+        (Some(command), _) => Some(TerminalAction::RunCommand(command.into())),
+        (None, default_shell) => default_shell.clone(),
+    }
+}
+
 fn spawns_command_pane(action: &Action) -> bool {
     match action {
         Action::NewFloatingPane { command, .. }
         | Action::NewInPlacePane { command, .. }
         | Action::NewStackedPane { command, .. }
-        | Action::NewTiledPane { command, .. } => command.is_some(),
+        | Action::NewTiledPane { command, .. } => command
+            .as_ref()
+            .map_or(false, |command| !command.requests_default_shell()),
         Action::RunInBackground { .. } => true,
         _ => false,
     }
@@ -949,9 +973,7 @@ fn route_action_with_origin(
             no_focus,
             tab_id,
         } => {
-            let command = command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let command = new_pane_terminal_action(command, &default_shell);
             let set_pane_blocking = true;
 
             let notification_end = if let Some(condition) = unblock_condition {
@@ -1071,9 +1093,7 @@ fn route_action_with_origin(
             no_focus,
             tab_id,
         } => {
-            let run_cmd = run_command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let run_cmd = new_pane_terminal_action(run_command, &default_shell);
             let client_tab_index_or_paneid =
                 new_pane_routing(no_focus, near_current_pane, tab_id, pane_id, client_id);
             senders
@@ -1098,9 +1118,7 @@ fn route_action_with_origin(
             close_replaced_pane,
             tab_id,
         } => {
-            let run_cmd = run_command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let run_cmd = new_pane_terminal_action(run_command, &default_shell);
             let explicit_pane_id_to_replace: Option<PaneId> = pane_id_to_replace
                 .and_then(|pane_id_to_replace| pane_id_to_replace.try_into().ok());
             let pane_id = explicit_pane_id_to_replace.or(pane_id);
@@ -1137,9 +1155,7 @@ fn route_action_with_origin(
             no_focus,
             tab_id,
         } => {
-            let run_cmd = run_command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let run_cmd = new_pane_terminal_action(run_command, &default_shell);
 
             let (pane_placement, client_tab_index_or_paneid) = if let Some(tab_id) = tab_id {
                 (
@@ -1201,9 +1217,7 @@ fn route_action_with_origin(
             border_style,
             tab_id,
         } => {
-            let run_cmd = run_command
-                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| default_shell.clone());
+            let run_cmd = new_pane_terminal_action(run_command, &default_shell);
             let client_tab_index_or_paneid =
                 new_pane_routing(no_focus, near_current_pane, tab_id, pane_id, client_id);
             senders
@@ -4417,6 +4431,97 @@ fn type_into_popup(senders: &ThreadSenders, client_id: ClientId, chars: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use zellij_utils::input::command::RunCommand;
+
+    fn configured_shell() -> Option<TerminalAction> {
+        Some(TerminalAction::RunCommand(RunCommand {
+            command: PathBuf::from("/bin/configured-shell"),
+            use_terminal_title: true,
+            ..Default::default()
+        }))
+    }
+
+    fn run_command(terminal_action: Option<TerminalAction>) -> RunCommand {
+        match terminal_action {
+            Some(TerminalAction::RunCommand(run_command)) => run_command,
+            other => panic!("Expected a command, got {:?}", other),
+        }
+    }
+
+    fn new_tiled_pane(command: Option<RunCommandAction>) -> Action {
+        Action::NewTiledPane {
+            direction: None,
+            command,
+            pane_name: None,
+            near_current_pane: false,
+            no_focus: false,
+            borderless: None,
+            border_style: None,
+            tab_id: None,
+        }
+    }
+
+    #[test]
+    fn a_default_shell_request_starts_the_configured_shell_in_its_folder() {
+        let shell = new_pane_terminal_action(
+            Some(RunCommandAction::default_shell_in(PathBuf::from(
+                "/project",
+            ))),
+            &configured_shell(),
+        );
+        assert_eq!(
+            run_command(shell),
+            RunCommand {
+                cwd: Some(PathBuf::from("/project")),
+                ..run_command(configured_shell())
+            }
+        );
+    }
+
+    #[test]
+    fn a_default_shell_request_without_a_configured_shell_is_left_to_the_pty_thread() {
+        let request = run_command(new_pane_terminal_action(
+            Some(RunCommandAction::default_shell_in(PathBuf::from(
+                "/project",
+            ))),
+            &None,
+        ));
+        assert!(request.requests_default_shell());
+        assert_eq!(request.cwd, Some(PathBuf::from("/project")));
+    }
+
+    #[test]
+    fn new_pane_commands_and_bare_new_panes_are_unchanged() {
+        let htop = RunCommandAction {
+            command: PathBuf::from("htop"),
+            cwd: Some(PathBuf::from("/project")),
+            ..Default::default()
+        };
+        assert_eq!(
+            run_command(new_pane_terminal_action(
+                Some(htop.clone()),
+                &configured_shell()
+            )),
+            RunCommand::from(htop)
+        );
+        assert_eq!(
+            run_command(new_pane_terminal_action(None, &configured_shell())),
+            run_command(configured_shell())
+        );
+        assert!(new_pane_terminal_action(None, &None).is_none());
+    }
+
+    #[test]
+    fn a_default_shell_request_does_not_spawn_a_command_pane() {
+        assert!(!spawns_command_pane(&new_tiled_pane(Some(
+            RunCommandAction::default_shell_in(PathBuf::from("/project"))
+        ))));
+        assert!(spawns_command_pane(&new_tiled_pane(Some(
+            RunCommandAction::new(vec!["htop".to_owned()])
+        ))));
+        assert!(!spawns_command_pane(&new_tiled_pane(None)));
+    }
 
     fn write_key(bare_key: BareKey, modifiers: &[KeyModifier], bytes: Vec<u8>) -> Action {
         let key = zellij_utils::data::KeyWithModifier::new_with_modifiers(

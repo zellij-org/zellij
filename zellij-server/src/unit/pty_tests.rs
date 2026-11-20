@@ -647,3 +647,48 @@ fn resurrect_command_for_unknown_terminal_is_rejected() {
     assert!(result.is_err());
     assert!(pty.resurrect_commands.is_empty());
 }
+
+fn default_shell_request(cwd: &str) -> Option<TerminalAction> {
+    Some(TerminalAction::RunCommand(
+        RunCommandAction::default_shell_in(PathBuf::from(cwd)).into(),
+    ))
+}
+
+#[test]
+fn default_shell_request_opens_like_a_plain_new_pane() {
+    let (terminal_action, cwd) = take_default_shell_cwd(default_shell_request("/project"));
+    assert!(terminal_action.is_none());
+    assert_eq!(cwd, Some(PathBuf::from("/project")));
+}
+
+#[test]
+fn commands_are_not_taken_for_default_shell_requests() {
+    let htop = Some(TerminalAction::RunCommand(RunCommand {
+        command: PathBuf::from("htop"),
+        cwd: Some(PathBuf::from("/project")),
+        ..Default::default()
+    }));
+    let (terminal_action, cwd) = take_default_shell_cwd(htop);
+    match terminal_action {
+        Some(TerminalAction::RunCommand(command)) => {
+            assert_eq!(command.command, PathBuf::from("htop"))
+        },
+        other => panic!("Expected the command, got {:?}", other),
+    }
+    assert!(cwd.is_none());
+    let (terminal_action, cwd) = take_default_shell_cwd(None);
+    assert!(terminal_action.is_none() && cwd.is_none());
+}
+
+#[test]
+fn default_shell_request_starts_the_default_shell_in_its_folder() {
+    let (pty, _rx) = make_pty_with_plugin_receiver(MockOsApi::new());
+    let (terminal_action, cwd) = take_default_shell_cwd(default_shell_request("/project"));
+    match pty.with_default_shell_cwd(terminal_action, cwd) {
+        Some(TerminalAction::RunCommand(command)) => {
+            assert_eq!(command.command, default_shell_from(&pty.pane_env));
+            assert_eq!(command.cwd, Some(PathBuf::from("/project")));
+        },
+        other => panic!("Expected the default shell, got {:?}", other),
+    }
+}

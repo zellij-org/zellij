@@ -58,6 +58,8 @@ impl OpenFilePayload {
 
 #[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
 pub struct RunCommand {
+    /// Empty when this asks for the session's default shell (see
+    /// [`RunCommandAction::default_shell_in`]).
     #[serde(alias = "cmd")]
     pub command: PathBuf,
     #[serde(default)]
@@ -92,9 +94,18 @@ impl std::fmt::Display for RunCommand {
     }
 }
 
+impl RunCommand {
+    /// Whether this asks for the session's default shell rather than naming a command.
+    pub fn requests_default_shell(&self) -> bool {
+        self.command.as_os_str().is_empty()
+    }
+}
+
 /// Intermediate representation
 #[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
 pub struct RunCommandAction {
+    /// Empty when this asks for the session's default shell (see
+    /// [`RunCommandAction::default_shell_in`]).
     #[serde(rename = "cmd")]
     pub command: PathBuf,
     #[serde(default)]
@@ -147,6 +158,20 @@ impl From<RunCommand> for RunCommandAction {
 }
 
 impl RunCommandAction {
+    /// Asks for the session's default shell, started in `cwd`.
+    ///
+    /// The command is left empty because the server decides which shell that is: the
+    /// configured `default_shell`, or else the one from the environment.
+    pub fn default_shell_in(cwd: PathBuf) -> Self {
+        RunCommandAction {
+            cwd: Some(cwd),
+            ..Default::default()
+        }
+    }
+    /// Whether this asks for the session's default shell rather than naming a command.
+    pub fn requests_default_shell(&self) -> bool {
+        self.command.as_os_str().is_empty()
+    }
     pub fn new(mut command: Vec<String>) -> Self {
         if command.is_empty() {
             Default::default()
