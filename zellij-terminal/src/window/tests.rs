@@ -907,6 +907,49 @@ fn a_focus_change_turns_the_cursor_hollow_and_redraws_its_row() {
     assert_eq!(reported, vec![false, true, false]);
 }
 
+fn reported_theme_modes(harness: Harness) -> Vec<HostTerminalThemeMode> {
+    harness
+        .sent()
+        .into_iter()
+        .filter_map(|msg| match msg {
+            ClientToServerMsg::HostTerminalThemeChanged { mode } => Some(mode),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_system_appearance_change_is_reported_to_the_session_once_per_change() {
+    use winit::window::Theme;
+    let mut harness = Harness::new(2, true, "");
+    harness.app.window_theme_changed(Theme::Light);
+    harness.app.window_theme_changed(Theme::Light);
+    harness.app.window_theme_changed(Theme::Dark);
+    assert_eq!(
+        reported_theme_modes(harness),
+        vec![HostTerminalThemeMode::Light, HostTerminalThemeMode::Dark]
+    );
+}
+
+#[test]
+fn a_system_with_no_appearance_to_report_tells_the_session_nothing() {
+    let mut harness = Harness::new(0, true, "");
+    harness.app.os_theme_changed(None);
+    harness.app.report_os_theme();
+    assert!(reported_theme_modes(harness).is_empty());
+}
+
+#[test]
+fn the_system_appearance_is_declared_again_to_a_session_followed_later() {
+    let mut harness = Harness::new(1, true, "");
+    harness.app.os_theme = Some(HostTerminalThemeMode::Light);
+    harness.app.report_os_theme();
+    assert_eq!(
+        reported_theme_modes(harness),
+        vec![HostTerminalThemeMode::Light]
+    );
+}
+
 #[test]
 fn a_close_request_with_no_session_left_closes_the_window_itself() {
     let mut harness = Harness::new(0, true, "");
