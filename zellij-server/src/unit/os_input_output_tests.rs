@@ -410,6 +410,62 @@ fn the_pane_environment_is_added_to_and_removed_from_the_child_environment() {
     assert!(std::env::var("ZELLIJ_PANE_ENV_TEST").is_err());
 }
 
+#[cfg(unix)]
+#[test]
+fn a_pane_started_in_a_symlinked_directory_keeps_the_symlink_in_pwd() {
+    use crate::panes::PaneId;
+    use zellij_utils::input::command::TerminalAction;
+
+    let dir = tempfile::tempdir().unwrap();
+    let physical = dir.path().join("physical");
+    let logical = dir.path().join("logical");
+    std::fs::create_dir(&physical).unwrap();
+    std::os::unix::fs::symlink(&physical, &logical).unwrap();
+
+    let server = make_server();
+    let cmd = RunCommand {
+        command: PathBuf::from("sh"),
+        args: vec!["-c".to_string(), "echo \"pwd:$PWD:end\"".to_string()],
+        cwd: Some(logical.clone()),
+        ..Default::default()
+    };
+    let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> = Box::new(|_, _, _| {});
+    let (_terminal_id, mut reader, _child_pid) = server
+        .spawn_terminal(
+            TerminalAction::RunCommand(cmd),
+            quit_cb,
+            None,
+            &Default::default(),
+        )
+        .expect("spawn_terminal should succeed");
+    let expected = format!("pwd:{}:end", logical.display());
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let output = rt.block_on(async {
+        let mut output = Vec::new();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline
+            && !String::from_utf8_lossy(&output).contains(&expected)
+        {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(500),
+                reader.read_chunk(4096),
+            )
+            .await
+            {
+                Ok(Ok(bytes)) if bytes.is_empty() => break,
+                Ok(Ok(bytes)) => output.extend_from_slice(&bytes),
+                Ok(Err(_)) => break,
+                Err(_) => {},
+            }
+        }
+        String::from_utf8_lossy(&output).to_string()
+    });
+    assert!(output.contains(&expected), "got: '{}'", output);
+}
+
 #[cfg(windows)]
 #[test]
 fn the_resurrect_hook_keeps_the_quotes_in_its_command() {
