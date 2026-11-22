@@ -34,6 +34,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: the plugin manager lists the running plugins again (https://github.com/zellij-org/zellij/pull/5954)
 * fix: the auto-start snippet starting zellij in shells that aren't interactive terminal shells, such as the desktop login shell (https://github.com/zellij-org/zellij/pull/5936)
 * fix: `zellij action new-pane --cwd` without a command opens the pane in that folder instead of the focused pane's folder (https://github.com/zellij-org/zellij/pull/5961)
+* fix: Ctrl, Alt and Cmd shortcuts in `zellij terminal` on non-Latin keyboard layouts such as Russian, where Ctrl+C typed `с` instead of interrupting (https://github.com/zellij-org/zellij/pull/5958)
+* fix(windows): Ctrl+Alt shortcuts in `zellij terminal` on keys where AltGr types nothing, such as Ctrl+Alt+L (https://github.com/zellij-org/zellij/pull/5970)
 
 ## [0.46.0] - 2026-11-11
 * (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)

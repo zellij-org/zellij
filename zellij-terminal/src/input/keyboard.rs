@@ -50,8 +50,22 @@ impl Press {
     // as other terminals do: Ctrl+С on a Russian layout is Ctrl+C, Cmd+М is Cmd+V, and the
     // bindings written with Latin letters match. A Latin layout keeps its own letters, so
     // AZERTY's Ctrl+A is not the Q key.
+    //
+    // Windows treats Ctrl+Alt as AltGr, and a key that AltGr types nothing on arrives
+    // unidentified. The chord is then on the key's own letter: Ctrl+Alt+L is Ctrl+Alt+l.
     fn reported_key(&self) -> Cow<'_, Key> {
-        match self.latin_stand_in() {
+        let chording = ModifiersState::CONTROL | ModifiersState::ALT | ModifiersState::SUPER;
+        if !self.modifiers.intersects(chording) {
+            return Cow::Borrowed(&self.logical);
+        }
+        let reported = match &self.logical {
+            Key::Character(typed) => self.typed_stand_in(typed),
+            Key::Unidentified(_) if self.produced_text().is_none() => self
+                .unmodified_letter()
+                .map(|letter| self.latin_stand_in(letter).unwrap_or(letter)),
+            _ => None,
+        };
+        match reported {
             Some(character) => Cow::Owned(Key::Character(SmolStr::new(
                 character.encode_utf8(&mut [0; 4]),
             ))),
@@ -59,21 +73,34 @@ impl Press {
         }
     }
 
-    fn latin_stand_in(&self) -> Option<char> {
-        let chording = ModifiersState::CONTROL | ModifiersState::ALT | ModifiersState::SUPER;
-        if !self.modifiers.intersects(chording) {
-            return None;
-        }
-        let Key::Character(typed) = &self.logical else {
-            return None;
-        };
+    fn typed_stand_in(&self, typed: &str) -> Option<char> {
         // Without the unmodified key there is no telling whether AltGr or Option chose the
         // letter, and a letter they chose is typed as it is.
         let unmodified = self.unmodified.as_ref()?;
         if alt_shifted_the_character(&self.logical, Some(unmodified)) {
             return None;
         }
-        let character = sole_char(typed)?;
+        self.latin_stand_in(sole_char(typed)?)
+    }
+
+    // The key's own character, capitalised when Shift is held. The layout's shifted symbol is
+    // unknown, so Shift on a symbol key does not reach the pane.
+    fn unmodified_letter(&self) -> Option<char> {
+        let Some(Key::Character(plain)) = &self.unmodified else {
+            return None;
+        };
+        let plain = sole_char(plain)?;
+        if !self.modifiers.shift_key() {
+            return Some(plain);
+        }
+        let mut capital = plain.to_uppercase();
+        match (capital.next(), capital.next()) {
+            (Some(capital), None) => Some(capital),
+            _ => Some(plain),
+        }
+    }
+
+    fn latin_stand_in(&self, character: char) -> Option<char> {
         if !character.is_alphabetic() || writes_in_latin(character) {
             return None;
         }
@@ -511,6 +538,14 @@ mod tests {
         }
     }
 
+    // What Windows reports for a key that Ctrl+Alt, being AltGr, types nothing on.
+    fn unmapped(unmodified: &str, code: KeyCode, modifiers: ModifiersState) -> Press {
+        Press {
+            logical: unidentified(),
+            ..on_key(unmodified, unmodified, code, modifiers)
+        }
+    }
+
     // Escapes, because Cyrillic "с" and Latin "c" look the same.
     const RU_ES: &str = "\u{441}"; // с, on the C key
     const RU_ES_CAPITAL: &str = "\u{421}"; // С
@@ -519,6 +554,7 @@ mod tests {
     const RU_EM: &str = "\u{43c}"; // м, on the V key
     const RU_EM_CAPITAL: &str = "\u{41c}"; // М
     const RU_HA: &str = "\u{445}"; // х, on the [ key
+    const RU_DE: &str = "\u{434}"; // д, on the L key
     const UK_GHE: &str = "\u{433}"; // г, on the U key
     const UK_GHE_UPTURN: &str = "\u{491}"; // ґ, AltGr+г on the Ukrainian layout
     const HE_SHIN: &str = "\u{5e9}"; // ש, on the A key
@@ -696,6 +732,78 @@ mod tests {
             translate(&unknown).map(|key| key.bare_key),
             Some(BareKey::Char('\u{441}')),
             "without the unmodified key there is no telling whether AltGr chose the letter"
+        );
+    }
+
+    #[test]
+    fn ctrl_alt_on_a_key_altgr_types_nothing_on_is_a_chord() {
+        let ctrl_alt = ModifiersState::CONTROL | ModifiersState::ALT;
+        let pressed = unmapped("l", KeyCode::KeyL, ctrl_alt);
+        let chord = KeyWithModifier::new(BareKey::Char('l'))
+            .with_ctrl_modifier()
+            .with_alt_modifier();
+        assert_eq!(translate(&pressed), Some(chord.clone()));
+        assert_eq!(sent(&pressed), b"\x1b[108;7u");
+        assert_eq!(
+            translate(&pressed)
+                .and_then(|key| key.serialize_non_kitty())
+                .as_deref(),
+            Some("\u{1b}\u{c}"),
+            "a pane without the kitty protocol gets Escape then Ctrl+L"
+        );
+        assert!(claims(&[chord], &pressed));
+    }
+
+    #[test]
+    fn ctrl_alt_on_a_non_latin_layout_is_a_chord_on_the_us_key() {
+        let ctrl_alt = ModifiersState::CONTROL | ModifiersState::ALT;
+        assert_eq!(
+            translate(&unmapped(RU_DE, KeyCode::KeyL, ctrl_alt)),
+            translate(&unmapped("l", KeyCode::KeyL, ctrl_alt))
+        );
+    }
+
+    #[test]
+    fn shift_on_a_ctrl_alt_chord_capitalises_its_letter() {
+        let all = ModifiersState::CONTROL | ModifiersState::ALT | ModifiersState::SHIFT;
+        let expected = translate(&layered("L", "l", all));
+        assert_eq!(translate(&unmapped("l", KeyCode::KeyL, all)), expected);
+        assert_eq!(translate(&unmapped(RU_DE, KeyCode::KeyL, all)), expected);
+    }
+
+    #[test]
+    fn a_character_ctrl_alt_types_as_altgr_is_still_typed() {
+        let ctrl_alt = ModifiersState::CONTROL | ModifiersState::ALT;
+        assert_eq!(
+            translate(&on_key("€", "e", KeyCode::KeyE, ctrl_alt)).map(|key| key.bare_key),
+            Some(BareKey::Char('€')),
+            "AZERTY's Ctrl+Alt+E is AltGr+E"
+        );
+    }
+
+    #[test]
+    fn an_unidentified_key_is_a_chord_only_under_ctrl_alt_or_super_and_without_text() {
+        let ctrl_alt = ModifiersState::CONTROL | ModifiersState::ALT;
+        assert_eq!(translate(&unmapped("l", KeyCode::KeyL, none())), None);
+        assert_eq!(
+            translate(&unmapped("l", KeyCode::KeyL, ModifiersState::SHIFT)),
+            None
+        );
+        let picked = unmapped("l", KeyCode::KeyL, ctrl_alt).with_text("′");
+        assert_eq!(
+            unidentified_text(&picked),
+            Some("′".to_owned()),
+            "text that arrived with the key is typed"
+        );
+        assert_eq!(translate(&picked), None);
+        let unknown = Press {
+            unmodified: None,
+            ..unmapped("l", KeyCode::KeyL, ctrl_alt)
+        };
+        assert_eq!(
+            translate(&unknown),
+            None,
+            "without the key's own letter there is no chord to report"
         );
     }
 
