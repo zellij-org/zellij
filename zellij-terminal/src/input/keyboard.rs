@@ -45,10 +45,11 @@ impl Press {
         }
     }
 
-    // With Ctrl or Alt held, a letter from a layout that does not write in Latin (Cyrillic,
-    // Greek, Hebrew...) is reported as the US character of the same physical key, as other
-    // terminals do: Ctrl+С on a Russian layout is Ctrl+C, and Zellij's Ctrl and Alt bindings
-    // match. A Latin layout keeps its own letters, so AZERTY's Ctrl+A is not the Q key.
+    // With Ctrl, Alt or Super (Cmd) held, a letter from a layout that does not write in Latin
+    // (Cyrillic, Greek, Hebrew...) is reported as the US character of the same physical key,
+    // as other terminals do: Ctrl+С on a Russian layout is Ctrl+C, Cmd+М is Cmd+V, and the
+    // bindings written with Latin letters match. A Latin layout keeps its own letters, so
+    // AZERTY's Ctrl+A is not the Q key.
     fn reported_key(&self) -> Cow<'_, Key> {
         match self.latin_stand_in() {
             Some(character) => Cow::Owned(Key::Character(SmolStr::new(
@@ -59,7 +60,8 @@ impl Press {
     }
 
     fn latin_stand_in(&self) -> Option<char> {
-        if !(self.modifiers.control_key() || self.modifiers.alt_key()) {
+        let chording = ModifiersState::CONTROL | ModifiersState::ALT | ModifiersState::SUPER;
+        if !self.modifiers.intersects(chording) {
             return None;
         }
         let Key::Character(typed) = &self.logical else {
@@ -591,6 +593,26 @@ mod tests {
     }
 
     #[test]
+    fn command_on_a_non_latin_letter_copies_and_pastes() {
+        let cmd = |key| KeyWithModifier::new(BareKey::Char(key)).with_super_modifier();
+        let command = ModifiersState::SUPER;
+        assert!(
+            claims(&[cmd('v')], &on_key(RU_EM, RU_EM, KeyCode::KeyV, command)),
+            "Cmd+V pastes on a Russian layout"
+        );
+        assert!(
+            claims(&[cmd('c')], &on_key(RU_ES, RU_ES, KeyCode::KeyC, command)),
+            "Cmd+C copies on a Russian layout"
+        );
+        let with_shift = command | ModifiersState::SHIFT;
+        assert_eq!(
+            translate(&on_key(RU_EM_CAPITAL, RU_EM, KeyCode::KeyV, with_shift)),
+            translate(&layered("V", "v", with_shift)),
+            "the same key on a US layout"
+        );
+    }
+
+    #[test]
     fn shift_on_a_non_latin_letter_is_shift_on_the_us_key() {
         let both = ModifiersState::CONTROL | ModifiersState::SHIFT;
         assert_eq!(
@@ -641,7 +663,7 @@ mod tests {
     }
 
     #[test]
-    fn a_non_latin_letter_without_control_or_alt_is_typed_as_itself() {
+    fn a_non_latin_letter_without_control_alt_or_super_is_typed_as_itself() {
         assert_eq!(
             sent(&on_key(RU_ES, RU_ES, KeyCode::KeyC, none())),
             RU_ES.as_bytes()
