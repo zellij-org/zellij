@@ -15,12 +15,13 @@ use std::path::Path;
 
 impl App {
     pub(in crate::window) fn on_key(&mut self, event: &KeyEvent) {
-        let option_as_alt = keyboard::option_acts_as_alt(
+        let keeps_alt = keyboard::keeps_alt(
             Platform::current(),
             self.options.option_as_alt,
             self.alt_keys,
+            self.modifiers,
         );
-        self.press(keyboard::Press::of(event, self.modifiers, option_as_alt));
+        self.press(keyboard::Press::of(event, self.modifiers, keeps_alt));
     }
 
     pub(in crate::window) fn press(&mut self, press: keyboard::Press) {
