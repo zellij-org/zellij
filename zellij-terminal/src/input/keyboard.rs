@@ -1,7 +1,10 @@
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 use winit::event::{KeyEvent, Modifiers};
-use winit::keyboard::{Key, ModifiersKeyState, ModifiersState, NamedKey};
+use winit::keyboard::{
+    Key, KeyCode, ModifiersKeyState, ModifiersState, NamedKey, NativeKeyCode, PhysicalKey, SmolStr,
+};
 use zellij_utils::data::{BareKey, KeyModifier, KeyWithModifier};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::terminal::OptionAsAlt;
@@ -13,6 +16,7 @@ use crate::platform::Platform;
 pub struct Press {
     pub logical: Key,
     pub unmodified: Option<Key>,
+    pub physical: PhysicalKey,
     pub modifiers: ModifiersState,
     pub option_as_alt: bool,
     pub text: Option<String>,
@@ -23,6 +27,7 @@ impl Press {
         Self {
             logical: event.logical_key.clone(),
             unmodified: unmodified_key(event),
+            physical: event.physical_key,
             modifiers,
             option_as_alt,
             text: event.text.as_ref().map(|text| text.to_string()),
@@ -33,10 +38,56 @@ impl Press {
         Self {
             logical,
             unmodified: None,
+            physical: PhysicalKey::Unidentified(NativeKeyCode::Unidentified),
             modifiers,
             option_as_alt: false,
             text: None,
         }
+    }
+
+    // With Ctrl, Alt or Super (Cmd) held, a letter from a layout that does not write in Latin
+    // (Cyrillic, Greek, Hebrew...) is reported as the US character of the same physical key,
+    // as other terminals do: Ctrl+С on a Russian layout is Ctrl+C, Cmd+М is Cmd+V, and the
+    // bindings written with Latin letters match. A Latin layout keeps its own letters, so
+    // AZERTY's Ctrl+A is not the Q key.
+    fn reported_key(&self) -> Cow<'_, Key> {
+        match self.latin_stand_in() {
+            Some(character) => Cow::Owned(Key::Character(SmolStr::new(
+                character.encode_utf8(&mut [0; 4]),
+            ))),
+            None => Cow::Borrowed(&self.logical),
+        }
+    }
+
+    fn latin_stand_in(&self) -> Option<char> {
+        let chording = ModifiersState::CONTROL | ModifiersState::ALT | ModifiersState::SUPER;
+        if !self.modifiers.intersects(chording) {
+            return None;
+        }
+        let Key::Character(typed) = &self.logical else {
+            return None;
+        };
+        // Without the unmodified key there is no telling whether AltGr or Option chose the
+        // letter, and a letter they chose is typed as it is.
+        let unmodified = self.unmodified.as_ref()?;
+        if alt_shifted_the_character(&self.logical, Some(unmodified)) {
+            return None;
+        }
+        let character = sole_char(typed)?;
+        if !character.is_alphabetic() || writes_in_latin(character) {
+            return None;
+        }
+        let PhysicalKey::Code(code) = self.physical else {
+            return None;
+        };
+        let shifted = if character.is_uppercase() {
+            true
+        } else if character.is_lowercase() {
+            false
+        } else {
+            self.modifiers.shift_key()
+        };
+        us_character(code, shifted)
     }
 
     fn is_shortcut(&self) -> bool {
@@ -217,7 +268,7 @@ pub fn claims(keys: &[KeyWithModifier], press: &Press) -> bool {
 }
 
 pub fn chord(press: &Press) -> Option<KeyWithModifier> {
-    let bare_key = match &press.logical {
+    let bare_key = match &*press.reported_key() {
         Key::Character(text) => BareKey::Char(sole_char(text)?.to_ascii_lowercase()),
         Key::Named(NamedKey::Space) => BareKey::Char(' '),
         Key::Named(named) => named_key(*named)?,
@@ -279,7 +330,7 @@ pub fn text_message(chars: String) -> ClientToServerMsg {
 
 pub fn typed(press: &Press) -> Option<Typed> {
     let modifiers = press.effective_modifiers();
-    match &press.logical {
+    match &*press.reported_key() {
         Key::Character(text) => match sole_char(text) {
             Some(character) => Some(Typed::Key(with_modifiers(
                 BareKey::Char(character),
@@ -302,6 +353,67 @@ fn sole_char(text: &str) -> Option<char> {
     let mut chars = text.chars();
     let character = chars.next()?;
     chars.next().is_none().then_some(character)
+}
+
+fn writes_in_latin(character: char) -> bool {
+    matches!(
+        character as u32,
+        0x0000..=0x02AF | 0x1E00..=0x1EFF | 0x2C60..=0x2C7F | 0xA720..=0xA7FF | 0xAB30..=0xAB6F
+    )
+}
+
+fn us_character(code: KeyCode, shifted: bool) -> Option<char> {
+    let (plain, with_shift) = match code {
+        KeyCode::Backquote => ('`', '~'),
+        KeyCode::Digit1 => ('1', '!'),
+        KeyCode::Digit2 => ('2', '@'),
+        KeyCode::Digit3 => ('3', '#'),
+        KeyCode::Digit4 => ('4', '$'),
+        KeyCode::Digit5 => ('5', '%'),
+        KeyCode::Digit6 => ('6', '^'),
+        KeyCode::Digit7 => ('7', '&'),
+        KeyCode::Digit8 => ('8', '*'),
+        KeyCode::Digit9 => ('9', '('),
+        KeyCode::Digit0 => ('0', ')'),
+        KeyCode::Minus => ('-', '_'),
+        KeyCode::Equal => ('=', '+'),
+        KeyCode::BracketLeft => ('[', '{'),
+        KeyCode::BracketRight => (']', '}'),
+        KeyCode::Backslash => ('\\', '|'),
+        KeyCode::Semicolon => (';', ':'),
+        KeyCode::Quote => ('\'', '"'),
+        KeyCode::Comma => (',', '<'),
+        KeyCode::Period => ('.', '>'),
+        KeyCode::Slash => ('/', '?'),
+        KeyCode::KeyA => ('a', 'A'),
+        KeyCode::KeyB => ('b', 'B'),
+        KeyCode::KeyC => ('c', 'C'),
+        KeyCode::KeyD => ('d', 'D'),
+        KeyCode::KeyE => ('e', 'E'),
+        KeyCode::KeyF => ('f', 'F'),
+        KeyCode::KeyG => ('g', 'G'),
+        KeyCode::KeyH => ('h', 'H'),
+        KeyCode::KeyI => ('i', 'I'),
+        KeyCode::KeyJ => ('j', 'J'),
+        KeyCode::KeyK => ('k', 'K'),
+        KeyCode::KeyL => ('l', 'L'),
+        KeyCode::KeyM => ('m', 'M'),
+        KeyCode::KeyN => ('n', 'N'),
+        KeyCode::KeyO => ('o', 'O'),
+        KeyCode::KeyP => ('p', 'P'),
+        KeyCode::KeyQ => ('q', 'Q'),
+        KeyCode::KeyR => ('r', 'R'),
+        KeyCode::KeyS => ('s', 'S'),
+        KeyCode::KeyT => ('t', 'T'),
+        KeyCode::KeyU => ('u', 'U'),
+        KeyCode::KeyV => ('v', 'V'),
+        KeyCode::KeyW => ('w', 'W'),
+        KeyCode::KeyX => ('x', 'X'),
+        KeyCode::KeyY => ('y', 'Y'),
+        KeyCode::KeyZ => ('z', 'Z'),
+        _ => return None,
+    };
+    Some(if shifted { with_shift } else { plain })
 }
 
 fn with_modifiers(bare_key: BareKey, modifiers: ModifiersState) -> KeyWithModifier {
@@ -387,13 +499,29 @@ mod tests {
 
     fn layered(logical: &str, unmodified: &str, modifiers: ModifiersState) -> Press {
         Press {
-            logical: character(logical),
             unmodified: Some(character(unmodified)),
-            modifiers,
-            option_as_alt: false,
-            text: None,
+            ..press(character(logical), modifiers)
         }
     }
+
+    fn on_key(logical: &str, unmodified: &str, code: KeyCode, modifiers: ModifiersState) -> Press {
+        Press {
+            physical: PhysicalKey::Code(code),
+            ..layered(logical, unmodified, modifiers)
+        }
+    }
+
+    // Escapes, because Cyrillic "с" and Latin "c" look the same.
+    const RU_ES: &str = "\u{441}"; // с, on the C key
+    const RU_ES_CAPITAL: &str = "\u{421}"; // С
+    const RU_PE: &str = "\u{43f}"; // п, on the G key
+    const RU_TE: &str = "\u{442}"; // т, on the N key
+    const RU_EM: &str = "\u{43c}"; // м, on the V key
+    const RU_EM_CAPITAL: &str = "\u{41c}"; // М
+    const RU_HA: &str = "\u{445}"; // х, on the [ key
+    const UK_GHE: &str = "\u{433}"; // г, on the U key
+    const UK_GHE_UPTURN: &str = "\u{491}"; // ґ, AltGr+г on the Ukrainian layout
+    const HE_SHIN: &str = "\u{5e9}"; // ש, on the A key
 
     fn converted(logical: &str, unmodified: &str, modifiers: ModifiersState) -> Press {
         Press {
@@ -418,6 +546,157 @@ mod tests {
 
     fn translated(logical: &Key, modifiers: ModifiersState) -> KeyWithModifier {
         translate(&press(logical.clone(), modifiers)).expect("expected a translated key")
+    }
+
+    #[test]
+    fn control_on_a_non_latin_letter_is_the_us_key_in_the_same_place() {
+        let pressed = on_key(RU_ES, RU_ES, KeyCode::KeyC, ModifiersState::CONTROL);
+        assert_eq!(
+            translate(&pressed),
+            Some(KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier())
+        );
+        assert_eq!(sent(&pressed), b"\x1b[99;5u");
+        assert_eq!(
+            translate(&pressed)
+                .and_then(|key| key.serialize_non_kitty())
+                .as_deref(),
+            Some("\u{3}"),
+            "a pane without the kitty protocol must get ETX rather than the letter"
+        );
+    }
+
+    #[test]
+    fn a_non_latin_layout_reaches_the_latin_bindings() {
+        assert_eq!(
+            translate(&on_key(
+                RU_PE,
+                RU_PE,
+                KeyCode::KeyG,
+                ModifiersState::CONTROL
+            )),
+            Some(KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier()),
+            "Ctrl+g locks the interface whatever the layout"
+        );
+        assert_eq!(
+            translate(&on_key(RU_TE, RU_TE, KeyCode::KeyN, ModifiersState::ALT)),
+            Some(KeyWithModifier::new(BareKey::Char('n')).with_alt_modifier()),
+            "Alt+n opens a pane whatever the layout"
+        );
+        let both = ModifiersState::CONTROL | ModifiersState::SHIFT;
+        let paste = vec![KeyWithModifier::new(BareKey::Char('v'))
+            .with_ctrl_modifier()
+            .with_shift_modifier()];
+        assert!(claims(
+            &paste,
+            &on_key(RU_EM_CAPITAL, RU_EM, KeyCode::KeyV, both)
+        ));
+    }
+
+    #[test]
+    fn command_on_a_non_latin_letter_copies_and_pastes() {
+        let cmd = |key| KeyWithModifier::new(BareKey::Char(key)).with_super_modifier();
+        let command = ModifiersState::SUPER;
+        assert!(
+            claims(&[cmd('v')], &on_key(RU_EM, RU_EM, KeyCode::KeyV, command)),
+            "Cmd+V pastes on a Russian layout"
+        );
+        assert!(
+            claims(&[cmd('c')], &on_key(RU_ES, RU_ES, KeyCode::KeyC, command)),
+            "Cmd+C copies on a Russian layout"
+        );
+        let with_shift = command | ModifiersState::SHIFT;
+        assert_eq!(
+            translate(&on_key(RU_EM_CAPITAL, RU_EM, KeyCode::KeyV, with_shift)),
+            translate(&layered("V", "v", with_shift)),
+            "the same key on a US layout"
+        );
+    }
+
+    #[test]
+    fn shift_on_a_non_latin_letter_is_shift_on_the_us_key() {
+        let both = ModifiersState::CONTROL | ModifiersState::SHIFT;
+        assert_eq!(
+            translate(&on_key(RU_ES_CAPITAL, RU_ES, KeyCode::KeyC, both)),
+            translate(&layered("C", "c", both)),
+            "the same key on a US layout"
+        );
+        assert_eq!(
+            translate(&on_key(
+                HE_SHIN,
+                HE_SHIN,
+                KeyCode::KeyA,
+                ModifiersState::CONTROL
+            )),
+            Some(KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier()),
+            "a script without case takes its level from Shift"
+        );
+        assert_eq!(
+            translate(&on_key(HE_SHIN, HE_SHIN, KeyCode::KeyA, both)),
+            translate(&layered("A", "a", both))
+        );
+    }
+
+    #[test]
+    fn a_non_latin_letter_off_the_letter_keys_is_the_us_symbol() {
+        let pressed = on_key(RU_HA, RU_HA, KeyCode::BracketLeft, ModifiersState::CONTROL);
+        assert_eq!(
+            translate(&pressed)
+                .and_then(|key| key.serialize_non_kitty())
+                .as_deref(),
+            Some("\u{1b}"),
+            "Ctrl+[ is Escape"
+        );
+    }
+
+    #[test]
+    fn a_latin_layout_keeps_its_own_letters_under_control() {
+        assert_eq!(
+            translate(&on_key("a", "a", KeyCode::KeyQ, ModifiersState::CONTROL)),
+            Some(KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier()),
+            "AZERTY's A key sits where QWERTY has Q"
+        );
+        assert_eq!(
+            translate(&on_key("é", "é", KeyCode::Digit2, ModifiersState::CONTROL)),
+            Some(KeyWithModifier::new(BareKey::Char('é')).with_ctrl_modifier()),
+            "an accented Latin letter is not a stand-in for the 2 key"
+        );
+    }
+
+    #[test]
+    fn a_non_latin_letter_without_control_alt_or_super_is_typed_as_itself() {
+        assert_eq!(
+            sent(&on_key(RU_ES, RU_ES, KeyCode::KeyC, none())),
+            RU_ES.as_bytes()
+        );
+        assert_eq!(
+            sent(&on_key(
+                RU_ES_CAPITAL,
+                RU_ES,
+                KeyCode::KeyC,
+                ModifiersState::SHIFT
+            )),
+            RU_ES_CAPITAL.as_bytes()
+        );
+    }
+
+    #[test]
+    fn a_letter_the_modifiers_chose_is_not_replaced() {
+        let altgr = ModifiersState::CONTROL | ModifiersState::ALT;
+        let pressed = on_key(UK_GHE_UPTURN, UK_GHE, KeyCode::KeyU, altgr);
+        assert_eq!(
+            translate(&pressed).map(|key| key.bare_key),
+            Some(BareKey::Char('\u{491}')),
+            "AltGr, which Windows reports as Ctrl+Alt, typed another letter"
+        );
+        let unknown = Press {
+            unmodified: None,
+            ..on_key(RU_ES, RU_ES, KeyCode::KeyC, ModifiersState::CONTROL)
+        };
+        assert_eq!(
+            translate(&unknown).map(|key| key.bare_key),
+            Some(BareKey::Char('\u{441}')),
+            "without the unmodified key there is no telling whether AltGr chose the letter"
+        );
     }
 
     #[test]
@@ -971,6 +1250,7 @@ mod tests {
         let pressed = Press {
             logical: character("@"),
             unmodified: None,
+            physical: PhysicalKey::Unidentified(NativeKeyCode::Unidentified),
             modifiers: ModifiersState::ALT,
             option_as_alt: false,
             text: None,
