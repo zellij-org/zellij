@@ -12,6 +12,10 @@ use zellij_utils::sessions::{validate_session_folder_name, validate_session_name
 pub const REMOTE_PREVIEW_TIMEOUT: Duration = Duration::from_millis(1000);
 pub const LOCAL_PREVIEW_ANSWER_TIMEOUT: Duration = Duration::from_millis(800);
 
+/// How many lines of a saved pane reach the preview event. Matches `PREVIEW_SCROLLBACK_LINES`,
+/// which is what running session previews keep.
+pub const SAVED_PREVIEW_SCROLLBACK_LINES: usize = 300;
+
 fn preview_error(session_name: &str, tab_index: Option<usize>, error: String) -> SessionPreview {
     SessionPreview {
         session_name: session_name.to_owned(),
@@ -172,7 +176,7 @@ fn collect_tiled_panes(layout: &TiledPaneLayout, panes: &mut Vec<SavedPanePrevie
             title: layout.name.clone(),
             command: command_text(&layout.run),
             cwd: command_cwd(&layout.run),
-            contents: layout.pane_initial_contents.clone(),
+            contents: pane_contents(layout.pane_initial_contents.as_deref()),
             focused: layout.focus.unwrap_or(false),
         });
     } else {
@@ -191,10 +195,27 @@ fn collect_floating_panes(layouts: &[FloatingPaneLayout], panes: &mut Vec<SavedP
             title: layout.name.clone(),
             command: command_text(&layout.run),
             cwd: command_cwd(&layout.run),
-            contents: layout.pane_initial_contents.clone(),
+            contents: pane_contents(layout.pane_initial_contents.as_deref()),
             focused: layout.focus.unwrap_or(false),
         });
     }
+}
+
+/// Keep only the last [`SAVED_PREVIEW_SCROLLBACK_LINES`] lines of a saved pane.
+///
+/// A session saved with `serialize_pane_viewport` keeps every line the user scrolled through, and
+/// the preview event is copied into the plugin's memory. A session with a large scrollback can
+/// exceed the WASM memory limit and make the plugin fail with "growth operation limited". Running
+/// session previews already cut to `PREVIEW_SCROLLBACK_LINES`, so do the same here.
+fn pane_contents(contents: Option<&str>) -> Option<String> {
+    let contents = contents?;
+    let lines: Vec<&str> = contents.lines().collect();
+    if lines.len() <= SAVED_PREVIEW_SCROLLBACK_LINES {
+        return Some(contents.to_owned());
+    }
+    let first_kept = lines.len() - SAVED_PREVIEW_SCROLLBACK_LINES;
+    let offset: usize = lines[..first_kept].iter().map(|line| line.len() + 1).sum();
+    Some(contents[offset..].to_owned())
 }
 
 pub fn saved_session_preview_from_layout(
@@ -310,6 +331,45 @@ layout {
     fn unreadable_layouts_report_an_error() {
         let preview = saved_session_preview_from_layout("broken", "layout {", None);
         assert!(preview.error.is_some());
+    }
+
+    #[test]
+    fn saved_preview_keeps_the_last_lines_of_a_large_pane() {
+        let folder = tempfile::tempdir().unwrap();
+        let total = SAVED_PREVIEW_SCROLLBACK_LINES + 50;
+        let contents: String = (0..total).map(|i| format!("line {i}\n")).collect();
+        std::fs::write(folder.path().join("initial_contents_1"), &contents).unwrap();
+        let raw = r#"
+layout {
+    tab name="logs" {
+        pane contents_file="initial_contents_1"
+    }
+}
+"#;
+        let layout_path = folder.path().join("session-layout.kdl");
+        let preview = saved_session_preview_from_layout("saved", raw, Some(layout_path));
+        assert_eq!(preview.error, None);
+        let pane_contents = preview.tabs[0].panes[0].contents.as_deref().unwrap();
+        assert_eq!(
+            pane_contents.lines().count(),
+            SAVED_PREVIEW_SCROLLBACK_LINES,
+            "a large pane has to be cut to the preview scrollback limit"
+        );
+        assert!(
+            pane_contents.starts_with("line 50\n"),
+            "the oldest lines are the ones to drop, got {:?}",
+            &pane_contents[..20]
+        );
+        assert!(pane_contents.ends_with(&format!("line {}\n", total - 1)));
+    }
+
+    #[test]
+    fn saved_preview_keeps_a_small_pane_unchanged() {
+        assert_eq!(
+            pane_contents(Some("$ ls\nfile\n")),
+            Some("$ ls\nfile\n".to_owned())
+        );
+        assert_eq!(pane_contents(None), None);
     }
 
     #[test]

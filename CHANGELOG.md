@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix: previewing an exited session with a large saved scrollback crashed the session manager plugin (https://github.com/zellij-org/zellij/pull/5960)
 * fix: "Show inbox" opens the inbox even when it's empty (https://github.com/zellij-org/zellij/pull/5869)
 * fix: broken links to the inbox integrations and plugin workers docs (https://github.com/zellij-org/zellij/pull/5877)
 * fix: terminal settings occasionally not properly applied or bounce back from the settings interface (https://github.com/zellij-org/zellij/pull/5887)
