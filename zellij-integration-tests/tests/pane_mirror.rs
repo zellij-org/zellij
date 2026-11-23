@@ -551,7 +551,7 @@ fn live_output_with_colour_a_wide_character_and_a_link_appears_inside_the_rectan
         source.session_name(),
         terminal.terminal_id(),
     );
-    let grid_snapshot = status_shows(
+    let (grid_snapshot, _) = wait_for_text_inside_a_drawn_border(
         &viewer.zellij,
         "the live view shows the source pane",
         "first line from the source",
@@ -561,7 +561,7 @@ fn live_output_with_colour_a_wide_character_and_a_link_appears_inside_the_rectan
     terminal.output(
         b"\x1b[1;31mcoloured\x1b[0m and \xe4\xb8\xad wide \x1b]8;;https://example.com/live\x1b\\linked\x1b]8;;\x1b\\\r\n",
     );
-    let grid_snapshot = status_shows(
+    let (grid_snapshot, _) = wait_for_text_inside_a_drawn_border(
         &viewer.zellij,
         "the live view follows new output",
         "coloured and 中 wide linked",
@@ -1641,7 +1641,8 @@ fn a_live_view_that_may_not_resize_pins_only_once_typed_into_and_keeps_the_pin_a
 fn a_live_view_without_a_target_says_so_and_cannot_capture() {
     let mut viewer = start_viewer();
     send_to_the_fixture(&viewer.zellij, "live_view_set", &[]);
-    let grid_snapshot = status_shows(&viewer.zellij, "the empty placeholder", NO_TARGET);
+    let (grid_snapshot, _) =
+        wait_for_text_inside_a_drawn_border(&viewer.zellij, "the empty placeholder", NO_TARGET);
     assert_inside_the_view(&grid_snapshot, NO_TARGET);
     send_to_the_fixture(
         &viewer.zellij,
@@ -1830,7 +1831,7 @@ fn a_live_view_inside_a_floating_plugin_pane_shows_the_source_and_takes_keys() {
         source.session_name(),
         terminal.terminal_id(),
     );
-    let grid_snapshot = status_shows(
+    let (grid_snapshot, _) = wait_for_text_inside_a_drawn_border(
         &viewer.zellij,
         "the floating live view is live",
         "shown in a floating pane",
@@ -2384,7 +2385,11 @@ fn without_capture_paste_a_click_and_the_wheel_inside_the_rectangle_reach_the_pl
     let mut viewer = start_viewer();
     let (_source, terminal) = show_a_fresh_source(&viewer, "uncaptured source");
     terminal.output(b"\x1b[?1000h\x1b[?1006h");
-    let grid_snapshot = status_shows(&viewer.zellij, "the view is live", "uncaptured source");
+    let (grid_snapshot, _) = wait_for_text_inside_a_drawn_border(
+        &viewer.zellij,
+        "the view is live",
+        "uncaptured source",
+    );
     let (column, row) = assert_inside_the_view(&grid_snapshot, "uncaptured source");
     let mut paste = keys::BRACKETED_PASTE_START.to_vec();
     paste.extend_from_slice(b"pasted into the plugin");

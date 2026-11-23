@@ -178,6 +178,7 @@ fn multiple_users_in_same_pane_and_tab() {
                 && session_name_rendered(grid_snapshot)
                 && grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains("MY FOCUS")
+                && grid_snapshot.contains("Tab #1 [ ]")
                 && grid_snapshot.cursor_is_at(col(3).row(2))
         });
     let main_grid = zellij.wait_until(
@@ -187,6 +188,7 @@ fn multiple_users_in_same_pane_and_tab() {
                 && session_name_rendered(grid_snapshot)
                 && grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains("MY FOCUS")
+                && grid_snapshot.contains("Tab #1 [ ]")
                 && grid_snapshot.cursor_is_at(col(3).row(2))
         },
     );
@@ -217,6 +219,7 @@ fn multiple_users_in_different_panes_and_same_tab() {
             grid_snapshot.tab_bar_appears()
                 && session_name_rendered(grid_snapshot)
                 && grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("Tab #1 [ ]")
                 && grid_snapshot.cursor_is_at(col(62).row(2))
         },
     );
@@ -227,6 +230,7 @@ fn multiple_users_in_different_panes_and_same_tab() {
                 && session_name_rendered(grid_snapshot)
                 && grid_snapshot.contains("Pane #2")
                 && grid_snapshot.status_bar_appears()
+                && grid_snapshot.contains("Tab #1 [ ]")
                 && grid_snapshot.cursor_is_at(col(2).row(2))
         },
     );
@@ -256,7 +260,7 @@ fn multiple_users_in_different_tabs() {
             grid_snapshot.tab_bar_appears()
                 && session_name_rendered(grid_snapshot)
                 && grid_snapshot.status_bar_appears()
-                && grid_snapshot.contains("Tab #2")
+                && grid_snapshot.contains("Tab #1 [ ]")
                 && grid_snapshot.cursor_is_at(col(2).row(1))
         });
     let main_grid = zellij.wait_until(
@@ -265,7 +269,7 @@ fn multiple_users_in_different_tabs() {
             grid_snapshot.tab_bar_appears()
                 && session_name_rendered(grid_snapshot)
                 && grid_snapshot.status_bar_appears()
-                && grid_snapshot.contains("Tab #2")
+                && grid_snapshot.contains("Tab #2 [ ]")
                 && grid_snapshot.cursor_is_at(col(2).row(1))
         },
     );

@@ -2428,11 +2428,26 @@ fn a_shift_drag_selects_across_the_whole_window_and_the_copy_key_copies_it() {
 }
 
 #[test]
-fn the_copy_key_reaches_the_session_when_nothing_is_selected() {
+fn the_copy_key_asks_the_session_to_copy_and_never_reaches_the_pane() {
     let mut harness = Harness::new(1, true, "");
     copy_key(&mut harness);
     assert_eq!(harness.clipboard_text(), None);
-    assert_eq!(harness.sent().len(), 1);
+    assert_eq!(harness.actions(), vec![Action::Copy]);
+}
+
+#[test]
+fn a_key_that_is_not_a_copy_key_reaches_the_session_as_a_plain_key() {
+    let mut harness = Harness::new(1, true, "");
+    harness.app.modifiers = ModifiersState::CONTROL;
+    harness.press(&character("c"));
+    harness.app.modifiers = ModifiersState::empty();
+    let sent = harness.sent();
+    assert_eq!(sent.len(), 1);
+    assert!(
+        matches!(sent[0], ClientToServerMsg::Key { .. }),
+        "got {:?}",
+        sent[0]
+    );
 }
 
 #[test]
