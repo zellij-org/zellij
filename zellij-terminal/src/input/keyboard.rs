@@ -18,18 +18,20 @@ pub struct Press {
     pub unmodified: Option<Key>,
     pub physical: PhysicalKey,
     pub modifiers: ModifiersState,
-    pub option_as_alt: bool,
+    // Whether a held Alt is reported even on a character the key does not type on its own;
+    // see `keeps_alt`.
+    pub keeps_alt: bool,
     pub text: Option<String>,
 }
 
 impl Press {
-    pub fn of(event: &KeyEvent, modifiers: ModifiersState, option_as_alt: bool) -> Self {
+    pub fn of(event: &KeyEvent, modifiers: ModifiersState, keeps_alt: bool) -> Self {
         Self {
             logical: event.logical_key.clone(),
             unmodified: unmodified_key(event),
             physical: event.physical_key,
             modifiers,
-            option_as_alt,
+            keeps_alt,
             text: event.text.as_ref().map(|text| text.to_string()),
         }
     }
@@ -40,7 +42,7 @@ impl Press {
             unmodified: None,
             physical: PhysicalKey::Unidentified(NativeKeyCode::Unidentified),
             modifiers,
-            option_as_alt: false,
+            keeps_alt: false,
             text: None,
         }
     }
@@ -148,8 +150,7 @@ impl Press {
 
     fn effective_modifiers(&self) -> ModifiersState {
         let mut modifiers = self.modifiers;
-        if !self.option_as_alt && alt_shifted_the_character(&self.logical, self.unmodified.as_ref())
-        {
+        if !self.keeps_alt && alt_shifted_the_character(&self.logical, self.unmodified.as_ref()) {
             modifiers.remove(ModifiersState::ALT);
         }
         modifiers
@@ -256,7 +257,27 @@ impl AltKeys {
     }
 }
 
-pub fn option_acts_as_alt(platform: Platform, side: OptionAsAlt, held: AltKeys) -> bool {
+// Whether a held Alt is the Alt key even when the character is not the key's own, as with
+// Shift on a symbol (Alt+Shift+= is Alt++) or AltGr on Linux.
+// - Linux: AltGr is a modifier of its own rather than Alt, so Alt is always the Alt key:
+//   Alt+AltGr+) on German Dvorak is Alt+].
+// - Windows: AltGr arrives as Ctrl+Alt, and Alt alone picks no character, so Alt is the Alt
+//   key unless Ctrl is held too.
+// - macOS: Option picks characters unless it is set to act as Alt.
+pub fn keeps_alt(
+    platform: Platform,
+    side: OptionAsAlt,
+    held: AltKeys,
+    modifiers: ModifiersState,
+) -> bool {
+    match platform {
+        Platform::Linux => true,
+        Platform::Windows => !modifiers.control_key(),
+        Platform::MacOs => option_acts_as_alt(platform, side, held),
+    }
+}
+
+fn option_acts_as_alt(platform: Platform, side: OptionAsAlt, held: AltKeys) -> bool {
     platform == Platform::MacOs
         && match side {
             OptionAsAlt::None => false,
@@ -561,7 +582,7 @@ mod tests {
 
     fn converted(logical: &str, unmodified: &str, modifiers: ModifiersState) -> Press {
         Press {
-            option_as_alt: true,
+            keeps_alt: true,
             ..layered(logical, unmodified, modifiers)
         }
     }
@@ -1226,6 +1247,113 @@ mod tests {
         assert!(claims(&keys, &layered("q", "q", ModifiersState::ALT)));
     }
 
+    // A press with Alt kept or dropped as `platform` does.
+    fn on(platform: Platform, logical: &str, unmodified: &str, modifiers: ModifiersState) -> Press {
+        Press {
+            keeps_alt: keeps_alt(platform, OptionAsAlt::None, AltKeys::default(), modifiers),
+            ..layered(logical, unmodified, modifiers)
+        }
+    }
+
+    #[test]
+    fn alt_with_altgr_on_linux_is_alt_on_the_altgr_character() {
+        // German Dvorak types ] with AltGr on the ) key, and Linux does not report AltGr as Alt.
+        let alt_bracket = KeyWithModifier::new(BareKey::Char(']')).with_alt_modifier();
+        let pressed = on(Platform::Linux, "]", ")", ModifiersState::ALT);
+        assert_eq!(translate(&pressed), Some(alt_bracket.clone()));
+        assert_eq!(sent(&pressed), b"\x1b[93;3u");
+        assert_eq!(
+            translate(&pressed)
+                .and_then(|key| key.serialize_non_kitty())
+                .as_deref(),
+            Some("\u{1b}]"),
+            "a pane without the kitty protocol gets Escape then ]"
+        );
+        assert!(
+            claims(&[alt_bracket], &pressed),
+            "Alt+] reaches the bindings"
+        );
+        assert_eq!(
+            key_message(&on(Platform::Linux, "]", ")", none())),
+            key_message(&press(character("]"), none())),
+            "AltGr alone still types ]"
+        );
+    }
+
+    #[test]
+    fn alt_with_shift_on_a_symbol_is_alt_on_the_shifted_symbol() {
+        let both = ModifiersState::ALT | ModifiersState::SHIFT;
+        for platform in [Platform::Linux, Platform::Windows] {
+            let pressed = on(platform, "+", "=", both);
+            assert_eq!(
+                translate(&pressed),
+                Some(KeyWithModifier::new(BareKey::Char('+')).with_alt_modifier()),
+                "{:?}: Alt+Shift+= on a US layout is Alt++, a default binding",
+                platform
+            );
+            assert_eq!(sent(&pressed), b"\x1b[43;3u");
+        }
+    }
+
+    #[test]
+    fn altgr_on_windows_still_types_its_character() {
+        let ctrl_alt = ModifiersState::CONTROL | ModifiersState::ALT;
+        let key = translate(&on(Platform::Windows, "€", "e", ctrl_alt)).expect("expected a key");
+        assert_eq!(key.bare_key, BareKey::Char('€'));
+        assert!(
+            !key.key_modifiers.contains(&KeyModifier::Alt),
+            "AltGr+E is not Alt+€"
+        );
+    }
+
+    #[test]
+    fn each_platform_keeps_alt_where_alt_picks_no_character() {
+        let sides = [
+            OptionAsAlt::None,
+            OptionAsAlt::Left,
+            OptionAsAlt::Right,
+            OptionAsAlt::Both,
+        ];
+        let held = [
+            AltKeys::default(),
+            AltKeys {
+                left: true,
+                right: false,
+            },
+            AltKeys {
+                left: false,
+                right: true,
+            },
+            AltKeys {
+                left: true,
+                right: true,
+            },
+        ];
+        let alt = ModifiersState::ALT;
+        let alt_shift = ModifiersState::ALT | ModifiersState::SHIFT;
+        let ctrl_alt = ModifiersState::CONTROL | ModifiersState::ALT;
+        for side in sides {
+            for held in held {
+                for modifiers in [alt, alt_shift, ctrl_alt] {
+                    assert!(keeps_alt(Platform::Linux, side, held, modifiers));
+                    assert_eq!(
+                        keeps_alt(Platform::MacOs, side, held, modifiers),
+                        option_acts_as_alt(Platform::MacOs, side, held),
+                        "{:?} with {:?}",
+                        side,
+                        held
+                    );
+                }
+                assert!(keeps_alt(Platform::Windows, side, held, alt));
+                assert!(keeps_alt(Platform::Windows, side, held, alt_shift));
+                assert!(
+                    !keeps_alt(Platform::Windows, side, held, ctrl_alt),
+                    "AltGr arrives as Ctrl+Alt on Windows"
+                );
+            }
+        }
+    }
+
     #[test]
     fn an_alt_that_the_layout_did_not_spend_is_still_reported() {
         for (logical, unmodified, modifiers) in [
@@ -1360,7 +1488,7 @@ mod tests {
             unmodified: None,
             physical: PhysicalKey::Unidentified(NativeKeyCode::Unidentified),
             modifiers: ModifiersState::ALT,
-            option_as_alt: false,
+            keeps_alt: false,
             text: None,
         };
         assert_eq!(
