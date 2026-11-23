@@ -3292,8 +3292,26 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         // preserve the current umask: read current value by setting to another mode, and then restoring it
         let current_umask = umask(Mode::all());
         umask(current_umask);
+        // The server inherits the working directory of the client that spawned it, which the
+        // current user may not be allowed to enter (eg. when started from another user's home).
+        // Daemonizing there fails with EACCES, so start in the socket directory instead.
+        let working_directory = std::env::current_dir().ok();
+        let working_directory = match working_directory {
+            Some(cwd) if zellij_utils::working_directory::is_usable_working_directory(&cwd) => cwd,
+            _ => match socket_path.parent() {
+                Some(socket_dir) => {
+                    info!(
+                        "cannot start the server in the current working directory, using '{}' \
+                         instead",
+                        socket_dir.display()
+                    );
+                    socket_dir.to_path_buf()
+                },
+                None => std::env::temp_dir(),
+            },
+        };
         daemonize::Daemonize::new()
-            .working_directory(std::env::current_dir().unwrap())
+            .working_directory(working_directory)
             .umask(current_umask.bits() as u32)
             .start()
             .expect("could not daemonize the server process");
