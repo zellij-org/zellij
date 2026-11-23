@@ -30,6 +30,11 @@
   <a href="https://www.gresearch.com/"><picture><source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/d609936a-abf8-4406-8cfc-889f76a09d74"><img src="https://github.com/user-attachments/assets/742ae902-fe9d-41c6-baf2-4bc143061da3" alt="G-Research logo"></picture></a>
   &nbsp;&nbsp;
   <a href="https://www.codo.tech/"><picture><source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/7887429c-f299-4a1f-9b61-2ea5e8cd512f"><img height="30" src="https://github.com/user-attachments/assets/d92b43d1-e009-4c73-a238-e96ffee3a9e0" alt="codo.tech logo"></picture></a>
+  &nbsp;&nbsp;
+  <a href="https://serpapi.com/?utm_source=zellij"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/serpapi-logo-white.svg"><img height="30" src="assets/sponsors/serpapi-logo.svg" alt="SerpApi logo"></picture></a>
+</p>
+<p align="center">
+  <sub><a href="https://serpapi.com/?utm_source=zellij">SerpApi</a> is the world's leading provider of search data, pioneering APIs that turn search engine results into structured, developer-ready information.</sub>
 </p>
 
 # What is this?
