@@ -1,9 +1,9 @@
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::ffi::CStr;
 
 use anyhow::{anyhow, Result};
 use objc2::rc::Retained;
-use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, Sel};
+use objc2::runtime::{AnyObject, Imp, NSObject, NSObjectProtocol, Sel};
 use objc2::{
     define_class, msg_send, sel, AllocAnyThread, DefinedClass, MainThreadMarker, MainThreadOnly,
 };
@@ -16,6 +16,7 @@ use objc2_foundation::{NSArray, NSData, NSSize, NSString};
 
 use super::{find_action, menu, Anchor, MenuAction, MenuEntry, Tray, TrayEvent, TrayEvents};
 use crate::app::desktop::icon::{render, DARK_INK, LIGHT_INK};
+use crate::app::desktop::macos_delegate::add_app_delegate_method;
 use crate::app::policy::model::{MenuState, TrayLook, TrayState};
 
 const POINTS: f64 = 18.0;
@@ -409,12 +410,12 @@ fn main_menu_item(
     menu_item
 }
 
-fn titled(
+fn menu_of(
     mtm: MainThreadMarker,
     handler: &Handler,
     title: &str,
     items: &[Option<MainItem>],
-) -> (Retained<NSMenuItem>, Retained<NSMenu>) {
+) -> Retained<NSMenu> {
     let menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str(title));
     for item in items {
         match item {
@@ -422,6 +423,16 @@ fn titled(
             None => menu.addItem(&NSMenuItem::separatorItem(mtm)),
         }
     }
+    menu
+}
+
+fn titled(
+    mtm: MainThreadMarker,
+    handler: &Handler,
+    title: &str,
+    items: &[Option<MainItem>],
+) -> (Retained<NSMenuItem>, Retained<NSMenu>) {
+    let menu = menu_of(mtm, handler, title, items);
     let holder = NSMenuItem::new(mtm);
     holder.setSubmenu(Some(&menu));
     (holder, menu)
@@ -431,6 +442,7 @@ pub struct MainMenu {
     _handler: Retained<Handler>,
 }
 
+/// Installs the menu bar and the Dock menu.
 pub fn install_main_menu(events: TrayEvents) -> Option<MainMenu> {
     let mtm = MainThreadMarker::new()?;
     let handler = Handler::new(mtm, events);
@@ -447,12 +459,62 @@ pub fn install_main_menu(events: TrayEvents) -> Option<MainMenu> {
     // each zellij window, drawn and sized on its own, is not made for.
     NSWindow::setAllowsAutomaticWindowTabbing(false, mtm);
     app.setMainMenu(Some(&bar));
+    install_dock_menu(mtm, &handler);
     Some(MainMenu { _handler: handler })
+}
+
+// Items in the Dock icon's right-click menu.
+const DOCK_MENU: &[Option<MainItem>] = &[ours("New Window", 101, "")];
+
+thread_local! {
+    // AppKit doesn't retain the returned menu.
+    static DOCK_MENU_HELD: OnceCell<Retained<NSMenu>> = const { OnceCell::new() };
+}
+
+// winit lacks `applicationDockMenu:`. Assumes one install: the items target
+// `handler`, which `MainMenu` keeps alive.
+fn install_dock_menu(mtm: MainThreadMarker, handler: &Handler) {
+    let menu = menu_of(mtm, handler, "", DOCK_MENU);
+    if DOCK_MENU_HELD.with(|held| held.set(menu)).is_err() {
+        return;
+    }
+    type Method = extern "C-unwind" fn(&AnyObject, Sel, &AnyObject) -> *mut NSMenu;
+    let method: Method = dock_menu;
+    // SAFETY: matches the encoding: returns NSMenu, takes self, _cmd, NSApplication.
+    unsafe {
+        add_app_delegate_method(
+            sel!(applicationDockMenu:),
+            std::mem::transmute::<Method, Imp>(method),
+            c"@@:@",
+        )
+    }
+}
+
+extern "C-unwind" fn dock_menu(_this: &AnyObject, _cmd: Sel, _app: &AnyObject) -> *mut NSMenu {
+    // `try_with`: no panic into AppKit during teardown.
+    DOCK_MENU_HELD
+        .try_with(|held| held.get().map(|menu| Retained::as_ptr(menu).cast_mut()))
+        .ok()
+        .flatten()
+        .unwrap_or(std::ptr::null_mut())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_dock_menu_opens_a_new_window() {
+        let actions: Vec<_> = DOCK_MENU
+            .iter()
+            .flatten()
+            .map(|item| match item.action {
+                MainAction::Ours(tag) => main_menu_action(tag as i32),
+                MainAction::Standard(_) => None,
+            })
+            .collect();
+        assert_eq!(actions, vec![Some(MenuAction::NewWindow)]);
+    }
 
     #[test]
     fn the_main_menu_has_the_standard_macos_items() {
