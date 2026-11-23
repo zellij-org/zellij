@@ -6,13 +6,18 @@ use crate::{
     data::SessionInfo,
     envs,
     input::layout::Layout,
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    ipc::{
+        ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
+        ServerToClientMsg,
+    },
     session_index::{self, SessionIndex},
 };
 use anyhow;
 use humantime::format_duration;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, SystemTime};
 use std::{fs, io, process};
 use suggest::Suggest;
@@ -446,7 +451,7 @@ pub fn get_active_session() -> ActiveSession {
 
 pub fn kill_session(name: &str) {
     let path = &*resolve_session_socket_path(name).unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name));
-    if let Err(e) = send_kill_session(path) {
+    if let Err(e) = send_kill_session_and_wait_for_exit(path, KILL_SESSION_EXIT_TIMEOUT) {
         eprintln!("Error occurred: {:?}", e);
         process::exit(1);
     }
@@ -490,7 +495,10 @@ pub fn delete_session(name: &str, force: bool) {
         process::exit(1);
     }
     if force {
-        let _ = send_kill_session(&ZELLIJ_SOCK_DIR.join(&session_id));
+        let _ = send_kill_session_and_wait_for_exit(
+            &ZELLIJ_SOCK_DIR.join(&session_id),
+            KILL_SESSION_EXIT_TIMEOUT,
+        );
     }
     if let Ok(index) = crate::session_index::SessionIndex::open_default() {
         let _ = index.delete(name);
@@ -505,6 +513,40 @@ pub fn delete_session(name: &str, force: bool) {
     } else {
         println!("Session: {:?} successfully deleted.", name);
     }
+}
+
+const KILL_SESSION_EXIT_TIMEOUT: Duration = Duration::from_secs(2);
+
+fn send_kill_session_and_wait_for_exit(path: &Path, timeout: Duration) -> io::Result<()> {
+    #[cfg(windows)]
+    let (stream, reply_stream) = crate::pipe_pairs::connect_pair(path)?;
+    #[cfg(not(windows))]
+    let stream = crate::consts::ipc_connect(path)?;
+    let mut sender = IpcSenderWithContext::<ClientToServerMsg>::new(stream);
+    #[cfg(windows)]
+    let mut receiver = IpcReceiverWithContext::<ServerToClientMsg>::new(reply_stream);
+    #[cfg(not(windows))]
+    let mut receiver = sender.get_receiver::<ServerToClientMsg>();
+    if sender
+        .send_client_msg(ClientToServerMsg::KillSession)
+        .is_err()
+    {
+        return Ok(());
+    }
+    let (exited_tx, exited_rx) = mpsc::channel();
+    thread::spawn(move || {
+        loop {
+            match receiver.try_recv_server_msg() {
+                Ok((ServerToClientMsg::Exit { .. }, _)) | Err(IpcReceiveError::Disconnected) => {
+                    break
+                },
+                Ok(_) | Err(IpcReceiveError::Undecodable) => {},
+            }
+        }
+        let _ = exited_tx.send(());
+    });
+    let _ = exited_rx.recv_timeout(timeout);
+    Ok(())
 }
 
 pub fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
@@ -1205,5 +1247,85 @@ mod session_folder_name_tests {
                 name
             );
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use crate::ipc::ExitReason;
+    use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
+
+    fn bind(dir: &tempfile::TempDir) -> (PathBuf, interprocess::local_socket::Listener) {
+        let path = dir.path().join("session.sock");
+        let listener = ListenerOptions::new()
+            .name(path.as_path().to_fs_name::<GenericFilePath>().unwrap())
+            .create_sync()
+            .expect("bind failed");
+        (path, listener)
+    }
+
+    fn kill_in_background(path: PathBuf, timeout: Duration) -> mpsc::Receiver<()> {
+        let (done_tx, done_rx) = mpsc::channel();
+        thread::spawn(move || {
+            send_kill_session_and_wait_for_exit(&path, timeout).expect("connect failed");
+            let _ = done_tx.send(());
+        });
+        done_rx
+    }
+
+    fn accept_kill(
+        listener: &interprocess::local_socket::Listener,
+    ) -> (
+        IpcReceiverWithContext<ClientToServerMsg>,
+        IpcSenderWithContext<ServerToClientMsg>,
+    ) {
+        let stream = listener.incoming().next().unwrap().expect("accept failed");
+        let mut receiver = IpcReceiverWithContext::<ClientToServerMsg>::new(stream);
+        let (msg, _) = receiver.recv_client_msg().expect("no message received");
+        assert!(
+            matches!(msg, ClientToServerMsg::KillSession),
+            "should be KillSession, got: {:?}",
+            msg
+        );
+        let sender = receiver.get_sender();
+        (receiver, sender)
+    }
+
+    #[test]
+    fn kill_session_waits_past_other_messages_for_exit() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let (path, listener) = bind(&dir);
+        let done = kill_in_background(path, Duration::from_secs(10));
+
+        let (_receiver, mut sender) = accept_kill(&listener);
+        sender
+            .send_server_msg(ServerToClientMsg::UnblockInputThread)
+            .unwrap();
+        assert!(
+            done.recv_timeout(Duration::from_millis(200)).is_err(),
+            "returned before the server sent Exit"
+        );
+        sender
+            .send_server_msg(ServerToClientMsg::Exit {
+                exit_reason: ExitReason::Normal,
+            })
+            .unwrap();
+        done.recv_timeout(Duration::from_secs(5))
+            .expect("did not return after the server sent Exit");
+    }
+
+    #[test]
+    fn kill_session_gives_up_on_a_server_that_never_exits() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let (path, listener) = bind(&dir);
+        let done = kill_in_background(path, Duration::from_millis(100));
+
+        let (_receiver, mut sender) = accept_kill(&listener);
+        sender
+            .send_server_msg(ServerToClientMsg::UnblockInputThread)
+            .unwrap();
+        done.recv_timeout(Duration::from_secs(5))
+            .expect("kept waiting past the timeout");
     }
 }
