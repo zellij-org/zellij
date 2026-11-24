@@ -9,8 +9,8 @@ version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-zellij-client = { path = "../zellij-client", version = "0.46.0" }
-zellij-server = { path = "../zellij-server", version = "0.46.0" }
+zellij-client = { path = "../zellij-client", version = "0.47.0" }
+zellij-server = { path = "../zellij-server", version = "0.47.0" }
 zellij-utils = { workspace = true }
 anyhow = { workspace = true }
 base64 = { version = "0.22", default-features = false, features = ["std"] }
@@ -30,9 +30,9 @@ isahc = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 tokio-tungstenite = "0.28"
-zellij-client = { path = "../zellij-client", version = "0.46.0", features = ["web_server_capability"] }
-zellij-server = { path = "../zellij-server", version = "0.46.0", features = ["web_server_capability"] }
-zellij-terminal = { path = "../zellij-terminal", version = "0.46.0", features = ["test-support"] }
+zellij-client = { path = "../zellij-client", version = "0.47.0", features = ["web_server_capability"] }
+zellij-server = { path = "../zellij-server", version = "0.47.0", features = ["web_server_capability"] }
+zellij-terminal = { path = "../zellij-terminal", version = "0.47.0", features = ["test-support"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 # Acts as an XDND drag source in the desktop app tests; already in the tree through winit.

@@ -9,7 +9,7 @@ description = "The Zellij terminal, a native client for Zellij sessions"
 exclude = ["fixtures/", "assets/fonts/NotoColorEmoji.ttf", "assets/fonts/LICENSE-NotoColorEmoji.md"]
 
 [dependencies]
-zellij-client = { path = "../zellij-client/", version = "0.46.0" }
+zellij-client = { path = "../zellij-client/", version = "0.47.0" }
 zellij-utils = { workspace = true }
 anyhow = { workspace = true }
 interprocess = { workspace = true }
