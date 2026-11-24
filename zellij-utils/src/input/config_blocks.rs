@@ -24,11 +24,12 @@ use crate::envs::EnvironmentVariables;
 use crate::home::get_theme_dir;
 use crate::kdl::{context_menu_item_to_kdl, load_plugins_from_kdl, theme_to_kdl};
 
-pub const THEME_STYLES: [&str; 14] = [
+pub const THEME_STYLES: [&str; 15] = [
     "text_unselected",
     "text_selected",
     "ribbon_unselected",
     "ribbon_selected",
+    "ribbon_hover",
     "table_title",
     "table_cell_unselected",
     "table_cell_selected",
@@ -162,11 +163,13 @@ fn style_ref<'a>(styling: &'a Styling, style: &str) -> Option<&'a StyleDeclarati
 
 fn style_mut<'a>(styling: &'a mut Styling, style: &str) -> Option<&'a mut StyleDeclaration> {
     let frame_selected = styling.frame_selected;
+    let ribbon_hover = styling.ribbon_hover_style();
     match style {
         "text_unselected" => Some(&mut styling.text_unselected),
         "text_selected" => Some(&mut styling.text_selected),
         "ribbon_unselected" => Some(&mut styling.ribbon_unselected),
         "ribbon_selected" => Some(&mut styling.ribbon_selected),
+        "ribbon_hover" => Some(styling.ribbon_hover.get_or_insert(ribbon_hover)),
         "table_title" => Some(&mut styling.table_title),
         "table_cell_unselected" => Some(&mut styling.table_cell_unselected),
         "table_cell_selected" => Some(&mut styling.table_cell_selected),
@@ -220,7 +223,11 @@ pub fn slot_colour(styling: &Styling, style: &str, component: &str) -> Option<Pa
         let mut colours = styling.multiplayer_user_colors;
         return player_mut(&mut colours, component).copied();
     }
-    let mut declaration = *style_ref(styling, style)?;
+    let mut declaration = if style == "ribbon_hover" {
+        styling.ribbon_hover_style()
+    } else {
+        *style_ref(styling, style)?
+    };
     component_mut(&mut declaration, component).copied()
 }
 
@@ -249,6 +256,15 @@ pub fn styling_colours(styling: &Styling) -> Vec<String> {
 pub fn styling_from_colours(colours: &[String]) -> Styling {
     let mut styling: Styling = DEFAULT_STYLES;
     styling.frame_unselected = None;
+    let provided = |wanted: &str| {
+        theme_slots()
+            .iter()
+            .zip(colours.iter())
+            .any(|((style, _), text)| *style == wanted && parse_colour(text).is_some())
+    };
+    if provided("ribbon_unselected") || provided("ribbon_hover") {
+        styling.ribbon_hover = None;
+    }
     for ((style, component), text) in theme_slots().iter().zip(colours.iter()) {
         if let Some(colour) = parse_colour(text) {
             set_slot_colour(&mut styling, style, component, colour);

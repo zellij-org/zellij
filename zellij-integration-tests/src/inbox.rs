@@ -22,6 +22,18 @@ pub fn open_inbox(zellij: &TestSession) -> GridSnapshot {
     if shows_inbox(&opened) {
         return opened;
     }
+    zellij.send_stdin(&keys::F1);
+    zellij.wait_until("the all keys screen is shown", |grid_snapshot| {
+        grid_snapshot.contains("All keys")
+    });
+    zellij.send_stdin(&keys::ESC);
+    let settled = zellij.wait_until("the session manager settles", |grid_snapshot| {
+        !grid_snapshot.contains("All keys")
+            && (shows_inbox(grid_snapshot) || grid_snapshot.contains(SESSIONS_HELP))
+    });
+    if shows_inbox(&settled) {
+        return settled;
+    }
     zellij.send_stdin(&keys::TAB);
     zellij.wait_until("the inbox is shown", shows_inbox)
 }

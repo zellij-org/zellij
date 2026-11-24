@@ -85,6 +85,10 @@ fn main() {
             commands::subscribe_to_session(subscribe_cli, opts.session, config);
             std::process::exit(0);
         }
+        if let Some(Command::Events(events_cli)) = opts.command {
+            commands::stream_session_events(events_cli, opts.session);
+            std::process::exit(0);
+        }
         if let Some(Command::Prompt(prompt_cli)) = opts.command {
             commands::prompt_in_session(prompt_cli, opts.session, config);
         }
@@ -335,6 +339,7 @@ fn main() {
             .session
             .as_ref()
             .cloned()
+            .or_else(|| commands::session_of_this_pane(1))
             .or_else(|| envs::get_session_name().ok())
         {
             let config = Config::try_from(&opts).ok();

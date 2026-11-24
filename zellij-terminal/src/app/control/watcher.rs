@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
-use interprocess::local_socket::prelude::*;
 use zellij_utils::attention::{GlobalAttention, SessionAttention};
 use zellij_utils::ipc::{ClientToServerMsg, IpcReceiverWithContext, ServerToClientMsg};
 use zellij_utils::session_link::{request_session_attention_with, PEER_REPLY_TIMEOUT};
@@ -261,14 +260,7 @@ impl AttentionListener {
         std::thread::Builder::new()
             .name("app_attention".to_owned())
             .spawn(move || {
-                for stream in listeners.listener.incoming() {
-                    let Ok(stream) = stream else {
-                        continue;
-                    };
-                    let reply = match listeners.push_reply() {
-                        Ok(reply) => reply,
-                        Err(_) => continue,
-                    };
+                for (stream, reply) in listeners.pushes() {
                     let jobs = jobs.clone();
                     let _ = std::thread::Builder::new()
                         .name("app_attention_peer".to_owned())

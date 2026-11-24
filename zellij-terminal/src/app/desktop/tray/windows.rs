@@ -17,9 +17,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon,
     DestroyMenu, DestroyWindow, GetCursorPos, GetWindowLongPtrW, PostMessageW, RegisterClassExW,
     RegisterWindowMessageW, SetForegroundWindow, SetWindowLongPtrW, TrackPopupMenu, GWLP_USERDATA,
-    HICON, HMENU, HWND_MESSAGE, ICONINFO, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
-    SM_CXSMICON, TPM_BOTTOMALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_APP, WM_CONTEXTMENU,
-    WM_LBUTTONUP, WM_NULL, WNDCLASSEXW,
+    HICON, HMENU, ICONINFO, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, SM_CXSMICON,
+    TPM_BOTTOMALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_APP, WM_CLOSE, WM_CONTEXTMENU, WM_NULL,
+    WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 
 use super::{find_action, menu, Anchor, MenuEntry, Tray, TrayEvent, TrayEvents};
@@ -133,12 +133,35 @@ fn set_tip(data: &mut NOTIFYICONDATAW, tip: &str) {
     data.szTip[..encoded.len()].copy_from_slice(&encoded);
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Callback {
+    Activate,
+    Menu,
+    Ignore,
+}
+
+/// A click, and Enter or Space on the focused icon, reach the icon as mouse messages followed by
+/// NIN_SELECT, so only the selection counts: answering the button-up as well would toggle the
+/// panel twice. NIN_KEYSELECT is the keyboard selection Windows documents.
+fn callback_for(event: u32) -> Callback {
+    match event {
+        NIN_SELECT | NIN_KEYSELECT => Callback::Activate,
+        WM_CONTEXTMENU => Callback::Menu,
+        _ => Callback::Ignore,
+    }
+}
+
 unsafe extern "system" fn window_proc(
     hwnd: HWND,
     message: u32,
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    if message == WM_CLOSE {
+        // The icon lives as long as the app. A close sent to every window of the process, as
+        // taskkill without /f does, is meant for the terminal windows.
+        return 0;
+    }
     let pointer = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *const WinState;
     if pointer.is_null() {
         return unsafe { DefWindowProcW(hwnd, message, wparam, lparam) };
@@ -156,19 +179,19 @@ unsafe extern "system" fn window_proc(
         let event = (lparam as u32) & 0xffff;
         let x = (wparam as u32 & 0xffff) as i16 as i32;
         let y = ((wparam as u32 >> 16) & 0xffff) as i16 as i32;
-        match event {
-            NIN_SELECT | NIN_KEYSELECT | WM_LBUTTONUP => {
+        match callback_for(event) {
+            Callback::Activate => {
                 state.cursor.set(Some((x, y)));
                 (state.events)(TrayEvent::Activate {
                     at: Some((x, y)),
                     token: None,
                 });
             },
-            WM_CONTEXTMENU => {
+            Callback::Menu => {
                 state.cursor.set(Some((x, y)));
                 show_menu(hwnd, state, x, y);
             },
-            _ => {},
+            Callback::Ignore => {},
         }
         return 0;
     }
@@ -244,24 +267,26 @@ impl NotifyIcon {
         window_class.hInstance = instance;
         window_class.lpszClassName = class.as_ptr();
         unsafe { RegisterClassExW(&window_class) };
+        // A hidden top-level window, not a message-only one: only top-level windows hear the
+        // TaskbarCreated broadcast that asks for the icon again after Explorer restarts.
         let hwnd = unsafe {
             CreateWindowExW(
-                0,
+                WS_EX_TOOLWINDOW,
                 class.as_ptr(),
                 class.as_ptr(),
+                WS_POPUP,
                 0,
                 0,
                 0,
                 0,
-                0,
-                HWND_MESSAGE,
+                std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 instance,
                 std::ptr::null(),
             )
         };
         if hwnd.is_null() {
-            return Err(anyhow!("the tray message window could not be created"));
+            return Err(anyhow!("the tray window could not be created"));
         }
         let taskbar_created = unsafe { RegisterWindowMessageW(wide("TaskbarCreated").as_ptr()) };
         let mut data: NOTIFYICONDATAW = unsafe { std::mem::zeroed() };
@@ -406,5 +431,27 @@ impl Drop for NotifyIcon {
                 DestroyIcon(self.icon);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows_sys::Win32::UI::WindowsAndMessaging::WM_LBUTTONUP;
+
+    #[test]
+    fn a_click_toggles_the_panel_once() {
+        assert_eq!(
+            callback_for(WM_LBUTTONUP),
+            Callback::Ignore,
+            "a click, or Enter or Space, is followed by NIN_SELECT, which toggles the panel"
+        );
+        assert_eq!(callback_for(NIN_SELECT), Callback::Activate);
+        assert_eq!(
+            callback_for(NIN_KEYSELECT),
+            Callback::Activate,
+            "the documented keyboard selection works like a click"
+        );
+        assert_eq!(callback_for(WM_CONTEXTMENU), Callback::Menu);
     }
 }

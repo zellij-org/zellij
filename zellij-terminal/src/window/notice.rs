@@ -94,6 +94,20 @@ pub fn described(error: &ConfigError) -> String {
 }
 
 static SHOWN: AtomicBool = AtomicBool::new(false);
+static CONFIRMED: AtomicBool = AtomicBool::new(false);
+
+pub fn answer_to(key: &winit::keyboard::Key) -> Option<bool> {
+    use winit::keyboard::{Key, NamedKey};
+    match key {
+        Key::Named(NamedKey::Enter) => Some(true),
+        Key::Named(NamedKey::Escape) => Some(false),
+        _ => None,
+    }
+}
+
+pub fn mark_confirmed() {
+    CONFIRMED.store(true, Ordering::Relaxed);
+}
 
 pub fn mark_shown() {
     SHOWN.store(true, Ordering::Relaxed);
@@ -271,16 +285,25 @@ fn wrapped(message: &str, width: usize) -> Vec<String> {
 }
 
 pub fn show(message: &str, fonts: FontStack, options: &Options) -> Result<()> {
+    present(&refused(message), fonts, options)
+}
+
+pub fn ask(question: &str, fonts: FontStack, options: &Options) -> Result<bool> {
+    CONFIRMED.store(false, Ordering::Relaxed);
+    present(question, fonts, options)?;
+    Ok(CONFIRMED.load(Ordering::Relaxed))
+}
+
+fn present(text: &str, fonts: FontStack, options: &Options) -> Result<()> {
     let metrics = fonts.metrics();
-    let text = refused(message);
-    let needed = wrapped(&text, text_width(NOTICE_COLS)).len() + MARGIN * 2;
+    let needed = wrapped(text, text_width(NOTICE_COLS)).len() + MARGIN * 2;
     let geometry = Geometry {
         rows: needed.clamp(NOTICE_MIN_ROWS, NOTICE_MAX_ROWS),
         cols: NOTICE_COLS,
         cell_width: metrics.width as usize,
         cell_height: metrics.height as usize,
     };
-    crate::window::run_notice(&text, geometry, fonts, options)
+    crate::window::run_notice(text, geometry, fonts, options)
         .context("the message could not be shown in a window")
 }
 
@@ -337,6 +360,15 @@ mod tests {
         let view = zellij_utils::structured_render::decode(&bytes).unwrap();
         assert!(view.header().full_repaint());
         assert!(view.header().clear());
+    }
+
+    #[test]
+    fn enter_confirms_escape_declines_and_other_keys_do_neither() {
+        use winit::keyboard::{Key, NamedKey};
+        assert_eq!(answer_to(&Key::Named(NamedKey::Enter)), Some(true));
+        assert_eq!(answer_to(&Key::Named(NamedKey::Escape)), Some(false));
+        assert_eq!(answer_to(&Key::Named(NamedKey::ArrowDown)), None);
+        assert_eq!(answer_to(&Key::Character("y".into())), None);
     }
 
     #[test]

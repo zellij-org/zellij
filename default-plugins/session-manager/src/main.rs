@@ -96,6 +96,7 @@ pub(crate) struct State {
     last_cols: usize,
     desktop_offer: DesktopOffer,
     sessions_live_layout: Option<inbox::LiveLayout>,
+    backspace_erased_text: bool,
 }
 
 #[derive(Default)]
@@ -722,7 +723,7 @@ impl State {
     }
 
     fn sessions_live_target(&self) -> Option<SessionsLiveTarget> {
-        if self.on_exited_header() {
+        if self.is_welcome_screen || self.on_exited_header() {
             return None;
         }
         let (name, running, _) = self.selected_session()?;
@@ -1257,6 +1258,7 @@ impl State {
         if self.inbox_is_shown() {
             return self.handle_inbox_key(key);
         }
+        let key = self.backspace_as_delete(key);
         if let Some(should_render) = self.handle_panel_key(&key) {
             return should_render;
         }
@@ -1266,6 +1268,34 @@ impl State {
             ActiveScreen::ResurrectSession => self.handle_resurrect_session_key(key),
             ActiveScreen::SingleScreen => self.handle_single_screen_key(key),
         }
+    }
+    fn erasable_text(&self) -> Option<&str> {
+        if self.renaming_session_name.is_some() {
+            return None;
+        }
+        match self.active_screen {
+            ActiveScreen::NewSession => None,
+            ActiveScreen::AttachToSession => Some(&self.search_term),
+            ActiveScreen::ResurrectSession => Some(&self.resurrectable_sessions.search_term),
+            ActiveScreen::SingleScreen => match self.single_screen_state.mode {
+                SingleScreenMode::SearchAndSelect => Some(&self.single_screen_state.search_term),
+                SingleScreenMode::SelectingLayout => None,
+            },
+        }
+    }
+    fn backspace_as_delete(&mut self, mut key: KeyWithModifier) -> KeyWithModifier {
+        let is_backspace = key.bare_key == BareKey::Backspace
+            && (key.has_no_modifiers() || key.has_only_modifiers(&[KeyModifier::Shift]));
+        if !is_backspace {
+            self.backspace_erased_text = false;
+            return key;
+        }
+        match self.erasable_text().map(|text| text.is_empty()) {
+            Some(false) => self.backspace_erased_text = true,
+            Some(true) if !self.backspace_erased_text => key.bare_key = BareKey::Delete,
+            _ => {},
+        }
+        key
     }
     fn handle_new_session_key(&mut self, key: KeyWithModifier) -> bool {
         let mut should_render = false;
@@ -3358,6 +3388,9 @@ impl State {
                 },
             })
     }
+    fn preview_needs_fetch(&self, is_running: bool) -> bool {
+        !is_running || self.sessions_live_target().is_none()
+    }
     fn request_preview_for_selection(&mut self) {
         if !matches!(self.panel.size, Some(PanelSize::Manager)) {
             return;
@@ -3368,7 +3401,7 @@ impl State {
         }
         match self.selected_session() {
             Some((name, is_running, _)) => {
-                let fetch = !is_running || self.sessions_live_target().is_none();
+                let fetch = self.preview_needs_fetch(is_running);
                 let (tab, pane) = if self.panel.tree.node_session == name {
                     match self.panel.tree.node {
                         session_tree::TreeNode::Exited
@@ -3829,9 +3862,12 @@ impl State {
         }
         self.single_screen_state.search_term.clear();
         self.single_screen_state.selected_index = None;
+        // A click on the icon ("auto") opens the inbox only when it has items, and the sessions
+        // otherwise. Asking for the inbox ("Show inbox", `--inbox`) opens it even when empty.
         let tab = match view {
             _ if self.attention_disabled() => BrowserTab::Sessions,
             Some("sessions") => BrowserTab::Sessions,
+            Some("inbox") => BrowserTab::Inbox,
             _ if !self.inbox.has_rows() => BrowserTab::Sessions,
             _ => BrowserTab::Inbox,
         };
@@ -4429,6 +4465,34 @@ mod live_view_state_tests {
             BrowserTab::Sessions,
             "a fresh open with nothing left shows the sessions"
         );
+    }
+
+    #[test]
+    fn an_inbox_asked_for_by_name_opens_even_when_empty() {
+        let mut state = browser();
+        state.inbox.update_global(nothing_is_left());
+        state.update(Event::Visible(false));
+        state.show_app_panel_view(Some("auto"));
+        assert_eq!(
+            state.inbox.tab,
+            BrowserTab::Sessions,
+            "a click on the icon with nothing in the inbox shows the sessions"
+        );
+        state.show_app_panel_view(Some("inbox"));
+        assert_eq!(state.inbox.tab, BrowserTab::Inbox);
+        assert!(state.inbox_is_shown());
+        state.render_plugin(16, 88);
+    }
+
+    #[test]
+    fn the_first_item_to_reach_an_empty_inbox_is_selected() {
+        let mut state = browser();
+        state.inbox.update_global(nothing_is_left());
+        state.update(Event::Visible(false));
+        state.show_app_panel_view(Some("inbox"));
+        state.update(Event::GlobalAttentionUpdate(only_web_is_left()));
+        assert_eq!(state.inbox.tab, BrowserTab::Inbox);
+        assert!(state.inbox.is_selected(&key_of("web", 2)));
     }
 
     fn with_attention_off(mut global: GlobalAttention) -> GlobalAttention {
@@ -5231,6 +5295,26 @@ mod sessions_live_view_tests {
         assert!(
             state.pending_delete_exited,
             "it also works from an exited row"
+        );
+    }
+
+    #[test]
+    fn the_welcome_screen_fetches_a_preview_for_a_running_session_with_known_tabs() {
+        let mut state = sessions_browser();
+        assert_eq!(
+            state.selected_session(),
+            Some(("api".to_owned(), true, false))
+        );
+        assert!(
+            !state.preview_needs_fetch(true),
+            "inside a session the live view shows the pane"
+        );
+        state.is_welcome_screen = true;
+        state.render_plugin(ROWS, COLS);
+        assert_eq!(shown(&state), None);
+        assert!(
+            state.preview_needs_fetch(true),
+            "the welcome screen has no live view, so it asks for a snapshot"
         );
     }
 

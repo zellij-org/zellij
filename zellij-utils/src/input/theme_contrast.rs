@@ -153,22 +153,15 @@ pub fn drawn_pairs() -> Vec<DrawnPair> {
         ("text_selected", "background"),
         LINE_CONTRAST,
     ));
-    for part in ["base", "emphasis_0", "emphasis_3"] {
-        pairs.push(pair(
-            ("ribbon_unselected", part),
-            ("ribbon_unselected", "background"),
-            TEXT_CONTRAST,
-        ));
-        pairs.push(pair(
-            ("ribbon_selected", part),
-            ("ribbon_selected", "background"),
-            TEXT_CONTRAST,
-        ));
+    for style in ["ribbon_unselected", "ribbon_selected"] {
+        for part in TEXT_PARTS {
+            pairs.push(pair((style, part), (style, "background"), TEXT_CONTRAST));
+        }
     }
-    for part in ["base", "emphasis_0"] {
+    for part in TEXT_PARTS {
         pairs.push(pair(
-            ("ribbon_unselected", part),
-            ("ribbon_unselected", "emphasis_1"),
+            ("ribbon_hover", part),
+            ("ribbon_hover", "background"),
             TEXT_CONTRAST,
         ));
     }

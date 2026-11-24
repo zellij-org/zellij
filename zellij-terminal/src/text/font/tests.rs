@@ -364,6 +364,32 @@ fn a_listed_feature_changes_what_the_shaper_draws() {
 }
 
 #[test]
+fn a_lone_character_is_looked_up_as_the_shaper_draws_it_with_the_listed_features() {
+    let mut stack = FontStack::build_with(
+        &FontOptions {
+            system_fonts: false,
+            features: vec![FontFeature::parse("zero").unwrap()],
+            ..FontOptions::default()
+        },
+        None,
+    )
+    .unwrap();
+    let font = stack.primary_of(FaceStyle::Regular);
+    for character in ['0', 'a', '-', '>', 'é'] {
+        let looked_up = glyph_of(&mut stack, FaceStyle::Regular, character);
+        assert_eq!(looked_up.font, font);
+        let shaped: Vec<GlyphId> = stack
+            .shape_cluster(font, &character.to_string())
+            .iter()
+            .map(|g| g.glyph)
+            .collect();
+        if let [single] = shaped[..] {
+            assert_eq!(looked_up.glyph, single, "{:?}", character);
+        }
+    }
+}
+
+#[test]
 fn a_requested_weight_picks_the_matching_installed_face() {
     let Some(discovery) = synthetic_discovery() else {
         return;
@@ -1488,6 +1514,37 @@ fn a_font_file_this_user_can_write_is_read_rather_than_mapped() {
     assert_eq!(super::files::safe_to_map(file.path()), !running_as_root);
 }
 
+#[cfg(windows)]
+#[test]
+fn only_the_system_fonts_are_mapped_on_windows() {
+    let system = std::env::var("SystemRoot").unwrap();
+    assert!(super::files::safe_to_map(
+        &std::path::Path::new(&system)
+            .join("Fonts")
+            .join("consola.ttf")
+    ));
+    let shouting = format!("{}\\FONTS\\CONSOLA.TTF", system.to_uppercase());
+    assert!(super::files::safe_to_map(std::path::Path::new(&shouting)));
+    let file = tempfile::NamedTempFile::new().unwrap();
+    assert!(!super::files::safe_to_map(file.path()));
+    let user_fonts = std::env::var("LOCALAPPDATA").unwrap() + "\\Microsoft\\Windows\\Fonts\\x.ttf";
+    assert!(!super::files::safe_to_map(std::path::Path::new(
+        &user_fonts
+    )));
+    let lookalike = format!("{}\\FontsExtra\\x.ttf", system);
+    assert!(!super::files::safe_to_map(std::path::Path::new(&lookalike)));
+}
+
+#[cfg(windows)]
+#[test]
+fn a_loaded_font_outside_the_system_fonts_can_still_be_replaced() {
+    let file = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(file.path(), REGULAR).unwrap();
+    let loaded = super::files::map_font_file(file.path()).unwrap();
+    std::fs::write(file.path(), b"a newer version").expect("the font file is not locked");
+    assert_eq!(loaded, REGULAR);
+}
+
 #[test]
 fn a_font_file_is_loaded_once_per_process() {
     let mut file = tempfile::NamedTempFile::new().unwrap();
@@ -1549,4 +1606,140 @@ fn a_cluster_shape_is_cached_like_a_run() {
     let second = fonts.shape_cluster(font, "e\u{301}");
     assert_eq!(first, second);
     assert_eq!(fonts.shaped_clusters(), count);
+}
+
+fn without_bundled_emoji() -> FontStack {
+    FontStack::without_bundled_emoji(
+        &FontOptions {
+            system_fonts: false,
+            ..FontOptions::default()
+        },
+        None,
+    )
+    .unwrap()
+}
+
+const EMOJI_SAMPLES: [&str; 5] = [
+    "\u{1f600}",
+    "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}",
+    "\u{1f1fa}\u{1f1f8}",
+    "\u{2764}\u{fe0f}",
+    "\u{1f44d}\u{1f3fd}",
+];
+
+#[test]
+fn without_the_bundled_emoji_no_embedded_face_is_in_color() {
+    let fonts = without_bundled_emoji();
+    assert!(!fonts.color_capable.iter().any(|capable| *capable));
+    assert!(!fonts.fallback_faces().contains(&EMOJI_FONT));
+}
+
+#[test]
+fn without_the_bundled_emoji_text_cjk_and_icons_still_resolve() {
+    let mut fonts = without_bundled_emoji();
+    for style in [
+        FaceStyle::Regular,
+        FaceStyle::Bold,
+        FaceStyle::Italic,
+        FaceStyle::BoldItalic,
+    ] {
+        let glyph = glyph_of(&mut fonts, style, 'A');
+        assert!(fonts.is_primary(glyph.font));
+    }
+    assert_eq!(
+        glyph_of(&mut fonts, FaceStyle::Regular, '\u{4f60}').font,
+        FontId(4)
+    );
+    assert_eq!(
+        glyph_of(&mut fonts, FaceStyle::Regular, '\u{f16a0}').font,
+        SYMBOLS_FONT
+    );
+}
+
+#[test]
+fn without_any_emoji_font_an_emoji_is_left_undrawn_rather_than_failing() {
+    let mut fonts = without_bundled_emoji();
+    for text in EMOJI_SAMPLES {
+        for character in text.chars() {
+            if let Some(glyph) = fonts.lookup(FaceStyle::Regular, character) {
+                assert!(!fonts.has_color(glyph.font));
+                let _ = fonts.rasterize(glyph, 2);
+            }
+        }
+        match fonts.rasterize_cluster(FaceStyle::Regular, text, 2) {
+            ClusterRaster::Sprite(bitmap) => assert_eq!(bitmap.content, GlyphContent::Mask),
+            ClusterRaster::Blank | ClusterRaster::Uncovered => {},
+        }
+    }
+}
+
+#[test]
+fn without_the_bundled_emoji_an_installed_emoji_font_is_used_before_the_symbols() {
+    let Some(discovery) = synthetic_discovery() else {
+        return;
+    };
+    let mut fonts =
+        FontStack::without_bundled_emoji(&FontOptions::default(), Some(discovery)).unwrap();
+    let fallbacks = fonts.fallback_faces().to_vec();
+    let installed = fallbacks
+        .iter()
+        .position(|font| fonts.has_color(*font))
+        .expect("the installed colour emoji font was not adopted");
+    let symbols = fallbacks
+        .iter()
+        .position(|font| *font == SYMBOLS_FONT)
+        .unwrap();
+    assert!(installed < symbols, "{:?}", fallbacks);
+    let glyph = glyph_of(&mut fonts, FaceStyle::Regular, '\u{1f600}');
+    assert_eq!(
+        fonts.rasterize(glyph, 2).unwrap().content,
+        GlyphContent::Color
+    );
+    for text in EMOJI_SAMPLES {
+        assert!(
+            matches!(
+                fonts.rasterize_cluster(FaceStyle::Regular, text, 2),
+                ClusterRaster::Sprite(_)
+            ),
+            "{:?}",
+            text
+        );
+    }
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+#[test]
+fn a_font_installed_beside_its_web_font_copy_is_used_rather_than_the_embedded_one() {
+    let directory = tempfile::TempDir::new().unwrap();
+    crate::text::discovery::a_web_font_beside_a_desktop_font(directory.path());
+    let Some(discovery) = Discovery::synthetic(directory.path()) else {
+        eprintln!("fontconfig is unavailable here; family selection is untested");
+        return;
+    };
+    let stack = FontStack::build_with(&requested("Iosevka Term"), Some(discovery)).unwrap();
+    assert!(
+        stack.primary[0].0 >= 7,
+        "the font fell back to the embedded face: {:?}",
+        stack.primary
+    );
+}
+
+#[test]
+fn a_chosen_family_is_used_even_when_system_fonts_are_off() {
+    let Some(discovery) = synthetic_discovery() else {
+        return;
+    };
+    let mut options = requested("Iosevka Term");
+    options.system_fonts = false;
+    let mut stack = FontStack::build_with(&options, Some(discovery)).unwrap();
+    assert!(
+        stack.primary[0].0 >= 7,
+        "system_fonts off blocked the chosen family: {:?}",
+        stack.primary
+    );
+    stack.lookup(FaceStyle::Regular, '\u{10fffd}');
+    assert_eq!(
+        stack.discovery_queries, 0,
+        "system_fonts off still consulted the system for a missing character"
+    );
 }

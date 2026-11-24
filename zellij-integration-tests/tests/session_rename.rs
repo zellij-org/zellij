@@ -6,7 +6,7 @@ use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, col, default_timeout, keys, TestRunner, TERMINAL_SIZE,
 };
 use zellij_utils::cli::CliAction;
-use zellij_utils::sessions::resolve_session_socket_path;
+use zellij_utils::sessions::{resolve_session_socket_path, PaneSession};
 
 /// Renaming a session must not move its socket / named pipe — named pipes cannot
 /// be renamed on Windows, which is the bug session ids exist to fix. Instead
@@ -222,4 +222,71 @@ fn renaming_to_the_name_of_another_running_session_is_rejected() {
     );
     assert!(resolve_session_socket_path(&old_name).is_some());
     drop(other);
+}
+
+#[test]
+fn a_pane_of_a_renamed_session_reaches_it_even_after_another_session_takes_the_old_name() {
+    let zellij = TestRunner::new(TERMINAL_SIZE).start();
+    let pane = claim_first_terminal_and_wait_for_prompt(&zellij);
+    let old_name = zellij.session_name().to_string();
+    let pane_session_id = pane
+        .env_var(zellij_utils::envs::SESSION_ID_ENV_KEY)
+        .expect("a pane should know the id of its session");
+    assert_eq!(pane_session_id, zellij.session_id());
+
+    let new_name = "renamed-with-a-pane-left-behind";
+    assert_eq!(
+        zellij.run_cli_action(CliAction::RenameSession {
+            name: new_name.to_string(),
+        }),
+        0
+    );
+    wait_for_session_name(new_name);
+
+    let impostor = TestRunner::new(TERMINAL_SIZE)
+        .with_session_name(&old_name)
+        .skip_concurrency_slot()
+        .start_in_background();
+    wait_for_session_name(&old_name);
+    assert_ne!(
+        zellij_utils::sessions::resolve_session_id(&old_name),
+        Some(pane_session_id.clone()),
+        "the new session under the old name must have an id of its own"
+    );
+
+    let deadline = Instant::now() + default_timeout();
+    let running = loop {
+        let running: Vec<String> = zellij_utils::sessions::get_sessions()
+            .unwrap()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        if running.contains(&old_name) && running.iter().any(|name| name == new_name) {
+            break running;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for both sessions to answer, running: {:?}",
+            running
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let resolve = |id: &str, running: &[String]| {
+        zellij_utils::sessions::pane_session_from(
+            Some(id.to_owned()),
+            Some(old_name.clone()),
+            zellij_utils::session_index::session_name_for_id,
+            zellij_utils::session_index::session_id_for_name,
+            running,
+        )
+    };
+    assert_eq!(
+        resolve(&pane_session_id, &running),
+        PaneSession::Running(new_name.to_owned())
+    );
+    assert_eq!(
+        resolve("000000000000", &running),
+        PaneSession::Ended(old_name.clone())
+    );
+    drop(impostor);
 }

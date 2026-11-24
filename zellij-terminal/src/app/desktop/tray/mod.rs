@@ -243,6 +243,7 @@ pub fn menu(state: &MenuState) -> Vec<MenuEntry> {
             ],
         },
         MenuEntry::Separator { id: 7 },
+        item(13, "Quit Zellij (keep sessions)", MenuAction::QuitApp, true),
         item(
             8,
             "Quit Zellij and stop all sessions…",
@@ -338,6 +339,7 @@ mod tests {
                 "Detach all",
                 "Hide icon",
                 "─",
+                "Quit Zellij (keep sessions)",
                 "Quit Zellij and stop all sessions…",
             ]
         );
@@ -370,6 +372,7 @@ mod tests {
                 "Notifications",
                 "Hide icon",
                 "─",
+                "Quit Zellij (keep sessions)",
                 "Quit Zellij and stop all sessions…",
             ]
         );
@@ -382,6 +385,8 @@ mod tests {
         assert_eq!(find_action(&menu(&calm), 3), None);
         assert_eq!(find_action(&menu(&calm), 99), None);
         assert_eq!(find_action(&menu(&calm), 9), Some(MenuAction::ClearAll));
+        assert_eq!(find_action(&menu(&calm), 13), Some(MenuAction::QuitApp));
+        assert_eq!(find_action(&menu(&calm), 8), Some(MenuAction::QuitAll));
         assert_eq!(
             find_action(&menu(&calm), 111),
             Some(MenuAction::DetachAllWindows)

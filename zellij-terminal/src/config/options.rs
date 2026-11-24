@@ -1,6 +1,7 @@
 use zellij_utils::data::{BareKey, HostTerminalThemeMode, KeyWithModifier, PaletteColor, Styling};
 use zellij_utils::input::terminal::{
     BellMode, CursorStyle, OptionAsAlt, PaddingColor, StartupMode, TerminalConfig, TerminalTheme,
+    TitlebarTheme,
 };
 use zellij_utils::input::theme::Theme;
 
@@ -33,6 +34,8 @@ pub struct Options {
     pub startup_mode: StartupMode,
     pub transparency: Transparency,
     pub blur: bool,
+    pub decorations: bool,
+    pub titlebar_theme: Option<winit::window::Theme>,
     pub padding: Padding,
     pub padding_balance: bool,
     pub padding_color: PaddingColor,
@@ -150,6 +153,8 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
             mode: section.opacity_mode.unwrap_or_default(),
         },
         blur: section.blur.unwrap_or(false),
+        decorations: section.window_decorations.unwrap_or(true),
+        titlebar_theme: titlebar_theme(section.titlebar_theme.unwrap_or_default()),
         padding: Padding::of(section),
         padding_balance: section.padding_balance.unwrap_or(false),
         padding_color: section.padding_color.unwrap_or_default(),
@@ -177,6 +182,14 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
         option_as_alt: section.macos_option_as_alt.unwrap_or_default(),
         reuse_session_windows: section.reuse_session_windows.unwrap_or(true),
         allow_remote_clipboard_read: section.allow_remote_clipboard_read.unwrap_or(false),
+    }
+}
+
+fn titlebar_theme(theme: TitlebarTheme) -> Option<winit::window::Theme> {
+    match theme {
+        TitlebarTheme::System => None,
+        TitlebarTheme::Light => Some(winit::window::Theme::Light),
+        TitlebarTheme::Dark => Some(winit::window::Theme::Dark),
     }
 }
 
@@ -332,6 +345,7 @@ pub struct Change {
     pub bell: bool,
     pub transparency: bool,
     pub blur: bool,
+    pub titlebar_theme: bool,
     pub layout: bool,
     pub padding_color: bool,
     pub fullscreen_keys: bool,
@@ -363,6 +377,7 @@ impl Change {
             bell: current.bell != next.bell,
             transparency: current.transparency != next.transparency,
             blur: current.blur != next.blur,
+            titlebar_theme: current.titlebar_theme != next.titlebar_theme,
             layout: current.padding != next.padding
                 || current.padding_balance != next.padding_balance,
             padding_color: current.padding_color != next.padding_color,
@@ -395,6 +410,7 @@ impl Change {
             || self.bell
             || self.transparency
             || self.blur
+            || self.titlebar_theme
             || self.layout
             || self.padding_color
             || self.fullscreen_keys
@@ -569,6 +585,27 @@ mod tests {
         assert!(options.shift_drag_selects);
         assert_eq!(options.copy_keys, default_copy_keys());
         assert!(options.reuse_session_windows);
+        assert!(options.decorations);
+        assert_eq!(
+            options.titlebar_theme, None,
+            "with nothing configured the titlebar follows the system"
+        );
+    }
+
+    #[test]
+    fn the_window_frame_settings_are_read_and_a_theme_change_is_noticed() {
+        let next = resolve(
+            &settings(TerminalConfig {
+                window_decorations: Some(false),
+                titlebar_theme: Some(TitlebarTheme::Dark),
+                ..TerminalConfig::default()
+            }),
+            None,
+        );
+        assert!(!next.decorations);
+        assert_eq!(next.titlebar_theme, Some(winit::window::Theme::Dark));
+        let change = Change::between(&Options::default(), &next);
+        assert!(change.titlebar_theme && change.is_anything() && !change.needs_redraw());
     }
 
     #[test]

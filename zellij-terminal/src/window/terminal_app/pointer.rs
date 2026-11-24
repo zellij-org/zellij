@@ -5,7 +5,10 @@ use crate::input::clipboard::{self};
 use crate::input::links::{self};
 use crate::input::momentum::{self, Touch};
 use crate::input::mouse::{self};
+use crate::platform::Platform;
 use crate::render::retained::{self};
+use crate::window::desktop::grips::{grip_at, Grip};
+use crate::window::desktop::{hover, start_grip, Hover, WindowOps};
 use crate::window::App;
 use std::time::Instant;
 use winit::event::{ElementState, MouseScrollDelta, TouchPhase};
@@ -30,6 +33,67 @@ impl App {
             return;
         }
         self.point(event);
+    }
+
+    pub(in crate::window) fn hovering_edge(
+        &mut self,
+        position: winit::dpi::PhysicalPosition<f64>,
+    ) -> bool {
+        let was_on_edge = self.mouse.edge.is_some();
+        self.mouse.edge = self.resize_edge_at(position);
+        match hover(
+            self.window().map(|window| window as &dyn WindowOps),
+            self.mouse.edge,
+            was_on_edge,
+        ) {
+            Hover::Grip => {
+                self.show_pointer();
+                true
+            },
+            Hover::BackToNormal => {
+                self.pointer_back_to_normal();
+                false
+            },
+            Hover::Inside => false,
+        }
+    }
+
+    pub(in crate::window) fn pressed_edge(
+        &mut self,
+        button: winit::event::MouseButton,
+        state: ElementState,
+    ) -> bool {
+        if button != winit::event::MouseButton::Left || !state.is_pressed() {
+            return false;
+        }
+        match (self.mouse.edge.take(), self.window()) {
+            (Some(grip), Some(window)) => {
+                start_grip(window, grip);
+                true
+            },
+            _ => false,
+        }
+    }
+
+    fn resize_edge_at(&self, position: winit::dpi::PhysicalPosition<f64>) -> Option<Grip> {
+        if !self.appearance.undecorated
+            || Platform::current() == Platform::MacOs
+            || self.mouse.selecting
+            || self.mouse.pointer.holding()
+        {
+            return None;
+        }
+        let window = self.window()?;
+        if window.is_maximized() || window.fullscreen().is_some() {
+            return None;
+        }
+        let size = window.inner_size();
+        grip_at(
+            (position.x, position.y),
+            (size.width, size.height),
+            self.edge_margins(),
+        )
+        .filter(|grip| matches!(grip, Grip::Resize(_)))
     }
 
     pub(in crate::window) fn on_mouse_input(
@@ -429,6 +493,7 @@ impl App {
         self.show_pointer();
         self.stop_momentum();
         self.mouse.pointer.left();
+        self.mouse.edge = None;
         self.refresh_pointer();
     }
 

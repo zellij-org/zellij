@@ -11,19 +11,67 @@ pub(in crate::window) fn skip_taskbar(attributes: WindowAttributes) -> WindowAtt
         .with_undecorated_shadow(true)
 }
 
+/// Windows keeps a window the app opens at another program's request behind the active one.
+/// Focusing it brings it to the front, as the panel already does.
+pub(in crate::window) fn bring_opened_window_forward(window: &Window) {
+    window.focus_window();
+}
+
+/// Windows shows a window as soon as it exists and paints it white until the app draws its
+/// first frame. So a new window is created hidden, then shown cloaked, which keeps it off the
+/// screen while it otherwise works as usual, and uncloaked once that first frame is drawn.
+pub(in crate::window) fn created_hidden(attributes: WindowAttributes) -> WindowAttributes {
+    attributes.with_visible(false)
+}
+
+/// Shows a window created hidden but keeps it off the screen, and tells whether it now waits
+/// for `uncloak`.
+pub(in crate::window) fn show_cloaked(window: &Window) -> bool {
+    let cloaked = set_cloak(window, true);
+    window.set_visible(true);
+    cloaked
+}
+
+pub(in crate::window) fn uncloak(window: &Window) {
+    unsafe { windows_sys::Win32::Graphics::Dwm::DwmFlush() };
+    set_cloak(window, false);
+}
+
+fn set_cloak(window: &Window, cloaked: bool) -> bool {
+    use windows_sys::Win32::Foundation::BOOL;
+    use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_CLOAK};
+    let Some(hwnd) = hwnd_of(window) else {
+        return false;
+    };
+    let value: BOOL = cloaked.into();
+    let result = unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_CLOAK as u32,
+            &value as *const _ as *const core::ffi::c_void,
+            std::mem::size_of_val(&value) as u32,
+        )
+    };
+    result >= 0
+}
+
+fn hwnd_of(window: &Window) -> Option<windows_sys::Win32::Foundation::HWND> {
+    use winit::raw_window_handle::RawWindowHandle;
+    let handle = window.window_handle().ok()?;
+    let RawWindowHandle::Win32(handle) = handle.as_raw() else {
+        return None;
+    };
+    Some(handle.hwnd.get() as windows_sys::Win32::Foundation::HWND)
+}
+
 pub(in crate::window) fn square_without_system_border(window: &Window) {
     use windows_sys::Win32::Graphics::Dwm::{
         DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE,
         DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
     };
-    use winit::raw_window_handle::RawWindowHandle;
-    let Ok(handle) = window.window_handle() else {
+    let Some(hwnd) = hwnd_of(window) else {
         return;
     };
-    let RawWindowHandle::Win32(handle) = handle.as_raw() else {
-        return;
-    };
-    let hwnd = handle.hwnd.get() as windows_sys::Win32::Foundation::HWND;
     let corners = DWMWCP_DONOTROUND;
     let color = DWMWA_COLOR_NONE;
     unsafe {

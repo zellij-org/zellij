@@ -994,6 +994,53 @@ pub fn split_in_direction_without_a_connected_client_still_creates_the_pane() {
 }
 
 #[test]
+pub fn default_shell_started_in_a_folder_is_not_recorded_as_a_command() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    let run = |command: &str| {
+        Some(zellij_utils::input::layout::Run::Command(
+            zellij_utils::input::command::RunCommand {
+                command: PathBuf::from(command),
+                cwd: Some(PathBuf::from("/project")),
+                use_terminal_title: true,
+                ..Default::default()
+            },
+        ))
+    };
+    for (terminal_id, command) in [(2, "my_default_shell"), (3, "htop")] {
+        tab.new_pane(
+            PaneId::Terminal(terminal_id),
+            None,
+            run(command),
+            false,
+            true,
+            NewPanePlacement::Tiled {
+                direction: None,
+                borderless: None,
+                border_style: None,
+            },
+            Some(1),
+            None,
+        )
+        .unwrap();
+    }
+    let invoked_with = |terminal_id| {
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(terminal_id))
+            .unwrap()
+            .invoked_with()
+            .clone()
+    };
+    assert_eq!(invoked_with(2), None, "the default shell is a plain pane");
+    assert_eq!(invoked_with(3), run("htop"), "other commands are kept");
+}
+
+#[test]
 pub fn split_in_direction_without_a_connected_client_splits_the_existing_pane() {
     let size = Size {
         cols: 121,

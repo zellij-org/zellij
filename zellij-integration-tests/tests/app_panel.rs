@@ -309,6 +309,18 @@ fn is_coloured(code: Option<zellij_integration_tests::client_screen::AnsiCode>) 
     )
 }
 
+const EMPTY_INBOX: &str = "Nothing in the inbox";
+
+fn shows_empty_inbox(grid_snapshot: &zellij_integration_tests::GridSnapshot) -> bool {
+    shows_inbox(grid_snapshot) && grid_snapshot.contains(EMPTY_INBOX)
+}
+
+fn wait_for_empty_inbox(panel: &zellij_integration_tests::TestSession) {
+    panel.wait_until("the panel opens on the empty inbox", |grid_snapshot| {
+        shows_empty_inbox(grid_snapshot)
+    });
+}
+
 fn wait_for_selected(panel: &zellij_integration_tests::TestSession, needle: &str) {
     panel.wait_until(&format!("{:?} to be selected", needle), |grid_snapshot| {
         is_selected(grid_snapshot, needle)
@@ -396,29 +408,27 @@ fn the_view_pipe_switches_a_running_panel() {
 }
 
 #[test]
-fn asking_for_an_empty_inbox_shows_the_sessions_until_tab_is_pressed() {
+fn asking_for_an_empty_inbox_opens_it_until_tab_is_pressed() {
     let background = TestRunner::new(TERMINAL_SIZE)
         .skip_concurrency_slot()
         .start_in_background();
     let terminal = background.expect_pty_spawn();
     terminal.output(b"$ ");
     let mut panel = start_panel_on("inbox");
-    panel.wait_until("the panel opens on the sessions", |grid_snapshot| {
-        grid_snapshot.contains(SESSIONS_VIEW_ONLY)
-            && grid_snapshot.contains(background.session_name())
-            && !shows_inbox(&grid_snapshot)
-    });
+    wait_for_empty_inbox(&panel);
     send_view("inbox");
     std::thread::sleep(Duration::from_millis(300));
     let grid_snapshot = panel.snapshot();
     assert!(
-        grid_snapshot.contains(SESSIONS_VIEW_ONLY) && !shows_inbox(&grid_snapshot),
-        "asking for an empty inbox left the sessions:\n{}",
+        shows_empty_inbox(&grid_snapshot),
+        "asking for an empty inbox again left it:\n{}",
         grid_snapshot.text
     );
     panel.send_stdin(&keys::TAB);
-    panel.wait_until("tab shows the empty inbox", |grid_snapshot| {
-        shows_inbox(&grid_snapshot)
+    panel.wait_until("tab shows the sessions", |grid_snapshot| {
+        grid_snapshot.contains(SESSIONS_VIEW_ONLY)
+            && grid_snapshot.contains(background.session_name())
+            && !shows_inbox(&grid_snapshot)
     });
     panel.send_stdin(&keys::ESC);
     assert!(panel.join_main_client().is_none());
@@ -712,20 +722,16 @@ fn opening_the_panel_shows_the_newest_item_in_full_with_its_actions() {
 }
 
 #[test]
-fn a_panel_asked_for_an_empty_inbox_turns_to_it_when_an_item_arrives_before_any_input() {
+fn a_panel_asked_for_an_empty_inbox_shows_the_first_item_that_arrives() {
     let background = TestRunner::new(TERMINAL_SIZE)
         .skip_concurrency_slot()
         .start_in_background();
     let terminal = background.expect_pty_spawn();
     terminal.output(b"$ ");
     let mut panel = start_panel_on("inbox");
-    panel.wait_until("the panel opens on the sessions", |grid_snapshot| {
-        grid_snapshot.contains(SESSIONS_VIEW_ONLY)
-            && grid_snapshot.contains(background.session_name())
-            && !shows_inbox(&grid_snapshot)
-    });
+    wait_for_empty_inbox(&panel);
     terminal.output(&needs_you("Deploy now?"));
-    panel.wait_until("the panel turns to the inbox", |grid_snapshot| {
+    panel.wait_until("the inbox shows the item", |grid_snapshot| {
         grid_snapshot.contains("Inbox (1)")
             && grid_snapshot.contains("Deploy now")
             && grid_snapshot.contains(ITEM_ACTIONS)
@@ -735,16 +741,19 @@ fn a_panel_asked_for_an_empty_inbox_turns_to_it_when_an_item_arrives_before_any_
 }
 
 #[test]
-fn a_panel_asked_for_an_empty_inbox_stays_on_the_sessions_after_any_input() {
+fn leaving_an_empty_inbox_asked_for_keeps_the_panel_on_the_sessions() {
     let background = TestRunner::new(TERMINAL_SIZE)
         .skip_concurrency_slot()
         .start_in_background();
     let terminal = background.expect_pty_spawn();
     terminal.output(b"$ ");
     let mut panel = start_panel_on("inbox");
-    panel.wait_until("the panel opens on the sessions", |grid_snapshot| {
+    wait_for_empty_inbox(&panel);
+    panel.send_stdin(&keys::TAB);
+    panel.wait_until("tab shows the sessions", |grid_snapshot| {
         grid_snapshot.contains(SESSIONS_VIEW_ONLY)
             && grid_snapshot.contains(background.session_name())
+            && !shows_inbox(&grid_snapshot)
     });
     panel.send_stdin(&keys::DOWN);
     wait_for_selected(&panel, background.session_name());
@@ -764,7 +773,7 @@ fn a_panel_asked_for_an_empty_inbox_stays_on_the_sessions_after_any_input() {
 }
 
 #[test]
-fn only_muted_items_waiting_still_open_the_sessions() {
+fn only_muted_items_waiting_open_the_sessions_and_leave_an_asked_for_inbox_empty() {
     let background = TestRunner::new(TERMINAL_SIZE)
         .skip_concurrency_slot()
         .start_in_background();
@@ -799,7 +808,7 @@ fn only_muted_items_waiting_still_open_the_sessions() {
         );
         std::thread::sleep(Duration::from_millis(50));
     }
-    let mut panel = start_panel_on("inbox");
+    let mut panel = start_panel();
     panel.wait_until("the panel opens on the sessions", |grid_snapshot| {
         grid_snapshot.contains(SESSIONS_VIEW_ONLY) && grid_snapshot.contains(&name)
     });
@@ -811,11 +820,11 @@ fn only_muted_items_waiting_still_open_the_sessions() {
         grid_snapshot.text
     );
     send_view("inbox");
-    std::thread::sleep(Duration::from_millis(300));
+    wait_for_empty_inbox(&panel);
     let grid_snapshot = panel.snapshot();
     assert!(
-        !shows_inbox(&grid_snapshot),
-        "asking for the inbox with only a muted item left the sessions:\n{}",
+        !grid_snapshot.contains("Deploy now"),
+        "the muted item was listed in the inbox:\n{}",
         grid_snapshot.text
     );
     panel.send_stdin(&keys::ESC);
@@ -829,7 +838,7 @@ fn the_pointer_resting_on_the_panel_does_not_stop_it_turning_to_the_inbox() {
         .start_in_background();
     let terminal = background.expect_pty_spawn();
     terminal.output(b"$ ");
-    let mut panel = start_panel_on("inbox");
+    let mut panel = start_panel();
     panel.wait_until("the panel opens on the sessions", |grid_snapshot| {
         grid_snapshot.contains(SESSIONS_VIEW_ONLY)
             && grid_snapshot.contains(background.session_name())

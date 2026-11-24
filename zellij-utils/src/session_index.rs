@@ -145,12 +145,27 @@ fn folder_prefix_upper_bound(prefix: &str) -> String {
     upper
 }
 
+pub fn index_file_name(sock_dir: &Path, sock_dir_overridden: bool) -> String {
+    if !sock_dir_overridden {
+        return SESSION_INDEX_FILE_NAME.to_owned();
+    }
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(sock_dir.as_os_str().as_encoded_bytes());
+    let hash: String = digest
+        .iter()
+        .take(6)
+        .map(|byte| format!("{:02x}", byte))
+        .collect();
+    format!("session_index-{}.sqlite", hash)
+}
+
 pub fn default_index_path() -> PathBuf {
+    let sock_dir_overridden = crate::envs::get_socket_dir().is_ok();
     ZELLIJ_SESSION_INFO_CACHE_DIR
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| ZELLIJ_SESSION_INFO_CACHE_DIR.clone())
-        .join(SESSION_INDEX_FILE_NAME)
+        .join(index_file_name(&ZELLIJ_SOCK_DIR, sock_dir_overridden))
 }
 
 pub fn hostname() -> Option<String> {
@@ -1171,6 +1186,20 @@ pub fn layout_cwd(raw_layout: &str) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use crate::input::session_suggestions::default_rules;
+
+    #[test]
+    fn an_overridden_socket_folder_gets_its_own_index_file() {
+        let default_dir = Path::new("/run/user/1000/zellij/contract_version_1");
+        let bench_dir = Path::new("/tmp/bench/s-1/contract_version_1");
+        let other_bench_dir = Path::new("/tmp/bench/s-2/contract_version_1");
+        assert_eq!(index_file_name(default_dir, false), SESSION_INDEX_FILE_NAME);
+        assert_eq!(index_file_name(bench_dir, false), SESSION_INDEX_FILE_NAME);
+        let bench = index_file_name(bench_dir, true);
+        assert_ne!(bench, SESSION_INDEX_FILE_NAME);
+        assert!(bench.starts_with("session_index-") && bench.ends_with(".sqlite"));
+        assert_eq!(bench, index_file_name(bench_dir, true));
+        assert_ne!(bench, index_file_name(other_bench_dir, true));
+    }
 
     struct TestIndex {
         index: SessionIndex,

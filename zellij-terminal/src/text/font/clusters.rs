@@ -142,6 +142,9 @@ impl FontStack {
     }
 
     pub(super) fn adopt_system_emoji(&mut self) {
+        if !self.system_fallbacks {
+            return;
+        }
         let Some(discovery) = self.discovery else {
             return;
         };
@@ -160,7 +163,7 @@ impl FontStack {
         let bundled = self
             .fallbacks
             .iter()
-            .position(|fallback| *fallback == EMOJI_FONT)
+            .position(|fallback| *fallback == EMOJI_FONT || *fallback == SYMBOLS_FONT)
             .unwrap_or(self.fallbacks.len());
         self.fallbacks.insert(bundled, font);
     }

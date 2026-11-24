@@ -107,12 +107,8 @@ enum Asked {
 }
 
 fn ask(socket: &Path, request: &AppRequest) -> Asked {
-    let Ok(mut stream) = zellij_utils::consts::ipc_connect(socket) else {
+    let Ok((mut stream, mut reply_stream)) = ipc::connect(socket) else {
         return Asked::Gone;
-    };
-    let reply_stream = ipc::connect_reply(socket, &stream);
-    let Ok(mut reply_stream) = reply_stream else {
-        return Asked::Silent;
     };
     let _ = stream.set_recv_timeout(Some(ANSWER_WAIT));
     let _ = reply_stream.set_recv_timeout(Some(ANSWER_WAIT));

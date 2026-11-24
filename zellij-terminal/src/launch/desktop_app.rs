@@ -14,6 +14,7 @@ use crate::launch::refuse;
 use crate::launch::remembered;
 use crate::launch::switch;
 use crate::launch::window_request;
+use crate::launch::without_session_options;
 use crate::launch::Loaded;
 use crate::launch::Plan;
 use crate::launch::Reach;
@@ -22,7 +23,7 @@ use crate::launch::Target;
 use crate::platform::os;
 use crate::session::client_loop::LoopOptions;
 use crate::session::connection::{Capabilities, Detacher, Geometry, Opening};
-use crate::{app, config, session, window};
+use crate::{app, config, remote, session, window};
 use anyhow::{anyhow, bail, Result};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -35,6 +36,7 @@ use zellij_utils::data::ConnectToSession;
 use zellij_utils::input::actions::initial_panes_from_cli;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options as SessionOptions;
+use zellij_utils::input::options::PaneFrameStyle;
 use zellij_utils::sessions::generate_unique_session_name;
 
 pub(crate) fn launch_app(args: TerminalArgs, opts: CliArgs, loaded: Option<Loaded>) -> Result<()> {
@@ -48,7 +50,8 @@ pub(crate) fn launch_app(args: TerminalArgs, opts: CliArgs, loaded: Option<Loade
             app::Intent::TogglePanel { view, token },
         ),
         None => {
-            let request = window_request(&args);
+            let mut request = window_request(&args);
+            request.env = session::spawn::launcher_env();
             (
                 AppRequest::OpenWindow(request.clone()),
                 app::Intent::Open { request, token },
@@ -56,10 +59,29 @@ pub(crate) fn launch_app(args: TerminalArgs, opts: CliArgs, loaded: Option<Loade
         },
     };
     let dir = zellij_utils::consts::app_dir();
-    match app::control::instance::claim(&dir, &handed, app::control::instance::HANDOFF_WAIT) {
+    let claimed = match app::control::instance::older_app(&dir) {
+        Some(version) if !args.headless => match close_older(&dir, &version) {
+            Ok(true) => {
+                return relaunch()
+                    .or_else(|e| refuse(Refusal::new(format!("{:#}", e)), &args, None))
+            },
+            Ok(false) => return Ok(()),
+            Err(e) => return refuse(Refusal::new(format!("{:#}", e)), &args, None),
+        },
+        Some(version) => {
+            report!(
+                "an older Zellij app ({}) is running and keeps handling this request",
+                version
+            );
+            app::control::instance::claim(&dir, &handed, app::control::instance::HANDOFF_WAIT)
+        },
+        None => app::control::instance::claim(&dir, &handed, app::control::instance::HANDOFF_WAIT),
+    };
+    match claimed {
         Ok(app::control::instance::Claim::Handed(AppReply::Refused(text))) => bail!("{}", text),
         Ok(app::control::instance::Claim::Handed(_)) => Ok(()),
         Ok(app::control::instance::Claim::Primary(instance)) => {
+            let (args, opts) = without_session_options(&args, &opts);
             let (config_options, settings) = match loaded.map_or_else(|| load(&args, &opts), Ok) {
                 Ok(loaded) => loaded,
                 Err(done) => return done,
@@ -88,6 +110,52 @@ pub(crate) fn launch_app(args: TerminalArgs, opts: CliArgs, loaded: Option<Loade
     }
 }
 
+fn close_older(dir: &std::path::Path, version: &str) -> Result<bool> {
+    let question = older_app_question(version);
+    let (fonts, options) = crate::launch::fallback_surface()?;
+    if !window::notice::ask(&question, fonts, &options)? {
+        return Ok(false);
+    }
+    app::control::instance::close_running(dir, app::control::instance::QUIT_WAIT)?;
+    Ok(true)
+}
+
+fn relaunch() -> Result<()> {
+    let program = std::env::current_exe()
+        .map_err(|e| anyhow!("failed to locate this executable to start it again: {}", e))?;
+    let mut command = std::process::Command::new(program);
+    command.args(std::env::args_os().skip(1));
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let error = command.exec();
+        bail!(
+            "Zellij could not start again after closing the older app: {}",
+            error
+        )
+    }
+    #[cfg(not(unix))]
+    {
+        os::detach_from_terminal(&mut command);
+        command.spawn().map_err(|e| {
+            anyhow!(
+                "Zellij could not start again after closing the older app: {}",
+                e
+            )
+        })?;
+        Ok(())
+    }
+}
+
+fn older_app_question(version: &str) -> String {
+    format!(
+        "An older Zellij app ({}) is running.\n\n\
+         Press Enter to close it and continue. Your sessions keep running.\n\n\
+         Press Escape, or close this window, to cancel.",
+        version
+    )
+}
+
 pub(crate) fn run_app(
     instance: app::control::instance::Instance,
     first: Option<app::Intent>,
@@ -105,6 +173,11 @@ pub(crate) fn run_app(
     let config_path = Config::config_file_path(&opts);
     let windowing = window::Windowing::bring_up()?;
     let poster = window::AppPoster::new(windowing.proxy());
+    #[cfg(target_os = "macos")]
+    app::desktop::macos_open::install_open_handler(
+        poster.clone(),
+        config_options.default_shell.as_deref(),
+    );
     let holder = {
         let poster = poster.clone();
         instance.serve(move |request| match request {
@@ -207,19 +280,42 @@ impl Dialer {
         request: &OpenWindowRequest,
         geometry: Geometry,
     ) -> Result<session::connection::Connection> {
+        let (reach, local_config) = match request.remote_url() {
+            Some(_) => (
+                Reach::Remote(Box::new(remote_attach(request))),
+                remote::watched_config(&self.opts),
+            ),
+            None => (Reach::Local(self.client_info(request)?), Default::default()),
+        };
         let target = Target {
-            reach: Reach::Local(self.client_info(request)?),
+            reach,
             opening: Opening::Participant(self.capabilities),
         };
         connect(
             &target,
             &self.opts,
-            &self.config_options,
+            &self.options_for(request),
             geometry,
             (None, request.pane_id),
-            Default::default(),
+            local_config,
             None,
+            Some(&request.env).filter(|env| !env.is_empty()),
         )
+    }
+
+    pub(crate) fn options_for(&self, request: &OpenWindowRequest) -> SessionOptions {
+        match &request.options {
+            Some(options) => {
+                let mut merged = self.config_options.merge_from_cli(options.clone());
+                // `pane_frames false` in the config would hide the requested style, also on
+                // the server, which merges the config file again.
+                if let (Some(style), None) = (options.pane_frame_style, options.pane_frames) {
+                    merged.pane_frames = Some(style != PaneFrameStyle::None);
+                }
+                merged
+            },
+            None => self.config_options.clone(),
+        }
     }
 
     pub(crate) fn client_info(&self, request: &OpenWindowRequest) -> Result<ClientInfo> {
@@ -257,7 +353,7 @@ impl Dialer {
                 };
                 let mut resolved = session_resolution::resolve_attach(
                     &attach,
-                    self.config_options.clone(),
+                    self.options_for(request),
                     false,
                     None,
                 )
@@ -275,6 +371,18 @@ impl Dialer {
             },
         };
         Ok(info)
+    }
+}
+
+fn remote_attach(request: &OpenWindowRequest) -> AttachArgs {
+    AttachArgs {
+        session_name: request.session.clone(),
+        token: request.token.clone(),
+        remember: request.remember,
+        forget: request.forget,
+        ca_cert: request.ca_cert.clone(),
+        insecure: request.insecure,
+        ..AttachArgs::default()
     }
 }
 
@@ -322,6 +430,7 @@ impl Dialer {
             (None, None),
             Default::default(),
             None,
+            None,
         )
     }
 }
@@ -335,7 +444,10 @@ pub(crate) struct Launcher {
 
 impl Launcher {
     pub(crate) fn current(&self) -> Result<(config::settings::Settings, Options)> {
-        let settings = config::settings::load(self.config_path.as_deref())?;
+        let settings = config::settings::load(
+            self.config_path.as_deref(),
+            self.dialer.opts.config_dir.as_deref(),
+        )?;
         let options = config::options::resolve(&settings, None);
         Ok((settings, options))
     }
@@ -350,6 +462,8 @@ impl window::WindowMaker for Launcher {
         let args = TerminalArgs {
             cell_width: 10,
             cell_height: 20,
+            rows: request.rows,
+            cols: request.cols,
             ..TerminalArgs::default()
         };
         let saved = remembered(&args, &options);
@@ -381,7 +495,6 @@ impl window::WindowMaker for Launcher {
     ) -> window::TerminalWindow {
         let detacher = Detacher::new(connection.sender.clone(), connection.role);
         let loop_options = LoopOptions {
-            config_path: self.config_path.clone(),
             settings: prepared.settings.clone(),
             font_families: self.font_families.clone(),
             allow_remote_clipboard_read: prepared.options.allow_remote_clipboard_read,

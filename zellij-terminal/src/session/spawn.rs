@@ -6,22 +6,105 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, bail, Context, Result};
 use zellij_client::ServerLaunch;
 use zellij_utils::consts::ZELLIJ_SOCK_DIR;
-use zellij_utils::envs::{SESSION_NAME_ENV_KEY, ZELLIJ_ENV_KEY};
+use zellij_utils::envs::{
+    SESSION_ID_ENV_KEY, SESSION_NAME_ENV_KEY, SOCKET_DIR_ENV_KEY, ZELLIJ_ENV_KEY,
+};
+use zellij_utils::input::cli_assets::{
+    DESKTOP_DISPLAY_ENV_KEY, DESKTOP_DISPLAY_ENV_VARS, DESKTOP_TERMINAL_ENV_KEY,
+};
 use zellij_utils::shared::set_permissions;
 
 pub const ADVERTISED_TERM: &str = "xterm-256color";
 pub const ADVERTISED_COLORTERM: &str = "truecolor";
 pub const ADVERTISED_KITTY_WINDOW_ID: &str = "1";
+pub const ADVERTISED_TERM_PROGRAM: &str = "zellij";
 
 const SOCK_DIR_PERMISSIONS: u32 = 0o700;
 
-pub const LAUNCHING_SESSION_VARS: [&str; 3] =
-    [ZELLIJ_ENV_KEY, SESSION_NAME_ENV_KEY, "ZELLIJ_PANE_ID"];
+pub const LAUNCHING_SESSION_VARS: [&str; 4] = [
+    ZELLIJ_ENV_KEY,
+    SESSION_NAME_ENV_KEY,
+    SESSION_ID_ENV_KEY,
+    "ZELLIJ_PANE_ID",
+];
+
+pub const FOREIGN_TERMINAL_VARS: [&str; 22] = [
+    "TERM_PROGRAM",
+    "TERM_PROGRAM_VERSION",
+    "TERM_SESSION_ID",
+    "TERMINFO",
+    "COLORFGBG",
+    "ITERM_SESSION_ID",
+    "ITERM_PROFILE",
+    "LC_TERMINAL",
+    "LC_TERMINAL_VERSION",
+    "WEZTERM_PANE",
+    "WEZTERM_EXECUTABLE",
+    "WEZTERM_UNIX_SOCKET",
+    "KITTY_WINDOW_ID",
+    "KITTY_PID",
+    "KITTY_PUBLIC_KEY",
+    "KITTY_LISTEN_ON",
+    "VTE_VERSION",
+    "KONSOLE_VERSION",
+    "KONSOLE_DBUS_SESSION",
+    "ALACRITTY_WINDOW_ID",
+    "WT_SESSION",
+    "WT_PROFILE_ID",
+];
+
+const FOREIGN_TERMINAL_PREFIXES: [&str; 4] = ["GHOSTTY_", "KITTY_", "KONSOLE_", "ALACRITTY_"];
+
+fn is_foreign_terminal_var(name: &str) -> bool {
+    FOREIGN_TERMINAL_VARS.contains(&name)
+        || FOREIGN_TERMINAL_PREFIXES
+            .iter()
+            .any(|prefix| name.starts_with(prefix))
+}
 
 pub fn forget_launching_session() {
     for key in LAUNCHING_SESSION_VARS {
         std::env::remove_var(key);
     }
+    let foreign: Vec<OsString> = std::env::vars_os()
+        .map(|(name, _)| name)
+        .filter(|name| name.to_str().map(is_foreign_terminal_var).unwrap_or(false))
+        .collect();
+    for name in foreign {
+        std::env::remove_var(name);
+    }
+}
+
+const LAUNCH_ONLY_VARS: [&str; 2] = ["XDG_ACTIVATION_TOKEN", "DESKTOP_STARTUP_ID"];
+
+fn belongs_to_the_launch(name: &str) -> bool {
+    LAUNCHING_SESSION_VARS.contains(&name)
+        || LAUNCH_ONLY_VARS.contains(&name)
+        || is_foreign_terminal_var(name)
+}
+
+pub fn launcher_env() -> BTreeMap<String, String> {
+    std::env::vars_os()
+        .filter_map(|(name, value)| Some((name.into_string().ok()?, value.into_string().ok()?)))
+        .filter(|(name, _)| !belongs_to_the_launch(name))
+        .collect()
+}
+
+pub fn inherit_launcher_env(launch: &mut ServerLaunch, launcher: &BTreeMap<String, String>) {
+    if launcher.is_empty() {
+        return;
+    }
+    let mut env: BTreeMap<String, String> = launcher
+        .iter()
+        .filter(|(name, _)| !belongs_to_the_launch(name) && name.as_str() != SOCKET_DIR_ENV_KEY)
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect();
+    if let Ok(socket_dir) = std::env::var(SOCKET_DIR_ENV_KEY) {
+        env.insert(SOCKET_DIR_ENV_KEY.to_owned(), socket_dir);
+    }
+    env.extend(std::mem::take(&mut launch.env));
+    launch.env = env;
+    launch.clear_env = true;
 }
 
 pub fn advertised_host_terminal_env() -> BTreeMap<String, String> {
@@ -31,11 +114,36 @@ pub fn advertised_host_terminal_env() -> BTreeMap<String, String> {
             "KITTY_WINDOW_ID".to_owned(),
             ADVERTISED_KITTY_WINDOW_ID.to_owned(),
         ),
-        (
-            zellij_utils::input::cli_assets::DESKTOP_TERMINAL_ENV_KEY.to_owned(),
-            "1".to_owned(),
-        ),
+        (DESKTOP_TERMINAL_ENV_KEY.to_owned(), "1".to_owned()),
     ])
+}
+
+pub fn attaching_host_terminal_env() -> BTreeMap<String, String> {
+    with_display_env(advertised_host_terminal_env(), |name| {
+        std::env::var(name).ok()
+    })
+}
+
+#[cfg(freedesktop)]
+fn with_display_env(
+    mut env: BTreeMap<String, String>,
+    lookup: impl Fn(&str) -> Option<String>,
+) -> BTreeMap<String, String> {
+    env.insert(DESKTOP_DISPLAY_ENV_KEY.to_owned(), "1".to_owned());
+    for name in DESKTOP_DISPLAY_ENV_VARS {
+        if let Some(value) = lookup(name).filter(|value| !value.is_empty()) {
+            env.insert(name.to_owned(), value);
+        }
+    }
+    env
+}
+
+#[cfg(not(freedesktop))]
+fn with_display_env(
+    env: BTreeMap<String, String>,
+    _lookup: impl Fn(&str) -> Option<String>,
+) -> BTreeMap<String, String> {
+    env
 }
 
 pub fn resolve_program() -> Result<OsString> {
@@ -54,6 +162,14 @@ pub fn server_command(
     launch.env = BTreeMap::from([
         ("TERM".to_owned(), ADVERTISED_TERM.to_owned()),
         ("COLORTERM".to_owned(), ADVERTISED_COLORTERM.to_owned()),
+        (
+            "TERM_PROGRAM".to_owned(),
+            ADVERTISED_TERM_PROGRAM.to_owned(),
+        ),
+        (
+            "TERM_PROGRAM_VERSION".to_owned(),
+            zellij_utils::consts::VERSION.to_owned(),
+        ),
         (SESSION_NAME_ENV_KEY.to_owned(), session_name.to_owned()),
     ]);
     launch.cwd = Some(cwd.to_owned());
@@ -140,6 +256,63 @@ mod tests {
         let env = command().env;
         assert_eq!(env.get("TERM").map(String::as_str), Some("xterm-256color"));
         assert_eq!(env.get("COLORTERM").map(String::as_str), Some("truecolor"));
+        assert_eq!(env.get("TERM_PROGRAM").map(String::as_str), Some("zellij"));
+        assert_eq!(
+            env.get("TERM_PROGRAM_VERSION").map(String::as_str),
+            Some(zellij_utils::consts::VERSION)
+        );
+    }
+
+    #[test]
+    fn the_terminal_the_app_was_launched_from_does_not_describe_its_panes() {
+        let mut launch = command();
+        let launcher = BTreeMap::from([
+            ("PROJECT".to_owned(), "api".to_owned()),
+            ("TERM_PROGRAM".to_owned(), "iTerm.app".to_owned()),
+            ("TERM_PROGRAM_VERSION".to_owned(), "3.5".to_owned()),
+            ("ITERM_SESSION_ID".to_owned(), "w0t0p0".to_owned()),
+            ("GHOSTTY_RESOURCES_DIR".to_owned(), "/ghostty".to_owned()),
+            ("KITTY_WINDOW_ID".to_owned(), "4".to_owned()),
+            ("TERMINFO".to_owned(), "/kitty/terminfo".to_owned()),
+            ("VTE_VERSION".to_owned(), "7600".to_owned()),
+            (SESSION_ID_ENV_KEY.to_owned(), "launching".to_owned()),
+        ]);
+        inherit_launcher_env(&mut launch, &launcher);
+        assert_eq!(
+            launch.env.keys().map(String::as_str).collect::<Vec<_>>(),
+            vec![
+                "COLORTERM",
+                "PROJECT",
+                "TERM",
+                "TERM_PROGRAM",
+                "TERM_PROGRAM_VERSION",
+                SESSION_NAME_ENV_KEY,
+            ]
+        );
+        assert_eq!(
+            launch.env.get("TERM_PROGRAM").map(String::as_str),
+            Some("zellij")
+        );
+    }
+
+    #[cfg(freedesktop)]
+    #[test]
+    fn an_attaching_window_vouches_for_the_display_it_is_shown_on() {
+        let env = with_display_env(advertised_host_terminal_env(), |name| match name {
+            "WAYLAND_DISPLAY" => Some("wayland-1".to_owned()),
+            "DISPLAY" => Some(String::new()),
+            _ => None,
+        });
+        assert_eq!(
+            env.get(DESKTOP_DISPLAY_ENV_KEY).map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            env.get("WAYLAND_DISPLAY").map(String::as_str),
+            Some("wayland-1")
+        );
+        assert!(!env.contains_key("DISPLAY"));
+        assert!(!env.contains_key("DBUS_SESSION_BUS_ADDRESS"));
     }
 
     #[test]
@@ -152,11 +325,17 @@ mod tests {
 
     #[test]
     fn the_session_a_window_was_launched_from_is_forgotten() {
-        for key in LAUNCHING_SESSION_VARS {
+        let foreign = [
+            "TERM_PROGRAM",
+            "ITERM_SESSION_ID",
+            "GHOSTTY_BIN_DIR",
+            "TERMINFO",
+        ];
+        for key in LAUNCHING_SESSION_VARS.iter().chain(foreign.iter()) {
             std::env::set_var(key, "launching-shell");
         }
         forget_launching_session();
-        for key in LAUNCHING_SESSION_VARS {
+        for key in LAUNCHING_SESSION_VARS.iter().chain(foreign.iter()) {
             assert!(std::env::var_os(key).is_none(), "{} survived", key);
         }
     }
@@ -164,6 +343,40 @@ mod tests {
     #[test]
     fn the_shell_is_not_named_and_so_is_inherited() {
         assert!(!command().env.contains_key("SHELL"));
+        assert!(!command().clear_env);
+    }
+
+    #[test]
+    fn a_server_started_for_a_launch_gets_the_launcher_environment_instead_of_the_app_one() {
+        let mut launch = command();
+        let launcher = BTreeMap::from([
+            ("PROJECT".to_owned(), "api".to_owned()),
+            ("TERM".to_owned(), "dumb".to_owned()),
+            (
+                SESSION_NAME_ENV_KEY.to_owned(),
+                "launching-shell".to_owned(),
+            ),
+            ("XDG_ACTIVATION_TOKEN".to_owned(), "used".to_owned()),
+        ]);
+        inherit_launcher_env(&mut launch, &launcher);
+        assert!(launch.clear_env);
+        assert_eq!(launch.env.get("PROJECT").map(String::as_str), Some("api"));
+        assert_eq!(
+            launch.env.get("TERM").map(String::as_str),
+            Some("xterm-256color")
+        );
+        assert_eq!(
+            launch.env.get(SESSION_NAME_ENV_KEY).map(String::as_str),
+            Some("window-test")
+        );
+        assert!(!launch.env.contains_key("XDG_ACTIVATION_TOKEN"));
+    }
+
+    #[test]
+    fn without_a_launcher_environment_the_server_inherits_the_app_one() {
+        let mut launch = command();
+        inherit_launcher_env(&mut launch, &BTreeMap::new());
+        assert!(!launch.clear_env);
     }
 
     #[cfg(unix)]

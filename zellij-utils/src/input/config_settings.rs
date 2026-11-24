@@ -151,6 +151,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         stacked_pane_list_orientation,
         show_startup_tips,
         show_release_notes,
+        show_setup_screen,
         advanced_mouse_actions,
         mouse_scroll_resize,
         scroll_mode_sync,
@@ -285,6 +286,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
             SettingKey::ShowReleaseNotes,
             display_text(show_release_notes),
         ),
+        (SettingKey::ShowSetupScreen, display_text(show_setup_screen)),
         (
             SettingKey::AdvancedMouseActions,
             display_text(advanced_mouse_actions),
@@ -982,6 +984,7 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         },
         SettingKey::ShowStartupTips => options.show_startup_tips = from.show_startup_tips,
         SettingKey::ShowReleaseNotes => options.show_release_notes = from.show_release_notes,
+        SettingKey::ShowSetupScreen => options.show_setup_screen = from.show_setup_screen,
         SettingKey::AdvancedMouseActions => {
             options.advanced_mouse_actions = from.advanced_mouse_actions
         },

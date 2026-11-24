@@ -169,22 +169,54 @@ mod tests {
         colours[index].clone()
     }
 
-    #[test]
-    fn the_hover_fill_is_checked_as_a_background_and_not_as_text() {
-        let contrasts = slot_contrasts(&[]);
-        assert!(slot(&contrasts, "ribbon_unselected", "emphasis_1").is_none());
-        let shortcut = slot(&contrasts, "ribbon_unselected", "emphasis_0").unwrap();
-        assert!(shortcut
+    fn backgrounds_of(found: &SlotContrast) -> Vec<String> {
+        found
             .pairs
             .iter()
-            .any(|found| found.pair.background.describe() == "ribbon_unselected.emphasis_1"));
+            .map(|found| found.pair.background.describe())
+            .collect()
+    }
+
+    #[test]
+    fn ribbon_emphasis_colors_are_checked_as_text_on_their_ribbon() {
+        let contrasts = slot_contrasts(&[]);
+        for style in ["ribbon_unselected", "ribbon_selected"] {
+            for part in ["emphasis_1", "emphasis_2"] {
+                let found = slot(&contrasts, style, part).unwrap();
+                assert_eq!(
+                    backgrounds_of(&found),
+                    vec![format!("{}.background", style)]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn text_on_the_hover_fill_is_checked_against_the_hover_fill() {
+        let contrasts = slot_contrasts(&[]);
+        for part in [
+            "base",
+            "emphasis_0",
+            "emphasis_1",
+            "emphasis_2",
+            "emphasis_3",
+        ] {
+            let found = slot(&contrasts, "ribbon_hover", part).unwrap();
+            assert_eq!(
+                backgrounds_of(&found),
+                vec!["ribbon_hover.background".to_owned()]
+            );
+        }
+        for part in ["base", "emphasis_0"] {
+            let found = slot(&contrasts, "ribbon_unselected", part).unwrap();
+            assert!(!backgrounds_of(&found).contains(&"ribbon_unselected.emphasis_1".to_owned()));
+        }
     }
 
     #[test]
     fn slots_that_are_never_drawn_get_no_check() {
         let contrasts = slot_contrasts(&[]);
-        assert!(slot(&contrasts, "ribbon_selected", "emphasis_1").is_none());
-        assert!(slot(&contrasts, "ribbon_selected", "emphasis_2").is_none());
+        assert!(slot(&contrasts, "ribbon_hover", "background").is_none());
         assert!(slot(&contrasts, "exit_code_success", "emphasis_1").is_none());
         assert!(slot(&contrasts, "text_unselected", "background").is_none());
     }

@@ -391,10 +391,14 @@ export function setupResizeHandler(
     }
     addEventListener("zellij:rendering-resize", scheduleResize);
 
-    setupSoftKeyboardVisibilityTracker(getWsControl, getOwnWebClientId);
+    setupSoftKeyboardVisibilityTracker(term, getWsControl, getOwnWebClientId);
 }
 
-function setupSoftKeyboardVisibilityTracker(getWsControl, getOwnWebClientId) {
+function setupSoftKeyboardVisibilityTracker(
+    term,
+    getWsControl,
+    getOwnWebClientId
+) {
     if (!window.visualViewport) {
         return;
     }
@@ -429,6 +433,10 @@ function setupSoftKeyboardVisibilityTracker(getWsControl, getOwnWebClientId) {
                 window.__zjSoftKbdCapture.element;
             if (capture && window.__zjSoftKbdCapture.isFocused) {
                 capture.blur();
+                // Blurring alone leaves focus on the page, where hardware keys reach
+                // nothing until the next click or tap. xterm.js's textarea has
+                // inputmode="none" here, so focusing it doesn't bring the OS keyboard back.
+                term.focus();
             }
         }
 

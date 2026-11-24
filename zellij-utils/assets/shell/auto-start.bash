@@ -1,4 +1,5 @@
-if [[ -z "$ZELLIJ" ]]; then
+# Only in interactive shells with a terminal, not running a -c command.
+if [[ -z "$ZELLIJ" && $- == *i* && -z "$BASH_EXECUTION_STRING" && -t 0 ]]; then
     if [[ "$ZELLIJ_AUTO_ATTACH" == "true" ]]; then
         zellij attach -c
     else

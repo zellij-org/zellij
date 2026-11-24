@@ -705,12 +705,13 @@ impl ServerOsApi for ServerOsInputOutput {
         post_hook: &Option<String>,
     ) -> HashMap<u32, Vec<String>> {
         // Use ppid-based discovery on Windows, because it has no controlling-terminal
-        // foreground group.
-        let ppids_to_cmds = self.get_all_cmds_by_ppid(post_hook);
+        // foreground group. The hook runs afterwards, so only for the panes' commands
+        // rather than for every process on the system.
+        let ppids_to_cmds = self.get_all_cmds_by_ppid(&None);
         let mut cmds = HashMap::new();
         for &(terminal_id, shell_pid) in panes {
             if let Some(cmd) = ppids_to_cmds.get(&shell_pid.to_string()) {
-                cmds.insert(terminal_id, cmd.clone());
+                cmds.insert(terminal_id, apply_post_command_hook(cmd.clone(), post_hook));
             }
         }
         cmds
@@ -847,9 +848,13 @@ fn run_command_hook(
     original_command: &str,
     hook_script: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
+    use std::os::windows::process::CommandExt;
+    // Passed as a raw argument because .arg() escapes quotes as \", which cmd
+    // doesn't understand. /D /S and the outer quotes work as in
+    // BackgroundCommand::shell.
     let output = Command::new("cmd")
-        .arg("/C")
-        .arg(hook_script)
+        .args(["/D", "/S", "/C"])
+        .raw_arg(format!("\"{}\"", hook_script))
         .env("RESURRECT_COMMAND", original_command)
         .output()?;
     if !output.status.success() {

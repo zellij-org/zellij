@@ -198,6 +198,10 @@ pub fn is_plain(key: &KeyWithModifier, bare_key: BareKey) -> bool {
     key.bare_key == bare_key && key.has_no_modifiers()
 }
 
+pub fn is_delete_key(key: &KeyWithModifier) -> bool {
+    is_plain(key, BareKey::Delete) || is_plain(key, BareKey::Backspace)
+}
+
 pub fn is_move_key(key: &KeyWithModifier, bare_key: BareKey) -> bool {
     key.bare_key == bare_key
         && (key.has_modifiers(&[KeyModifier::Alt]) || key.has_modifiers(&[KeyModifier::Shift]))

@@ -259,9 +259,21 @@ fn sample_groups(
         "Active",
         arrows,
     );
+    if stacked[RIBBONS] {
+        ribbon_lines.push(Line::new(width));
+    } else {
+        ribbon_lines[0].push(" ", None, Some(surrounding), false);
+    }
+    ribbon(
+        ribbon_lines.last_mut().unwrap(),
+        &styling.ribbon_hover_style(),
+        surrounding,
+        "Hover",
+        arrows,
+    );
     groups.push(Group {
         label: "Ribbons",
-        styles: &["ribbon_unselected", "ribbon_selected"],
+        styles: &["ribbon_unselected", "ribbon_selected", "ribbon_hover"],
         lines: ribbon_lines,
     });
     groups.push(Group {

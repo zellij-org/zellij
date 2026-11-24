@@ -1,7 +1,7 @@
 use crate::emulation::palette;
 use crate::emulation::terminal::{FrameError, TerminalState};
 use crate::session::client_loop::Ending;
-use crate::session::connection::{request_detach, send, Geometry};
+use crate::session::connection::{request_detach, request_force_close, send, Geometry};
 use crate::window::handover_to;
 use crate::window::window_title;
 use crate::window::window_to_reuse;
@@ -45,6 +45,9 @@ impl App {
                 self.stop_momentum();
                 report!("dropping a frame the viewport has moved past: {}", error);
                 self.acknowledge(seq);
+                self.copy();
+                self.retitle();
+                self.attend();
                 return;
             },
             Err(FrameError::Undecodable(e)) => {
@@ -85,7 +88,22 @@ impl App {
 
     pub(in crate::window) fn closing(&mut self) -> bool {
         self.leaving = true;
-        if let Err(e) = self.detach() {
+        let result = self.detach();
+        self.report_close_failure(result)
+    }
+
+    fn force_closing(&mut self) -> bool {
+        self.leaving = true;
+        let on_force_close = self.settings.on_force_close.unwrap_or_default();
+        let result = match &self.sender {
+            Some(sender) => request_force_close(sender, self.role, on_force_close),
+            None => Ok(()),
+        };
+        self.report_close_failure(result)
+    }
+
+    fn report_close_failure(&self, result: Result<()>) -> bool {
+        if let Err(e) = result {
             report!(
                 "the session could not be asked to let the window go, \
                  so the window closes on its own: {}",
@@ -112,9 +130,24 @@ impl App {
         let Some(title) = self.state.take_title() else {
             return;
         };
+        self.program_title = title.is_some();
         let title = title.unwrap_or_else(|| self.title.clone());
         if let Some(surfaces) = &self.surfaces {
             surfaces.window.set_title(&title);
+        }
+    }
+
+    pub(in crate::window) fn renamed(&mut self, name: String) {
+        if name.is_empty() || name == self.session_name {
+            return;
+        }
+        self.title = window_title(&name);
+        self.session_name = name;
+        if self.program_title {
+            return;
+        }
+        if let Some(surfaces) = &self.surfaces {
+            surfaces.window.set_title(&self.title);
         }
     }
 
@@ -170,6 +203,7 @@ impl App {
                 session
                     .detacher
                     .follow(connection.sender.clone(), connection.role);
+                session.loop_options.settings = self.settings.clone();
                 session.spawn(connection);
                 self.start_over(geometry);
                 self.set_title(window_title(&session_name));
@@ -221,6 +255,7 @@ impl App {
     pub(in crate::window) fn start_over(&mut self, geometry: Geometry) {
         self.cancel_scroll_animations();
         self.state = TerminalState::new(geometry.rows, geometry.cols);
+        self.program_title = false;
         self.state
             .set_cell_size(self.metrics.width, self.metrics.height);
         self.state.set_shared_media(!self.remote_session);
@@ -257,7 +292,7 @@ impl App {
 
     pub(in crate::window) fn close_requested(&mut self) -> bool {
         self.remember();
-        self.closing()
+        self.force_closing()
     }
 
     pub(in crate::window) fn stranded(&mut self, failure: anyhow::Error) {

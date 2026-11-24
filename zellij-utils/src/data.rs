@@ -2447,6 +2447,8 @@ pub struct Styling {
     pub text_selected: StyleDeclaration,
     pub ribbon_unselected: StyleDeclaration,
     pub ribbon_selected: StyleDeclaration,
+    #[serde(default)]
+    pub ribbon_hover: Option<StyleDeclaration>,
     pub table_title: StyleDeclaration,
     pub table_cell_unselected: StyleDeclaration,
     pub table_cell_selected: StyleDeclaration,
@@ -2505,7 +2507,7 @@ pub const DEFAULT_STYLES: Styling = Styling {
         base: PaletteColor::Rgb(default_colors::BACKGROUND),
         background: PaletteColor::Rgb(default_colors::RIBBON),
         emphasis_0: PaletteColor::Rgb(default_colors::WINE),
-        emphasis_1: PaletteColor::Rgb(default_colors::RIBBON_HOVER),
+        emphasis_1: PaletteColor::Rgb(default_colors::PLUM),
         emphasis_2: PaletteColor::Rgb(default_colors::NAVY),
         emphasis_3: PaletteColor::Rgb(default_colors::BELL),
     },
@@ -2517,6 +2519,14 @@ pub const DEFAULT_STYLES: Styling = Styling {
         emphasis_2: PaletteColor::Rgb(default_colors::BACKGROUND),
         emphasis_3: PaletteColor::Rgb(default_colors::BELL),
     },
+    ribbon_hover: Some(StyleDeclaration {
+        base: PaletteColor::Rgb(default_colors::BACKGROUND),
+        background: PaletteColor::Rgb(default_colors::RIBBON_HOVER),
+        emphasis_0: PaletteColor::Rgb(default_colors::WINE),
+        emphasis_1: PaletteColor::Rgb(default_colors::PLUM),
+        emphasis_2: PaletteColor::Rgb(default_colors::NAVY),
+        emphasis_3: PaletteColor::Rgb(default_colors::BELL),
+    }),
     exit_code_success: StyleDeclaration {
         base: PaletteColor::Rgb(default_colors::GREEN),
         background: PaletteColor::Rgb(default_colors::BACKGROUND),
@@ -2617,6 +2627,15 @@ impl Default for Styling {
     }
 }
 
+impl Styling {
+    pub fn ribbon_hover_style(&self) -> StyleDeclaration {
+        self.ribbon_hover.unwrap_or(StyleDeclaration {
+            background: self.ribbon_unselected.emphasis_1,
+            ..self.ribbon_unselected
+        })
+    }
+}
+
 impl From<Styling> for Palette {
     fn from(styling: Styling) -> Self {
         Palette {
@@ -2682,6 +2701,7 @@ impl From<Palette> for Styling {
                 emphasis_3: palette.blue,
                 background: palette.green,
             },
+            ribbon_hover: None,
             exit_code_success: StyleDeclaration {
                 base: palette.green,
                 emphasis_0: palette.cyan,
@@ -5562,6 +5582,7 @@ setting_keys! {
     StackedPaneListOrientation => (TopLevel, "stacked_pane_list_orientation", false, Text),
     ShowStartupTips => (TopLevel, "show_startup_tips", true, Flag),
     ShowReleaseNotes => (TopLevel, "show_release_notes", true, Flag),
+    ShowSetupScreen => (TopLevel, "show_setup_screen", true, Flag),
     AdvancedMouseActions => (TopLevel, "advanced_mouse_actions", false, Flag),
     MouseScrollResize => (TopLevel, "mouse_scroll_resize", false, Flag),
     ScrollModeSync => (TopLevel, "scroll_mode_sync", false, Flag),
@@ -5630,6 +5651,8 @@ setting_keys! {
     TerminalOpacity => (Terminal, "opacity", false, Decimal),
     TerminalOpacityMode => (Terminal, "opacity_mode", false, Text),
     TerminalBlur => (Terminal, "blur", false, Flag),
+    TerminalWindowDecorations => (Terminal, "window_decorations", true, Flag),
+    TerminalTitlebarTheme => (Terminal, "titlebar_theme", false, Text),
     TerminalPadding => (Terminal, "padding", false, Decimal),
     TerminalPaddingTop => (Terminal, "padding_top", false, Decimal),
     TerminalPaddingRight => (Terminal, "padding_right", false, Decimal),

@@ -28,7 +28,15 @@ themes {
             base 11 11 11
             background 152 152 152
             emphasis_0 79 26 34
-            emphasis_1 220 220 220
+            emphasis_1 60 20 70
+            emphasis_2 20 49 79
+            emphasis_3 99 11 20
+        }
+        ribbon_hover {
+            base 11 11 11
+            background 220 220 220
+            emphasis_0 79 26 34
+            emphasis_1 60 20 70
             emphasis_2 20 49 79
             emphasis_3 99 11 20
         }

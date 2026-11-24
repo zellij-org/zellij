@@ -28,7 +28,15 @@ themes {
             base 246 244 251
             background 85 77 109
             emphasis_0 255 201 102
-            emphasis_1 68 61 92
+            emphasis_1 199 197 206
+            emphasis_2 198 221 242
+            emphasis_3 255 216 216
+        }
+        ribbon_hover {
+            base 246 244 251
+            background 68 61 92
+            emphasis_0 255 201 102
+            emphasis_1 199 197 206
             emphasis_2 198 221 242
             emphasis_3 255 216 216
         }

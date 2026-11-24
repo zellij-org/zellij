@@ -696,6 +696,13 @@ impl CliOutputHandle {
     pub fn stdout(&self) -> String {
         String::from_utf8_lossy(&self.fake_client_handle.client_screen.raw_bytes()).into_owned()
     }
+    pub fn wait_until_stdout(&self, what: &str, predicate: impl Fn(&str) -> bool) -> String {
+        let bytes = self
+            .fake_client_handle
+            .client_screen
+            .wait_until_raw_output(what, |bytes| predicate(&String::from_utf8_lossy(bytes)));
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
     pub fn wait_for_exit(self) -> CliResult {
         let deadline = std::time::Instant::now() + crate::default_timeout();
         while !self.thread.is_finished() {
@@ -974,6 +981,34 @@ impl TestSession {
                     prompt_cli,
                     zellij_utils::prompt::PROMPT_PLUGIN_URL.to_owned(),
                 )
+            })
+            .unwrap();
+        CliOutputHandle {
+            thread,
+            fake_client_handle,
+        }
+    }
+
+    pub fn run_events(&self, args: &[&str]) -> CliOutputHandle {
+        let mut command_line = vec!["events"];
+        command_line.extend_from_slice(args);
+        let events_cli =
+            <zellij_utils::cli::EventsCli as clap::Parser>::try_parse_from(command_line)
+                .expect("invalid events arguments");
+        let (fake_client_os_api, fake_client_handle) = self.cli_os_api(CliCaller {
+            pane_id: None,
+            stdin: None,
+        });
+        let session_name = self.session_name.clone();
+        let thread = std::thread::Builder::new()
+            .name("in_process_events_client".to_string())
+            .spawn(move || {
+                zellij_client::cli_client::start_events_client(
+                    Box::new(fake_client_os_api),
+                    &session_name,
+                    events_cli,
+                );
+                0
             })
             .unwrap();
         CliOutputHandle {

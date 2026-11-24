@@ -371,6 +371,8 @@ impl NewPluginScreen {
             BareKey::Backspace if key.has_no_modifiers() => {
                 if let Some(field) = self.get_field_being_edited_mut() {
                     graphemes::pop_cluster(field);
+                } else if let Some(selected_config_index) = self.selected_config_index.take() {
+                    self.new_plugin_config.remove(selected_config_index);
                 }
                 should_render = true;
             },
@@ -507,6 +509,7 @@ struct State {
     search_term: String,
     new_plugin_screen: Option<NewPluginScreen>,
     colors: Styling,
+    backspace_erased_text: bool,
 }
 
 register_plugin!(State);
@@ -979,6 +982,9 @@ impl State {
     }
     pub fn handle_main_screen_key(&mut self, key: KeyWithModifier) -> bool {
         let mut should_render = false;
+        if key.bare_key != BareKey::Backspace {
+            self.backspace_erased_text = false;
+        }
         match key.bare_key {
             BareKey::Char(character) if key.has_no_modifiers() => {
                 self.search_term.push(character);
@@ -987,10 +993,15 @@ impl State {
                 should_render = true;
             },
             BareKey::Backspace if key.has_no_modifiers() => {
-                graphemes::pop_cluster(&mut self.search_term);
-                self.update_search_term();
-                self.reset_selection();
-                should_render = true;
+                if !self.search_term.is_empty() {
+                    graphemes::pop_cluster(&mut self.search_term);
+                    self.update_search_term();
+                    self.reset_selection();
+                    self.backspace_erased_text = true;
+                    should_render = true;
+                } else if !self.backspace_erased_text {
+                    self.close_selected();
+                }
             },
             BareKey::Down if key.has_no_modifiers() => {
                 let max_len = if self.is_searching() {

@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::thread::{self, JoinHandle};
 
 use crate::app::control::ipc::Listeners;
-use interprocess::local_socket::prelude::*;
 use tempfile::TempDir;
 use zellij_utils::ipc::{
     ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg,
@@ -44,8 +43,7 @@ impl FakeServer {
         let path = dir.path().join("sock");
         let listeners = Listeners::bind(&path).unwrap();
         let handle = thread::spawn(move || {
-            let stream = listeners.listener.accept().unwrap();
-            let reply = listeners.reply_to(&stream).unwrap();
+            let (stream, reply) = listeners.connections().next().unwrap();
             let to_client: IpcSenderWithContext<ServerToClientMsg> =
                 IpcSenderWithContext::new(reply);
             let from_client: IpcReceiverWithContext<ClientToServerMsg> =

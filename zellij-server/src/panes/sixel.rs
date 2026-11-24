@@ -68,7 +68,75 @@ pub struct SixelGrid {
     image_ids_to_reap: Vec<usize>,
     images_to_check_for_emptiness: HashSet<usize>,
     sixel_parser: Option<sixel_tokenizer::Parser>,
+    size_budget: SixelSizeBudget,
     pub sixel_image_store: Rc<RefCell<SixelImageStore>>,
+}
+
+pub const MAX_SIXEL_IMAGE_BYTES: usize = 104_857_600;
+const SIXEL_PIXEL_BYTES: usize = std::mem::size_of::<sixel_image::Pixel>();
+
+#[derive(Debug, Clone, Copy, Default)]
+struct SixelSizeBudget {
+    cursor_x: usize,
+    cursor_y: usize,
+    width: usize,
+    height: usize,
+    max_height: Option<usize>,
+}
+
+impl SixelSizeBudget {
+    fn new(max_height: Option<usize>) -> Self {
+        SixelSizeBudget {
+            max_height,
+            ..Default::default()
+        }
+    }
+    fn admit(&mut self, sixel_event: &SixelEvent) -> bool {
+        let mut next = *self;
+        match sixel_event {
+            SixelEvent::RasterAttribute { ph, pv, .. } => {
+                if let Some(pv) = pv {
+                    next.height = next.height.max(*pv);
+                    next.width = next.width.max(*pv);
+                }
+                if let Some(ph) = ph {
+                    next.width = next.width.max(*ph);
+                }
+            },
+            SixelEvent::Data { .. } => {
+                next.cursor_x = next.cursor_x.saturating_add(1);
+                next.width = next.width.max(next.cursor_x);
+                next.height = next.height.max(next.cursor_y.saturating_add(6));
+            },
+            SixelEvent::Repeat { repeat_count, .. } => {
+                next.cursor_x = next.cursor_x.saturating_add(*repeat_count);
+                next.width = next.width.max(next.cursor_x);
+                next.height = next.height.max(next.cursor_y.saturating_add(6));
+            },
+            SixelEvent::GotoBeginningOfLine => {
+                next.cursor_x = 0;
+            },
+            SixelEvent::GotoNextLine => {
+                next.cursor_x = 0;
+                let advanced = next.cursor_y.saturating_add(6);
+                next.cursor_y = match next.max_height {
+                    Some(max_height) => advanced.min(max_height),
+                    None => advanced,
+                };
+            },
+            _ => {},
+        }
+        let within_budget = next
+            .width
+            .checked_mul(next.height)
+            .and_then(|pixels| pixels.checked_mul(SIXEL_PIXEL_BYTES))
+            .map(|bytes| bytes <= MAX_SIXEL_IMAGE_BYTES)
+            .unwrap_or(false);
+        if within_budget {
+            *self = next;
+        }
+        within_budget
+    }
 }
 
 impl SixelGrid {
@@ -85,17 +153,36 @@ impl SixelGrid {
         }
     }
     pub fn handle_byte(&mut self, byte: u8) {
+        let currently_parsing = &mut self.currently_parsing;
+        let size_budget = &mut self.size_budget;
         self.sixel_parser
             .as_mut()
             .unwrap()
             .advance(&byte, |sixel_event| {
-                if let Some(currently_parsing) = self.currently_parsing.as_mut() {
-                    let _ = currently_parsing.handle_event(sixel_event);
-                }
+                Self::forward_event(currently_parsing, size_budget, sixel_event);
             });
     }
     pub fn handle_event(&mut self, sixel_event: SixelEvent) {
-        if let Some(currently_parsing) = self.currently_parsing.as_mut() {
+        Self::forward_event(
+            &mut self.currently_parsing,
+            &mut self.size_budget,
+            sixel_event,
+        );
+    }
+    fn forward_event(
+        currently_parsing: &mut Option<SixelDeserializer>,
+        size_budget: &mut SixelSizeBudget,
+        sixel_event: SixelEvent,
+    ) {
+        if currently_parsing.is_none() {
+            return;
+        }
+        if !size_budget.admit(&sixel_event) {
+            log::warn!("dropping sixel image that exceeds the size limit");
+            *currently_parsing = None;
+            return;
+        }
+        if let Some(currently_parsing) = currently_parsing.as_mut() {
             let _ = currently_parsing.handle_event(sixel_event);
         }
     }
@@ -109,6 +196,7 @@ impl SixelGrid {
         dcs_params: Vec<&[u16]>,
     ) {
         self.sixel_parser = Some(sixel_tokenizer::Parser::new());
+        self.size_budget = SixelSizeBudget::new(max_height_in_pixels);
         match max_height_in_pixels {
             Some(max_height_in_pixels) => {
                 self.currently_parsing =
