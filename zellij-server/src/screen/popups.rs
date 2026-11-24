@@ -1099,6 +1099,7 @@ impl Screen {
             return;
         }
         self.render(None).non_fatal();
+        self.log_and_report_session_state().non_fatal();
     }
     fn pipe_to_popup_plugin(&self, plugin_id: u32, client_id: ClientId, name: &str) {
         let _ = self

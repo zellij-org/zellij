@@ -10,7 +10,10 @@ mod macos;
 #[cfg(windows)]
 mod windows;
 
-#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+#[cfg(windows)]
+pub use self::windows::notification_setting;
+
+#[cfg_attr(not(any(target_os = "linux", windows, test)), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SinkEvent {
     Clicked { id: NotifyId, token: Option<String> },

@@ -4,12 +4,12 @@ use zellij_utils::pane_size::Size;
 
 #[cfg(not(windows))]
 use crate::os_input_output_unix::{
-    disable_mouse_support, enable_mouse_support, setup_ipc, AsyncSignalListener,
+    connect_ipc, disable_mouse_support, enable_mouse_support, AsyncSignalListener,
     BlockingSignalIterator,
 };
 #[cfg(windows)]
 use crate::os_input_output_windows::{
-    disable_mouse_support, enable_mouse_support, restore_console_mode, setup_ipc,
+    connect_ipc, disable_mouse_support, enable_mouse_support, restore_console_mode,
     AsyncSignalListener, BlockingSignalIterator,
 };
 
@@ -29,6 +29,7 @@ use zellij_utils::{
 };
 
 const SIGWINCH_CB_THROTTLE_DURATION: time::Duration = time::Duration::from_millis(50);
+const RUNNING_SERVER_CONNECT_LIMIT: time::Duration = time::Duration::from_secs(2);
 
 pub(crate) const ENABLE_MOUSE_SUPPORT: &str =
     "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1003h\u{1b}[?1015h\u{1b}[?1006h";
@@ -136,6 +137,8 @@ impl std::fmt::Debug for ClientOsInputOutput {
     }
 }
 
+pub(crate) const STDIN_EOF: &str = "EOF";
+
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij client requires.
 pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
@@ -178,8 +181,12 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
         quit_cb: Box<dyn Fn()>,
         resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
     );
-    /// Establish a connection with the server socket.
-    fn connect_to_server(&self, path: &Path);
+    /// Establish a connection with the server socket, waiting for the server to start listening.
+    /// Fails only when the server refuses this client.
+    fn connect_to_server(&self, path: &Path) -> std::io::Result<()>;
+    fn connect_to_running_server(&self, path: &Path) -> std::io::Result<()> {
+        self.connect_to_server(path)
+    }
     fn spawn_server(&self, socket_path: &Path, debug: bool) -> Result<(), std::io::Error> {
         crate::spawn_server(socket_path, debug)
     }
@@ -258,10 +265,14 @@ impl ClientOsApi for ClientOsInputOutput {
             None => {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
-                let buffer = stdin.fill_buf().unwrap();
-                let length = buffer.len();
+                let buffer = match stdin.fill_buf() {
+                    Ok(buffer) if buffer.is_empty() && cfg!(unix) => return Err(STDIN_EOF),
+                    Ok(buffer) => buffer,
+                    Err(_) if cfg!(unix) => return Err(STDIN_EOF),
+                    Err(_) => return Err("failed to read from stdin"),
+                };
                 let read_bytes = Vec::from(buffer);
-                stdin.consume(length);
+                stdin.consume(read_bytes.len());
 
                 let session_name_after_reading_from_stdin =
                     { self.session_name.lock().unwrap().clone() };
@@ -344,22 +355,17 @@ impl ClientOsApi for ClientOsInputOutput {
             }
         }
     }
-    fn connect_to_server(&self, path: &Path) {
-        let socket;
-        loop {
-            match zellij_utils::consts::ipc_connect(path) {
-                Ok(sock) => {
-                    socket = sock;
-                    break;
-                },
-                Err(_) => {
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                },
-            }
-        }
-        let (sender, receiver) = setup_ipc(socket, path);
+    fn connect_to_server(&self, path: &Path) -> std::io::Result<()> {
+        let (sender, receiver) = connect_ipc(path, None)?;
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
+        Ok(())
+    }
+    fn connect_to_running_server(&self, path: &Path) -> std::io::Result<()> {
+        let (sender, receiver) = connect_ipc(path, Some(RUNNING_SERVER_CONNECT_LIMIT))?;
+        *self.send_instructions_to_server.lock().unwrap() = Some(sender);
+        *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
+        Ok(())
     }
     fn load_palette(&self) -> Palette {
         // this was removed because termbg doesn't release stdin in certain scenarios (we know of

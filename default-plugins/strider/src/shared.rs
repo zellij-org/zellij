@@ -173,3 +173,15 @@ fn truncate_path(path: PathBuf, mut columns_to_remove: usize, platform: Platform
     }
     truncated
 }
+
+pub fn format_file_size(bytes: u64) -> String {
+    const UNITS: [&str; 7] = ["B", "kB", "MB", "GB", "TB", "PB", "EB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1000.0 && unit < UNITS.len() - 1 {
+        value /= 1000.0;
+        unit += 1;
+    }
+    let rounded = (value * 100.0).round() / 100.0;
+    format!("{} {}", rounded, UNITS[unit])
+}

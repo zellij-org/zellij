@@ -309,6 +309,7 @@ impl Rendering {
             title,
             session_name: String::new(),
             remote_session: false,
+            program_title: false,
             notice: None,
             retained: RetainedScene::new(),
             surfaces: None,
@@ -336,6 +337,7 @@ impl Rendering {
                 selection: None,
                 selecting: false,
                 pointer_hidden: false,
+                edge: None,
             },
             timing: Timing {
                 blink: BlinkPhase::On,
@@ -357,6 +359,7 @@ impl Rendering {
                 border: None,
                 transparency_available: true,
                 warned_opaque: false,
+                undecorated: false,
             },
         }
     }
@@ -368,6 +371,7 @@ pub(crate) struct Windowing {
 
 impl Windowing {
     pub(crate) fn bring_up() -> Result<Self> {
+        crate::platform::static_build::ensure_windows()?;
         Ok(Self {
             event_loop: EventLoop::<Wake>::with_user_event()
                 .build()

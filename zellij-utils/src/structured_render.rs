@@ -1917,10 +1917,20 @@ impl PendingOverlay {
     }
 
     pub fn resize(&mut self, cols: usize, rows: usize) {
+        let sideband = std::mem::take(&mut self.sideband);
         *self = PendingOverlay::new(cols, rows);
+        self.sideband = sideband;
+    }
+
+    pub fn keep_sideband(&mut self, sideband: &[u8]) {
+        self.sideband.extend_from_slice(sideband);
     }
 
     pub fn is_dirty(&self) -> bool {
+        self.holds_screen_changes() || !self.sideband.is_empty()
+    }
+
+    pub fn holds_screen_changes(&self) -> bool {
         self.cursor_seen
             || self.full_repaint
             || self.clear
@@ -1928,8 +1938,11 @@ impl PendingOverlay {
             || !self.links.is_empty()
             || !self.scroll.is_empty()
             || !self.graphics.is_empty()
-            || !self.sideband.is_empty()
             || self.spans.iter().any(|spans| !spans.is_empty())
+    }
+
+    pub fn sideband(&self) -> &[u8] {
+        &self.sideband
     }
 
     fn merge_row(&mut self, y: u16, x0: u16, cells: &[WireCell]) {
@@ -2110,6 +2123,26 @@ mod tests {
             .iter()
             .map(WireCell::character)
             .collect()
+    }
+
+    #[test]
+    fn a_reset_overlay_still_delivers_the_sideband_it_was_holding() {
+        let mut builder = FrameBuilder::new(8, 2, 1);
+        builder.push_row(0, 0, &run("gone"));
+        builder
+            .sideband_mut()
+            .extend_from_slice(b"\x1b]52;c;YQ==\x1b\\");
+        let mut overlay = PendingOverlay::new(8, 2);
+        overlay.merge_frame(&decode(&builder.finish()).unwrap());
+        overlay.resize(10, 3);
+        overlay.keep_sideband(b"\x07");
+        assert!(overlay.is_dirty());
+
+        let drained = overlay.drain(2);
+        let view = decode(&drained).unwrap();
+        assert_eq!(view.sideband(), b"\x1b]52;c;YQ==\x1b\\\x07");
+        assert_eq!(text_of(&grid(10, 3, &drained), 10, 0), "          ");
+        assert!(!overlay.is_dirty());
     }
 
     #[test]

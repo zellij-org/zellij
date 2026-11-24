@@ -193,6 +193,18 @@ fn an_approved_setup_screen_does_not_return() {
 }
 
 #[test]
+fn the_setup_screen_is_not_shown_when_turned_off() {
+    assume_a_desktop_without_zellij_on_the_path(None);
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_setup_wizard()
+        .with_config("show_setup_screen false")
+        .start();
+    zellij.expect_pty_spawn().output(PROMPT);
+    assert_no_setup_screen(&zellij);
+    zellij.kill_session();
+}
+
+#[test]
 fn from_settings_set_up_items_are_grayed_out_and_cannot_be_unticked() {
     let bin = copy_of_this_binary();
     assume_a_desktop_without_zellij_on_the_path(Some(&bin));

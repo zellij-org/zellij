@@ -42,6 +42,7 @@ message ClientToServerMsg {
     ClientPaneMirrorMsg pane_mirror = 35;
     AdoptSessionHistoryMsg adopt_session_history = 36;
     ClipboardPasteSupportMsg clipboard_paste_support = 37;
+    SubscribeToEventsMsg subscribe_to_events = 38;
   }
 }
 
@@ -123,6 +124,13 @@ message SubscribeToPaneRendersMsg {
   repeated PaneId pane_ids = 1;
   optional uint32 scrollback = 2;
   bool ansi = 3;
+}
+
+message SubscribeToEventsMsg {
+  repeated string event_types = 1;
+  repeated PaneId pane_ids = 2;
+  repeated uint32 tab_ids = 3;
+  bool initial_state = 4;
 }
 
 message DesktopNotificationResponseMsg {

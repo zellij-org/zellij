@@ -67,6 +67,10 @@ impl Activation {
         }
     }
 
+    pub(in crate::window) fn release(&mut self) {
+        self.activator = None;
+    }
+
     pub(in crate::window) fn pump(&mut self) {
         if let Some(activator) = self.activator.as_mut() {
             activator.pump();

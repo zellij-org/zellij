@@ -41,8 +41,15 @@ impl App {
 
     pub(in crate::window) fn notice_key(&mut self, key: &Key) -> bool {
         let page = Notice::page(self.state.size().rows);
+        match crate::window::notice::answer_to(key) {
+            Some(true) => {
+                crate::window::notice::mark_confirmed();
+                return true;
+            },
+            Some(false) => return true,
+            None => {},
+        }
         let by = match key {
-            Key::Named(NamedKey::Enter | NamedKey::Escape) => return true,
             Key::Named(NamedKey::ArrowUp) => -1,
             Key::Named(NamedKey::ArrowDown) => 1,
             Key::Named(NamedKey::PageUp) => -page,

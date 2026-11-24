@@ -1,6 +1,7 @@
 use crate::emulation::damage::Damage;
 use crate::input::clipboard::{self, Clipboard};
 use crate::input::composition::{Gate, Reaction};
+use crate::input::dropped;
 use crate::input::keyboard;
 use crate::platform::Platform;
 use crate::render::retained::{self};
@@ -9,15 +10,20 @@ use crate::window::ZOOM_STEP;
 use winit::event::Ime;
 use winit::event::KeyEvent;
 use winit::keyboard::Key;
+use zellij_utils::input::actions::Action;
+use zellij_utils::ipc::ClientToServerMsg;
+
+use std::path::Path;
 
 impl App {
     pub(in crate::window) fn on_key(&mut self, event: &KeyEvent) {
-        let option_as_alt = keyboard::option_acts_as_alt(
+        let keeps_alt = keyboard::keeps_alt(
             Platform::current(),
             self.options.option_as_alt,
             self.alt_keys,
+            self.modifiers,
         );
-        self.press(keyboard::Press::of(event, self.modifiers, option_as_alt));
+        self.press(keyboard::Press::of(event, self.modifiers, keeps_alt));
     }
 
     pub(in crate::window) fn press(&mut self, press: keyboard::Press) {
@@ -88,9 +94,12 @@ impl App {
             self.toggle_fullscreen();
             return;
         }
-        if keyboard::claims(&self.options.copy_keys, &press) && self.copy_selection() {
+        if keyboard::claims(&self.options.copy_keys, &press) {
             self.hide_pointer();
             self.stop_momentum();
+            if !self.copy_selection() {
+                self.copy_session_selection();
+            }
             return;
         }
         if keyboard::claims(&self.options.paste_keys, &press) {
@@ -100,6 +109,18 @@ impl App {
             return;
         }
         self.deliver(&press);
+    }
+
+    fn copy_session_selection(&mut self) {
+        let msg = ClientToServerMsg::Action {
+            action: Action::Copy,
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        };
+        if let Err(e) = self.tell(msg) {
+            report!("failed to ask the session to copy: {}", e);
+        }
     }
 
     pub(in crate::window) fn deliver(&mut self, press: &keyboard::Press) {
@@ -179,6 +200,13 @@ impl App {
         }
     }
 
+    pub(in crate::window) fn dropped_file(&mut self, path: &Path) {
+        self.set_selection(None);
+        if let Err(e) = self.tell(clipboard::paste_message(dropped::dropped_file_text(path))) {
+            report!("failed to send a dropped file's path: {}", e);
+        }
+    }
+
     pub(in crate::window) fn copy(&mut self) {
         if let Some(text) = self.state.take_copied_text() {
             self.with_clipboard(|clipboard| clipboard.set(&text));
@@ -189,12 +217,6 @@ impl App {
         &self,
         f: impl FnOnce(&mut Clipboard) -> T,
     ) -> Option<T> {
-        match self.clipboard.lock() {
-            Ok(mut clipboard) => Some(f(&mut clipboard)),
-            Err(_) => {
-                report!("the clipboard mutex was poisoned");
-                None
-            },
-        }
+        Some(f(&mut clipboard::lock(&self.clipboard)))
     }
 }

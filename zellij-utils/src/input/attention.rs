@@ -323,7 +323,7 @@ impl AttentionConfig {
             .unwrap_or(DEFAULT_DONE_THRESHOLD_SECS)
     }
     pub fn track_commands(&self) -> bool {
-        self.enabled() && self.track_commands.unwrap_or(true)
+        self.enabled() && self.track_commands.unwrap_or(false)
     }
     pub fn idle_activity_secs(&self) -> u64 {
         self.idle_activity_secs
@@ -533,7 +533,7 @@ mod tests {
         assert!(config.tab_markers());
         assert_eq!(config.idle_rule(), IdleRuleScope::All);
         assert_eq!(config.done_threshold_secs(), 10);
-        assert!(config.track_commands());
+        assert!(!config.track_commands());
         assert_eq!(config.idle_activity_secs(), 10);
         assert_eq!(config.idle_silence_secs(), 3);
         assert_eq!(config.startup_card(), StartupCard::Attention);

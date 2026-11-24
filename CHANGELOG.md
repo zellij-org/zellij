@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.46.1] - 2026-11-24
+* fix: "Show inbox" opens the inbox even when it's empty (https://github.com/zellij-org/zellij/pull/5869)
+* fix: broken links to the inbox integrations and plugin workers docs (https://github.com/zellij-org/zellij/pull/5877)
+* fix: terminal settings occasionally not properly applied or bounce back from the settings interface (https://github.com/zellij-org/zellij/pull/5887)
+* fix: resurrected sessions without input being deleted on session switch (https://github.com/zellij-org/zellij/pull/5889)
+* fix: bring a new window of the desktop app to the front on macOS (https://github.com/zellij-org/zellij/pull/5865)
+* feat: plugins can link text, so links in the about plugin open on Windows and over SSH or the web client (https://github.com/zellij-org/zellij/pull/5884)
+* fix: titlebar in gnome, allow hiding window decorations for `zellij terminal` (https://github.com/zellij-org/zellij/pull/5928)
+* feat: open links with Cmd+click in the desktop app on macOS (https://github.com/zellij-org/zellij/pull/5888)
+* feat: paste the path of a file dropped onto the window (https://github.com/zellij-org/zellij/pull/5870)
+* fix: web client on touch devices with a hardware keyboard losing function keys and shortcuts, and dropping doubled letters from pastes (https://github.com/zellij-org/zellij/pull/5890)
+* fix: a plugin that switches tabs on a press no longer swallows the next click (https://github.com/zellij-org/zellij/pull/5924)
+* fix: display previews in the welcome-screen (https://github.com/zellij-org/zellij/pull/5932)
+* fix: zellij-terminal window reuse issues, font feature fixes and session facts on windows (https://github.com/zellij-org/zellij/pull/5930)
+* fix(windows): use a newer `conpty.dll` when one is next to zellij.exe, on PATH or set in `ZELLIJ_CONPTY_DLL`, fixing nested sessions, sixel images and color queries in panes (https://github.com/zellij-org/zellij/pull/5452)
+* fix: desktop app segfault on exit under Wayland (https://github.com/zellij-org/zellij/pull/5931)
+* fix: properly detect and filter out unsupported fonts (https://github.com/zellij-org/zellij/pull/5934)
+* feat: desktop upgrade path (https://github.com/zellij-org/zellij/pull/5939)
+* fix(windows): custom session facts and the resurrect hook keep the quotes in their commands (https://github.com/zellij-org/zellij/pull/5940)
+* fix(windows): run the resurrect hook only for the commands in panes, not for every process (https://github.com/zellij-org/zellij/pull/5941)
+* fix: set TERMINAL_PROGRAM and fix zellij action after session rename (https://github.com/zellij-org/zellij/pull/5942)
+* feat: `zellij events` to allow subscribing to events from the CLI (https://github.com/zellij-org/zellij/pull/5943)
+* feat: `show_setup_screen` option to disable the setup screen (https://github.com/zellij-org/zellij/pull/5946)
+* feat: open shell scripts and folders with the desktop app on macOS (https://github.com/zellij-org/zellij/pull/5947)
+* fix: building against OpenSSL 4 when linking the system OpenSSL (https://github.com/zellij-org/zellij/pull/5937)
+* fix: accept backspace in addition to del where relevant in interfaces like the session-manager (https://github.com/zellij-org/zellij/pull/5952)
+* fix: honor stack-list orientation in fullscreen (https://github.com/zellij-org/zellij/pull/5922)
+* fix: the plugin manager lists the running plugins again (https://github.com/zellij-org/zellij/pull/5954)
+* fix: the auto-start snippet starting zellij in shells that aren't interactive terminal shells, such as the desktop login shell (https://github.com/zellij-org/zellij/pull/5936)
+* fix: `zellij action new-pane --cwd` without a command opens the pane in that folder instead of the focused pane's folder (https://github.com/zellij-org/zellij/pull/5961)
+* fix: Ctrl, Alt and Cmd shortcuts in `zellij terminal` on non-Latin keyboard layouts such as Russian, where Ctrl+C typed `с` instead of interrupting (https://github.com/zellij-org/zellij/pull/5958)
+* fix(windows): Ctrl+Alt shortcuts in `zellij terminal` on keys where AltGr types nothing, such as Ctrl+Alt+L (https://github.com/zellij-org/zellij/pull/5970)
+* fix: get the desktop copy key to also work for server text selection (https://github.com/zellij-org/zellij/pull/5975)
+* fix(terminal): Alt dropped from Alt+AltGr chords on Linux (Alt+] on German Dvorak) and from Alt+Shift on symbol keys (Alt++) (https://github.com/zellij-org/zellij/pull/5972)
+* feat: New Window in the Dock menu of the desktop app on macOS (https://github.com/zellij-org/zellij/pull/5982)
+
+## [0.46.0] - 2026-11-11
 * (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)
 * (BREAKING CHANGE zellij-tile) `Text::new` is replaced by `Text::from` (https://github.com/zellij-org/zellij/pull/5611)
     * Migration help: to help with the breaking change, this command may help (not for 100% of the cases but a good first pass): `ast-grep run -p 'Text::new($A)' -r 'Text::from($A)' --update-all`
@@ -51,6 +89,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: support horizontal stacks (https://github.com/zellij-org/zellij/pull/5741)
 * feat: separate font families for bold, italic and bold italic text in the terminal window (`font_bold`, `font_italic`, `font_bold_italic`), and pick a family's normal width over its wider cuts (https://github.com/zellij-org/zellij/pull/5829)
 * feat: install Zellij.app on macOS from the setup screen, with the login shell environment, notifications and reopening from Finder; the setup screen can also copy Zellij to ~/.local/bin (https://github.com/zellij-org/zellij/pull/5830)
+* feat: terminal window (desktop client) on Windows, with the tray, notifications and the setup screen (https://github.com/zellij-org/zellij/pull/5679, https://github.com/zellij-org/zellij/pull/5831, https://github.com/zellij-org/zellij/pull/5832, https://github.com/zellij-org/zellij/pull/5833, https://github.com/zellij-org/zellij/pull/5844, https://github.com/zellij-org/zellij/pull/5846, https://github.com/zellij-org/zellij/pull/5848 and https://github.com/zellij-org/zellij/pull/5857)
+* fix: replies going to the wrong client on Windows after a client drops mid-connect (https://github.com/zellij-org/zellij/pull/5849)
+* fix: tighten pipe permissions on Windows, and small fixes for starting and reaching sessions, session names and paths (https://github.com/zellij-org/zellij/pull/5853, https://github.com/zellij-org/zellij/pull/5854 and https://github.com/zellij-org/zellij/pull/5855)
 
 
 ## [0.45.1] - 2026-08-28

@@ -2,8 +2,8 @@ use std::io;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use interprocess::local_socket::prelude::*;
 use interprocess::local_socket::{Listener, Stream};
+use zellij_utils::pipe_pairs;
 
 pub struct Replies(Listener);
 
@@ -13,20 +13,25 @@ impl Replies {
             .map(Replies)
             .with_context(|| format!("failed to listen on {}-reply", path.display()))
     }
+}
 
-    pub fn reply_to(&self, _stream: &Stream) -> io::Result<Stream> {
-        self.0.accept()
-    }
+/// A connection's request and reply pipes are accepted separately, and paired up by the client
+/// process that connected them.
+pub fn connections(listener: Listener, replies: Replies) -> impl Iterator<Item = (Stream, Stream)> {
+    pipe_pairs::accept_pairs(listener, replies.0).into_iter()
+}
 
-    pub fn push_reply(&self) -> io::Result<Option<Stream>> {
-        self.0.accept().map(Some)
-    }
+pub fn pushes(
+    listener: Listener,
+    replies: Replies,
+) -> impl Iterator<Item = (Stream, Option<Stream>)> {
+    connections(listener, replies).map(|(stream, reply)| (stream, Some(reply)))
 }
 
 pub fn remove_stale(_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub fn connect_reply(socket: &Path, _stream: &Stream) -> io::Result<Stream> {
-    zellij_utils::consts::ipc_connect_reply(socket)
+pub fn connect(socket: &Path) -> io::Result<(Stream, Stream)> {
+    pipe_pairs::connect_pair(socket)
 }

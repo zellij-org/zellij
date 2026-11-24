@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 1007
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -139,6 +138,7 @@ Config {
         stacked_pane_list_orientation: None,
         show_startup_tips: None,
         show_release_notes: None,
+        show_setup_screen: None,
         advanced_mouse_actions: None,
         mouse_scroll_resize: None,
         scroll_mode_sync: None,
@@ -5525,6 +5525,8 @@ Config {
         opacity: None,
         opacity_mode: None,
         blur: None,
+        window_decorations: None,
+        titlebar_theme: None,
         macos_option_as_alt: None,
         theme: None,
         padding: None,

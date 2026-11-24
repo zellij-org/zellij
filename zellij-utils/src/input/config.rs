@@ -1373,6 +1373,7 @@ mod config_test {
                         emphasis_3: PaletteColor::Rgb((54, 54, 70)),
                         background: PaletteColor::Rgb((118, 148, 106)),
                     },
+                    ribbon_hover: None,
                     table_title: StyleDeclaration {
                         base: PaletteColor::Rgb((220, 215, 186)),
                         emphasis_0: PaletteColor::Rgb((127, 180, 202)),

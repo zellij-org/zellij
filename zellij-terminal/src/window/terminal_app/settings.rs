@@ -11,13 +11,6 @@ use crate::window::WindowLook;
 use std::time::Instant;
 
 impl App {
-    pub(in crate::window) fn reconfigured(&mut self, settings: Settings) {
-        self.settings = settings;
-        let zoom_reset = self.zoom != 1.0;
-        self.zoom = 1.0;
-        self.reapply(zoom_reset);
-    }
-
     pub(in crate::window) fn settings_pushed(&mut self, settings: Settings) {
         let font_size_changed = settings.section.font_size != self.settings.section.font_size;
         self.settings = settings;
@@ -109,6 +102,11 @@ impl App {
         if change.blur {
             if let Some(surfaces) = &self.surfaces {
                 blur::set(&surfaces.window, self.options.blur);
+            }
+        }
+        if change.titlebar_theme {
+            if let Some(surfaces) = &self.surfaces {
+                surfaces.window.set_theme(self.options.titlebar_theme);
             }
         }
         if change.option_as_alt {

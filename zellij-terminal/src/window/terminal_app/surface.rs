@@ -3,15 +3,18 @@ use crate::platform::blur;
 use crate::platform::Platform;
 use crate::render::graphics::create_context;
 use crate::render::renderer::Renderer;
+use crate::window::created_hidden;
 use crate::window::is_wayland;
 use crate::window::named;
 use crate::window::pick_config;
 use crate::window::popup_attributes;
 use crate::window::requires_transparent_configs;
 use crate::window::set_see_through;
+use crate::window::show_cloaked;
 use crate::window::square_without_system_border;
 use crate::window::startup_attributes;
 use crate::window::transparency_available;
+use crate::window::uncloak;
 use crate::window::window_icon;
 use crate::window::with_activation_token;
 use crate::window::with_option_as_alt;
@@ -47,6 +50,7 @@ impl App {
         if matches!(self.appearance.look, WindowLook::Popup { .. }) {
             square_without_system_border(&surfaces.window);
         }
+        let cloaked = show_cloaked(&surfaces.window);
         let size = surfaces.window.inner_size();
         let scale = surfaces.window.scale_factor();
         self.surfaces = Some(surfaces);
@@ -59,6 +63,12 @@ impl App {
         self.rescale(scale);
         self.resized(size.width, size.height);
         self.settle_startup_size();
+        if cloaked {
+            self.draw();
+            if let Some(surfaces) = &self.surfaces {
+                uncloak(&surfaces.window);
+            }
+        }
         Ok(())
     }
 
@@ -69,10 +79,15 @@ impl App {
             .with_transparent(true)
             .with_blur(self.options.blur)
             .with_inner_size(self.requested_size());
+        let base = created_hidden(base);
+        let undecorated = self.appearance.look == WindowLook::Terminal && !self.options.decorations;
         let base = match self.appearance.look {
-            WindowLook::Terminal => startup_attributes(base, self.placement.startup.mode),
+            WindowLook::Terminal => {
+                startup_attributes(base, self.placement.startup.mode).with_decorations(!undecorated)
+            },
             WindowLook::Popup { position } => popup_attributes(base, position),
         };
+        let base = base.with_theme(self.options.titlebar_theme);
         let base = with_activation_token(base, self.activation_token.take());
         let attributes = with_option_as_alt(named(base), self.options.option_as_alt);
 
@@ -93,6 +108,7 @@ impl App {
         );
         self.warn_if_opaque();
         let window = window.ok_or_else(|| anyhow!("the windowing system produced no window"))?;
+        self.appearance.undecorated = undecorated;
         blur::set(&window, self.options.blur);
         set_see_through(&window, self.see_through());
         window.set_ime_purpose(ImePurpose::Terminal);

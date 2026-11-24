@@ -61,7 +61,7 @@ impl LayoutListScreen {
                     self.update_filter(display_layouts);
                     KeyResponse::render()
                 },
-                BareKey::Delete if key.has_no_modifiers() => {
+                BareKey::Delete | BareKey::Backspace if key.has_no_modifiers() => {
                     if let Some(file_name) = self.get_selected_file_name(display_layouts) {
                         let _ = delete_layout(file_name.clone());
                         KeyResponse::none().with_optimistic(OptimisticUpdate::Delete(file_name))

@@ -284,6 +284,7 @@ pub fn zellij_server_listener(
                             // Subscribe-only messages — not relevant for web clients
                             Some(ServerToClientMsg::PaneRenderUpdate { .. }) => {},
                             Some(ServerToClientMsg::SubscribedPaneClosed { .. }) => {},
+                            Some(ServerToClientMsg::SessionEvent { .. }) => {},
                             Some(ServerToClientMsg::EmitNestedSessionFrame { .. }) => {},
                             Some(ServerToClientMsg::HostProgramStatus { .. }) => {},
                             Some(ServerToClientMsg::SessionAttention { .. }) => {},

@@ -3437,6 +3437,9 @@ impl Options {
         let show_release_notes =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_release_notes")
                 .map(|(v, _)| v);
+        let show_setup_screen =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "show_setup_screen")
+                .map(|(v, _)| v);
         let advanced_mouse_actions =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "advanced_mouse_actions")
                 .map(|(v, _)| v);
@@ -3632,6 +3635,7 @@ impl Options {
             stacked_pane_list_orientation,
             show_startup_tips,
             show_release_notes,
+            show_setup_screen,
             advanced_mouse_actions,
             mouse_scroll_resize,
             scroll_mode_sync,
@@ -5085,6 +5089,34 @@ impl Options {
             None
         }
     }
+    fn show_setup_screen_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Whether to offer the desktop integration setup screen when a new session starts",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("show_setup_screen");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(show_setup_screen) = self.show_setup_screen {
+            let mut node = create_node(show_setup_screen);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn advanced_mouse_actions_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}",
@@ -5441,7 +5473,7 @@ impl Options {
         let comment_text = format!(
             "{}\n{}\n{}\n{}\n{}\n{}",
             " ",
-            "// A command to run (will be wrapped with sh -c and provided the RESURRECT_COMMAND env variable) ",
+            "// A command to run (will be wrapped with sh -c, or cmd /C on Windows, and provided the RESURRECT_COMMAND env variable) ",
             "// after Zellij attempts to discover a command inside a pane when resurrecting sessions, the STDOUT",
             "// of this command will be used instead of the discovered RESURRECT_COMMAND",
             "// can be useful for removing wrappers around commands",
@@ -5903,6 +5935,9 @@ impl Options {
         }
         if let Some(show_release_notes) = self.show_release_notes_to_kdl(add_comments) {
             nodes.push(show_release_notes);
+        }
+        if let Some(show_setup_screen) = self.show_setup_screen_to_kdl(add_comments) {
+            nodes.push(show_setup_screen);
         }
         if let Some(advanced_mouse_actions) = self.advanced_mouse_actions_to_kdl(add_comments) {
             nodes.push(advanced_mouse_actions);
@@ -7934,6 +7969,19 @@ impl Themes {
                 }
             } else {
                 // Newer theme definition with named styles
+                let declares_ribbon_unselected =
+                    kdl_child_with_name!(theme_config, "ribbon_unselected").is_some();
+                let ribbon_unselected =
+                    Themes::style_declaration_from_node(theme_config, "ribbon_unselected")?
+                        .unwrap_or(DEFAULT_STYLES.ribbon_unselected);
+                let ribbon_hover =
+                    Themes::style_declaration_from_node(theme_config, "ribbon_hover")?.or(
+                        if declares_ribbon_unselected {
+                            None
+                        } else {
+                            DEFAULT_STYLES.ribbon_hover
+                        },
+                    );
                 let s = Styling {
                     text_unselected: Themes::style_declaration_from_node(
                         theme_config,
@@ -7945,16 +7993,13 @@ impl Themes {
                         "text_selected",
                     )
                     .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.text_selected))?,
-                    ribbon_unselected: Themes::style_declaration_from_node(
-                        theme_config,
-                        "ribbon_unselected",
-                    )
-                    .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.ribbon_unselected))?,
+                    ribbon_unselected,
                     ribbon_selected: Themes::style_declaration_from_node(
                         theme_config,
                         "ribbon_selected",
                     )
                     .map(|maybe_style| maybe_style.unwrap_or(DEFAULT_STYLES.ribbon_selected))?,
+                    ribbon_hover,
                     table_title: Themes::style_declaration_from_node(theme_config, "table_title")
                         .map(|maybe_style| {
                         maybe_style.unwrap_or(DEFAULT_STYLES.table_title)
@@ -8101,6 +8146,7 @@ pub fn theme_to_kdl(theme_name: &str, palette: &Styling) -> KdlNode {
         ("text_selected", Some(&palette.text_selected)),
         ("ribbon_selected", Some(&palette.ribbon_selected)),
         ("ribbon_unselected", Some(&palette.ribbon_unselected)),
+        ("ribbon_hover", palette.ribbon_hover.as_ref()),
         ("table_title", Some(&palette.table_title)),
         ("table_cell_selected", Some(&palette.table_cell_selected)),
         (

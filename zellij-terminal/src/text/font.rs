@@ -58,7 +58,10 @@ const BOLD: &[u8] = include_bytes!("../../assets/fonts/IosevkaTerm-Bold.ttf");
 const ITALIC: &[u8] = include_bytes!("../../assets/fonts/IosevkaTerm-Italic.ttf");
 const BOLD_ITALIC: &[u8] = include_bytes!("../../assets/fonts/IosevkaTerm-BoldItalic.ttf");
 const CJK: &[u8] = include_bytes!("../../assets/fonts/NotoSansMonoCJK-Regular.otf");
-const EMOJI: &[u8] = include_bytes!("../../assets/fonts/NotoColorEmoji.ttf");
+#[cfg(bundled_emoji)]
+const EMOJI: Option<&[u8]> = Some(include_bytes!("../../assets/fonts/NotoColorEmoji.ttf"));
+#[cfg(not(bundled_emoji))]
+const EMOJI: Option<&[u8]> = None;
 const SYMBOLS: &[u8] = include_bytes!("../../assets/fonts/SymbolsNerdFontMono-Regular.ttf");
 const SYMBOLS_FONT: FontId = FontId(6);
 const EMOJI_FONT: FontId = FontId(5);
@@ -282,6 +285,13 @@ impl FontOptions {
             FaceStyle::BoldItalic => self.bold_italic_family.as_deref(),
         }
     }
+
+    fn names_a_family(&self) -> bool {
+        self.family.is_some()
+            || [FaceStyle::Bold, FaceStyle::Italic, FaceStyle::BoldItalic]
+                .into_iter()
+                .any(|style| self.style_family(style).is_some())
+    }
 }
 
 impl Default for FontOptions {
@@ -399,11 +409,12 @@ pub struct FontStack {
     cluster_fonts: HashMap<FaceStyle, HashMap<String, Option<FontId>>>,
     shaped: HashMap<(FontId, Shaping), HashMap<String, Rc<[ShapedGlyph]>>>,
     discovery_queries: usize,
+    system_fallbacks: bool,
 }
 
 impl FontStack {
     pub fn build(options: &FontOptions) -> Result<Self> {
-        let discovery = if options.system_fonts {
+        let discovery = if options.system_fonts || options.names_a_family() {
             Discovery::open()
         } else {
             None
@@ -412,6 +423,14 @@ impl FontStack {
     }
 
     fn assemble(options: &FontOptions, discovery: Option<Discovery>) -> Result<Self> {
+        Self::assemble_with_emoji(options, discovery, EMOJI)
+    }
+
+    fn assemble_with_emoji(
+        options: &FontOptions,
+        discovery: Option<Discovery>,
+        emoji: Option<&'static [u8]>,
+    ) -> Result<Self> {
         let size = options.size;
         if !(size.is_finite() && (MIN_FONT_SIZE..=MAX_FONT_SIZE).contains(&size)) {
             return Err(anyhow!("font size {} is out of range", size));
@@ -423,7 +442,10 @@ impl FontStack {
             face(ITALIC, "IosevkaTerm-Italic")?,
             face(BOLD_ITALIC, "IosevkaTerm-BoldItalic")?,
             face(CJK, "NotoSansMonoCJK-Regular")?,
-            face(EMOJI, "NotoColorEmoji")?,
+            match emoji {
+                Some(emoji) => face(emoji, "NotoColorEmoji")?,
+                None => face(SYMBOLS, "SymbolsNerdFontMono-Regular")?,
+            },
             face(SYMBOLS, "SymbolsNerdFontMono-Regular")?,
         ];
         let color_capable: Vec<bool> = faces.iter().map(is_color_capable).collect();
@@ -438,7 +460,10 @@ impl FontStack {
             color_capable,
             primary: embedded_primary,
             styled: [None; 4],
-            fallbacks: vec![FontId(4), EMOJI_FONT, SYMBOLS_FONT],
+            fallbacks: match emoji {
+                Some(_) => vec![FontId(4), EMOJI_FONT, SYMBOLS_FONT],
+                None => vec![FontId(4), SYMBOLS_FONT],
+            },
             size,
             weight: options.weight,
             shapes: options.ligatures || !features.is_empty(),
@@ -454,11 +479,17 @@ impl FontStack {
             cluster_fonts: HashMap::new(),
             shaped: HashMap::new(),
             discovery_queries: 0,
+            system_fallbacks: options.system_fonts,
         };
 
         if let Some(family) = &options.family {
             match stack.requested_family(family) {
                 Some(primary) => stack.primary = primary,
+                None if stack.discovery.is_none() => report!(
+                    "system font discovery is unavailable, so the font family {:?} \
+                     cannot be used; rendering with the embedded font instead",
+                    family
+                ),
                 None => report!(
                     "no font family named {:?} resolved; \
                      rendering with the embedded font instead",

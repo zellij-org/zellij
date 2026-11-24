@@ -66,8 +66,88 @@ fn line_rows(lines_above: &VecDeque<Row>, viewport: &VecDeque<Row>, start: isize
 pub fn is_url_terminator(character: char) -> bool {
     matches!(
         character,
-        ' ' | '\n' | '\r' | '\t' | '"' | '\'' | '<' | '>' | '(' | ')' | '[' | ']' | '{' | '}' | '⏎'
+        ' ' | '\n' | '\r' | '\t' | '"' | '\'' | '<' | '>' | '[' | ']' | '{' | '}' | '⏎'
+    ) || is_fullwidth_terminator(character)
+}
+
+/// East Asian punctuation ends a URL as well, so a link followed by a fullwidth
+/// comma or bracket does not swallow the rest of the sentence.
+fn is_fullwidth_terminator(character: char) -> bool {
+    matches!(
+        character,
+        '　' | '、'
+            | '。'
+            | '《'
+            | '》'
+            | '「'
+            | '」'
+            | '『'
+            | '』'
+            | '【'
+            | '】'
+            | '〔'
+            | '〕'
+            | '‘'
+            | '’'
+            | '“'
+            | '”'
+            | '…'
+            | '！'
+            | '（'
+            | '）'
+            | '，'
+            | '．'
+            | '：'
+            | '；'
+            | '？'
     )
+}
+
+/// The index of the first cell that is not part of the URL starting at `start`.
+///
+/// Parentheses belong to a URL when they are balanced, which keeps links such as
+/// `https://example.com/wiki/Foo_(bar)` whole, and end it otherwise.
+fn url_end(cells: &[Cell], start: usize) -> usize {
+    let mut depth = 0;
+    let mut end = start;
+    while end < cells.len() {
+        match cells[end].character {
+            '(' => {
+                if !has_matching_paren(cells, end) {
+                    break;
+                }
+                depth += 1;
+            },
+            ')' => {
+                if depth == 0 {
+                    break;
+                }
+                depth -= 1;
+            },
+            character if is_url_terminator(character) => break,
+            _ => {},
+        }
+        end += 1;
+    }
+    end
+}
+
+fn has_matching_paren(cells: &[Cell], at: usize) -> bool {
+    let mut depth = 0;
+    for cell in &cells[at..] {
+        match cell.character {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return true;
+                }
+            },
+            character if is_url_terminator(character) => return false,
+            _ => {},
+        }
+    }
+    false
 }
 
 pub fn trim_trailing_punctuation(url: &str) -> &str {
@@ -174,10 +254,7 @@ fn link_urls_in_line(
             at += 1;
             continue;
         }
-        let end = cells[at..]
-            .iter()
-            .position(|cell| is_url_terminator(cell.character))
-            .map_or(cells.len(), |offset| at + offset);
+        let end = url_end(cells, at);
         if cursor_cell.is_some_and(|cursor| (at..=end).contains(&cursor)) {
             deferred = true;
             at = end + 1;
@@ -425,6 +502,50 @@ mod tests {
                 "{:?}",
                 terminator
             );
+        }
+    }
+
+    #[test]
+    fn balanced_parentheses_stay_in_the_link() {
+        let mut viewport = screen(&[("see https://example.com/wiki/Foo_(bar) now", true)], 60);
+        let mut handler = LinkHandler::new();
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        assert_eq!(
+            uris(&handler),
+            vec!["https://example.com/wiki/Foo_(bar)".to_owned()]
+        );
+    }
+
+    #[test]
+    fn an_unmatched_parenthesis_ends_the_link() {
+        for (text, url) in [
+            ("(see https://example.com/a) now", "https://example.com/a"),
+            ("https://example.com/a(b", "https://example.com/a"),
+        ] {
+            let mut viewport = screen(&[(text, true)], 40);
+            let mut handler = LinkHandler::new();
+            link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+            assert_eq!(uris(&handler), vec![url.to_owned()], "{}", text);
+        }
+    }
+
+    #[test]
+    fn fullwidth_punctuation_ends_the_link() {
+        for (text, url) in [
+            (
+                "https://example.com/?q=1\u{ff0c}\u{540e}\u{9762}\u{7684}\u{6587}\u{5b57}",
+                "https://example.com/?q=1",
+            ),
+            ("https://example.com/a\u{3002}rest", "https://example.com/a"),
+            (
+                "\u{ff08}https://example.com/a\u{ff09}rest",
+                "https://example.com/a",
+            ),
+        ] {
+            let mut viewport = screen(&[(text, true)], 60);
+            let mut handler = LinkHandler::new();
+            link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+            assert_eq!(uris(&handler), vec![url.to_owned()], "{}", text);
         }
     }
 

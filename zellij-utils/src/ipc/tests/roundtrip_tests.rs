@@ -25,6 +25,7 @@ use crate::ipc::{
 };
 use crate::pane_size::{Size, SizeInPixels};
 use crate::position::Position;
+use crate::session_events::{CliEventFilter, CliEventType};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -548,6 +549,7 @@ fn test_client_messages() {
                 stacked_pane_list_orientation: Some(StackListOrientation::Horizontal),
                 show_startup_tips: Some(true),
                 show_release_notes: Some(true),
+                show_setup_screen: Some(true),
                 advanced_mouse_actions: Some(true),
                 mouse_scroll_resize: Some(true),
                 scroll_mode_sync: Some(true),
@@ -3911,6 +3913,17 @@ fn test_client_messages() {
         scrollback: Some(0),
         ansi: true,
     });
+    test_client_roundtrip!(ClientToServerMsg::SubscribeToEvents {
+        filter: CliEventFilter::default(),
+    });
+    test_client_roundtrip!(ClientToServerMsg::SubscribeToEvents {
+        filter: CliEventFilter {
+            event_types: vec![CliEventType::PaneFocused, CliEventType::TabClosed],
+            pane_ids: vec![PaneId::Terminal(1), PaneId::Plugin(2)],
+            tab_ids: vec![0, 3],
+            initial_state: true,
+        },
+    });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::ScrollUpByPaneId {
             pane_id: PaneId::Terminal(1),
@@ -4490,6 +4503,12 @@ fn test_server_messages() {
     });
     test_server_roundtrip!(ServerToClientMsg::SubscribedPaneClosed {
         pane_id: PaneId::Plugin(3),
+    });
+    test_server_roundtrip!(ServerToClientMsg::SessionEvent {
+        json: r#"{"event":"session_ending"}"#.to_string(),
+    });
+    test_server_roundtrip!(ServerToClientMsg::SessionEvent {
+        json: String::new(),
     });
     test_server_roundtrip!(ServerToClientMsg::ForwardQueryToHost {
         token: 0,

@@ -22,6 +22,7 @@ use zellij_utils::cli::{CliArgs, TerminalArgs};
 
 pub use app::probe::{NotificationProbe, ProbeEvent};
 pub use app::{clear_all_sessions, detach_everywhere, stop_all_sessions};
+pub use platform::static_build::OPENS_WINDOWS;
 
 #[cfg(all(target_os = "linux", feature = "test-support"))]
 pub mod test_support {
@@ -48,9 +49,4 @@ pub fn run(args: TerminalArgs, opts: CliArgs) -> Result<()> {
     };
     run.finish(&result);
     result
-}
-
-#[cfg(windows)]
-pub fn unregister_app() -> Result<Vec<String>> {
-    windows_shell::app_registration::unregister()
 }

@@ -113,7 +113,7 @@ pub fn armed_by_press(
     Some(Armed {
         uri: run.uri.clone(),
         cell: (x, y),
-        deliberate: needs_deliberate_click(&run.uri),
+        deliberate: deliberate_modifier_held(modifiers),
     })
 }
 
@@ -142,8 +142,14 @@ fn click_opens(
     if needs_deliberate_click(uri) {
         deliberate_modifier_held(modifiers)
     } else {
-        gesture_matches(opening, pane_wants_mouse, modifiers)
+        gesture_matches(opening, pane_wants_mouse, modifiers) || cmd_opens_web_links(modifiers)
     }
+}
+
+// On macOS, Cmd+click is the usual way to open links, and panes never receive it anyway.
+// Ctrl+click elsewhere does reach panes, so it doesn't open web links.
+fn cmd_opens_web_links(modifiers: ModifiersState) -> bool {
+    cfg!(target_os = "macos") && deliberate_modifier_held(modifiers)
 }
 
 pub fn released_on(armed: Option<Armed>, cell: Option<(u16, u16)>) -> Option<String> {
@@ -467,7 +473,7 @@ mod tests {
         for modifiers in [
             ModifiersState::CONTROL,
             ModifiersState::ALT,
-            ModifiersState::SUPER,
+            OTHER_PLATFORM_KEY,
             ModifiersState::CONTROL | ModifiersState::SHIFT,
             ModifiersState::ALT | ModifiersState::SHIFT,
         ] {
@@ -481,7 +487,7 @@ mod tests {
         for modifiers in [
             ModifiersState::CONTROL,
             ModifiersState::ALT,
-            ModifiersState::SUPER,
+            OTHER_PLATFORM_KEY,
             ModifiersState::CONTROL | ModifiersState::SHIFT,
         ] {
             assert_eq!(armed(false, modifiers, "https://example.com"), None);
@@ -494,6 +500,40 @@ mod tests {
     } else {
         ModifiersState::CONTROL
     };
+
+    // Cmd on Linux and Windows; Ctrl on macOS, where Cmd is the deliberate key.
+    const OTHER_PLATFORM_KEY: ModifiersState = if cfg!(target_os = "macos") {
+        ModifiersState::CONTROL
+    } else {
+        ModifiersState::SUPER
+    };
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cmd_click_opens_a_web_link_in_any_pane_and_keeps_the_click_from_it() {
+        const CMD: ModifiersState = ModifiersState::SUPER;
+        let link = run("https://example.com");
+        for wants in [false, true] {
+            for opening in [Opening::WITHOUT_SHIFT, Opening::WITH_SHIFT] {
+                let armed = armed_by_press(opening, wants, CMD, Some((1, 0)), Some(&link))
+                    .expect("Cmd+click arms the open");
+                assert!(armed.deliberate, "the pane must not also get the click");
+                assert_eq!(
+                    released_on(Some(armed), Some((1, 0))),
+                    Some("https://example.com".to_owned())
+                );
+                assert!(is_reachable(opening, wants, CMD, Some(&link)));
+            }
+        }
+        assert_eq!(
+            armed(true, CMD | ModifiersState::ALT, "https://example.com"),
+            None
+        );
+        assert_eq!(
+            armed_by_press(Opening::OFF, true, CMD, Some((1, 0)), Some(&link)),
+            None
+        );
+    }
 
     #[test]
     fn a_plain_click_never_opens_a_file_or_ftp_link() {

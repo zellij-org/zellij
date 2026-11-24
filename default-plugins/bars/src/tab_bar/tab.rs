@@ -42,30 +42,19 @@ pub fn render_tab(
     let focused_clients = tab.other_focused_client_slots.as_slice();
     let separator_width = graphemes::display_width(separator);
 
-    let alternate_tab_color = if is_alternate_tab {
-        palette.ribbon_unselected.emphasis_1
+    let on_hover_fill = !tab.active && (is_hovered || is_alternate_tab);
+    let declaration = if tab.active {
+        palette.ribbon_selected
+    } else if on_hover_fill {
+        palette.ribbon_hover_style()
     } else {
-        palette.ribbon_unselected.background
+        palette.ribbon_unselected
     };
-    let background_color = if tab.active {
-        palette.ribbon_selected.background
-    } else if is_hovered {
-        palette.ribbon_unselected.emphasis_1
-    } else if is_alternate_tab {
-        alternate_tab_color
-    } else {
-        palette.ribbon_unselected.background
-    };
+    let background_color = declaration.background;
     let foreground_color = if tab.is_flashing_bell {
-        if tab.active {
-            palette.ribbon_selected.emphasis_3
-        } else {
-            palette.ribbon_unselected.emphasis_3
-        }
-    } else if tab.active {
-        palette.ribbon_selected.base
+        declaration.emphasis_3
     } else {
-        palette.ribbon_unselected.base
+        declaration.base
     };
 
     let separator_fill_color = palette.text_unselected.background;

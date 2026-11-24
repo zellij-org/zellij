@@ -50,7 +50,7 @@ pub enum AppEvent {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Intent {
     Open {
         request: OpenWindowRequest,
@@ -59,6 +59,10 @@ pub enum Intent {
     Route {
         session: String,
         pane: Option<PaneId>,
+        token: Option<String>,
+    },
+    RouteRequest {
+        request: OpenWindowRequest,
         token: Option<String>,
     },
     Popup {
@@ -79,21 +83,20 @@ pub enum Intent {
 pub fn request_intents(request: AppRequest) -> (AppReply, Vec<Intent>) {
     match request {
         AppRequest::Ping | AppRequest::Describe => (AppReply::Done, vec![]),
-        AppRequest::OpenWindow(request) => match request.session.clone() {
-            Some(session) if !request.create && request.command.is_empty() => (
-                AppReply::Done,
-                vec![Intent::Route {
-                    session,
-                    pane: request.pane_id.map(|(id, plugin)| {
-                        if plugin {
-                            PaneId::Plugin(id)
-                        } else {
-                            PaneId::Terminal(id)
-                        }
-                    }),
-                    token: None,
-                }],
-            ),
+        AppRequest::OpenWindow(request) => match request.session.as_ref() {
+            Some(_)
+                if !request.create
+                    && request.command.is_empty()
+                    && request.remote_url().is_none() =>
+            {
+                (
+                    AppReply::Done,
+                    vec![Intent::RouteRequest {
+                        request,
+                        token: None,
+                    }],
+                )
+            },
             _ => (
                 AppReply::Done,
                 vec![Intent::Open {
@@ -103,6 +106,7 @@ pub fn request_intents(request: AppRequest) -> (AppReply, Vec<Intent>) {
             ),
         },
         AppRequest::ToggleTrayIcon => (AppReply::Done, vec![]),
+        AppRequest::QuitApp => (AppReply::Done, vec![Intent::QuitApp]),
         AppRequest::TogglePanel { view, token } => {
             (AppReply::Done, vec![Intent::TogglePanel { view, token }])
         },

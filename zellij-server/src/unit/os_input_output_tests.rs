@@ -409,3 +409,26 @@ fn the_pane_environment_is_added_to_and_removed_from_the_child_environment() {
     assert!(output.contains(expected), "got: '{}'", output);
     assert!(std::env::var("ZELLIJ_PANE_ENV_TEST").is_err());
 }
+
+#[cfg(windows)]
+#[test]
+fn the_resurrect_hook_keeps_the_quotes_in_its_command() {
+    let output = run_command_hook("vim foo.txt", r#"echo "%RESURRECT_COMMAND%""#).unwrap();
+    assert_eq!(output, r#""vim foo.txt""#);
+}
+
+#[cfg(windows)]
+#[test]
+fn the_resurrect_hook_runs_only_for_the_commands_in_panes() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("hook-runs.log");
+    let hook = format!(r#"echo x>>"{}" & echo %RESURRECT_COMMAND%"#, log.display());
+    // This test process stands in for a pane's shell, and the child for its command.
+    let mut child = stdin_reader_cmd().spawn().unwrap();
+    let cmds = make_server().get_foreground_cmds(&[(1, std::process::id())], &Some(hook));
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(cmds.contains_key(&1), "{:?}", cmds);
+    let runs = std::fs::read_to_string(&log).unwrap_or_default();
+    assert_eq!(runs.lines().count(), 1, "{}", runs);
+}

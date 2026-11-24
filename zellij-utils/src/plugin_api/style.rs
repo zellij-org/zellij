@@ -209,12 +209,18 @@ impl TryFrom<ProtobufStyling> for Styling {
         } else {
             None
         };
+        let ribbon_hover = if proto.ribbon_hover.len() > 0 {
+            Some(color_definitions!(proto, ribbon_hover, 6))
+        } else {
+            None
+        };
 
         Ok(Styling {
             text_unselected: color_definitions!(proto, text_unselected, 6),
             text_selected: color_definitions!(proto, text_selected, 6),
             ribbon_unselected: color_definitions!(proto, ribbon_unselected, 6),
             ribbon_selected: color_definitions!(proto, ribbon_selected, 6),
+            ribbon_hover,
             table_title: color_definitions!(proto, table_title, 6),
             table_cell_unselected: color_definitions!(proto, table_cell_unselected, 6),
             table_cell_selected: color_definitions!(proto, table_cell_selected, 6),
@@ -272,12 +278,17 @@ impl TryFrom<Styling> for ProtobufStyling {
             None => Ok(Vec::new()),
             Some(frame_unselected) => frame_unselected.try_into(),
         };
+        let ribbon_hover_vec = match style.ribbon_hover {
+            None => Ok(Vec::new()),
+            Some(ribbon_hover) => ribbon_hover.try_into(),
+        };
 
         Ok(ProtobufStyling {
             text_unselected: style.text_unselected.try_into()?,
             text_selected: style.text_selected.try_into()?,
             ribbon_unselected: style.ribbon_unselected.try_into()?,
             ribbon_selected: style.ribbon_selected.try_into()?,
+            ribbon_hover: ribbon_hover_vec?,
             table_title: style.table_title.try_into()?,
             table_cell_unselected: style.table_cell_unselected.try_into()?,
             table_cell_selected: style.table_cell_selected.try_into()?,

@@ -1167,7 +1167,7 @@ fn the_marker_is_dropped_on_a_very_narrow_pane_title() {
     zellij.quit();
 }
 
-const FAST_DONE: &str = "attention {\n    done_threshold_secs 1\n}";
+const FAST_DONE: &str = "attention {\n    done_threshold_secs 1\n    track_commands true\n}";
 
 fn start_command(terminal: &FakePtyHandle, command: &str) {
     terminal.output(

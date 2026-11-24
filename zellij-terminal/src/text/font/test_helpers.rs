@@ -18,6 +18,17 @@ impl FontStack {
         Self::assemble(options, discovery)
     }
 
+    pub fn without_bundled_emoji(
+        options: &FontOptions,
+        discovery: Option<Discovery>,
+    ) -> Result<Self> {
+        Self::assemble_with_emoji(options, discovery, None)
+    }
+
+    pub fn fallback_faces(&self) -> &[FontId] {
+        &self.fallbacks
+    }
+
     pub fn shaped_runs(&self) -> usize {
         self.shaped
             .iter()

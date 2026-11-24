@@ -15,7 +15,10 @@ use crate::{
 };
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 use tokio::task::JoinHandle;
 use zellij_utils::{
     data::{
@@ -33,6 +36,7 @@ use zellij_utils::{
         },
     },
     pane_size::Size,
+    session_events::CliEvent,
     session_serialization,
 };
 
@@ -252,9 +256,11 @@ pub(crate) struct Pty {
     terminals_with_prompt_markers: HashSet<u32>,
     terminals_with_shell_cwd: HashSet<u32>,
     resurrect_commands: HashMap<u32, ResurrectCommand>,
+    session_id: Option<String>,
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: String) -> Result<()> {
+    pty.set_session_id(&session_id);
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -271,6 +277,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
             ) => {
                 let err_context =
                     || format!("failed to spawn terminal for {:?}", client_or_tab_index);
+                let (terminal_action, default_shell_cwd) = take_default_shell_cwd(terminal_action);
 
                 let (hold_on_close, run_command, pane_title, open_file_payload) =
                     match &terminal_action {
@@ -304,6 +311,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     )),
                     _ => None,
                 };
+                let terminal_action =
+                    pty.with_default_shell_cwd(terminal_action, default_shell_cwd);
                 match pty
                     .spawn_terminal(terminal_action, client_or_tab_index, origin_pane_id)
                     .with_context(err_context)
@@ -413,6 +422,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                         client_id_tab_index_or_pane_id
                     )
                 };
+                let (terminal_action, default_shell_cwd) = take_default_shell_cwd(terminal_action);
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
                     Some(TerminalAction::RunCommand(run_command)) => (
                         run_command.hold_on_close,
@@ -436,6 +446,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     )),
                     _ => None,
                 };
+                let terminal_action =
+                    pty.with_default_shell_cwd(terminal_action, default_shell_cwd);
                 match pty
                     .spawn_terminal(
                         terminal_action,
@@ -1027,6 +1039,7 @@ impl Pty {
             terminals_with_prompt_markers: HashSet::new(),
             terminals_with_shell_cwd: HashSet::new(),
             resurrect_commands: HashMap::new(),
+            session_id: None,
         }
     }
     pub fn get_default_terminal(
@@ -1067,6 +1080,16 @@ impl Pty {
                 })
             },
         }
+    }
+    /// Puts back a default shell request split off by [`take_default_shell_cwd`], once the pane's
+    /// title and record of what it runs have been worked out as for any new pane.
+    fn with_default_shell_cwd(
+        &self,
+        terminal_action: Option<TerminalAction>,
+        default_shell_cwd: Option<PathBuf>,
+    ) -> Option<TerminalAction> {
+        terminal_action
+            .or_else(|| default_shell_cwd.map(|cwd| self.get_default_terminal(Some(cwd), None)))
     }
     fn cwd_of_pane(&self, pane_id: &PaneId) -> Option<PathBuf> {
         match pane_id {
@@ -2374,6 +2397,7 @@ impl Pty {
                             None,
                             Event::CwdChanged(pane_id.into(), cwd.clone(), focused_client_ids),
                         )]));
+                    self.notify_event_subscribers_of_cwd(pane_id, cwd);
                     self.terminal_cwds.insert(*terminal_id, cwd.clone());
                     if self.session_context_pane == Some(pane_id) {
                         self.report_session_context(ContextTrigger::FolderChanged);
@@ -2443,6 +2467,17 @@ impl Pty {
                 let _ = self
                     .bus
                     .senders
+                    .send_to_screen(ScreenInstruction::NotifyEventSubscribers(
+                        CliEvent::PaneCommandChanged {
+                            pane_id: pane_id.into(),
+                            tab_id: None,
+                            command: command.clone(),
+                            is_foreground,
+                        },
+                    ));
+                let _ = self
+                    .bus
+                    .senders
                     .send_to_plugin(PluginInstruction::Update(vec![(
                         None,
                         None,
@@ -2468,6 +2503,34 @@ impl Pty {
         self.default_editor = default_editor;
         self.post_command_discovery_hook = post_command_discovery_hook;
         self.pane_env = pane_env;
+        self.add_session_id_to_pane_env();
+    }
+
+    pub fn set_session_id(&mut self, session_id: &str) {
+        self.session_id = (!session_id.is_empty()).then(|| session_id.to_owned());
+        self.add_session_id_to_pane_env();
+    }
+
+    fn add_session_id_to_pane_env(&mut self) {
+        if let Some(session_id) = &self.session_id {
+            self.pane_env.insert(
+                zellij_utils::envs::SESSION_ID_ENV_KEY.to_owned(),
+                Some(session_id.clone()),
+            );
+        }
+    }
+
+    fn notify_event_subscribers_of_cwd(&self, pane_id: PaneId, cwd: &Path) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_screen(ScreenInstruction::NotifyEventSubscribers(
+                CliEvent::PaneCwdChanged {
+                    pane_id: pane_id.into(),
+                    tab_id: None,
+                    cwd: cwd.display().to_string(),
+                },
+            ));
     }
 
     pub fn notify_cwd_from_osc7(&mut self, terminal_id: u32, path: PathBuf) {
@@ -2491,6 +2554,7 @@ impl Pty {
                     None,
                     Event::CwdChanged(pane_id.into(), path.clone(), focused_client_ids),
                 )]));
+            self.notify_event_subscribers_of_cwd(pane_id, &path);
             self.terminal_cwds.insert(terminal_id, path);
             if self.session_context_pane == Some(pane_id) {
                 self.report_session_context(ContextTrigger::FolderChanged);
@@ -2672,6 +2736,22 @@ fn send_command_not_found_to_screen(
         ))
         .with_context(err_context)?;
     Ok(())
+}
+
+/// Splits a request for the default shell in a given folder (`new-pane --cwd` without a
+/// command, when no default shell is configured) into no action and that folder.
+///
+/// The pane then gets the title and the record of what it runs that any new pane gets, rather
+/// than those of a command pane with an empty command.
+fn take_default_shell_cwd(
+    terminal_action: Option<TerminalAction>,
+) -> (Option<TerminalAction>, Option<PathBuf>) {
+    match terminal_action {
+        Some(TerminalAction::RunCommand(command)) if command.requests_default_shell() => {
+            (None, command.cwd)
+        },
+        terminal_action => (terminal_action, None),
+    }
 }
 
 pub fn get_default_shell() -> PathBuf {

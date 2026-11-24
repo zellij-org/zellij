@@ -72,6 +72,7 @@ macro_rules! get_or_create_grid {
             );
             grid.hide_cursor();
             grid.grapheme_mode = true;
+            grid.ui_components_enabled = true;
             grid
         })
     }};
@@ -374,6 +375,9 @@ impl Pane for PluginPane {
     fn show_cursor(&mut self, client_id: ClientId, cursor_position: Option<(usize, usize)>) {
         self.cursor_visibility.insert(client_id, cursor_position);
         self.should_render.insert(client_id, true);
+    }
+    fn is_requesting_permissions(&self) -> bool {
+        self.requesting_permissions.is_some()
     }
     fn request_permissions_from_user(&mut self, permissions: Option<PluginPermission>) {
         self.requesting_permissions = permissions;

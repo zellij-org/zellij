@@ -639,7 +639,7 @@ fn switching_sessions_shows_switched_from_for_a_few_seconds() {
 }
 
 #[test]
-fn going_to_an_item_shows_done_and_the_way_back_once_it_clears() {
+fn going_to_an_item_shows_done_and_the_way_back_for_a_few_seconds_once_it_clears() {
     let (background, terminal) = background_session(ATTENTION_ON);
     let mut zellij = start_wide_main_session();
     let first = zellij.session_name().to_owned();
@@ -657,6 +657,15 @@ fn going_to_an_item_shows_done_and_the_way_back_once_it_clears() {
         let bar = status_bar(grid_snapshot);
         bar.contains("Done ·") && bar.contains(&expected)
     });
+    let shown_at = Instant::now();
+    zellij.wait_until("the done hint goes away", |grid_snapshot| {
+        !status_bar(grid_snapshot).contains("Done ·")
+    });
+    assert!(
+        shown_at.elapsed() > Duration::from_secs(2),
+        "the done hint went away after {:?}",
+        shown_at.elapsed()
+    );
     zellij.quit();
 }
 
@@ -757,7 +766,7 @@ fn the_indicator_shortens_on_a_narrow_terminal() {
 }
 
 const FAST_DONE_ON: &str =
-    "session_indicator true\nmouse_mode true\nattention {\n    done_threshold_secs 1\n}";
+    "session_indicator true\nmouse_mode true\nattention {\n    done_threshold_secs 1\n    track_commands true\n}";
 
 fn working_count(session: &str) -> Option<usize> {
     session_counts(session).map(|counts| counts.working)

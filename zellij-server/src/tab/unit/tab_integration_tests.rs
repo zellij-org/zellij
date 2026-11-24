@@ -15063,6 +15063,168 @@ fn horizontal_stack_list_member_at_point_follows_entry_widths() {
 }
 
 #[test]
+fn fullscreen_focus_follows_the_stack_list_orientation() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane split_direction="horizontal" {
+                pane stacked=true stack_orientation="horizontal" size="50%" {
+                    pane name="A" focus=true
+                    pane name="B"
+                    pane name="C"
+                }
+                pane name="D"
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None), (4, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let list = tab.stack_lists.values().next().unwrap();
+    let members = list.members.clone();
+    assert_eq!(list.orientation, StackListOrientation::Horizontal);
+    let a = members[0];
+    let b = members[1];
+    let d = PaneId::Terminal(2);
+    assert_eq!(tab.get_active_pane_id(1), Some(a));
+
+    assert!(tab.move_focus_right(1).unwrap());
+    assert_eq!(tab.get_active_pane_id(1), Some(b));
+    assert!(tab.move_focus_left(1).unwrap());
+    assert_eq!(tab.get_active_pane_id(1), Some(a));
+    assert!(tab.move_focus_down(1).unwrap());
+    assert_eq!(tab.get_active_pane_id(1), Some(d));
+
+    tab.focus_pane_with_id(a, false, false, 1).unwrap();
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active());
+
+    assert!(tab.move_focus_right(1).unwrap());
+    assert_eq!(tab.get_active_pane_id(1), Some(b));
+    assert!(tab.is_fullscreen_active());
+    assert!(tab.move_focus_left(1).unwrap());
+    assert_eq!(tab.get_active_pane_id(1), Some(a));
+    assert!(tab.is_fullscreen_active());
+    assert!(tab.move_focus_down(1).unwrap());
+    assert_eq!(tab.get_active_pane_id(1), Some(d));
+    assert!(tab.is_fullscreen_active());
+
+    tab.toggle_active_pane_fullscreen(1);
+    tab.render(&mut output, None).unwrap();
+    tab.focus_pane_with_id(a, false, false, 1).unwrap();
+    assert!(tab.toggle_stack_list_orientation(1));
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.move_focus_down(1).unwrap());
+    assert_eq!(tab.get_active_pane_id(1), Some(b));
+    assert!(tab.is_fullscreen_active());
+}
+
+#[test]
+fn fullscreen_focus_move_keeps_fullscreen_when_the_tab_is_one_stack_list() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_orientation="horizontal" {
+                pane name="A" focus=true
+                pane name="B"
+                pane name="C"
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let members = tab.stack_lists.values().next().unwrap().members.clone();
+    let a = members[0];
+    let b = members[1];
+    assert_eq!(tab.get_active_pane_id(1), Some(a));
+
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active());
+
+    assert!(tab.move_focus_right(1).unwrap());
+    assert_eq!(tab.get_active_pane_id(1), Some(b));
+    assert!(tab.is_fullscreen_active());
+    assert!(tab.move_focus_left(1).unwrap());
+    assert_eq!(tab.get_active_pane_id(1), Some(a));
+    assert!(tab.is_fullscreen_active());
+}
+
+#[test]
+fn resize_after_fullscreen_focus_move_keeps_other_panes_hidden() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane split_direction="horizontal" {
+                pane stacked=true stack_orientation="horizontal" size="50%" {
+                    pane name="A" focus=true
+                    pane name="B"
+                    pane name="C"
+                }
+                pane name="D"
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None), (4, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let members = tab.stack_lists.values().next().unwrap().members.clone();
+    let b = members[1];
+
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.move_focus_right(1).unwrap());
+    assert_eq!(tab.get_active_pane_id(1), Some(b));
+    assert!(tab.is_fullscreen_active());
+
+    tab.resize(1, ResizeStrategy::new(Resize::Increase, None))
+        .unwrap();
+    assert!(tab.is_fullscreen_active());
+    assert_eq!(tab.tiled_panes.visible_panes_count(), 1);
+}
+
+#[test]
 fn stack_titles_are_found_and_toggled_through_any_member() {
     let size = Size {
         cols: 121,
@@ -19527,6 +19689,96 @@ fn a_middle_click_on_an_unselectable_plugin_pane_does_not_start_a_drag() {
     tab.handle_mouse_event(&MouseEvent::new_left_press_event(terminal_point), client_id)
         .unwrap();
     assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Terminal(1)));
+}
+
+fn mouse_event_kinds(events: &[zellij_utils::data::Mouse]) -> Vec<&'static str> {
+    use zellij_utils::data::Mouse;
+    events
+        .iter()
+        .filter_map(|event| match event {
+            Mouse::LeftClick(..) => Some("click"),
+            Mouse::Hold(..) => Some("hold"),
+            Mouse::Release(..) => Some("release"),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_client_leaving_mid_press_does_not_swallow_the_next_click_of_a_client_that_stays() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let leaving_client_id = 1;
+    let staying_client_id = 2;
+    let (mut tab, plugin_receiver) = tab_with_unselectable_plugin_pane(size, leaving_client_id);
+    tab.add_client(staying_client_id, None).unwrap();
+    let plugin_point = center_of_pane(&tab, PaneId::Plugin(7));
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(plugin_point),
+        leaving_client_id,
+    )
+    .unwrap();
+    assert!(tab.mouse_gesture_is_held());
+
+    // e.g. the plugin is a tab bar that switched this client to another tab, where its release goes
+    let drained = tab.drain_connected_clients(Some(vec![leaving_client_id]));
+    assert_eq!(drained.len(), 1);
+    assert!(!tab.mouse_gesture_is_held());
+
+    while plugin_receiver.try_recv().is_ok() {}
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(plugin_point),
+        staying_client_id,
+    )
+    .unwrap();
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 7);
+    assert_eq!(mouse_event_kinds(&events), vec!["click"], "{:?}", events);
+}
+
+#[test]
+fn a_drag_carries_on_when_another_client_leaves_the_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let dragging_client_id = 1;
+    let leaving_client_id = 2;
+    let (mut tab, plugin_receiver) = tab_with_unselectable_plugin_pane(size, dragging_client_id);
+    tab.add_client(leaving_client_id, None).unwrap();
+    let plugin_point = center_of_pane(&tab, PaneId::Plugin(7));
+    let moved_point = Position::new(
+        plugin_point.line() as i32,
+        (plugin_point.column() + 3) as u16,
+    );
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(plugin_point),
+        dragging_client_id,
+    )
+    .unwrap();
+
+    tab.drain_connected_clients(Some(vec![leaving_client_id]));
+    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Plugin(7)));
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_motion_event(moved_point),
+        dragging_client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_event(moved_point),
+        dragging_client_id,
+    )
+    .unwrap();
+    assert!(!tab.mouse_gesture_is_held());
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 7);
+    assert_eq!(
+        mouse_event_kinds(&events),
+        vec!["click", "hold", "release"],
+        "{:?}",
+        events
+    );
 }
 
 #[test]

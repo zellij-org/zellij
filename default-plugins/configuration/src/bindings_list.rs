@@ -4,9 +4,9 @@ use zellij_tile::prelude::*;
 
 use crate::page::{
     action_argument_range, action_display_text, actions_summary, changed_by, confirm_removals,
-    is_click, is_plain, is_shift_tab, markers, note_dropdown, outside_overlays, print_dim,
-    removal_confirmed, removal_prompt, truncate, typed, ColumnLayout, ColumnStyle, Effect,
-    PageResponse, RowLook, RowScroll, BESIDE_SHORT_FIELD, DIM, SHORT_FIELD_WIDTH,
+    is_click, is_delete_key, is_plain, is_shift_tab, markers, note_dropdown, outside_overlays,
+    print_dim, removal_confirmed, removal_prompt, truncate, typed, ColumnLayout, ColumnStyle,
+    Effect, PageResponse, RowLook, RowScroll, BESIDE_SHORT_FIELD, DIM, SHORT_FIELD_WIDTH,
     SHORT_LABEL_WIDTH,
 };
 
@@ -897,7 +897,7 @@ impl<E: ListEntry> BindingsList<E> {
             return ListResponse::Add;
         } else if is_plain(key, BareKey::Enter) {
             return ListResponse::Edit;
-        } else if is_plain(key, BareKey::Delete) {
+        } else if is_delete_key(key) {
             self.request_delete();
         } else if typed(key, 'r') {
             self.reset_selected();

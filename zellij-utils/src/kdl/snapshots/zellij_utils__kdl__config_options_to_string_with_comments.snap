@@ -321,6 +321,11 @@ web_sharing "disabled"
 // 
 // show_release_notes false
  
+// Whether to offer the desktop integration setup screen when a new session starts
+// Default: true
+// 
+// show_setup_screen false
+ 
 // Whether to enable mouse hover effects and pane grouping functionality
 // default is true
 // advanced_mouse_actions false
@@ -378,7 +383,7 @@ web_sharing "disabled"
 // (Requires restart)
 // web_server_port 8082
  
-// A command to run (will be wrapped with sh -c and provided the RESURRECT_COMMAND env variable) 
+// A command to run (will be wrapped with sh -c, or cmd /C on Windows, and provided the RESURRECT_COMMAND env variable) 
 // after Zellij attempts to discover a command inside a pane when resurrecting sessions, the STDOUT
 // of this command will be used instead of the discovered RESURRECT_COMMAND
 // can be useful for removing wrappers around commands

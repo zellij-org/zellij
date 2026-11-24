@@ -2,6 +2,7 @@ use crate::launch::hosted_by_the_app;
 use crate::launch::open;
 use crate::launch::run_app;
 use crate::launch::starting_folder;
+use crate::launch::window_request;
 use crate::{app, config, session};
 use anyhow::{anyhow, bail, Result};
 use zellij_utils::app_control::{AppRequest, OpenWindowRequest};
@@ -11,10 +12,13 @@ use zellij_utils::sessions::generate_unique_session_name;
 use zellij_utils::setup::Setup;
 
 pub(crate) fn terminal_requests(opts: &CliArgs) -> zellij_utils::input::terminal::TerminalRequests {
-    config::settings::load(Config::config_file_path(opts).as_deref())
-        .ok()
-        .and_then(|settings| settings.section.terminal_requests)
-        .unwrap_or_default()
+    config::settings::load(
+        Config::config_file_path(opts).as_deref(),
+        opts.config_dir.as_deref(),
+    )
+    .ok()
+    .and_then(|settings| settings.section.terminal_requests)
+    .unwrap_or_default()
 }
 
 pub(crate) fn run_waited(args: TerminalArgs, opts: CliArgs) -> Result<i32> {
@@ -23,10 +27,18 @@ pub(crate) fn run_waited(args: TerminalArgs, opts: CliArgs) -> Result<i32> {
         cwd: starting_folder(&args),
         hold: args.hold,
     };
-    if hosted_by_the_app(&args) && session::terminal_request::ensure_app_running() {
+    let hosted = hosted_by_the_app(&args)
+        && args.attach.remote_url().is_none()
+        && args.attach.index.is_none();
+    if hosted && session::terminal_request::ensure_app_running() {
+        let launched = window_request(&args);
         let request = OpenWindowRequest {
             startup_mode: args.startup_mode,
             force_run_commands: args.attach.force_run_commands,
+            rows: launched.rows,
+            cols: launched.cols,
+            options: launched.options,
+            env: session::spawn::launcher_env(),
             ..Default::default()
         };
         match session::terminal_request::run_in_app(&waited, terminal_requests(&opts), request) {
@@ -81,7 +93,10 @@ pub(crate) fn run_in_background(args: TerminalArgs, opts: CliArgs) -> Result<()>
         Ok((_, _, config_options, _, _)) => config_options,
         Err(e) => bail!("{}", crate::window::notice::described(&e)),
     };
-    let settings = config::settings::load(Config::config_file_path(&opts).as_deref())?;
+    let settings = config::settings::load(
+        Config::config_file_path(&opts).as_deref(),
+        opts.config_dir.as_deref(),
+    )?;
     let dir = zellij_utils::consts::app_dir();
     match app::control::instance::claim(
         &dir,

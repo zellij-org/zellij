@@ -3,6 +3,7 @@ pub mod blur;
 #[cfg_attr(windows, path = "os/windows.rs")]
 #[cfg_attr(not(windows), path = "os/unix.rs")]
 pub mod os;
+pub mod static_build;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {

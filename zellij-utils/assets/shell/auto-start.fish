@@ -6,7 +6,8 @@
 #     # set ZELLIJ_AUTO_EXIT true
 #     eval (zellij setup --generate-auto-start fish | string collect)
 # end
-if not set -q ZELLIJ
+# Only in interactive shells with a terminal.
+if not set -q ZELLIJ; and status is-interactive; and isatty stdin
     if test "$ZELLIJ_AUTO_ATTACH" = "true"
         zellij attach -c
     else

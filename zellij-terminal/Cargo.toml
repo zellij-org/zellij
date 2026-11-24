@@ -6,9 +6,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "The Zellij terminal, a native client for Zellij sessions"
+exclude = ["fixtures/", "assets/fonts/NotoColorEmoji.ttf", "assets/fonts/LICENSE-NotoColorEmoji.md"]
 
 [dependencies]
-zellij-client = { path = "../zellij-client/", version = "0.46.0" }
+zellij-client = { path = "../zellij-client/", version = "0.47.0" }
 zellij-utils = { workspace = true }
 anyhow = { workspace = true }
 interprocess = { workspace = true }
@@ -63,6 +64,7 @@ windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Graphic
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
+kdl = { workspace = true }
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"

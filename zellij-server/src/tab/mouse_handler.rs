@@ -589,18 +589,27 @@ impl MouseHandler {
         passthrough_pane_id: Option<PaneId>,
         mousebinds: Arc<Mousebinds>,
     ) -> Result<MouseEffect> {
+        let gesture_was_held = tab.tab_wide_mouse_gesture_is_held();
         let guest_modal_hover_changed = Self::update_guest_modal_hover(tab, event, client_id)?;
-        if let Some(effect) = Self::intercept_guest_modal_mouse_event(tab, event, client_id)? {
-            return Ok(effect);
+        let effect = match Self::intercept_guest_modal_mouse_event(tab, event, client_id)? {
+            Some(effect) => effect,
+            None => {
+                let mut effect = Self::handle_mouse_event_outside_guest_modal(
+                    tab,
+                    event,
+                    client_id,
+                    passthrough_pane_id,
+                    mousebinds,
+                )?;
+                effect.state_changed |= guest_modal_hover_changed;
+                effect
+            },
+        };
+        match (gesture_was_held, tab.tab_wide_mouse_gesture_is_held()) {
+            (false, true) => tab.mouse_gesture_owner = Some(client_id),
+            (_, false) => tab.mouse_gesture_owner = None,
+            (true, true) => {},
         }
-        let mut effect = Self::handle_mouse_event_outside_guest_modal(
-            tab,
-            event,
-            client_id,
-            passthrough_pane_id,
-            mousebinds,
-        )?;
-        effect.state_changed |= guest_modal_hover_changed;
         Ok(effect)
     }
 
@@ -1728,6 +1737,13 @@ impl MouseHandler {
             let relative_position = pane_at_position.relative_position(&position);
             pane_at_position.set_selection_options(osc133_command_selection, &word_separators);
             pane_at_position.start_selection(&relative_position, client_id);
+            let pane_id = pane_at_position.pid();
+            if click_event.left
+                && matches!(pane_id, PaneId::Plugin(_))
+                && !pane_at_position.supports_mouse_selection()
+            {
+                tab.selecting_with_mouse_in_pane = Some(pane_id);
+            }
             return Ok(MouseEffect::state_changed());
         }
 

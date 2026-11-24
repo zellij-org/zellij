@@ -58,9 +58,10 @@ use attributes::{
 };
 pub(crate) use attributes::{startup_attributes, WindowOptions};
 use platform::{
-    activate_app, is_wayland, named, set_accessory, set_option_as_alt, set_see_through,
-    skip_taskbar, square_without_system_border, tray_work_area, with_activation_token,
-    with_option_as_alt, Activation, Shell, WindowMemory,
+    activate_app, bring_opened_window_forward, created_hidden, is_wayland, named, set_accessory,
+    set_option_as_alt, set_see_through, show_cloaked, skip_taskbar, square_without_system_border,
+    tray_work_area, uncloak, with_activation_token, with_option_as_alt, Activation, Shell,
+    WindowMemory,
 };
 pub(crate) use run::{
     as_panel, run, run_desktop, run_notice, terminal_app, with_activation, TerminalWindow,
@@ -84,9 +85,9 @@ pub(crate) enum Wake {
 
 pub(crate) enum WindowWake {
     Frame(Vec<u8>),
-    Reconfigured(Settings),
     SettingsPushed(Settings),
     ThemeMode(HostTerminalThemeMode),
+    Renamed(String),
     Finished(Ending),
 }
 
@@ -193,16 +194,16 @@ impl RenderSink for ProxySink {
         true
     }
 
-    fn reconfigured(&mut self, settings: Settings) -> bool {
-        self.send(WindowWake::Reconfigured(settings))
-    }
-
     fn settings_pushed(&mut self, settings: Settings) -> bool {
         self.send(WindowWake::SettingsPushed(settings))
     }
 
     fn theme_mode(&mut self, mode: HostTerminalThemeMode) -> bool {
         self.send(WindowWake::ThemeMode(mode))
+    }
+
+    fn renamed(&mut self, name: String) -> bool {
+        self.send(WindowWake::Renamed(name))
     }
 }
 
@@ -236,6 +237,7 @@ pub(crate) struct App {
     origin: (i32, i32),
     clipboard: ClipboardHandle,
     title: String,
+    program_title: bool,
     session_name: String,
     remote_session: bool,
     notice: Option<Notice>,
@@ -271,6 +273,7 @@ struct Mouse {
     selection: Option<Selection>,
     selecting: bool,
     pointer_hidden: bool,
+    edge: Option<desktop::grips::Grip>,
 }
 
 struct Timing {
@@ -295,6 +298,7 @@ struct Appearance {
     border: Option<crate::emulation::color::Srgb>,
     transparency_available: bool,
     warned_opaque: bool,
+    undecorated: bool,
 }
 
 pub(crate) struct Session {
@@ -323,6 +327,10 @@ impl App {
     pub(crate) fn session_name(&self) -> Option<&str> {
         (self.sender.is_some() && !self.session_name.is_empty())
             .then_some(self.session_name.as_str())
+    }
+
+    pub(crate) fn local_session_name(&self) -> Option<&str> {
+        self.session_name().filter(|_| !self.remote_session)
     }
 
     pub(crate) fn take_failure(&mut self) -> Option<anyhow::Error> {
@@ -388,12 +396,12 @@ impl App {
     pub(crate) fn on_wake(&mut self, wake: WindowWake) -> Verdict {
         match wake {
             WindowWake::Frame(frame) => self.on_frame(&frame),
-            WindowWake::Reconfigured(settings) => self.reconfigured(settings),
             WindowWake::SettingsPushed(settings) => self.settings_pushed(settings),
             WindowWake::ThemeMode(mode) => {
                 self.theme_mode = Some(mode);
                 self.reapply(false);
             },
+            WindowWake::Renamed(name) => self.renamed(name),
             WindowWake::Finished(ending) => {
                 if self.session_ended(ending) {
                     return Verdict::Close;
@@ -447,8 +455,16 @@ impl App {
                     }
                 }
             },
-            WindowEvent::CursorMoved { position, .. } => self.on_cursor_moved(position),
-            WindowEvent::MouseInput { button, state, .. } => self.on_mouse_input(button, state),
+            WindowEvent::CursorMoved { position, .. } => {
+                if !self.hovering_edge(position) {
+                    self.on_cursor_moved(position);
+                }
+            },
+            WindowEvent::MouseInput { button, state, .. } => {
+                if !self.pressed_edge(button, state) {
+                    self.on_mouse_input(button, state);
+                }
+            },
             WindowEvent::MouseWheel { delta, phase, .. } => self.on_wheel(delta, phase),
             WindowEvent::CursorEntered { .. } => {
                 self.show_pointer();
@@ -457,6 +473,24 @@ impl App {
             },
             WindowEvent::CursorLeft { .. } => self.on_cursor_left(),
             WindowEvent::Ime(event) => self.on_ime(event),
+            // winit sends this on macOS, Windows and X11; we only receive it and never
+            // register anything ourselves.
+            //
+            // Wayland: winit 0.30 never sends it (no wl_data_device), so drops there do
+            // nothing; under XWayland (`WAYLAND_DISPLAY= zellij terminal`) they work.
+            // Two ways to fix it:
+            // - Move to winit 0.31, which reports Wayland drops through its new
+            //   drag-and-drop API (rust-windowing/winit#4571). Blocked for now: 0.31 is
+            //   still in beta, glutin-winit 0.5 only supports winit 0.30, and 0.31 reworks
+            //   the window, lifecycle and pointer APIs used all over this crate. A
+            //   backport to 0.30 was proposed and not merged (winit#4729, winit#4787).
+            // - Receive drops ourselves on winit's Wayland connection, the way
+            //   `wayland_activation` does: bind wl_data_device_manager per seat, accept
+            //   `text/uri-list`, read it off the main thread and decode the `file://`
+            //   URIs into paths for `dropped_file`. Delete that once on winit 0.31.
+            //   Note winit#4729: Hyprland only sends drags to a client's first data
+            //   device on a connection, so nothing else may bind one before it.
+            WindowEvent::DroppedFile(path) => self.dropped_file(&path),
             WindowEvent::Focused(true) => self.set_focused(true),
             WindowEvent::Focused(false) => {
                 self.set_focused(false);

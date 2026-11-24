@@ -65,10 +65,19 @@ struct PanelWindow {
     on_edge: bool,
 }
 
+/// Where the panel was and how big it was when it last closed, so it opens there again.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PanelFrame {
+    cols: usize,
+    rows: usize,
+    position: Option<(f64, f64)>,
+}
+
 struct Pending {
     prepared: PreparedWindow,
     anchor: Option<Anchor>,
     token: Option<String>,
+    position: Option<(f64, f64)>,
 }
 
 struct World<'a> {
@@ -80,7 +89,7 @@ impl Facts for World<'_> {
     fn session_of(&self, key: u64) -> Option<String> {
         self.windows
             .get(&key)
-            .and_then(|app| app.session_name().map(str::to_owned))
+            .and_then(|app| app.local_session_name().map(str::to_owned))
     }
     fn has_session(&self, name: &str) -> bool {
         self.background
@@ -104,6 +113,7 @@ pub(crate) struct Desktop {
     pending: HashMap<u64, Pending>,
     arrived: HashMap<u64, Connection>,
     panel: Option<PanelWindow>,
+    panel_frame: Option<PanelFrame>,
     activation: super::Activation,
 }
 
@@ -120,6 +130,7 @@ impl Desktop {
             pending: HashMap::new(),
             arrived: HashMap::new(),
             panel: None,
+            panel_frame: None,
             activation: super::Activation::new(),
         }
     }
@@ -213,7 +224,7 @@ impl Desktop {
             Effect::Discard { ticket } => self.discard(ticket),
             Effect::ClosePanel => self.close_panel(),
             Effect::ReleasePanel => {
-                if let Some(mut panel) = self.panel.take() {
+                if let Some(mut panel) = self.take_panel() {
                     if let Some(mut session) = panel.app.take_session() {
                         session.collect();
                     }
@@ -363,7 +374,7 @@ impl Desktop {
                 .windows
                 .values()
                 .map(|app| zellij_utils::app_control::WindowState {
-                    session: app.session_name().map(str::to_owned),
+                    session: app.local_session_name().map(str::to_owned),
                 })
                 .collect(),
             panel: self.conductor.panel_state(),
@@ -373,7 +384,8 @@ impl Desktop {
                 .conductor
                 .most_recent_window()
                 .and_then(|key| self.windows.get(&key))
-                .and_then(|app| app.session_name().map(str::to_owned)),
+                .and_then(|app| app.local_session_name().map(str::to_owned)),
+            version: Some(zellij_utils::consts::VERSION.to_owned()),
         }
     }
 
@@ -385,6 +397,9 @@ impl Desktop {
             Some(hosting) => {
                 hosting.background.start_on_main_thread();
                 let first = hosting.first.take();
+                // An opened file's window replaces the default one.
+                #[cfg(target_os = "macos")]
+                let first = first.filter(|_| !crate::app::desktop::macos_open::opened_any());
                 first.map(|intent| hosting.background.adjust_intent(intent))
             },
             None => None,

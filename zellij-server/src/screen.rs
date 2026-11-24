@@ -41,6 +41,7 @@ use crate::route::NotificationEnd;
 use crate::SharedKeybinds;
 
 mod attention;
+mod event_subscribers;
 mod hidden_bars;
 mod live_view;
 mod mirror;
@@ -1133,6 +1134,11 @@ pub enum ScreenInstruction {
     NotifyPaneClosedToSubscribers {
         pane_id: zellij_utils::data::PaneId,
     },
+    SubscribeToEvents {
+        client_id: ClientId,
+        filter: zellij_utils::session_events::CliEventFilter,
+    },
+    NotifyEventSubscribers(zellij_utils::session_events::CliEvent),
     MirrorAttach {
         subscriber_id: crate::pane_mirror::MirrorSubscriberId,
         attach: zellij_utils::pane_mirror::MirrorAttach,
@@ -1677,6 +1683,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::NotifyPaneClosedToSubscribers { .. } => {
                 ScreenContext::NotifyPaneClosedToSubscribers
             },
+            ScreenInstruction::SubscribeToEvents { .. } => ScreenContext::SubscribeToEvents,
+            ScreenInstruction::NotifyEventSubscribers(..) => ScreenContext::NotifyEventSubscribers,
             ScreenInstruction::MirrorAttach { .. }
             | ScreenInstruction::MirrorInput { .. }
             | ScreenInstruction::MirrorResize { .. }
@@ -2152,6 +2160,7 @@ pub(crate) struct Screen {
     cached_layouts: Vec<LayoutInfo>,
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
+    event_subscribers: event_subscribers::EventSubscribers,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
     last_reported_plugin_tab_indices: HashMap<PluginId, usize>,
     pub(crate) pending_session_card: Option<ClientId>,
@@ -2526,6 +2535,7 @@ impl Screen {
             cached_layouts: vec![],
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
+            event_subscribers: Default::default(),
             pane_mirrors: Default::default(),
             mirror_connector: Arc::new(zellij_utils::pane_mirror::LocalSocketConnector),
             live_views: Default::default(),
@@ -3080,6 +3090,7 @@ impl Screen {
             .with_context(err_context)?;
         if self.tabs.is_empty() {
             self.active_tab_ids.clear();
+            self.end_event_subscriptions();
             self.bus
                 .senders
                 .send_to_server(ServerInstruction::Render(None))
@@ -3728,8 +3739,12 @@ impl Screen {
                     continue;
                 }
                 if state.delivery_deadline_expired() {
+                    let sideband = structured_render::decode(frame)
+                        .map(|view| view.sideband().to_vec())
+                        .unwrap_or_default();
                     let size = state.size;
                     state.reset_viewport(size);
+                    state.overlay.keep_sideband(&sideband);
                     payloads.remove(&client_id);
                     abandoned.push(client_id);
                     continue;
@@ -3737,6 +3752,7 @@ impl Screen {
                 let view = structured_render::decode(frame)
                     .map_err(|e| anyhow!("{}: {}", err_context, e))?;
                 if !view.shifts().is_empty() {
+                    state.overlay.keep_sideband(view.sideband());
                     payloads.remove(&client_id);
                     abandoned.push(client_id);
                     shifted.push(client_id);
@@ -4889,7 +4905,8 @@ impl Screen {
             .len()
     }
 
-    fn end_session(&self) {
+    fn end_session(&mut self) {
+        self.end_event_subscriptions();
         let _ = self
             .bus
             .senders
@@ -7095,6 +7112,7 @@ impl Screen {
         self.client_display_slots.borrow_mut().remove(&client_id);
         self.release_structured_render_state(client_id);
         self.pane_render_subscribers.remove(&client_id);
+        self.event_subscribers.remove(&client_id);
         self.background_plugin_subscriptions
             .retain(|(_plugin_id, c_id), _subscriptions| c_id != &client_id);
         self.last_forwarded_osc7.remove(&client_id);
@@ -7504,6 +7522,7 @@ impl Screen {
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
+        self.report_to_event_subscribers(&pane_manifest);
 
         // Lazy-load layouts on first call if cache is empty
         // After that, cache is updated by watcher via UpdateAvailableLayouts instruction
@@ -8403,6 +8422,7 @@ impl Screen {
         }
         self.report_live_views();
         self.update_mode_hints(client_id);
+        self.report_mode_to_event_subscribers(client_id);
         Ok(())
     }
 
@@ -8804,21 +8824,17 @@ impl Screen {
         &mut self,
         terminal_pane_id: u32,
         completion_tx: Option<NotificationEnd>,
-    ) {
-        let mut found = false;
+    ) -> bool {
         for tab in self.tabs.values_mut() {
             if tab.has_pane_with_pid(&PaneId::Terminal(terminal_pane_id)) {
-                tab.rerun_terminal_pane_with_id(terminal_pane_id, completion_tx);
-                found = true;
-                break;
+                return tab.rerun_terminal_pane_with_id(terminal_pane_id, completion_tx);
             }
         }
-        if !found {
-            log::error!(
-                "Failed to find terminal pane with id: {} to run",
-                terminal_pane_id
-            );
-        }
+        log::error!(
+            "Failed to find terminal pane with id: {} to run",
+            terminal_pane_id
+        );
+        false
     }
     pub fn resize_pane_with_id(&mut self, resize: ResizeStrategy, pane_id: PaneId) {
         let mut resized_tab_id = None;
@@ -9374,9 +9390,10 @@ impl Screen {
             }
         }
         if title_changed {
-            self.generate_and_report_pane_state()
-                .map(|_| ())
-                .non_fatal();
+            match self.generate_and_report_pane_state() {
+                Ok(pane_manifest) => self.report_to_event_subscribers(&pane_manifest),
+                Err(e) => Err::<(), _>(e).non_fatal(),
+            }
         }
         if vte_bytes.is_none() {
             self.attention_output(pid);
@@ -10419,6 +10436,13 @@ impl Screen {
         active_tab.get_active_pane_id(*client_id)
     }
 
+    fn pane_title(&self, pane_id: PaneId) -> Option<String> {
+        self.tabs
+            .values()
+            .find_map(|tab| tab.get_pane_with_id(pane_id))
+            .map(|pane| pane.current_title())
+    }
+
     fn get_pane_info(&self, pane_id: PaneId) -> Option<PaneInfo> {
         // Search through all tabs to find the pane
         for tab in self.tabs.values() {
@@ -10861,6 +10885,16 @@ fn mark_action_as_failed(completion: &mut Option<NotificationEnd>, error_message
 // The box is here in order to make the
 // NewClient enum smaller
 #[allow(clippy::boxed_local)]
+fn ui_update_needed(result: Result<bool>) -> bool {
+    match result {
+        Ok(should_update_ui) => should_update_ui,
+        Err(e) => {
+            Err::<(), _>(e).non_fatal();
+            false
+        },
+    }
+}
+
 pub(crate) fn screen_thread_main(
     bus: Bus<ScreenInstruction>,
     max_panes: Option<usize>,
@@ -11097,6 +11131,7 @@ pub(crate) fn screen_thread_main(
             .context("failed to receive event on channel")?;
         let screen_context: ScreenContext = (&event).into();
         err_ctx.add_call(ContextType::Screen(screen_context));
+
         // here we start caching resizes, so that we'll send them in bulk at the end of each event
         // when this cache is Dropped, for more information, see the comments in PtyWriter
         let _resize_cache = ResizeCache::new(thread_senders.clone());
@@ -11403,7 +11438,9 @@ pub(crate) fn screen_thread_main(
                                 break;
                             }
                         }
-                        if !found {
+                        if found {
+                            screen.log_and_report_session_state()?;
+                        } else {
                             log::error!(
                                 "Could not find pane with id {:?} to replace",
                                 pane_id_to_replace
@@ -11677,6 +11714,9 @@ pub(crate) fn screen_thread_main(
                     }
                     screen.sync_scroll_mode_on_focus(client_id)?;
                     screen.render(None)?;
+                    if old_pane_id != new_pane_id {
+                        screen.log_and_report_session_state()?;
+                    }
                 }
             },
             ScreenInstruction::FocusPreviousPane(client_id, mut _completion_tx) => {
@@ -12719,16 +12759,25 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                if screen.undo_rename_of_target_pane(client_id) {
-                    screen.render(None)?;
-                    continue;
+                let renamed_pane_id = screen
+                    .rename_pane_targets
+                    .get(&client_id)
+                    .copied()
+                    .or_else(|| screen.get_active_pane_id(&client_id));
+                let title_before = renamed_pane_id.and_then(|p| screen.pane_title(p));
+                if !screen.undo_rename_of_target_pane(client_id) {
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, client_id: ClientId| tab
+                            .undo_active_rename_pane(client_id),
+                        ?
+                    );
                 }
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.undo_active_rename_pane(client_id), ?
-                );
                 screen.render(None)?;
+                if renamed_pane_id.and_then(|p| screen.pane_title(p)) != title_before {
+                    screen.log_and_report_session_state()?;
+                }
             },
             ScreenInstruction::ToggleActiveTerminalFullscreen(
                 client_id,
@@ -13341,8 +13390,10 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::SessionEnding => {
                 screen.end_mirrors_with_the_session();
+                screen.end_event_subscriptions();
             },
             ScreenInstruction::Exit => {
+                screen.end_event_subscriptions();
                 screen.close_all_mirror_subscribers(
                     zellij_utils::data::MirrorClosedReason::SessionEnding,
                 );
@@ -14882,7 +14933,9 @@ pub(crate) fn screen_thread_main(
                 screen.resolve_default_theme_mode().non_fatal();
             },
             ScreenInstruction::RerunCommandPane(terminal_pane_id, completion_tx) => {
-                screen.rerun_command_pane_with_id(terminal_pane_id, completion_tx)
+                if screen.rerun_command_pane_with_id(terminal_pane_id, completion_tx) {
+                    screen.log_and_report_session_state().non_fatal();
+                }
             },
             ScreenInstruction::ResizePaneWithId(resize, pane_id) => {
                 screen.resize_pane_with_id(resize, pane_id)
@@ -14899,24 +14952,36 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::WriteToPaneId(bytes, pane_id, _completion) => {
+                let mut should_update_ui = false;
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.write_to_pane_id(&None, bytes, false, pane_id, None, None)
-                            .non_fatal();
+                        if tab.is_pane_requesting_permissions(pane_id) {
+                            break;
+                        }
+                        should_update_ui = ui_update_needed(
+                            tab.write_to_pane_id(&None, bytes, false, pane_id, None, None),
+                        );
                         break;
                     }
                 }
                 screen.render(None)?;
+                if should_update_ui {
+                    screen.log_and_report_session_state()?;
+                }
             },
             ScreenInstruction::Paste(bytes, pane_id, client_id, _completion) => {
+                let mut should_update_ui = false;
                 match pane_id {
                     Some(pane_id) => {
                         let all_tabs = screen.get_tabs_mut();
                         for tab in all_tabs.values_mut() {
                             if tab.has_pane_with_pid(&pane_id) {
-                                tab.paste_to_pane_id(bytes, pane_id, _completion)
-                                    .non_fatal();
+                                should_update_ui = ui_update_needed(tab.paste_to_pane_id(
+                                    bytes,
+                                    pane_id,
+                                    _completion,
+                                ));
                                 break;
                             }
                         }
@@ -14927,13 +14992,19 @@ pub(crate) fn screen_thread_main(
                             screen,
                             client_id,
                             |tab: &mut Tab, _client_id: ClientId| {
-                                tab.paste_to_active_terminal(bytes, client_id, _completion)
-                                    .non_fatal();
+                                should_update_ui = ui_update_needed(tab.paste_to_active_terminal(
+                                    bytes,
+                                    client_id,
+                                    _completion,
+                                ));
                             }
                         );
                     },
                 }
                 screen.render(None)?;
+                if should_update_ui {
+                    screen.log_and_report_session_state()?;
+                }
             },
             ScreenInstruction::SetPaneColor(pane_id, fg, bg, _completion) => {
                 let all_tabs = screen.get_tabs_mut();
@@ -14952,22 +15023,29 @@ pub(crate) fn screen_thread_main(
                 pane_id,
                 _completion,
             ) => {
+                let mut should_update_ui = false;
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.write_to_pane_id(
+                        if tab.is_pane_requesting_permissions(pane_id) {
+                            break;
+                        }
+                        let write_result = tab.write_to_pane_id(
                             &key_with_modifier,
                             bytes,
                             is_kitty,
                             pane_id,
                             None, // client_id not needed for targeted write
                             None, // completion handled by instruction
-                        )
-                        .non_fatal();
+                        );
+                        should_update_ui = ui_update_needed(write_result);
                         break;
                     }
                 }
                 screen.render(None)?;
+                if should_update_ui {
+                    screen.log_and_report_session_state()?;
+                }
             },
             ScreenInstruction::CopyTextToClipboard(text, plugin_id) => {
                 let plugin_pane_id = PaneId::Plugin(plugin_id);
@@ -15135,14 +15213,19 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::TogglePaneIdFullscreen(pane_id) => {
+                let mut found = false;
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         tab.toggle_pane_fullscreen(pane_id);
+                        found = true;
                         break;
                     }
                 }
                 screen.render(None)?;
+                if found {
+                    screen.log_and_report_session_state()?;
+                }
             },
             ScreenInstruction::SetMobileRenderPreferences {
                 client_id,
@@ -15153,25 +15236,35 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(pane_id) => {
+                let mut found = false;
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         tab.toggle_pane_embed_or_floating_for_pane_id(pane_id, None)
                             .non_fatal();
+                        found = true;
                         break;
                     }
                 }
                 screen.render(None)?;
+                if found {
+                    screen.log_and_report_session_state()?;
+                }
             },
             ScreenInstruction::MovePaneBetweenLayersForPaneId(pane_id, client_id) => {
+                let mut found = false;
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
                         tab.move_pane_between_layers(pane_id, client_id).non_fatal();
+                        found = true;
                         break;
                     }
                 }
                 screen.render(None)?;
+                if found {
+                    screen.log_and_report_session_state()?;
+                }
             },
             ScreenInstruction::CloseTabWithIndex(tab_index) => {
                 // tab_index here means display position (0-based) per API convention
@@ -15282,6 +15375,7 @@ pub(crate) fn screen_thread_main(
                         );
                     }
                     screen.clear_pane_group(&client_id);
+                    screen.log_and_report_session_state().non_fatal();
                 }
             },
             ScreenInstruction::ChangeFloatingPanesCoordinates(
@@ -15585,7 +15679,9 @@ pub(crate) fn screen_thread_main(
                 screen.update_client_session_history(client_id, history);
             },
             ScreenInstruction::GoToNextAttention(client_id, mut completion) => {
-                if !screen.go_to_next_attention(client_id) {
+                if screen.go_to_next_attention(client_id) {
+                    screen.log_and_report_session_state().non_fatal();
+                } else {
                     completion.as_mut().map(|c| {
                         c.set_error_message("Nothing needs attention".to_owned());
                         c.set_exit_status(2)
@@ -15866,6 +15962,12 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::NotifyPaneClosedToSubscribers { pane_id } => {
                 screen.notify_pane_closed_to_subscribers(pane_id);
+            },
+            ScreenInstruction::SubscribeToEvents { client_id, filter } => {
+                screen.subscribe_to_events(client_id, filter);
+            },
+            ScreenInstruction::NotifyEventSubscribers(event) => {
+                screen.notify_event_subscribers(event);
             },
             ScreenInstruction::MirrorAttach {
                 subscriber_id,
@@ -16335,6 +16437,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::UndoRenamePaneWithPaneId(pane_id, mut _completion_tx) => {
+                let title_before = screen.pane_title(pane_id);
                 let all_tabs = screen.get_tabs_mut();
                 let mut found = false;
                 for tab in all_tabs.values_mut() {
@@ -16352,6 +16455,9 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.render(None)?;
+                if found && screen.pane_title(pane_id) != title_before {
+                    screen.log_and_report_session_state()?;
+                }
             },
             ScreenInstruction::TogglePanePinnedWithPaneId(pane_id, mut _completion_tx) => {
                 let all_tabs = screen.get_tabs_mut();

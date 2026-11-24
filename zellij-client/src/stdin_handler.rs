@@ -1,5 +1,5 @@
 use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
-use crate::os_input_output::ClientOsApi;
+use crate::os_input_output::{ClientOsApi, STDIN_EOF};
 #[cfg(windows)]
 use crate::os_input_output_windows::use_vt_path;
 use crate::stdin_ansi_parser::{HostReply, PendingPartial, StdinAnsiParser};
@@ -264,7 +264,12 @@ pub(crate) fn stdin_loop(
                         );
                     },
                     Err(e) => {
-                        if e == "Session ended" {
+                        if e == STDIN_EOF {
+                            log::info!("STDIN reached EOF, the host terminal is gone");
+                            let _ =
+                                send_input_instructions.send(InputInstruction::HostTerminalClosed);
+                            break;
+                        } else if e == "Session ended" {
                             log::debug!("Switched sessions, signing this thread off...");
                         } else {
                             log::error!("Failed to read from STDIN: {}", e);

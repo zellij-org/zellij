@@ -847,15 +847,20 @@ fn run_local_connection(
     sink: MirrorEventSink,
 ) {
     let socket_path = crate::consts::session_socket_path(&session);
-    let stream = match crate::consts::ipc_connect(&socket_path) {
-        Ok(stream) => stream,
+    #[cfg(windows)]
+    let connected = crate::pipe_pairs::connect_pair(&socket_path);
+    #[cfg(not(windows))]
+    let connected = crate::consts::ipc_connect(&socket_path);
+    #[cfg(windows)]
+    let (stream, reply_stream) = match connected {
+        Ok(pipes) => pipes,
         Err(e) => {
             sink(MirrorTransportEvent::ConnectFailed(e.to_string()));
             return;
         },
     };
-    #[cfg(windows)]
-    let reply_stream = match crate::consts::ipc_connect_reply(&socket_path) {
+    #[cfg(not(windows))]
+    let stream = match connected {
         Ok(stream) => stream,
         Err(e) => {
             sink(MirrorTransportEvent::ConnectFailed(e.to_string()));

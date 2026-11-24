@@ -68,7 +68,49 @@ pub fn check_soon(attention: &AttentionConfig) {
         });
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
+pub fn check_soon(attention: &AttentionConfig) {
+    if attention.desktop_notifications().is_empty() {
+        return;
+    }
+    let _ = std::thread::Builder::new()
+        .name("app_services".to_owned())
+        .spawn(|| {
+            let Ok(setting) = crate::app::desktop::notifier::notification_setting() else {
+                return;
+            };
+            let missing = notifications_off(setting).into_iter().collect();
+            let request =
+                zellij_utils::desktop_integration::Request::ReportMissingServices(missing);
+            let _ = zellij_utils::desktop_integration::handle_state_request(&request);
+        });
+}
+
+#[cfg(windows)]
+fn notifications_off(setting: windows::UI::Notifications::NotificationSetting) -> Option<String> {
+    use windows::UI::Notifications::NotificationSetting;
+    const WHERE: &str = "Turn them on in Settings > System > Notifications.";
+    match setting {
+        NotificationSetting::DisabledForApplication => Some(format!(
+            "Windows has notifications turned off for {}, so desktop notifications cannot \
+             appear. {}",
+            crate::config::identity::identity().display_name,
+            WHERE
+        )),
+        NotificationSetting::DisabledForUser => Some(format!(
+            "Windows has notifications turned off, so desktop notifications cannot appear. {}",
+            WHERE
+        )),
+        NotificationSetting::DisabledByGroupPolicy => Some(
+            "A group policy turns off Windows notifications, so desktop notifications cannot \
+             appear."
+                .to_owned(),
+        ),
+        _ => None,
+    }
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 pub fn check_soon(_attention: &AttentionConfig) {}
 
 #[cfg(test)]
@@ -84,5 +126,27 @@ mod tests {
         assert!(sway[0].contains("waybar"));
         assert!(sway[1].contains("mako"));
         assert!(missing_descriptions(false, false, None).is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn notifications_turned_off_in_windows_are_explained() {
+        use windows::UI::Notifications::NotificationSetting;
+        assert_eq!(notifications_off(NotificationSetting::Enabled), None);
+        let for_app = notifications_off(NotificationSetting::DisabledForApplication).unwrap();
+        assert!(for_app.contains("off for Zellij"), "{}", for_app);
+        assert!(
+            for_app.contains("Settings > System > Notifications"),
+            "{}",
+            for_app
+        );
+        let for_user = notifications_off(NotificationSetting::DisabledForUser).unwrap();
+        assert!(
+            for_user.contains("Settings > System > Notifications"),
+            "{}",
+            for_user
+        );
+        let policy = notifications_off(NotificationSetting::DisabledByGroupPolicy).unwrap();
+        assert!(policy.contains("group policy"), "{}", policy);
     }
 }
