@@ -263,7 +263,11 @@ fn link_urls_in_line(
         let text: String = cells[at..end].iter().map(|cell| cell.character).collect();
         let url = trim_trailing_punctuation(&text);
         let kept = url.chars().count();
-        if is_valid_url(url) {
+        // An OSC 8 link carries the full target, while the detected text can be cut
+        // or run past it, e.g. where the application wraps a line itself
+        if is_valid_url(url)
+            && !has_osc8_link(lines_above, viewport, &cells[at..at + kept], link_handler)
+        {
             let previous = start_anchor_at(lines_above, viewport, cells[at]);
             if !linked_exactly(lines_above, viewport, &cells[at..], kept, previous) {
                 let anchor = link_handler.new_link_from_url(url.to_owned());
@@ -275,6 +279,22 @@ fn link_urls_in_line(
         at = end + 1;
     }
     deferred
+}
+
+fn has_osc8_link(
+    lines_above: &VecDeque<Row>,
+    viewport: &VecDeque<Row>,
+    cells: &[Cell],
+    link_handler: &LinkHandler,
+) -> bool {
+    cells.iter().any(|cell| {
+        row_ref(lines_above, viewport, cell.y)
+            .and_then(|row| row.columns.get(cell.index))
+            .and_then(|character| character.styles.link_anchor)
+            .is_some_and(|anchor| {
+                matches!(anchor, LinkAnchor::Start(_)) && !link_handler.is_detected(anchor)
+            })
+    })
 }
 
 fn start_anchor_at(
@@ -754,5 +774,43 @@ mod tests {
         assert!(is_valid_url("https://sub.domain.example.com/path"));
         assert!(!is_valid_url("https://"));
         assert!(!is_valid_url("short"));
+    }
+
+    #[test]
+    fn a_detected_url_does_not_replace_the_osc8_link_of_its_cells() {
+        // Neovim wraps a long OSC 8 link itself in a split window. The first row
+        // shows the start of the url, then the split border and the other window
+        let shown = "https://example.com/a/very/long/";
+        let mut viewport = screen(
+            &[
+                (&format!("{}│fn main() {{}}", shown), true),
+                (&format!("{:32}│", "path"), true),
+            ],
+            50,
+        );
+        let mut handler = LinkHandler::new();
+        let link = handler
+            .dispatch_osc8(&[b"8", b"", b"https://example.com/a/very/long/path"])
+            .expect("an osc 8 anchor");
+        for (y, len) in [(0, shown.len()), (1, "path".len())] {
+            for column in &mut viewport[y].columns[..len] {
+                column
+                    .styles
+                    .update(|styles| styles.link_anchor = Some(link));
+            }
+            viewport[y].columns[len]
+                .styles
+                .update(|styles| styles.link_anchor = Some(LinkAnchor::End));
+        }
+        link_all(&mut VecDeque::new(), &mut viewport, None, &mut handler);
+        let marked = anchors(&viewport[0]);
+        assert!(
+            marked[..shown.len()]
+                .iter()
+                .all(|anchor| *anchor == Some(link)),
+            "the detected url replaced the link the application set: {:?}",
+            &marked[..shown.len()]
+        );
+        assert_eq!(handler.links().len(), 1);
     }
 }
