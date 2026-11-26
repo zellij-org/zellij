@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix: send an empty paste when the clipboard holds an image on macOS, so programs like Claude Code can paste it (https://github.com/zellij-org/zellij/pull/5996)
 
 ## [0.46.1] - 2026-11-24
 * fix: "Show inbox" opens the inbox even when it's empty (https://github.com/zellij-org/zellij/pull/5869)
