@@ -9,6 +9,7 @@ fix: render after toggling pane pin mode (https://github.com/zellij-org/zellij/p
 fix: break tabs by position rather than index (https://github.com/zellij-org/zellij/pull/5990)
 fix: reload config when starting new sessions from the desktop (https://github.com/zellij-org/zellij/pull/6006)
 fix: new pane cwd in resurrected sessions (https://github.com/zellij-org/zellij/pull/6007)
+* fix: let programs in the macOS app ask for microphone access (https://github.com/zellij-org/zellij/pull/6001)
 
 ## [0.46.1] - 2026-11-24
 * fix: "Show inbox" opens the inbox even when it's empty (https://github.com/zellij-org/zellij/pull/5869)
