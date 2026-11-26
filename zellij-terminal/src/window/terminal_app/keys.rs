@@ -192,8 +192,14 @@ impl App {
 
     pub(in crate::window) fn paste(&mut self) {
         self.set_selection(None);
-        let Some(chars) = self.with_clipboard(|clipboard| clipboard.get()).flatten() else {
-            return;
+        let chars = match self.with_clipboard(|clipboard| clipboard.get()).flatten() {
+            Some(chars) => chars,
+            // An image can't be pasted as text, but programs that read images from the
+            // clipboard themselves (Claude Code, for one) take an empty paste as the cue to.
+            None if self.with_clipboard(|clipboard| clipboard.holds_image()) == Some(true) => {
+                String::new()
+            },
+            None => return,
         };
         if let Err(e) = self.tell(clipboard::paste_message(chars)) {
             report!("failed to send a paste: {}", e);
