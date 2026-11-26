@@ -20,6 +20,7 @@ pub trait SystemClipboard: Send {
     fn get_text(&mut self) -> Result<String, arboard::Error>;
     fn get_primary(&mut self) -> Option<String>;
     fn set_primary(&mut self, text: &str);
+    fn holds_image(&mut self) -> bool;
 }
 
 impl SystemClipboard for arboard::Clipboard {
@@ -37,6 +38,10 @@ impl SystemClipboard for arboard::Clipboard {
 
     fn set_primary(&mut self, text: &str) {
         set_primary_text(self, text)
+    }
+
+    fn holds_image(&mut self) -> bool {
+        image_on_clipboard()
     }
 }
 
@@ -194,6 +199,13 @@ impl Clipboard {
             },
         }
     }
+
+    pub fn holds_image(&mut self) -> bool {
+        match &mut self.backend {
+            Backend::System(clipboard) => clipboard.holds_image(),
+            Backend::Memory { .. } => false,
+        }
+    }
 }
 
 fn is_connection_failure(error: &arboard::Error) -> bool {
@@ -233,6 +245,21 @@ fn set_primary_text(_clipboard: &mut arboard::Clipboard, _text: &str) {}
 #[cfg(not(freedesktop))]
 fn primary_text(_clipboard: &mut arboard::Clipboard) -> Option<String> {
     None
+}
+
+#[cfg(target_os = "macos")]
+fn image_on_clipboard() -> bool {
+    use objc2_app_kit::{NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeTIFF};
+    use objc2_foundation::NSArray;
+    let types = NSArray::from_slice(unsafe { &[NSPasteboardTypePNG, NSPasteboardTypeTIFF] });
+    NSPasteboard::generalPasteboard()
+        .availableTypeFromArray(&types)
+        .is_some()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn image_on_clipboard() -> bool {
+    false
 }
 
 fn reported(read: Result<String, arboard::Error>, announce_empty: bool) -> Option<String> {
@@ -355,6 +382,7 @@ mod tests {
         refused_opens: usize,
         lost_connections: usize,
         text: String,
+        image: bool,
     }
 
     struct FakeConnection {
@@ -392,6 +420,10 @@ mod tests {
         }
 
         fn set_primary(&mut self, _text: &str) {}
+
+        fn holds_image(&mut self) -> bool {
+            self.system.lock().unwrap().image
+        }
     }
 
     fn fake_system(system: &Arc<Mutex<FakeSystem>>) -> Clipboard {
@@ -479,6 +511,22 @@ mod tests {
         let mut clipboard = fake_system(&system);
         assert_eq!(clipboard.get(), None);
         assert_eq!(system.lock().unwrap().opens, 1);
+    }
+
+    #[test]
+    fn an_image_on_a_system_clipboard_without_text_is_noticed() {
+        let system = Arc::new(Mutex::new(FakeSystem {
+            image: true,
+            ..FakeSystem::default()
+        }));
+        let mut clipboard = fake_system(&system);
+        assert_eq!(clipboard.get(), None);
+        assert!(clipboard.holds_image());
+    }
+
+    #[test]
+    fn a_clipboard_kept_in_the_window_never_holds_an_image() {
+        assert!(!Clipboard::in_memory().holds_image());
     }
 
     #[test]

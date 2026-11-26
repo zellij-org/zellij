@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::config::window_state;
 use crate::config::window_state::WindowState;
 use crate::emulation::color::Paints;
-use crate::input::clipboard::Clipboard;
+use crate::input::clipboard::{Clipboard, SystemClipboard};
 use crate::session::connection::{test_attach_at as attach_at, Capabilities, Connection};
 use crate::testing::test_server::FakeServer;
 use crate::text::font::test_helpers::pixels_to_points;
@@ -108,6 +108,14 @@ impl Harness {
     }
 
     fn with(expected: usize, options: Options, clipboard_text: &str) -> Self {
+        let mut owned = Clipboard::in_memory();
+        if !clipboard_text.is_empty() {
+            owned.set(clipboard_text);
+        }
+        Self::with_clipboard(expected, options, owned)
+    }
+
+    fn with_clipboard(expected: usize, options: Options, owned: Clipboard) -> Self {
         let total = HANDSHAKE + expected;
         let server = FakeServer::spawn(move |side| side.expect(total));
         let connection = attach_at(
@@ -118,10 +126,6 @@ impl Harness {
         )
         .unwrap();
 
-        let mut owned = Clipboard::in_memory();
-        if !clipboard_text.is_empty() {
-            owned.set(clipboard_text);
-        }
         let clipboard: ClipboardHandle = Arc::new(Mutex::new(owned));
 
         let fonts = options.font.stack(1.0).unwrap();
@@ -979,6 +983,74 @@ fn an_empty_clipboard_sends_no_paste_at_all() {
     harness.app.modifiers = ModifiersState::empty();
     harness.press(&character("a"));
     assert_eq!(harness.sent().len(), 1);
+}
+
+struct ImageOnTheClipboard {
+    text: String,
+}
+
+impl SystemClipboard for ImageOnTheClipboard {
+    fn set_text(&mut self, text: &str) -> Result<(), arboard::Error> {
+        self.text = text.to_owned();
+        Ok(())
+    }
+
+    fn get_text(&mut self) -> Result<String, arboard::Error> {
+        if self.text.is_empty() {
+            Err(arboard::Error::ContentNotAvailable)
+        } else {
+            Ok(self.text.clone())
+        }
+    }
+
+    fn get_primary(&mut self) -> Option<String> {
+        None
+    }
+
+    fn set_primary(&mut self, _text: &str) {}
+
+    fn holds_image(&mut self) -> bool {
+        true
+    }
+}
+
+fn clipboard_with_an_image(text: &'static str) -> Clipboard {
+    Clipboard::open_with(Box::new(move || {
+        Ok(Box::new(ImageOnTheClipboard {
+            text: text.to_owned(),
+        }) as Box<dyn SystemClipboard>)
+    }))
+}
+
+#[test]
+fn an_image_on_the_clipboard_is_pasted_as_an_empty_paste() {
+    let mut harness = Harness::with_clipboard(1, test_options(true), clipboard_with_an_image(""));
+    harness.app.modifiers = ModifiersState::CONTROL | ModifiersState::SHIFT;
+    harness.press(&character("V"));
+    harness.app.modifiers = ModifiersState::empty();
+    harness.press(&character("a"));
+    assert_eq!(
+        harness.actions(),
+        vec![Action::Paste {
+            chars: String::new(),
+            pane_id: None
+        }]
+    );
+}
+
+#[test]
+fn text_beside_an_image_on_the_clipboard_is_pasted_as_text() {
+    let mut harness =
+        Harness::with_clipboard(1, test_options(true), clipboard_with_an_image("caption"));
+    harness.app.modifiers = ModifiersState::CONTROL | ModifiersState::SHIFT;
+    harness.press(&character("V"));
+    assert_eq!(
+        harness.actions(),
+        vec![Action::Paste {
+            chars: "caption".to_owned(),
+            pane_id: None
+        }]
+    );
 }
 
 #[test]
