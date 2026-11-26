@@ -3579,6 +3579,56 @@ mod pacing {
             crate::render::pacing::interval_of(Some(60_000))
         );
     }
+
+    #[test]
+    fn frames_that_reach_a_hidden_window_are_drawn_once_it_shows() {
+        let mut harness = Harness::new(1, true, "");
+        let _ = rebuilt_rows(&mut harness);
+        let drawn = Instant::now();
+        harness.app.timing.pacer.drawn(drawn);
+        harness.app.on_window_event(WindowEvent::Occluded(true));
+
+        painted(&mut harness, 1, "one");
+        let soon = drawn + Duration::from_micros(500);
+        assert_eq!(
+            harness.app.wake_deadline(soon),
+            None,
+            "a hidden window must not ask to draw"
+        );
+
+        harness.app.on_window_event(WindowEvent::Occluded(false));
+        assert_eq!(
+            harness.app.wake_deadline(soon),
+            Some(drawn + harness.app.timing.pacer.interval())
+        );
+        assert_eq!(
+            rebuilt_rows(&mut harness),
+            vec![1],
+            "the draw owed must carry the row written while the window was hidden"
+        );
+    }
+
+    #[test]
+    fn a_hidden_window_stops_blinking_until_it_shows() {
+        let mut harness = Harness::new(1, true, "");
+        harness.app.options.cursor_blink = Some(true);
+        let size = harness.app.state.size();
+        let frame = crate::testing::painter::Painter::frame(size.rows, size.cols, |painter| {
+            painter.cursor(0, 0, crate::emulation::screen_buffer::CursorShape::Block)
+        });
+        harness.app.on_frame(&frame);
+        assert!(harness.app.anything_blinks());
+        let due = harness.app.blink_deadline();
+        let phase = harness.app.timing.blink;
+
+        harness.app.on_window_event(WindowEvent::Occluded(true));
+        assert_eq!(harness.app.wake_deadline(due), None);
+        assert_eq!(harness.app.timing.blink, phase);
+
+        harness.app.on_window_event(WindowEvent::Occluded(false));
+        assert!(harness.app.wake_deadline(due).is_some());
+        assert_ne!(harness.app.timing.blink, phase);
+    }
 }
 
 mod smooth_scrolling {

@@ -46,6 +46,13 @@ impl App {
         self.timing.pacer.schedule();
     }
 
+    pub(in crate::window) fn set_occluded(&mut self, occluded: bool) {
+        self.timing.occluded = occluded;
+        if !occluded {
+            self.schedule_draw();
+        }
+    }
+
     pub(in crate::window) fn follow_cursor_area(&mut self) {
         let (row, col) = self.state.cursor_position();
         let area = (
