@@ -344,6 +344,7 @@ impl Rendering {
                 blink_since: Instant::now(),
                 pacer: Pacer::new(None),
                 display_checked: Instant::now(),
+                occluded: false,
             },
             placement: Placement {
                 startup: self.startup,

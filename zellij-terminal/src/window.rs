@@ -281,6 +281,7 @@ struct Timing {
     blink_since: Instant,
     pacer: Pacer,
     display_checked: Instant,
+    occluded: bool,
 }
 
 struct Placement {
@@ -497,6 +498,7 @@ impl App {
                 self.stop_composing();
                 self.on_focus_lost();
             },
+            WindowEvent::Occluded(occluded) => self.set_occluded(occluded),
             WindowEvent::RedrawRequested => self.draw(),
             // Quitting from the Dock or at logout, macOS closes every window before the
             // app hears of it, while each can still be asked about itself. Elsewhere the
@@ -515,6 +517,11 @@ impl App {
     pub(crate) fn wake_deadline(&mut self, now: Instant) -> Option<Instant> {
         let gliding = self.advance_momentum(now);
         self.advance_scroll_animations(now);
+        // Nothing drawn in a fully hidden window is seen, so frames and blinking wait until
+        // it shows again. winit reports this on macOS and X11, not on Wayland or Windows.
+        if self.timing.occluded {
+            return None;
+        }
         let blinks = self.anything_blinks();
         if blinks && now >= self.blink_deadline() {
             self.advance_blink();
