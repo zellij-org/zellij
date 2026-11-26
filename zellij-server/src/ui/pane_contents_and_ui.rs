@@ -224,6 +224,10 @@ impl<'a> PaneContentsAndUi<'a> {
                     );
                 }
             }
+        } else if let Some(deadline) = self.pane.synchronized_render_deadline() {
+            // The pane still needs a render even if the application emits no more bytes.
+            let pending = &mut self.output.synchronized_render_deadline;
+            *pending = Some(pending.map_or(deadline, |previous| previous.min(deadline)));
         }
         Ok(())
     }

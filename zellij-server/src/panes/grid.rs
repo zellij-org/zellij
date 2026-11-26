@@ -5001,10 +5001,13 @@ impl Grid {
         self.lock_renders = false;
         self.render_lock_opened_at = None;
     }
-    fn render_lock_outlived_its_cap(&self) -> bool {
+    pub(crate) fn synchronized_render_deadline(&self) -> Option<std::time::Instant> {
         self.render_lock_opened_at
-            .map(|opened_at| opened_at.elapsed() >= SYNCHRONIZED_UPDATE_CAP)
-            .unwrap_or(false)
+            .map(|opened_at| opened_at + SYNCHRONIZED_UPDATE_CAP)
+    }
+    fn render_lock_outlived_its_cap(&self) -> bool {
+        self.synchronized_render_deadline()
+            .is_some_and(|deadline| std::time::Instant::now() >= deadline)
     }
     pub fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme.clone();

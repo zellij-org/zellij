@@ -361,6 +361,13 @@ impl Pane for TerminalPane {
     fn is_mid_frame(&self) -> bool {
         self.grid.is_mid_frame()
     }
+    fn synchronized_render_deadline(&self) -> Option<std::time::Instant> {
+        if self.should_render() && self.get_content_rows() > 0 && self.get_content_columns() > 0 {
+            self.grid.synchronized_render_deadline()
+        } else {
+            None
+        }
+    }
     fn adjust_input_to_terminal(
         &mut self,
         key_with_modifier: &Option<KeyWithModifier>,
