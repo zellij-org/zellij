@@ -6,10 +6,10 @@ use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use zellij_utils::cli::PromptCli;
-use zellij_utils::data::Palette;
+use zellij_utils::data::{NewPanePlacement, Palette, UnblockCondition};
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::actions::Action;
-use zellij_utils::ipc::{ClientToServerMsg, ServerToClientMsg};
+use zellij_utils::ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg};
 use zellij_utils::pane_size::Size;
 use zellij_utils::prompt::PromptElement;
 
@@ -77,12 +77,10 @@ impl ClientOsApi for ScriptedOsApi {
         Box::new(self.clone())
     }
     fn send_to_server(&self, msg: ClientToServerMsg) {
-        if let ClientToServerMsg::Action {
-            action: Action::CliPipe { payload, .. },
-            ..
-        } = msg
-        {
-            self.sent_payloads.lock().unwrap().push(payload);
+        if let ClientToServerMsg::Action { action, .. } = msg {
+            if let Action::CliPipe { payload, .. } = action {
+                self.sent_payloads.lock().unwrap().push(payload);
+            }
             if let Some(replies) = self.replies.lock().unwrap().pop_front() {
                 self.inbox.lock().unwrap().extend(replies);
             }
@@ -158,6 +156,63 @@ fn output(text: &str) -> ServerToClientMsg {
 
 fn run(os_api: &ScriptedOsApi, action: Action) -> i32 {
     start_cli_client(Box::new(os_api.clone()), "session", vec![action])
+}
+
+fn blocking_pane(unblock_condition: Option<UnblockCondition>) -> Action {
+    Action::NewBlockingPane {
+        placement: NewPanePlacement::default(),
+        pane_name: None,
+        command: None,
+        unblock_condition,
+        near_current_pane: false,
+        no_focus: false,
+        tab_id: None,
+    }
+}
+
+#[test]
+fn plain_blocking_panes_wait_for_the_target_to_exit() {
+    let os_api = ScriptedOsApi::new(
+        None,
+        vec![vec![
+            ServerToClientMsg::UnblockInputThread,
+            ServerToClientMsg::Exit {
+                exit_reason: ExitReason::CustomExitStatus(7),
+            },
+        ]],
+    );
+    assert_eq!(run(&os_api, blocking_pane(None)), 7);
+}
+
+#[test]
+fn conditional_blocking_panes_still_wait_for_the_target_to_exit() {
+    let os_api = ScriptedOsApi::new(
+        None,
+        vec![vec![
+            ServerToClientMsg::UnblockInputThread,
+            ServerToClientMsg::Exit {
+                exit_reason: ExitReason::CustomExitStatus(9),
+            },
+        ]],
+    );
+    assert_eq!(
+        run(&os_api, blocking_pane(Some(UnblockCondition::OnAnyExit))),
+        9
+    );
+}
+
+#[test]
+fn nonblocking_actions_return_on_the_per_message_unblock() {
+    let os_api = ScriptedOsApi::new(None, vec![vec![ServerToClientMsg::UnblockInputThread]]);
+    assert_eq!(
+        run(
+            &os_api,
+            Action::WriteChars {
+                chars: "x".to_owned(),
+            }
+        ),
+        0
+    );
 }
 
 #[test]
