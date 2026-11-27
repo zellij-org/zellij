@@ -127,7 +127,7 @@ jobs:
           }
 
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Install Protoc
         shell: bash
@@ -366,7 +366,7 @@ jobs:
           }
 
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Install Protoc
         shell: bash
