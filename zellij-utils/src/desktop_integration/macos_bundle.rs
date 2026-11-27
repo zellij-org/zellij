@@ -294,6 +294,9 @@ fn is_leftover(name: &str) -> bool {
     })
 }
 
+// macOS asks the app that started a program, not the program, whether it may use the
+// microphone. Without NSMicrophoneUsageDescription it refuses every program in the app
+// without asking, and they record silence.
 fn info_plist(source: Build) -> String {
     let (source_len, source_modified) = (source.len, source.modified);
     let id = xml_escape(app_id());
@@ -326,6 +329,8 @@ fn info_plist(source: Build) -> String {
     <true/>
     <key>LSMinimumSystemVersion</key>
     <string>{MINIMUM_SYSTEM_VERSION}</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>A program running in {name} would like to use the microphone.</string>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>
