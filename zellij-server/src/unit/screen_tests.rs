@@ -16098,7 +16098,104 @@ pub fn moving_a_plugin_to_the_tab_of_a_client_without_a_tab_keeps_the_plugin() {
 }
 
 #[test]
-pub fn breaking_panes_to_a_tab_that_cannot_be_found_returns_them() {
+pub fn breaking_panes_to_a_tab_index_uses_the_tab_position_not_the_tab_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    // Tab ids 0, 1, 2 at positions 0, 1, 2.
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    // Moving tab 0 to the end decouples ids from positions: tab 1 is at position 0,
+    // tab 2 at position 1 and tab 0 at position 2. Resolving the destination by id
+    // would pick the source tab instead of the tab at the requested position.
+    assert!(screen.move_tab_to_position(0, 2));
+    let pane_to_move = PaneId::Terminal(4);
+    screen
+        .tabs
+        .get_mut(&1)
+        .unwrap()
+        .new_pane(
+            pane_to_move,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    screen
+        .break_multiple_panes_to_tab_with_index(vec![pane_to_move], 1, false, 1)
+        .unwrap();
+    assert!(
+        screen
+            .tabs
+            .get(&2)
+            .unwrap()
+            .get_all_pane_ids()
+            .contains(&pane_to_move),
+        "the pane moved to the tab at position 1 (tab id 2)"
+    );
+    assert!(
+        !screen
+            .tabs
+            .get(&1)
+            .unwrap()
+            .get_all_pane_ids()
+            .contains(&pane_to_move),
+        "the pane did not stay in the tab whose id equals the position"
+    );
+}
+
+#[test]
+pub fn breaking_panes_to_a_tab_id_still_uses_the_tab_id() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    // After the move tab 0 is at position 2, so resolving the destination by
+    // position instead of by id would pick tab 2.
+    assert!(screen.move_tab_to_position(0, 2));
+    let pane_to_move = PaneId::Terminal(4);
+    screen
+        .tabs
+        .get_mut(&1)
+        .unwrap()
+        .new_pane(
+            pane_to_move,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    screen
+        .break_multiple_panes_to_tab_with_id(vec![pane_to_move], 0, false, 1)
+        .unwrap();
+    assert!(
+        screen
+            .tabs
+            .get(&0)
+            .unwrap()
+            .get_all_pane_ids()
+            .contains(&pane_to_move),
+        "the pane moved to the tab with id 0"
+    );
+}
+
+#[test]
+pub fn breaking_panes_to_a_tab_position_that_does_not_exist_leaves_them_in_place() {
     let size = Size {
         cols: 121,
         rows: 20,
@@ -16123,13 +16220,58 @@ pub fn breaking_panes_to_a_tab_that_cannot_be_found_returns_them() {
         )
         .unwrap();
     screen.close_tab_by_id(0).unwrap();
-    assert!(screen.get_indexed_tab_mut(0).is_none());
-    screen
-        .break_multiple_panes_to_tab_with_index(vec![PaneId::Terminal(4)], 0, false, 1)
+    let target_tab_id = screen
+        .break_multiple_panes_to_tab_with_index(vec![PaneId::Terminal(4)], 2, false, 1)
         .unwrap();
+    assert_eq!(target_tab_id, None, "no tab is at position 2");
     assert!(
-        screen.has_pane_with_pid(&PaneId::Terminal(4)),
-        "the pane is returned instead of being lost"
+        screen
+            .tabs
+            .get(&2)
+            .unwrap()
+            .get_all_pane_ids()
+            .contains(&PaneId::Terminal(4)),
+        "the pane stays in its original tab"
+    );
+}
+
+#[test]
+pub fn breaking_panes_to_a_tab_id_that_does_not_exist_leaves_them_in_place() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen
+        .tabs
+        .get_mut(&1)
+        .unwrap()
+        .new_pane(
+            PaneId::Terminal(4),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    screen.close_tab_by_id(0).unwrap();
+    let target_tab_id = screen
+        .break_multiple_panes_to_tab_with_id(vec![PaneId::Terminal(4)], 0, false, 1)
+        .unwrap();
+    assert_eq!(target_tab_id, None, "tab id 0 was closed");
+    assert!(
+        screen
+            .tabs
+            .get(&1)
+            .unwrap()
+            .get_all_pane_ids()
+            .contains(&PaneId::Terminal(4)),
+        "the pane stays in its original tab"
     );
 }
 
