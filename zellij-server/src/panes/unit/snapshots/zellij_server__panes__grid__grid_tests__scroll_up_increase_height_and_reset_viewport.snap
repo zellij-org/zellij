@@ -1,0 +1,19 @@
+---
+source: zellij-server/src/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+---
+00 (C): line 1
+01 (C): line 2
+02 (C): line 3
+03 (C): line 4
+04 (C): line 5
+05 (C): Line 6
+06 (C): line 7
+07 (C): line 8
+08 (C): line 9
+09 (C): line 10
+10 (C): line 11 end
+11 (C): 
+12 (C): 
+13 (C): 
+14 (C):
