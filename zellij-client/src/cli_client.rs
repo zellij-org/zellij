@@ -256,7 +256,6 @@ pub(crate) fn next_payload(
 fn drive_streaming_pipe(
     os_input: &mut Box<dyn ClientOsApi>,
     request: &PipeRequest,
-    first_payload: Option<String>,
     separator: u8,
     batch: bool,
 ) -> i32 {
@@ -265,11 +264,6 @@ fn drive_streaming_pipe(
         let sender = sender.clone();
         let stdin_os_input = os_input.box_clone();
         std::thread::spawn(move || {
-            if let Some(payload) = first_payload {
-                if sender.send(PipeEvent::Payload(Some(payload))).is_err() {
-                    return;
-                }
-            }
             let payloads = StdinPayloads {
                 reader: stdin_os_input.get_stdin_reader(),
                 separator,
@@ -379,11 +373,14 @@ fn pipe_client(
     payload: Option<String>,
 ) -> i32 {
     let request = request.prepare();
-    let is_piped = !os_input.stdin_is_terminal();
-    if !is_piped {
+    // `--help` promises that STDIN is only listened to when the payload is blank, so a payload
+    // given on the command line is always sent on its own - even when STDIN happens to be a pipe
+    // (eg. `/dev/null` from a program spawning us). Otherwise the plugin would get the payload
+    // followed by an empty end-of-STDIN message, see #6008.
+    if payload.is_some() || os_input.stdin_is_terminal() {
         return drive_pipe(os_input, &request, std::iter::once(payload));
     }
-    drive_streaming_pipe(os_input, &request, payload, b'\n', false)
+    drive_streaming_pipe(os_input, &request, b'\n', false)
 }
 
 pub fn start_prompt_client(
@@ -460,13 +457,9 @@ pub fn start_prompt_client(
         PromptInput::Single(payload) => {
             drive_pipe(&mut os_input, &request, std::iter::once(payload))
         },
-        PromptInput::StreamStdin { null } => drive_streaming_pipe(
-            &mut os_input,
-            &request,
-            None,
-            if null { 0 } else { b'\n' },
-            true,
-        ),
+        PromptInput::StreamStdin { null } => {
+            drive_streaming_pipe(&mut os_input, &request, if null { 0 } else { b'\n' }, true)
+        },
     };
     os_input.send_to_server(ClientToServerMsg::ClientExited);
     exit_status
