@@ -203,8 +203,12 @@ impl Dimension {
             },
             Constraint::Fixed(fixed) => {
                 let split_out_value = fixed / by as usize;
+                let split_out_inner_value = self.inner / by as usize;
                 self.constraint = Constraint::Fixed(fixed - split_out_value);
-                Self::fixed(split_out_value)
+                self.inner = self.inner.saturating_sub(split_out_inner_value);
+                let mut split_out_dimension = Self::fixed(split_out_value);
+                split_out_dimension.inner = split_out_inner_value;
+                split_out_dimension
             },
         }
     }
@@ -510,5 +514,138 @@ impl From<&Size> for PaneGeom {
             cols,
             ..Default::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::input::layout::PercentOrFixed;
+
+    #[test]
+    fn adjust_inner_percent_rounds_down_and_reports_leftover() {
+        let mut dimension = Dimension::percent(50.0);
+        let leftover = dimension.adjust_inner(11);
+        // 50% of 11 is 5.5; inner must floor to 5, and the leftover is what floor()
+        // dropped. If this ever rounds instead of flooring, this pane would claim a
+        // cell its sibling also thinks it owns.
+        assert_eq!(dimension.as_usize(), 5);
+        assert!((leftover - (-0.5)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn adjust_inner_percent_exact_has_no_leftover() {
+        let mut dimension = Dimension::percent(100.0);
+        let leftover = dimension.adjust_inner(10);
+        assert_eq!(dimension.as_usize(), 10);
+        assert_eq!(leftover, 0.0);
+    }
+
+    #[test]
+    fn adjust_inner_fixed_ignores_full_size_and_has_no_leftover() {
+        let mut dimension = Dimension::fixed(7);
+        let leftover = dimension.adjust_inner(1000);
+        assert_eq!(dimension.as_usize(), 7);
+        assert_eq!(leftover, 0.0);
+    }
+
+    #[test]
+    fn decrease_inner_saturates_instead_of_underflowing() {
+        let mut dimension = Dimension::fixed(5);
+        dimension.decrease_inner(3);
+        assert_eq!(dimension.as_usize(), 2);
+        // Shrinking by more than the current size must clamp to 0, not panic on a
+        // usize underflow (fixed-size panes are shrunk directly by consumers, e.g.
+        // when a neighboring pane grows).
+        dimension.decrease_inner(10);
+        assert_eq!(dimension.as_usize(), 0);
+    }
+
+    #[test]
+    fn split_out_percent_conserves_total_inner_size() {
+        let mut dimension = Dimension::percent(100.0);
+        dimension.set_inner(10);
+        let split_off = dimension.split_out(3.0);
+        // An uneven split (100% / 3) must still add back up to the original 10
+        // cells - if it doesn't, splitting a pane loses or duplicates columns/rows
+        // between the two resulting panes.
+        assert_eq!(dimension.as_usize() + split_off.as_usize(), 10);
+        assert_eq!(split_off.as_usize(), 3);
+        assert_eq!(dimension.as_usize(), 7);
+        assert!((dimension.as_percent().unwrap() - (200.0 / 3.0)).abs() < 1e-9);
+        assert!((split_off.as_percent().unwrap() - (100.0 / 3.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn split_out_fixed_conserves_total_inner_size() {
+        let mut dimension = Dimension::fixed(11);
+        let split_off = dimension.split_out(2.0);
+        assert_eq!(dimension.as_usize() + split_off.as_usize(), 11);
+        assert_eq!(split_off.as_usize(), 5);
+        assert_eq!(dimension.as_usize(), 6);
+    }
+
+    #[test]
+    fn apply_floating_pane_position_centers_when_only_size_is_given() {
+        let mut geom = PaneGeom::default();
+        geom.apply_floating_pane_position(
+            None,
+            None,
+            Some(PercentOrFixed::Fixed(10)),
+            Some(PercentOrFixed::Fixed(4)),
+            40,
+            20,
+        );
+        // With no explicit x/y, a floating pane that only specifies a size must be
+        // centered in the viewport - this is the fallback layout new floating panes
+        // rely on when the user hasn't pinned a position.
+        assert_eq!(geom.cols.as_usize(), 10);
+        assert_eq!(geom.rows.as_usize(), 4);
+        assert_eq!(geom.x, 15);
+        assert_eq!(geom.y, 8);
+    }
+
+    #[test]
+    fn apply_floating_pane_position_honors_explicit_position() {
+        let mut geom = PaneGeom::default();
+        geom.apply_floating_pane_position(
+            Some(PercentOrFixed::Fixed(5)),
+            Some(PercentOrFixed::Fixed(3)),
+            None,
+            None,
+            40,
+            20,
+        );
+        // An explicit fixed x/y must be used as-is, not overridden by the centering
+        // fallback (that fallback only applies when x/y are unset).
+        assert_eq!(geom.x, 5);
+        assert_eq!(geom.y, 3);
+    }
+
+    #[test]
+    fn combine_vertically_with_sums_percent_and_inner() {
+        let mut top = PaneGeom::default();
+        top.rows = Dimension::percent(30.0);
+        top.rows.set_inner(3);
+        let mut bottom = PaneGeom::default();
+        bottom.rows = Dimension::percent(20.0);
+        bottom.rows.set_inner(2);
+
+        let combined = top.combine_vertically_with(&bottom).unwrap();
+        assert_eq!(combined.rows.as_percent(), Some(50.0));
+        assert_eq!(combined.rows.as_usize(), 5);
+    }
+
+    #[test]
+    fn combine_vertically_with_fixed_panes_returns_none() {
+        let mut top = PaneGeom::default();
+        top.rows = Dimension::fixed(3);
+        let mut bottom = PaneGeom::default();
+        bottom.rows = Dimension::fixed(2);
+
+        // Fixed-size panes can't be losslessly combined into one constraint, so
+        // this must return None rather than silently picking one side's size -
+        // callers rely on the None to know the merge isn't valid here.
+        assert!(top.combine_vertically_with(&bottom).is_none());
     }
 }
