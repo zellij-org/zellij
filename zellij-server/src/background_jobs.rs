@@ -1248,7 +1248,7 @@ pub fn write_session_state_to_disk(
 
 pub fn scan_session_list(
     current_session_name: &str,
-    available_layouts: &[LayoutInfo],
+    current_session_info: Option<&SessionInfo>,
     current_session_plugin_list: &BTreeMap<PluginId, RunPlugin>,
     sock_dir: &Path,
     session_info_cache_dir: &Path,
@@ -1258,10 +1258,17 @@ pub fn scan_session_list(
         sock_dir,
         session_info_cache_dir,
     );
-    for (name, info) in session_infos_on_machine.iter_mut() {
-        if name == current_session_name {
+    if let Some(current_session_info) = current_session_info {
+        if let Some(info) = session_infos_on_machine.get_mut(current_session_name) {
             info.populate_plugin_list(current_session_plugin_list.clone());
-            info.available_layouts = available_layouts.to_vec();
+            info.available_layouts = current_session_info.available_layouts.clone();
+        } else {
+            // The session info cache can briefly lag behind right after startup. The
+            // current session info is already available in memory, so ensure it is
+            // included even if the scan did not find it yet.
+            let mut current_session_info = current_session_info.clone();
+            current_session_info.populate_plugin_list(current_session_plugin_list.clone());
+            session_infos_on_machine.insert(current_session_name.to_owned(), current_session_info);
         }
     }
     let resurrectable_sessions =
@@ -1271,12 +1278,12 @@ pub fn scan_session_list(
 
 pub fn scan_session_list_default_dirs(
     current_session_name: &str,
-    available_layouts: &[LayoutInfo],
+    current_session_info: Option<&SessionInfo>,
     current_session_plugin_list: &BTreeMap<PluginId, RunPlugin>,
 ) -> (BTreeMap<String, SessionInfo>, BTreeMap<String, Duration>) {
     scan_session_list(
         current_session_name,
-        available_layouts,
+        current_session_info,
         current_session_plugin_list,
         &*ZELLIJ_SOCK_DIR,
         &*ZELLIJ_SESSION_INFO_CACHE_DIR,
@@ -1404,7 +1411,7 @@ mod tests {
         let info_dir = tempdir().unwrap();
         let (live, resurrectable) = scan_session_list(
             "me",
-            &[],
+            None,
             &BTreeMap::new(),
             sock_dir.path(),
             info_dir.path(),
@@ -1423,7 +1430,7 @@ mod tests {
 
         let (live, resurrectable) = scan_session_list(
             "me",
-            &[],
+            None,
             &BTreeMap::new(),
             sock_dir.path(),
             info_dir.path(),
@@ -1441,7 +1448,7 @@ mod tests {
 
         let (live, resurrectable) = scan_session_list(
             "me",
-            &[],
+            None,
             &BTreeMap::new(),
             sock_dir.path(),
             info_dir.path(),
@@ -1449,6 +1456,25 @@ mod tests {
         assert!(live.is_empty());
         assert_eq!(resurrectable.len(), 1);
         assert!(resurrectable.contains_key("dead-beta"));
+    }
+
+    #[test]
+    fn scan_session_list_includes_current_session_when_scan_misses_it() {
+        let sock_dir = tempdir().unwrap();
+        let info_dir = tempdir().unwrap();
+        let current_session_info = SessionInfo::new("me".to_string());
+
+        let (live, resurrectable) = scan_session_list(
+            "me",
+            Some(&current_session_info),
+            &BTreeMap::new(),
+            sock_dir.path(),
+            info_dir.path(),
+        );
+
+        assert_eq!(live.len(), 1);
+        assert!(live.contains_key("me"));
+        assert!(resurrectable.is_empty());
     }
 
     #[test]
@@ -1466,7 +1492,7 @@ mod tests {
 
         let (live, resurrectable) = scan_session_list(
             "me",
-            &[],
+            None,
             &BTreeMap::new(),
             sock_dir.path(),
             info_dir.path(),
@@ -1497,7 +1523,7 @@ mod tests {
 
         let (live, resurrectable) = scan_session_list(
             "me",
-            &[],
+            None,
             &BTreeMap::new(),
             sock_dir.path(),
             info_dir.path(),
