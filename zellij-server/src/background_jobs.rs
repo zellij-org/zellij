@@ -74,6 +74,7 @@ pub enum BackgroundJob {
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
     RenderToClientsNow,
+    RenderToClientsAt(Instant),
     QueryZellijWebServerStatus,
     ClearHelpText {
         client_id: ClientId,
@@ -129,9 +130,9 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::RunInBackground { .. } => BackgroundJobContext::RunInBackground,
             BackgroundJob::WebRequest(..) => BackgroundJobContext::WebRequest,
             BackgroundJob::ReportPluginList(..) => BackgroundJobContext::ReportPluginList,
-            BackgroundJob::RenderToClients | BackgroundJob::RenderToClientsNow => {
-                BackgroundJobContext::RenderToClients
-            },
+            BackgroundJob::RenderToClients
+            | BackgroundJob::RenderToClientsNow
+            | BackgroundJob::RenderToClientsAt(_) => BackgroundJobContext::RenderToClients,
             BackgroundJob::HighlightPanesWithMessage(..) => {
                 BackgroundJobContext::HighlightPanesWithMessage
             },
@@ -213,6 +214,7 @@ impl PendingRender {
 #[derive(Debug, Default)]
 struct RenderSchedule {
     pending: Option<PendingRender>,
+    deferred_at: Option<Instant>,
     exiting: bool,
 }
 
@@ -250,17 +252,32 @@ impl RenderSchedule {
         }
     }
 
+    fn request_at(&mut self, deadline: Instant) -> bool {
+        if self.deferred_at.is_some_and(|pending| pending <= deadline) {
+            return false;
+        }
+        self.deferred_at = Some(deadline);
+        true
+    }
+
     fn step(&mut self, now: Instant) -> RenderStep {
         if self.exiting {
             return RenderStep::Exit;
         }
-        match self.pending {
+        let normal_due = self.pending.map(|pending| pending.due());
+        let next_due = normal_due.into_iter().chain(self.deferred_at).min();
+        match next_due {
             None => RenderStep::Idle,
-            Some(pending) if now >= pending.due() => {
-                self.pending = None;
+            Some(deadline) if deadline > now => RenderStep::WaitFor(deadline - now),
+            Some(_) => {
+                if normal_due.is_some_and(|due| due <= now) {
+                    self.pending = None;
+                }
+                if self.deferred_at.is_some_and(|due| due <= now) {
+                    self.deferred_at = None;
+                }
                 RenderStep::Render
             },
-            Some(pending) => RenderStep::WaitFor(pending.due() - now),
         }
     }
 }
@@ -692,6 +709,12 @@ pub(crate) fn background_jobs_main(
             BackgroundJob::RenderToClients => {
                 let (lock, wake) = &*render_schedule;
                 if lock.lock().unwrap().request(Instant::now()) {
+                    wake.notify_one();
+                }
+            },
+            BackgroundJob::RenderToClientsAt(deadline) => {
+                let (lock, wake) = &*render_schedule;
+                if lock.lock().unwrap().request_at(deadline) {
                     wake.notify_one();
                 }
             },
@@ -1542,6 +1565,27 @@ async fn run_in_background(
 #[cfg(test)]
 mod render_schedule_tests {
     use super::*;
+
+    #[test]
+    fn ordinary_render_does_not_consume_a_pending_synchronized_update_deadline() {
+        let start = Instant::now();
+        let first_deadline = start + Duration::from_millis(150);
+        let later_deadline = first_deadline + Duration::from_millis(25);
+        let mut schedule = RenderSchedule::default();
+
+        assert!(schedule.request_at(later_deadline));
+        assert!(schedule.request_at(first_deadline));
+        assert!(!schedule.request_at(later_deadline));
+        schedule.request_now(start);
+        assert_eq!(schedule.step(start), RenderStep::Render);
+        assert_eq!(
+            schedule.step(start),
+            RenderStep::WaitFor(first_deadline - start)
+        );
+
+        assert_eq!(schedule.step(first_deadline), RenderStep::Render);
+        assert_eq!(schedule.step(first_deadline), RenderStep::Idle);
+    }
 
     #[test]
     fn a_lone_request_renders_after_the_quiet_period() {

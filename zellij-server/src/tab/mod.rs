@@ -567,6 +567,9 @@ pub trait Pane {
     fn is_mid_frame(&self) -> bool {
         false
     }
+    fn synchronized_render_deadline(&self) -> Option<std::time::Instant> {
+        None
+    }
     fn adjust_input_to_terminal(
         &mut self,
         _key_with_modifier: &Option<KeyWithModifier>,

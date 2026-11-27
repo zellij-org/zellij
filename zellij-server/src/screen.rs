@@ -5938,6 +5938,12 @@ impl Screen {
                 }
             }
 
+            if let Some(deadline) = output.synchronized_render_deadline {
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::RenderToClientsAt(deadline));
+            }
             let pane_render_report = output.drain_pane_render_report();
 
             // Subscriber delivery — gated behind is_empty() for zero overhead
@@ -6130,6 +6136,13 @@ impl Screen {
                     tab.render(&mut watcher_output, Some(followed_client_id))
                         .context(err_context)
                         .non_fatal();
+                }
+
+                if let Some(deadline) = watcher_output.synchronized_render_deadline {
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_background_jobs(BackgroundJob::RenderToClientsAt(deadline));
                 }
 
                 // Send the rendered output to all watcher clients
