@@ -61,10 +61,11 @@ pub fn serialize_session_layout(
             KdlValue::Bool(true),
         ));
     }
-    if let Some(global_cwd) = serialize_global_cwd(&global_layout_manifest.global_cwd) {
-        layout_node_children.nodes_mut().push(global_cwd);
-    }
-    match serialize_multiple_tabs(global_layout_manifest.tabs, &mut pane_contents) {
+    match serialize_multiple_tabs(
+        global_layout_manifest.tabs,
+        &global_layout_manifest.global_cwd,
+        &mut pane_contents,
+    ) {
         Ok(mut serialized_tabs) => {
             layout_node_children
                 .nodes_mut()
@@ -100,6 +101,7 @@ fn serialize_tab(
     is_focused: bool,
     hide_floating_panes: bool,
     attention_muted: bool,
+    cwd: &Option<PathBuf>,
     tiled_panes: &Vec<PaneLayoutManifest>,
     floating_panes: &Vec<PaneLayoutManifest>,
     pane_contents: &mut BTreeMap<String, String>,
@@ -113,6 +115,12 @@ fn serialize_tab(
             serialized_tab
                 .entries_mut()
                 .push(KdlEntry::new_prop("name", tab_name));
+            if let Some(cwd) = cwd {
+                serialized_tab.entries_mut().push(KdlEntry::new_prop(
+                    "cwd",
+                    escape_dollar_signs(&cwd.display().to_string()),
+                ));
+            }
             if is_focused {
                 serialized_tab
                     .entries_mut()
@@ -585,14 +593,6 @@ fn serialize_start_suspended(command: &Option<String>, pane_node_children: &mut 
     }
 }
 
-fn serialize_global_cwd(global_cwd: &Option<PathBuf>) -> Option<KdlNode> {
-    global_cwd.as_ref().map(|cwd| {
-        let mut node = KdlNode::new("cwd");
-        node.push(escape_dollar_signs(&cwd.display().to_string()));
-        node
-    })
-}
-
 fn escape_dollar_signs(value: &str) -> String {
     value.replace('$', "$$")
 }
@@ -720,6 +720,7 @@ fn serialize_swap_floating_layouts(
 
 fn serialize_multiple_tabs(
     tabs: Vec<(String, TabLayoutManifest)>,
+    cwd: &Option<PathBuf>,
     pane_contents: &mut BTreeMap<String, String>,
 ) -> Result<Vec<KdlNode>, &'static str> {
     let mut serialized_tabs: Vec<KdlNode> = vec![];
@@ -732,6 +733,7 @@ fn serialize_multiple_tabs(
             tab_layout_manifest.is_focused,
             hide_floating_panes,
             tab_layout_manifest.attention_muted,
+            cwd,
             &tiled_panes,
             &floating_panes,
             pane_contents,
@@ -1497,10 +1499,63 @@ mod tests {
     fn global_cwd() {
         let global_layout_manifest = GlobalLayoutManifest {
             global_cwd: Some(PathBuf::from("/path/to/m\"y/global cwd")),
+            tabs: vec![(
+                "tab".to_owned(),
+                TabLayoutManifest {
+                    tiled_panes: vec![PaneLayoutManifest {
+                        geom: round_trip_geom(0, 0, Dimension::fixed(10), Dimension::fixed(10)),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            )],
             ..Default::default()
         };
         let kdl = serialize_session_layout(global_layout_manifest).unwrap();
         assert_snapshot!(kdl.0);
+    }
+
+    #[test]
+    fn global_cwd_is_not_applied_to_new_tab_template_after_round_trip() {
+        let default_layout = crate::input::layout::Layout::from_kdl(
+            "layout { pane; }",
+            Some("layout".to_owned()),
+            None,
+            None,
+        )
+        .unwrap();
+        let global_layout_manifest = GlobalLayoutManifest {
+            global_cwd: Some(PathBuf::from("/tmp/session-root")),
+            default_layout: Box::new(default_layout),
+            tabs: vec![(
+                "tab".to_owned(),
+                TabLayoutManifest {
+                    tiled_panes: vec![PaneLayoutManifest {
+                        geom: round_trip_geom(0, 0, Dimension::fixed(10), Dimension::fixed(10)),
+                        cwd: Some(PathBuf::from("sub")),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            )],
+            ..Default::default()
+        };
+        let (kdl, layout) = serialize_and_parse(global_layout_manifest);
+        let (template_tiled, template_floating) = layout.new_tab();
+        assert!(
+            template_tiled
+                .extract_run_instructions()
+                .iter()
+                .all(|r| r.is_none()),
+            "new tab template should not carry a cwd:\n{}",
+            kdl
+        );
+        assert!(template_floating.iter().all(|f| f.run.is_none()));
+        let (_, tiled, _) = layout.tabs().into_iter().next().unwrap();
+        assert_eq!(
+            tiled.children[0].run,
+            Some(Run::Cwd(PathBuf::from("/tmp/session-root/sub")))
+        );
     }
 
     #[test]
