@@ -2636,6 +2636,7 @@ impl TryFrom<Action> for ProtobufAction {
             }
             | Action::Deny
             | Action::Copy
+            | Action::SmartCopy
             | Action::DumpLayout
             | Action::CliPipe { .. }
             | Action::ListClients

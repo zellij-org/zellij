@@ -222,6 +222,7 @@ message Action {
     LaunchPluginAction launch_plugin = 56;
     MouseEventAction mouse_event = 57;
     CopyAction copy = 58;
+    SmartCopyAction smart_copy = 140;
     ConfirmAction confirm = 59;
     DenyAction deny = 60;
     SkipConfirmAction skip_confirm = 61;
@@ -425,6 +426,7 @@ message SetDarkThemeAction {}
 message SetLightThemeAction {}
 message ToggleThemeAction {}
 message CopyAction {}
+message SmartCopyAction {}
 message ConfirmAction {}
 message DenyAction {}
 message ToggleMouseModeAction {}
