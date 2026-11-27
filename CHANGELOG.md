@@ -55,6 +55,7 @@ fix: break tabs by position rather than index (https://github.com/zellij-org/zel
 * fix: do not reuse client ids (https://github.com/zellij-org/zellij/pull/5630)
 * feat: nested sessions input-mode + keybindings reporting (https://github.com/zellij-org/zellij/issues/5561)
 * fix: control characters occasionally appearing in panes on startup (https://github.com/zellij-org/zellij/pull/5655)
+* fix: host terminal replies leaking into the focused pane on reattach over slow links (https://github.com/zellij-org/zellij/pull/5695)
 * fix: group bar-plugins on viewport edge for layout purposes (https://github.com/zellij-org/zellij/pull/5653)
 * fix: resize state and correctness (https://github.com/zellij-org/zellij/pull/5656)
 * fix: compress kitty images if the host terminal supports it (https://github.com/zellij-org/zellij/pull/5608)
