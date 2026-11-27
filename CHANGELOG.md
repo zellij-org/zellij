@@ -5,10 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
-fix: render after toggling pane pin mode (https://github.com/zellij-org/zellij/pull/5978)
-fix: break tabs by position rather than index (https://github.com/zellij-org/zellij/pull/5990)
-fix: reload config when starting new sessions from the desktop (https://github.com/zellij-org/zellij/pull/6006)
-fix: new pane cwd in resurrected sessions (https://github.com/zellij-org/zellij/pull/6007)
+* fix: render after toggling pane pin mode (https://github.com/zellij-org/zellij/pull/5978)
+* fix: break tabs by position rather than index (https://github.com/zellij-org/zellij/pull/5990)
+* fix: reload config when starting new sessions from the desktop (https://github.com/zellij-org/zellij/pull/6006)
+* fix: new pane cwd in resurrected sessions (https://github.com/zellij-org/zellij/pull/6007)
 * fix: let programs in the macOS app ask for microphone access (https://github.com/zellij-org/zellij/pull/6001)
 
 ## [0.46.1] - 2026-11-24
