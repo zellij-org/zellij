@@ -13,6 +13,8 @@ pub struct LinkHandler {
 pub struct Link {
     pub id: Option<String>,
     pub uri: String,
+    /// Set for a url the hyperlink tracker found in the text, unset for an OSC 8 link
+    pub detected: bool,
 }
 
 impl LinkHandler {
@@ -46,7 +48,14 @@ impl LinkHandler {
                     }
                 }
                 let anchor = LinkAnchor::Start(self.link_index);
-                self.links.insert(self.link_index, Link { id, uri });
+                self.links.insert(
+                    self.link_index,
+                    Link {
+                        id,
+                        uri,
+                        detected: false,
+                    },
+                );
                 self.link_index += 1;
                 anchor
             })
@@ -63,10 +72,18 @@ impl LinkHandler {
             Link {
                 id: Some(self.link_index.to_string()),
                 uri: url,
+                detected: true,
             },
         );
         self.link_index += 1;
         anchor
+    }
+
+    pub fn is_detected(&self, link_anchor: LinkAnchor) -> bool {
+        match link_anchor {
+            LinkAnchor::Start(index) => self.links.get(&index).is_some_and(|link| link.detected),
+            LinkAnchor::End => false,
+        }
     }
 
     pub fn uri(&self, link_anchor: Option<LinkAnchor>) -> Option<&str> {
