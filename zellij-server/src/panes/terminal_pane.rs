@@ -802,6 +802,14 @@ impl Pane for TerminalPane {
     fn dump_screen_with_ansi(&self, full: bool, _client_id: Option<ClientId>) -> String {
         self.grid.dump_screen_with_ansi(full)
     }
+    fn scrollback_editor_snapshot(
+        &self,
+        ansi: bool,
+        _client_id: Option<ClientId>,
+    ) -> (String, Option<usize>) {
+        let (contents, line_number) = self.grid.scrollback_editor_snapshot(ansi);
+        (contents, Some(line_number))
+    }
     fn preview_with_anchor(
         &self,
         anchor: zellij_utils::data::PreviewAnchor,
