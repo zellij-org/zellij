@@ -9,7 +9,11 @@
 # Only in interactive shells with a terminal.
 if not set -q ZELLIJ; and status is-interactive; and isatty stdin
     if test "$ZELLIJ_AUTO_ATTACH" = "true"
-        zellij attach -c
+        if not set -q ZELLIJ_AUTO_ATTACH_SESSION_NAME
+            zellij attach -c
+        else
+            zellij attach -c $ZELLIJ_AUTO_ATTACH_SESSION_NAME
+        end
     else
         zellij
     end
