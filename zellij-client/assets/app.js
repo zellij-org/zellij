@@ -565,8 +565,40 @@ function initTerminal(config) {
     });
     term.loadAddon(webglAddon);
     term.open(document.getElementById("terminal"));
+    // Take pastes before xterm.js's own handler (capture phase) so they go
+    // through pasteIntoTerminal.
+    term.element.addEventListener(
+        "paste",
+        (ev) => {
+            const text =
+                ev.clipboardData && ev.clipboardData.getData("text/plain");
+            if (!text) {
+                return;
+            }
+            ev.preventDefault();
+            ev.stopPropagation();
+            pasteIntoTerminal(term, text);
+        },
+        true
+    );
     term.focus();
     return { term, fitAddon };
+}
+
+/**
+ * Paste text into the terminal through xterm.js.
+ *
+ * The bundled xterm.js wraps a bracketed paste as ESC[200~ + text + ESC[201~
+ * without touching the text, so pasted text that contains ESC[201~ would end the
+ * paste early and the rest would reach the program as typed keys. Like newer
+ * xterm.js releases, replace ESC with U+241B (␛) in a bracketed paste.
+ * @param {Terminal} term
+ * @param {string} text
+ */
+function pasteIntoTerminal(term, text) {
+    const bracketed =
+        term.modes.bracketedPasteMode && !term.options.ignoreBracketedPasteMode;
+    term.paste(bracketed ? text.replace(/\x1b/g, "\u241b") : text);
 }
 
 const MIN_FONT_SIZE_PX = 6;
@@ -642,6 +674,7 @@ function installImeBypass(term, sendFunction) {
     };
     attach();
 }
+
 function isCoarsePointerDevice() {
     if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
         return true;
@@ -840,7 +873,7 @@ function installSoftKeyboardCapture(term, sendFunction) {
             return;
         }
         ev.preventDefault();
-        term.paste(text);
+        pasteIntoTerminal(term, text);
     });
 
     // The input event only sees keys that edit the text, so named keys such as F2, Home or

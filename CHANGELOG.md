@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: reload config when starting new sessions from the desktop (https://github.com/zellij-org/zellij/pull/6006)
 * fix: new pane cwd in resurrected sessions (https://github.com/zellij-org/zellij/pull/6007)
 * fix: let programs in the macOS app ask for microphone access (https://github.com/zellij-org/zellij/pull/6001)
+* fix: escape ESC in bracketed pastes from the web client, so pasted text can't end the paste early (https://github.com/zellij-org/zellij/pull/6015)
 
 ## [0.46.1] - 2026-11-24
 * fix: "Show inbox" opens the inbox even when it's empty (https://github.com/zellij-org/zellij/pull/5869)
