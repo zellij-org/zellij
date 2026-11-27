@@ -662,6 +662,10 @@ impl WasmBridge {
             self.unload_shared_slot(pid);
             return Ok(());
         }
+        self.cached_events_for_pending_plugins.remove(&pid);
+        self.cached_resizes_for_pending_plugins.remove(&pid);
+        self.cached_worker_messages.remove(&pid);
+        self.plugin_ids_waiting_for_permission_request.remove(&pid);
         if self
             .loading_plugins
             .iter()
@@ -1550,6 +1554,13 @@ impl WasmBridge {
     ) -> Result<()> {
         let mut applied_plugin_paths = HashSet::new();
         for plugin_id in plugin_ids {
+            if self.plugins_to_unload_once_loaded.contains(&plugin_id) {
+                if !done_receiving_permissions {
+                    self.plugins_to_unload_once_loaded.remove(&plugin_id);
+                    self.unload_plugin(plugin_id).non_fatal();
+                }
+                continue;
+            }
             if !done_receiving_permissions
                 && self
                     .plugin_ids_waiting_for_permission_request
@@ -1566,9 +1577,6 @@ impl WasmBridge {
             self.loading_plugins
                 .retain(|(p_id, _run_plugin)| p_id != &plugin_id);
             self.clear_plugin_map_cache();
-            if self.plugins_to_unload_once_loaded.remove(&plugin_id) {
-                self.unload_plugin(plugin_id).non_fatal();
-            }
         }
         for run_plugin in applied_plugin_paths.drain() {
             if self.pending_plugin_reloads.remove(&run_plugin) {
@@ -2341,7 +2349,23 @@ impl WasmBridge {
         permission_cache.write_to_file().with_context(err_context)
     }
     pub fn cache_plugin_events(&mut self, plugin_id: PluginId) {
-        if self.shared_instance_of(plugin_id).is_some() {
+        if self.shared_instance_of(plugin_id).is_some()
+            || self.plugins_to_unload_once_loaded.contains(&plugin_id)
+        {
+            return;
+        }
+        let is_loading = self
+            .loading_plugins
+            .iter()
+            .any(|(loading_plugin_id, _)| *loading_plugin_id == plugin_id);
+        if !is_loading
+            && self
+                .plugin_map
+                .lock()
+                .unwrap()
+                .get_running_plugin(plugin_id, None)
+                .is_none()
+        {
             return;
         }
         self.plugin_ids_waiting_for_permission_request
@@ -3832,3 +3856,7 @@ mod hover_merge_tests;
 #[cfg(test)]
 #[path = "unit/startup_tests.rs"]
 mod startup_tests;
+
+#[cfg(test)]
+#[path = "unit/pending_event_tests.rs"]
+mod pending_event_tests;
