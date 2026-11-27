@@ -38,6 +38,7 @@ use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options as SessionOptions;
 use zellij_utils::input::options::PaneFrameStyle;
 use zellij_utils::sessions::generate_unique_session_name;
+use zellij_utils::setup::Setup;
 
 pub(crate) fn launch_app(args: TerminalArgs, opts: CliArgs, loaded: Option<Loaded>) -> Result<()> {
     let token = app::launch_token();
@@ -241,6 +242,7 @@ pub(crate) fn run_app(
         dialer: Arc::new(Dialer {
             opts,
             config_options,
+            rereads_config: true,
             capabilities,
         }),
         config_path,
@@ -271,21 +273,42 @@ pub(crate) fn describe(poster: &window::AppPoster) -> AppReply {
 pub(crate) struct Dialer {
     pub(crate) opts: CliArgs,
     pub(crate) config_options: SessionOptions,
+    pub(crate) rereads_config: bool,
     pub(crate) capabilities: Capabilities,
 }
 
 impl Dialer {
+    pub(crate) fn current_options(&self) -> SessionOptions {
+        if !self.rereads_config {
+            return self.config_options.clone();
+        }
+        match Setup::from_cli_args(&self.opts) {
+            Ok((_, _, options, _, _)) => options,
+            Err(e) => {
+                report!(
+                    "the config file could not be read again, so new sessions use the one from when the app started: {}",
+                    e
+                );
+                self.config_options.clone()
+            },
+        }
+    }
+
     pub(crate) fn connect(
         &self,
         request: &OpenWindowRequest,
         geometry: Geometry,
     ) -> Result<session::connection::Connection> {
+        let options = self.options_for(request);
         let (reach, local_config) = match request.remote_url() {
             Some(_) => (
                 Reach::Remote(Box::new(remote_attach(request))),
                 remote::watched_config(&self.opts),
             ),
-            None => (Reach::Local(self.client_info(request)?), Default::default()),
+            None => (
+                Reach::Local(self.client_info_with(request, &options)?),
+                Default::default(),
+            ),
         };
         let target = Target {
             reach,
@@ -294,7 +317,7 @@ impl Dialer {
         connect(
             &target,
             &self.opts,
-            &self.options_for(request),
+            &options,
             geometry,
             (None, request.pane_id),
             local_config,
@@ -304,9 +327,10 @@ impl Dialer {
     }
 
     pub(crate) fn options_for(&self, request: &OpenWindowRequest) -> SessionOptions {
+        let config_options = self.current_options();
         match &request.options {
             Some(options) => {
-                let mut merged = self.config_options.merge_from_cli(options.clone());
+                let mut merged = config_options.merge_from_cli(options.clone());
                 // `pane_frames false` in the config would hide the requested style, also on
                 // the server, which merges the config file again.
                 if let (Some(style), None) = (options.pane_frame_style, options.pane_frames) {
@@ -314,11 +338,20 @@ impl Dialer {
                 }
                 merged
             },
-            None => self.config_options.clone(),
+            None => config_options,
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn client_info(&self, request: &OpenWindowRequest) -> Result<ClientInfo> {
+        self.client_info_with(request, &self.options_for(request))
+    }
+
+    fn client_info_with(
+        &self,
+        request: &OpenWindowRequest,
+        options: &SessionOptions,
+    ) -> Result<ClientInfo> {
         let caller_cwd = request
             .cwd
             .clone()
@@ -351,13 +384,9 @@ impl Dialer {
                     force_run_commands: request.force_run_commands,
                     ..AttachArgs::default()
                 };
-                let mut resolved = session_resolution::resolve_attach(
-                    &attach,
-                    self.options_for(request),
-                    false,
-                    None,
-                )
-                .map_err(|failure| anyhow!("{}", failure.text()))?;
+                let mut resolved =
+                    session_resolution::resolve_attach(&attach, options.clone(), false, None)
+                        .map_err(|failure| anyhow!("{}", failure.text()))?;
                 if let Some(initial_panes) = initial_panes {
                     resolved.client.set_initial_panes(initial_panes);
                 }
@@ -388,7 +417,7 @@ fn remote_attach(request: &OpenWindowRequest) -> AttachArgs {
 
 impl Dialer {
     pub(crate) fn panel_options(&self) -> SessionOptions {
-        let mut options = self.config_options.clone();
+        let mut options = self.current_options();
         options.default_mode = Some(zellij_utils::data::InputMode::Locked);
         options.show_startup_tips = Some(false);
         options.show_release_notes = Some(false);
@@ -505,7 +534,7 @@ impl window::WindowMaker for Launcher {
             switch(
                 to,
                 &dialer.opts,
-                &dialer.config_options,
+                &dialer.current_options(),
                 geometry,
                 dialer.capabilities,
             )
