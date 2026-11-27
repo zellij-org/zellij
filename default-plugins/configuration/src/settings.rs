@@ -1319,6 +1319,13 @@ fn describe_entry(key: SettingKey) -> SettingInfo {
             "true",
             OnlyYou,
         ),
+        SettingKey::TerminalHinting => info(
+            "Hinting",
+            "Snap glyph outlines to the pixel grid when the font has hints",
+            Toggle,
+            "false",
+            OnlyYou,
+        ),
         SettingKey::TerminalFontFeatures => info(
             "Font features",
             "OpenType features separated by commas, eg. ss01, -calt",
@@ -1983,6 +1990,7 @@ pub fn placement(key: SettingKey) -> (Category, &'static str) {
         | TerminalFontWeight
         | TerminalSystemFonts
         | TerminalLigatures
+        | TerminalHinting
         | TerminalFontFeatures => (C::ZellijTerminal, "Font"),
         TerminalCursorStyle | TerminalCursorBlink | TerminalCursorUnfocusedHollow => {
             (C::ZellijTerminal, "Cursor")

@@ -32,6 +32,7 @@ const PIXELS_PER_INCH: f32 = if cfg!(target_os = "macos") {
 };
 const POINTS_PER_INCH: f32 = 72.0;
 pub const DEFAULT_LIGATURES: bool = true;
+pub const DEFAULT_HINTING: bool = false;
 pub const DEFAULT_FONT_WEIGHT: u16 = 400;
 const BOLD_WEIGHT_STEP: u16 = 300;
 const MAX_FONT_WEIGHT: u16 = 900;
@@ -270,6 +271,7 @@ pub struct FontOptions {
     pub size: f32,
     pub system_fonts: bool,
     pub ligatures: bool,
+    pub hinting: bool,
     pub weight: u16,
     pub features: Vec<FontFeature>,
     pub cell: CellAdjust,
@@ -304,6 +306,7 @@ impl Default for FontOptions {
             size: DEFAULT_FONT_SIZE,
             system_fonts: true,
             ligatures: DEFAULT_LIGATURES,
+            hinting: DEFAULT_HINTING,
             weight: DEFAULT_FONT_WEIGHT,
             features: Vec::new(),
             cell: CellAdjust::default(),
@@ -396,6 +399,7 @@ pub struct FontStack {
     fallbacks: Vec<FontId>,
     size: f32,
     weight: u16,
+    hinting: bool,
     features: Vec<FontFeature>,
     shapes: bool,
     metrics: CellMetrics,
@@ -466,6 +470,7 @@ impl FontStack {
             },
             size,
             weight: options.weight,
+            hinting: options.hinting,
             shapes: options.ligatures || !features.is_empty(),
             features,
             metrics,
