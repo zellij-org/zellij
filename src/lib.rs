@@ -59,6 +59,15 @@ fn main() {
         log::warn!("{}", problem);
     }
     let opts = double_click::reroute(CliArgs::parse_for_distribution());
+    if opts.options_without_any_option() {
+        let name = zellij_utils::distribution::distribution().name;
+        eprintln!(
+            "error: no options specified\n\n\
+             Usage: {name} options [OPTIONS]\n\n\
+             For more information, try '{name} options --help'."
+        );
+        std::process::exit(2);
+    }
     if let Some(socket_dir) = socket_dir_override(&opts) {
         std::env::set_var(zellij_utils::envs::SOCKET_DIR_ENV_KEY, socket_dir);
     }
