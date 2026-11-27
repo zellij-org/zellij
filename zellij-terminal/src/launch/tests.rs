@@ -512,6 +512,7 @@ fn the_panel_session_is_locked_quiet_frameless_and_never_saved() {
             mouse_mode: Some(true),
             ..Default::default()
         },
+        rereads_config: false,
         capabilities: capabilities(),
     };
     let options = dialer.panel_options();
@@ -583,8 +584,39 @@ fn dialer() -> Dialer {
     Dialer {
         opts: CliArgs::default(),
         config_options: SessionOptions::default(),
+        rereads_config: false,
         capabilities: capabilities(),
     }
+}
+
+#[test]
+fn new_sessions_take_the_config_file_as_it_is_now() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("config.kdl");
+    std::fs::write(&path, "theme \"dracula\"\n").unwrap();
+    let dialer = Dialer {
+        opts: CliArgs {
+            config: Some(path.clone()),
+            config_dir: Some(dir.path().to_path_buf()),
+            ..CliArgs::default()
+        },
+        config_options: SessionOptions {
+            theme: Some("stale".to_owned()),
+            ..SessionOptions::default()
+        },
+        rereads_config: true,
+        capabilities: capabilities(),
+    };
+    assert_eq!(
+        dialer.options_for(&OpenWindowRequest::default()).theme,
+        Some("dracula".to_owned())
+    );
+    std::fs::write(&path, "theme \"nord\"\n").unwrap();
+    let request = OpenWindowRequest::default();
+    assert_eq!(dialer.options_for(&request).theme, Some("nord".to_owned()));
+    assert_eq!(dialer.panel_options().theme, Some("nord".to_owned()));
+    std::fs::write(&path, "theme {\n").unwrap();
+    assert_eq!(dialer.options_for(&request).theme, Some("stale".to_owned()));
 }
 
 #[test]
