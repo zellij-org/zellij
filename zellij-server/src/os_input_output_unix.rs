@@ -230,6 +230,7 @@ fn handle_openpty(
         let command = &mut Command::new(cmd.command);
         if let Some(current_dir) = cmd.cwd {
             if current_dir.exists() && current_dir.is_dir() {
+                command.env("PWD", &current_dir);
                 command.current_dir(current_dir);
             } else {
                 log::error!(
