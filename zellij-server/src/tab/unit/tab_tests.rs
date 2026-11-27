@@ -17220,16 +17220,48 @@ pub fn scroll_down_by_pane_id() {
     let _ = tab.scroll_down_by_pane_id(pane_id);
 }
 
-#[test]
-pub fn scroll_to_top_by_pane_id() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
+fn assert_scroll_to_top_with_wrapped_scrollback(scroll_to_top: impl FnOnce(&mut Tab, PaneId)) {
+    let size = Size { cols: 32, rows: 10 };
     let mut tab = create_new_tab(size, true);
     let pane_id = PaneId::Terminal(1);
-    assert!(tab.has_pane_with_pid(&pane_id));
-    let _ = tab.scroll_to_top_by_pane_id(pane_id);
+    let first_line = "line01-";
+    // Each numbered line spans three display rows without an explicit newline between them.
+    let padding = "x".repeat(80);
+    for line in 1..=12 {
+        tab.handle_pty_bytes(1, format!("line{line:02}-{padding}\r\n").into_bytes())
+            .unwrap();
+    }
+    let history = tab.get_dump_terminal_screen(pane_id, true).unwrap();
+    let viewport = tab.get_dump_terminal_screen(pane_id, false).unwrap();
+    assert!(history.starts_with(first_line));
+    assert!(!viewport.contains(first_line));
+
+    scroll_to_top(&mut tab, pane_id);
+
+    let viewport = tab.get_dump_terminal_screen(pane_id, false).unwrap();
+    assert!(
+        viewport.starts_with(first_line),
+        "expected the first retained line at the top of the viewport, got {viewport:?}"
+    );
+}
+
+#[test]
+pub fn scroll_to_top_with_wrapped_scrollback() {
+    assert_scroll_to_top_with_wrapped_scrollback(|tab, _| {
+        tab.scroll_active_terminal_to_top(1).unwrap();
+    });
+}
+
+#[test]
+pub fn scroll_to_top_with_wrapped_scrollback_by_pane_id() {
+    assert_scroll_to_top_with_wrapped_scrollback(|tab, pane_id| {
+        tab.scroll_to_top_by_pane_id(pane_id).unwrap();
+    });
+}
+
+#[test]
+pub fn scroll_to_top_with_wrapped_scrollback_by_terminal_id() {
+    assert_scroll_to_top_with_wrapped_scrollback(|tab, _| tab.scroll_terminal_to_top(1));
 }
 
 #[test]

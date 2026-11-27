@@ -815,6 +815,10 @@ impl Pane for TerminalPane {
         self.grid.move_viewport_up(count);
         self.set_should_render(true);
     }
+    fn scroll_to_top(&mut self) {
+        self.grid.move_viewport_to_top();
+        self.set_should_render(true);
+    }
     fn scroll_down(&mut self, count: usize, _client_id: ClientId) {
         self.grid.move_viewport_down(count);
         self.set_should_render(true);

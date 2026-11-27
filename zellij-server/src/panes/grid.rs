@@ -1769,9 +1769,12 @@ impl Grid {
         }
     }
 
+    fn can_scroll_up(&self) -> bool {
+        !self.lines_above.is_empty() && self.viewport.len() == self.height
+    }
     pub fn scroll_up_one_line(&mut self) -> bool {
         let mut found_something = false;
-        if !self.lines_above.is_empty() && self.viewport.len() == self.height {
+        if self.can_scroll_up() {
             self.is_scrolled = true;
             let line_to_push_down = self.viewport.pop_back().unwrap();
             self.lines_below.push_front(line_to_push_down);
@@ -2531,6 +2534,11 @@ impl Grid {
             self.scroll_up_one_line();
         }
         self.output_buffer.update_all_lines();
+    }
+    pub fn move_viewport_to_top(&mut self) {
+        while self.can_scroll_up() {
+            self.scroll_up_one_line();
+        }
     }
     pub fn move_viewport_down(&mut self, count: usize) {
         for _ in 0..count {
