@@ -643,6 +643,7 @@ pub trait Pane {
         None
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
+    fn scroll_to_top(&mut self) {}
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
     fn scroll_left(&mut self, count: usize, client_id: ClientId);
     fn scroll_right(&mut self, count: usize, client_id: ClientId);
@@ -7929,23 +7930,14 @@ impl Tab {
 
     pub fn scroll_active_terminal_to_top(&mut self, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            active_pane.clear_scroll();
-            if let Some(size) = active_pane.get_line_number() {
-                active_pane.scroll_up(size, client_id);
-            }
+            active_pane.scroll_to_top();
         }
         Ok(())
     }
 
     pub fn scroll_terminal_to_top(&mut self, terminal_pane_id: u32) {
         if let Some(terminal_pane) = self.get_pane_with_id_mut(PaneId::Terminal(terminal_pane_id)) {
-            terminal_pane.clear_scroll();
-            if let Some(size) = terminal_pane.get_line_number() {
-                let fictitious_client_id = 1; // this is not checked for terminal panes and we
-                                              // don't have an actual client id here
-                                              // TODO: traits were a mistake
-                terminal_pane.scroll_up(size, fictitious_client_id);
-            }
+            terminal_pane.scroll_to_top();
         }
     }
 
@@ -9864,12 +9856,8 @@ impl Tab {
         Ok(())
     }
     pub fn scroll_to_top_by_pane_id(&mut self, pane_id: PaneId) -> Result<()> {
-        let fictitious_client_id = 1;
         if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
-            pane.clear_scroll();
-            if let Some(size) = pane.get_line_number() {
-                pane.scroll_up(size, fictitious_client_id);
-            }
+            pane.scroll_to_top();
         }
         Ok(())
     }
