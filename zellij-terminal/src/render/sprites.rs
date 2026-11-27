@@ -13,7 +13,10 @@ const OPAQUE: u8 = 0xff;
 const SUPERSAMPLES: u32 = 4;
 
 pub fn is_sprite(character: char) -> bool {
-    matches!(character, '\u{2500}'..='\u{259f}' | '\u{e0b0}'..='\u{e0b3}')
+    matches!(
+        character,
+        '\u{2500}'..='\u{259f}' | '\u{e0b0}'..='\u{e0b3}' | '\u{f5d0}'..='\u{f60d}'
+    )
 }
 
 pub fn draw(character: char, metrics: CellMetrics, budget: u32) -> Option<GlyphBitmap> {
@@ -33,6 +36,7 @@ pub fn draw(character: char, metrics: CellMetrics, budget: u32) -> Option<GlyphB
         '\u{2571}'..='\u{2573}' => diagonals(&mut canvas, &pen, character),
         '\u{2500}'..='\u{257f}' => lines(&mut canvas, &pen, arms_of(character)?),
         '\u{e0b0}'..='\u{e0b3}' => powerline(&mut canvas, &pen, character),
+        '\u{f5d0}'..='\u{f60d}' => branch(&mut canvas, &pen, character),
         _ => return None,
     }
     Some(GlyphBitmap {
@@ -525,16 +529,52 @@ fn dashes(canvas: &mut Canvas, pen: &Pen, character: char) {
 }
 
 fn arc(canvas: &mut Canvas, pen: &Pen, character: char) {
+    let corner = match character {
+        '\u{256d}' => DOWN_RIGHT,
+        '\u{256e}' => DOWN_LEFT,
+        '\u{256f}' => UP_LEFT,
+        _ => UP_RIGHT,
+    };
+    rounded_corner(canvas, pen, corner);
+}
+
+/// A rounded corner, given as the two cell edges that it joins.
+#[derive(Clone, Copy)]
+struct Corner {
+    toward_right: bool,
+    toward_down: bool,
+}
+
+/// `╭`
+const DOWN_RIGHT: Corner = Corner {
+    toward_right: true,
+    toward_down: true,
+};
+/// `╮`
+const DOWN_LEFT: Corner = Corner {
+    toward_right: false,
+    toward_down: true,
+};
+/// `╯`
+const UP_LEFT: Corner = Corner {
+    toward_right: false,
+    toward_down: false,
+};
+/// `╰`
+const UP_RIGHT: Corner = Corner {
+    toward_right: true,
+    toward_down: false,
+};
+
+fn rounded_corner(canvas: &mut Canvas, pen: &Pen, corner: Corner) {
     let (w, h) = (canvas.width, canvas.height);
     let thickness = pen.light;
     let columns = centered(w, thickness);
     let rows = centered(h, thickness);
-    let (toward_right, toward_down) = match character {
-        '\u{256d}' => (true, true),
-        '\u{256e}' => (false, true),
-        '\u{256f}' => (false, false),
-        _ => (true, false),
-    };
+    let Corner {
+        toward_right,
+        toward_down,
+    } = corner;
     let line_x = (columns.0 + columns.1) as f32 / 2.0;
     let line_y = (rows.0 + rows.1) as f32 / 2.0;
     let room_x = if toward_right {
@@ -576,6 +616,157 @@ fn arc(canvas: &mut Canvas, pen: &Pen, character: char) {
     } else {
         canvas.fill(columns.0, 0, columns.1, arc_end_y, OPAQUE);
     }
+}
+
+/// The branch drawing symbols at U+F5D0 to U+F60D, which Kitty and Ghostty
+/// also draw. Git graph tools use them to draw commit graphs: lines, fading
+/// lines, rounded forks and merges, and commit dots with stubs that join the
+/// lines around them.
+fn branch(canvas: &mut Canvas, pen: &Pen, character: char) {
+    const HORIZONTAL: Arms = arms(NONE, LIGHT, NONE, LIGHT);
+    const VERTICAL: Arms = arms(LIGHT, NONE, LIGHT, NONE);
+    // The straight line and the rounded corners of U+F5D6 to U+F5ED.
+    let (straight, corners): (Option<Arms>, &[Corner]) = match character {
+        '\u{f5d0}' => (Some(HORIZONTAL), &[]),
+        '\u{f5d1}' => (Some(VERTICAL), &[]),
+        '\u{f5d2}'..='\u{f5d5}' => return fading_line(canvas, pen, character),
+        '\u{f5d6}' => (None, &[DOWN_RIGHT]),
+        '\u{f5d7}' => (None, &[DOWN_LEFT]),
+        '\u{f5d8}' => (None, &[UP_RIGHT]),
+        '\u{f5d9}' => (None, &[UP_LEFT]),
+        '\u{f5da}' => (Some(VERTICAL), &[UP_RIGHT]),
+        '\u{f5db}' => (Some(VERTICAL), &[DOWN_RIGHT]),
+        '\u{f5dc}' => (None, &[UP_RIGHT, DOWN_RIGHT]),
+        '\u{f5dd}' => (Some(VERTICAL), &[UP_LEFT]),
+        '\u{f5de}' => (Some(VERTICAL), &[DOWN_LEFT]),
+        '\u{f5df}' => (None, &[UP_LEFT, DOWN_LEFT]),
+        '\u{f5e0}' => (Some(HORIZONTAL), &[DOWN_LEFT]),
+        '\u{f5e1}' => (Some(HORIZONTAL), &[DOWN_RIGHT]),
+        '\u{f5e2}' => (None, &[DOWN_RIGHT, DOWN_LEFT]),
+        '\u{f5e3}' => (Some(HORIZONTAL), &[UP_LEFT]),
+        '\u{f5e4}' => (Some(HORIZONTAL), &[UP_RIGHT]),
+        '\u{f5e5}' => (None, &[UP_RIGHT, UP_LEFT]),
+        '\u{f5e6}' => (Some(VERTICAL), &[UP_LEFT, UP_RIGHT]),
+        '\u{f5e7}' => (Some(VERTICAL), &[DOWN_LEFT, DOWN_RIGHT]),
+        '\u{f5e8}' => (Some(HORIZONTAL), &[DOWN_LEFT, UP_LEFT]),
+        '\u{f5e9}' => (Some(HORIZONTAL), &[UP_RIGHT, DOWN_RIGHT]),
+        '\u{f5ea}' => (Some(VERTICAL), &[UP_LEFT, DOWN_RIGHT]),
+        '\u{f5eb}' => (Some(VERTICAL), &[UP_RIGHT, DOWN_LEFT]),
+        '\u{f5ec}' => (Some(HORIZONTAL), &[UP_LEFT, DOWN_RIGHT]),
+        '\u{f5ed}' => (Some(HORIZONTAL), &[UP_RIGHT, DOWN_LEFT]),
+        _ => return commit_dot(canvas, pen, character),
+    };
+    if let Some(straight) = straight {
+        lines(canvas, pen, straight);
+    }
+    for corner in corners {
+        rounded_corner(canvas, pen, *corner);
+    }
+}
+
+/// A line that fades out toward one edge of the cell, U+F5D2 to U+F5D5.
+fn fading_line(canvas: &mut Canvas, pen: &Pen, character: char) {
+    let (w, h) = (canvas.width, canvas.height);
+    let thickness = pen.light;
+    // The fraction of the way from the opaque edge to the faded edge.
+    let alpha = |step: i32, length: i32| -> u8 {
+        let fraction = (step as f32 + 0.5) / length as f32;
+        ((1.0 - fraction) * OPAQUE as f32).round() as u8
+    };
+    match character {
+        // Fades toward the right or the left.
+        '\u{f5d2}' | '\u{f5d3}' => {
+            let rows = centered(h, thickness);
+            for x in 0..w {
+                let step = if character == '\u{f5d2}' {
+                    x
+                } else {
+                    w - 1 - x
+                };
+                canvas.fill(x, rows.0, x + 1, rows.1, alpha(step, w));
+            }
+        },
+        // Fades toward the bottom or the top.
+        _ => {
+            let columns = centered(w, thickness);
+            for y in 0..h {
+                let step = if character == '\u{f5d4}' {
+                    y
+                } else {
+                    h - 1 - y
+                };
+                canvas.fill(columns.0, y, columns.1, y + 1, alpha(step, h));
+            }
+        },
+    }
+}
+
+/// A commit dot, U+F5EE to U+F60D, with stubs that join the lines at some
+/// of the cell edges. Each stub set comes as a filled dot and then an empty
+/// dot.
+fn commit_dot(canvas: &mut Canvas, pen: &Pen, character: char) {
+    // Up, right, down, and left stubs, in the order of the code points.
+    const STUBS: [(bool, bool, bool, bool); 16] = [
+        (false, false, false, false),
+        (false, true, false, false),
+        (false, false, false, true),
+        (false, true, false, true),
+        (false, false, true, false),
+        (true, false, false, false),
+        (true, false, true, false),
+        (false, true, true, false),
+        (false, false, true, true),
+        (true, true, false, false),
+        (true, false, false, true),
+        (true, true, true, false),
+        (true, false, true, true),
+        (false, true, true, true),
+        (true, true, false, true),
+        (true, true, true, true),
+    ];
+    let offset = character as usize - 0xf5ee;
+    let (up, right, down, left) = STUBS[offset / 2];
+    let filled = offset % 2 == 0;
+
+    let (w, h) = (canvas.width, canvas.height);
+    let thickness = pen.light;
+    let columns = centered(w, thickness);
+    let rows = centered(h, thickness);
+    // Put the centre on the lines, so that the stubs and the box drawing
+    // lines meet the dot in the same place.
+    let centre_x = (columns.0 + columns.1) as f32 / 2.0;
+    let centre_y = (rows.0 + rows.1) as f32 / 2.0;
+    let radius = centre_x
+        .min(centre_y)
+        .min(w as f32 - centre_x)
+        .min(h as f32 - centre_y);
+    let half = thickness as f32 / 2.0;
+
+    if up {
+        let end = (centre_y - radius + half).ceil() as i32;
+        canvas.fill(columns.0, 0, columns.1, end, OPAQUE);
+    }
+    if down {
+        let start = (centre_y + radius - half).floor() as i32;
+        canvas.fill(columns.0, start, columns.1, h, OPAQUE);
+    }
+    if left {
+        let end = (centre_x - radius + half).ceil() as i32;
+        canvas.fill(0, rows.0, end, rows.1, OPAQUE);
+    }
+    if right {
+        let start = (centre_x + radius - half).floor() as i32;
+        canvas.fill(start, rows.0, w, rows.1, OPAQUE);
+    }
+    canvas.shade(|x, y| {
+        let distance = ((x - centre_x).powi(2) + (y - centre_y).powi(2)).sqrt();
+        if filled {
+            distance <= radius
+        } else {
+            // A ring with the line thickness, inside the radius.
+            (distance - (radius - half)).abs() <= half
+        }
+    });
 }
 
 fn diagonals(canvas: &mut Canvas, pen: &Pen, character: char) {
@@ -637,7 +828,10 @@ mod tests {
     #[test]
     fn sprites_fill_exactly_one_cell() {
         let metrics = metrics(8, 20);
-        for character in ('\u{2500}'..='\u{259f}').chain('\u{e0b0}'..='\u{e0b3}') {
+        for character in ('\u{2500}'..='\u{259f}')
+            .chain('\u{e0b0}'..='\u{e0b3}')
+            .chain('\u{f5d0}'..='\u{f60d}')
+        {
             let bitmap = sprite(character, metrics);
             assert_eq!((bitmap.width, bitmap.height), (8, 20), "{:?}", character);
             assert_eq!(bitmap.left, 0);
@@ -816,6 +1010,144 @@ mod tests {
         assert_eq!(at(&corner, columns.second.0 as u32, 20), OPAQUE);
     }
 
+    fn left_edge(bitmap: &GlyphBitmap) -> Vec<u8> {
+        (0..bitmap.height).map(|y| at(bitmap, 0, y)).collect()
+    }
+
+    fn right_edge(bitmap: &GlyphBitmap) -> Vec<u8> {
+        (0..bitmap.height)
+            .map(|y| at(bitmap, bitmap.width - 1, y))
+            .collect()
+    }
+
+    fn top_edge(bitmap: &GlyphBitmap) -> Vec<u8> {
+        (0..bitmap.width).map(|x| at(bitmap, x, 0)).collect()
+    }
+
+    fn bottom_edge(bitmap: &GlyphBitmap) -> Vec<u8> {
+        (0..bitmap.width)
+            .map(|x| at(bitmap, x, bitmap.height - 1))
+            .collect()
+    }
+
+    #[test]
+    fn branch_lines_join_the_box_drawing_lines() {
+        for metrics in [metrics(9, 21), metrics(8, 20), metrics(10, 30)] {
+            let horizontal = sprite('\u{2500}', metrics);
+            let vertical = sprite('\u{2502}', metrics);
+            let empty = vec![0; metrics.width as usize];
+            // Each symbol with the edges that its lines must reach.
+            for (character, up, right, down, left) in [
+                ('\u{f5d0}', false, true, false, true),
+                ('\u{f5d1}', true, false, true, false),
+                ('\u{f5d6}', false, true, true, false),
+                ('\u{f5d9}', true, false, false, true),
+                ('\u{f5da}', true, true, true, false),
+                ('\u{f5e7}', true, true, true, true),
+            ] {
+                let bitmap = sprite(character, metrics);
+                let expect = |reach: bool, line: Vec<u8>, blank: Vec<u8>| {
+                    if reach {
+                        line
+                    } else {
+                        blank
+                    }
+                };
+                let blank_side = vec![0; metrics.height as usize];
+                assert_eq!(
+                    top_edge(&bitmap),
+                    expect(up, top_edge(&vertical), empty.clone()),
+                    "{:?} top",
+                    character
+                );
+                assert_eq!(
+                    bottom_edge(&bitmap),
+                    expect(down, bottom_edge(&vertical), empty.clone()),
+                    "{:?} bottom",
+                    character
+                );
+                assert_eq!(
+                    left_edge(&bitmap),
+                    expect(left, left_edge(&horizontal), blank_side.clone()),
+                    "{:?} left",
+                    character
+                );
+                assert_eq!(
+                    right_edge(&bitmap),
+                    expect(right, right_edge(&horizontal), blank_side),
+                    "{:?} right",
+                    character
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn commit_dot_stubs_join_the_box_drawing_lines() {
+        let metrics = metrics(9, 21);
+        let vertical = sprite('\u{2502}', metrics);
+        let rows = centered(21, 1);
+        let empty = vec![0; 9];
+        // The dot is as wide as the cell, so it touches the side edges on the
+        // line rows. A stub only matters on the edges that the dot does not
+        // reach.
+        for (character, up, down, sides) in [
+            ('\u{f5ee}', false, false, false),
+            ('\u{f5f4}', false, false, true),
+            ('\u{f5fb}', true, true, false),
+            ('\u{f5fc}', false, true, true),
+            ('\u{f60d}', true, true, true),
+        ] {
+            let bitmap = sprite(character, metrics);
+            let expect = |reach: bool, line: Vec<u8>| if reach { line } else { empty.clone() };
+            assert_eq!(
+                top_edge(&bitmap),
+                expect(up, top_edge(&vertical)),
+                "{:?}",
+                character
+            );
+            assert_eq!(
+                bottom_edge(&bitmap),
+                expect(down, bottom_edge(&vertical)),
+                "{:?}",
+                character
+            );
+            if sides {
+                for y in rows.0..rows.1 {
+                    assert_eq!(at(&bitmap, 8, y as u32), OPAQUE, "{:?}", character);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_filled_commit_dot_covers_its_centre_and_an_empty_one_does_not() {
+        let metrics = metrics(9, 21);
+        let rows = centered(21, 1);
+        let columns = centered(9, 1);
+        let (x, y) = (columns.0 as u32, rows.0 as u32);
+        for (filled, empty) in [('\u{f5ee}', '\u{f5ef}'), ('\u{f5fa}', '\u{f5fb}')] {
+            assert_eq!(at(&sprite(filled, metrics), x, y), OPAQUE, "{:?}", filled);
+            assert_eq!(at(&sprite(empty, metrics), x, y), 0, "{:?}", empty);
+        }
+    }
+
+    #[test]
+    fn a_fading_line_fades_toward_its_named_edge() {
+        let metrics = metrics(9, 21);
+        let rows = centered(21, 1);
+        let columns = centered(9, 1);
+        let (mid_x, mid_y) = (columns.0 as u32, rows.0 as u32);
+        let right = sprite('\u{f5d2}', metrics);
+        assert!(at(&right, 0, mid_y) > at(&right, 8, mid_y));
+        let left = sprite('\u{f5d3}', metrics);
+        assert!(at(&left, 0, mid_y) < at(&left, 8, mid_y));
+        let down = sprite('\u{f5d4}', metrics);
+        assert!(at(&down, mid_x, 0) > at(&down, mid_x, 20));
+        let up = sprite('\u{f5d5}', metrics);
+        assert!(at(&up, mid_x, 0) < at(&up, mid_x, 20));
+    }
+
     #[test]
     fn a_wide_budget_spans_both_cells() {
         let bitmap = draw('\u{2588}', metrics(8, 20), 2).unwrap();
@@ -827,5 +1159,7 @@ mod tests {
         assert!(draw('a', metrics(8, 20), 1).is_none());
         assert!(draw('\u{e0b4}', metrics(8, 20), 1).is_none());
         assert!(!is_sprite('\u{25a0}'));
+        assert!(!is_sprite('\u{f5cf}'));
+        assert!(!is_sprite('\u{f60e}'));
     }
 }
