@@ -193,6 +193,22 @@ fn a_release_without_an_exit_code_still_exits_zero() {
 }
 
 #[test]
+fn a_payload_argument_with_non_tty_stdin_sends_only_the_payload() {
+    // like `zellij pipe -- hello < /dev/null`: payload given, STDIN is not a terminal and empty
+    let os_api = ScriptedOsApi::new(Some(""), vec![vec![release(None)], vec![release(None)]]);
+    assert_eq!(run(&os_api, pipe_action(Some("hello"))), 0);
+    assert_eq!(os_api.sent_payloads(), vec![Some("hello".to_owned())]);
+}
+
+#[test]
+fn a_payload_argument_ignores_piped_stdin_data() {
+    // `--help` says STDIN is only listened to when the payload is blank
+    let os_api = ScriptedOsApi::new(Some("from stdin\n"), vec![vec![release(None)]]);
+    assert_eq!(run(&os_api, pipe_action(Some("hello"))), 0);
+    assert_eq!(os_api.sent_payloads(), vec![Some("hello".to_owned())]);
+}
+
+#[test]
 fn a_final_release_ends_piped_input_early() {
     let os_api = ScriptedOsApi::new(Some("a\nb\nc\n"), vec![vec![release(Some(1))]]);
     assert_eq!(run(&os_api, pipe_action(None)), 1);
