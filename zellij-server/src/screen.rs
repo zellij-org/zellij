@@ -9811,7 +9811,7 @@ impl Screen {
             },
         }
     }
-    pub fn toggle_pane_pinned(&mut self, client_id: ClientId) {
+    pub fn toggle_pane_pinned(&mut self, client_id: ClientId) -> Result<()> {
         active_tab_and_connected_client_id!(
             self,
             client_id,
@@ -9819,8 +9819,13 @@ impl Screen {
                 tab.toggle_pane_pinned(client_id);
             }
         );
+        self.render(None)
     }
-    pub fn set_floating_pane_pinned(&mut self, pane_id: PaneId, should_be_pinned: bool) {
+    pub fn set_floating_pane_pinned(
+        &mut self,
+        pane_id: PaneId,
+        should_be_pinned: bool,
+    ) -> Result<()> {
         let mut found = false;
         for tab in self.tabs.values_mut() {
             if tab.has_pane_with_pid(&pane_id) {
@@ -9835,6 +9840,19 @@ impl Screen {
                 pane_id
             );
         }
+        self.render(None)
+    }
+    pub fn toggle_pane_pinned_by_pane_id(&mut self, pane_id: PaneId) -> Result<bool> {
+        let mut found = false;
+        for tab in self.tabs.values_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                tab.toggle_pane_pinned_by_pane_id(pane_id);
+                found = true;
+                break;
+            }
+        }
+        self.render(None)?;
+        Ok(found)
     }
     pub fn stack_panes(&mut self, mut pane_ids_to_stack: Vec<PaneId>) -> Option<PaneId> {
         // if successful, returns the pane id of the last pane in the stack
@@ -15308,12 +15326,10 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                screen.toggle_pane_pinned(client_id);
-                screen.render(None)?;
+                screen.toggle_pane_pinned(client_id)?;
             },
             ScreenInstruction::SetFloatingPanePinned(pane_id, should_be_pinned) => {
-                screen.set_floating_pane_pinned(pane_id, should_be_pinned);
-                screen.render(None)?;
+                screen.set_floating_pane_pinned(pane_id, should_be_pinned)?;
             },
             ScreenInstruction::StackPanes(
                 pane_ids_to_stack,
@@ -16419,23 +16435,13 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::TogglePanePinnedWithPaneId(pane_id, mut _completion_tx) => {
-                let all_tabs = screen.get_tabs_mut();
-                let mut found = false;
-                for tab in all_tabs.values_mut() {
-                    if tab.has_pane_with_pid(&pane_id) {
-                        tab.toggle_pane_pinned_by_pane_id(pane_id);
-                        found = true;
-                        break;
-                    }
-                }
-                if !found {
+                if !screen.toggle_pane_pinned_by_pane_id(pane_id)? {
                     log::error!("Pane with id {:?} not found", pane_id);
                     if let Some(ref mut c) = _completion_tx {
                         c.set_exit_status(1);
                         c.set_error_message(format!("Pane with id {:?} not found", pane_id));
                     }
                 }
-                screen.render(None)?;
             },
             // Tab-targeting CLI handlers
             ScreenInstruction::UndoRenameTabWithTabId(tab_id, mut _completion_tx) => {

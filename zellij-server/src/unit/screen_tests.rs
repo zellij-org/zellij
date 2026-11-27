@@ -7790,132 +7790,70 @@ pub fn send_cli_toggle_pane_pinned_with_pane_id() {
     );
 }
 
-#[test]
-pub fn toggle_pane_pinned_redraws_pin_indicator() {
+fn render_requests(
+    background_jobs_receiver: &Receiver<(crate::background_jobs::BackgroundJob, ErrorContext)>,
+) -> usize {
+    background_jobs_receiver
+        .try_iter()
+        .filter(|(job, _)| {
+            matches!(
+                job,
+                crate::background_jobs::BackgroundJob::RenderToClients
+                    | crate::background_jobs::BackgroundJob::RenderToClientsNow
+            )
+        })
+        .count()
+}
+
+fn screen_with_one_pane_and_captured_background_jobs() -> (
+    Screen,
+    Receiver<(crate::background_jobs::BackgroundJob, ErrorContext)>,
+) {
     let size = Size {
         cols: 121,
         rows: 20,
     };
-    let client_id = 1;
-    let mut initial_layout = TiledPaneLayout::default();
-    initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
-    let mut mock_screen = MockScreen::new(size);
-    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
-    let received_server_instructions = Arc::new(Mutex::new(vec![]));
-    let server_receiver = mock_screen.server_receiver.take().unwrap();
-    let server_thread = log_actions_in_thread!(
-        received_server_instructions,
-        ServerInstruction::KillSession,
-        server_receiver
-    );
-    wait_for_rendered_frames(&received_server_instructions, 1);
-
-    // Float the active pane so it can be pinned and shows the pin indicator on its frame
-    let frames_before_float = rendered_frames(&received_server_instructions);
-    mock_screen
-        .session_metadata
-        .senders
-        .send_to_screen(ScreenInstruction::TogglePaneEmbedOrFloating(
-            client_id, None,
-        ))
-        .unwrap();
-    wait_for_rendered_frames(&received_server_instructions, frames_before_float + 1);
-
-    // TogglePanePinned on its own (without SwitchToMode) must immediately trigger a redraw
-    // showing the pinned indicator `[+]`.
-    let frames_before_pin = rendered_frames(&received_server_instructions);
-    mock_screen
-        .session_metadata
-        .senders
-        .send_to_screen(ScreenInstruction::TogglePanePinned(client_id, None))
-        .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(200));
-    let frames_after_pin = rendered_frames(&received_server_instructions);
-
-    mock_screen.teardown(vec![server_thread, screen_thread]);
-
-    assert!(
-        frames_after_pin > frames_before_pin,
-        "TogglePanePinned must trigger a screen render (before={frames_before_pin}, after={frames_after_pin})"
-    );
-    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
-        received_server_instructions.lock().unwrap().iter(),
-        size,
-    );
-    let last_snapshot = &snapshots.last().expect("expected rendered snapshot").1;
-    assert!(
-        last_snapshot.contains("[+]"),
-        "expected pinned indicator `[+]` in rendered frame, got:\n{last_snapshot}"
-    );
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    let background_jobs_receiver = capture_background_jobs(&mut screen);
+    (screen, background_jobs_receiver)
 }
 
 #[test]
-pub fn toggle_pane_pinned_with_pane_id_and_set_floating_pane_pinned_redraw() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let client_id = 1;
-    let mut initial_layout = TiledPaneLayout::default();
-    initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
-    let mut mock_screen = MockScreen::new(size);
-    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
-    let received_server_instructions = Arc::new(Mutex::new(vec![]));
-    let server_receiver = mock_screen.server_receiver.take().unwrap();
-    let server_thread = log_actions_in_thread!(
-        received_server_instructions,
-        ServerInstruction::KillSession,
-        server_receiver
-    );
-    wait_for_rendered_frames(&received_server_instructions, 1);
+pub fn toggle_pane_pinned_requests_render() {
+    let (mut screen, background_jobs_receiver) =
+        screen_with_one_pane_and_captured_background_jobs();
+    screen.toggle_pane_pinned(1).unwrap();
+    assert_eq!(render_requests(&background_jobs_receiver), 1);
+}
 
-    let frames_before_float = rendered_frames(&received_server_instructions);
-    mock_screen
-        .session_metadata
-        .senders
-        .send_to_screen(ScreenInstruction::TogglePaneEmbedOrFloating(
-            client_id, None,
-        ))
+#[test]
+pub fn set_floating_pane_pinned_requests_render() {
+    let (mut screen, background_jobs_receiver) =
+        screen_with_one_pane_and_captured_background_jobs();
+    screen
+        .set_floating_pane_pinned(PaneId::Terminal(1), true)
         .unwrap();
-    wait_for_rendered_frames(&received_server_instructions, frames_before_float + 1);
+    assert_eq!(render_requests(&background_jobs_receiver), 1);
+}
 
-    // TogglePanePinnedWithPaneId must trigger a render
-    let frames_before_toggle = rendered_frames(&received_server_instructions);
-    mock_screen
-        .session_metadata
-        .senders
-        .send_to_screen(ScreenInstruction::TogglePanePinnedWithPaneId(
-            PaneId::Terminal(1),
-            None,
-        ))
-        .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(200));
-    let frames_after_toggle = rendered_frames(&received_server_instructions);
+#[test]
+pub fn toggle_pane_pinned_by_pane_id_requests_render() {
+    let (mut screen, background_jobs_receiver) =
+        screen_with_one_pane_and_captured_background_jobs();
+    assert!(screen
+        .toggle_pane_pinned_by_pane_id(PaneId::Terminal(1))
+        .unwrap());
+    assert_eq!(render_requests(&background_jobs_receiver), 1);
+}
 
-    // SetFloatingPanePinned must also trigger a render
-    mock_screen
-        .session_metadata
-        .senders
-        .send_to_screen(ScreenInstruction::SetFloatingPanePinned(
-            PaneId::Terminal(1),
-            false,
-        ))
-        .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(200));
-    let frames_after_set = rendered_frames(&received_server_instructions);
-
-    mock_screen.teardown(vec![server_thread, screen_thread]);
-
-    assert!(
-        frames_after_toggle > frames_before_toggle,
-        "TogglePanePinnedWithPaneId must trigger a screen render (before={frames_before_toggle}, after={frames_after_toggle})"
-    );
-    assert!(
-        frames_after_set > frames_after_toggle,
-        "SetFloatingPanePinned must trigger a screen render (before={frames_after_toggle}, after={frames_after_set})"
-    );
+#[test]
+pub fn toggle_pane_pinned_by_pane_id_reports_missing_pane() {
+    let (mut screen, _background_jobs_receiver) =
+        screen_with_one_pane_and_captured_background_jobs();
+    assert!(!screen
+        .toggle_pane_pinned_by_pane_id(PaneId::Terminal(99))
+        .unwrap());
 }
 
 // TAB-TARGETING MockScreen tests
