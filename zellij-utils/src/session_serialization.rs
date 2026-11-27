@@ -999,7 +999,11 @@ fn get_floating_panes_layout_from_panegeoms(
         .map(|m| {
             let mut run = m.run.clone();
             if let Some(cwd) = &m.cwd {
-                run.as_mut().map(|r| r.add_cwd(cwd));
+                if let Some(run) = run.as_mut() {
+                    run.add_cwd(cwd);
+                } else {
+                    run = Some(Run::Cwd(cwd.clone()));
+                }
             }
             FloatingPaneLayout {
                 name: m.title.clone(),
@@ -2005,6 +2009,49 @@ mod tests {
         let kdl = serialize_session_layout(global_layout_manifest).unwrap();
         assert_snapshot!(kdl.0);
     }
+
+    #[test]
+    fn can_serialize_floating_shell_with_discovered_cwd() {
+        let global_layout_manifest = GlobalLayoutManifest {
+            global_cwd: Some(PathBuf::from("/project")),
+            tabs: vec![(
+                "Tab #1".to_owned(),
+                TabLayoutManifest {
+                    floating_panes: vec![PaneLayoutManifest {
+                        // Default-shell panes have no run command; their cwd is discovered separately.
+                        run: None,
+                        cwd: Some(PathBuf::from("worktree")),
+                        geom: PaneGeom {
+                            rows: Dimension::fixed(10),
+                            cols: Dimension::fixed(20),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            )],
+            ..Default::default()
+        };
+        let (kdl, _) = serialize_session_layout(global_layout_manifest).unwrap();
+        expect![[r#"
+            layout {
+                cwd "/project"
+                tab name="Tab #1" {
+                    floating_panes {
+                        pane cwd="worktree" {
+                            height 10
+                            width 20
+                            x 0
+                            y 0
+                        }
+                    }
+                }
+            }
+        "#]]
+        .assert_eq(&kdl);
+    }
+
     #[test]
     fn can_serialize_tab_with_stacked_panes() {
         let tab_layout_manifest = TabLayoutManifest {
