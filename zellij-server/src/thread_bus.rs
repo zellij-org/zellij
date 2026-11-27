@@ -95,6 +95,28 @@ impl ThreadSenders {
         }
     }
 
+    pub fn try_send_to_plugin(&self, instruction: PluginInstruction) -> Result<()> {
+        if self.should_silently_fail {
+            let _ = self
+                .to_plugin
+                .as_ref()
+                .map(|sender| sender.try_send(instruction))
+                .unwrap_or_else(|| Ok(()));
+            Ok(())
+        } else {
+            self.to_plugin
+                .as_ref()
+                .context("failed to get plugin sender")?
+                .try_send(instruction)
+                .map_err(|error| match error {
+                    channels::TrySendError::Full(_) => anyhow!("plugin channel is full"),
+                    channels::TrySendError::Disconnected(_) => {
+                        anyhow!("plugin channel is closed")
+                    },
+                })
+        }
+    }
+
     pub fn send_to_server(&self, instruction: ServerInstruction) -> Result<()> {
         if self.should_silently_fail {
             let _ = self
