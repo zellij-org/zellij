@@ -2470,6 +2470,30 @@ impl Grid {
         scrollback.push_str(&viewport);
         scrollback
     }
+    /// Snapshot the retained history without changing the source viewport.
+    pub fn scrollback_editor_snapshot(&self, ansi: bool) -> (String, usize) {
+        let rows: Vec<&Row> = self
+            .lines_above
+            .iter()
+            .chain(self.viewport.iter())
+            .chain(self.lines_below.iter())
+            .collect();
+        // Keep the viewport-relative anchor, counting the same logical lines as the dump.
+        let anchor =
+            self.lines_above.len() + self.cursor.y.min(self.viewport.len().saturating_sub(1));
+        let line_number = 1 + rows
+            .iter()
+            .take(anchor + 1)
+            .skip(1)
+            .filter(|row| row.is_canonical)
+            .count();
+        let contents = if ansi {
+            dump_screen_with_ansi!(rows)
+        } else {
+            dump_screen!(rows)
+        };
+        (contents, line_number)
+    }
     pub fn mark_unseen_output_start(&mut self) {
         self.unseen_output_mark = Some((self.lines_above.len(), self.cursor.y));
     }

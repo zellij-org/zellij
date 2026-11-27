@@ -10274,6 +10274,41 @@ fn dump_screen_with_ansi_rejoins_wrapped_scrollback_lines() {
 }
 
 #[test]
+fn scrollback_editor_snapshot_preserves_the_viewport_anchor_and_includes_newer_rows() {
+    let mut grid = create_grid_with_size_and_raw(
+        3,
+        5,
+        b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\n\x1b[31msix\x1b[m",
+    );
+    grid.move_viewport_up(1);
+    let viewport = viewport_texts(&grid);
+    assert_eq!(viewport, ["three", "four", "five"]);
+    assert!(!grid.dump_screen(true).contains("six"));
+
+    let (plain, line_number) = grid.scrollback_editor_snapshot(false);
+    assert_eq!(plain, "one\ntwo\nthree\nfour\nfive\nsix");
+    assert_eq!(plain.lines().nth(line_number - 1), Some("five"));
+    let (ansi, ansi_line_number) = grid.scrollback_editor_snapshot(true);
+    let last_line = ansi.lines().last().unwrap();
+    assert!(last_line.starts_with("\x1b[31m") && last_line.ends_with("six\x1b[m"));
+    assert_eq!(ansi_line_number, line_number);
+    assert_eq!(viewport_texts(&grid), viewport);
+    assert!(grid.is_scrolled);
+}
+
+#[test]
+fn scrollback_editor_snapshot_rejoins_lines_wrapped_across_the_viewport_edges() {
+    let mut grid = create_grid_with_size_and_raw(2, 5, b"0123456789ABCDE\r\nend");
+    grid.move_viewport_up(1);
+    assert_eq!(viewport_texts(&grid), ["56789", "ABCDE"]);
+    let (plain, line_number) = grid.scrollback_editor_snapshot(false);
+    assert_eq!(plain, "0123456789ABCDE\nend");
+    assert_eq!(line_number, 1);
+    let (ansi, _) = grid.scrollback_editor_snapshot(true);
+    assert!(ansi.lines().next().unwrap().contains("0123456789ABCDE"));
+}
+
+#[test]
 fn scrollback_capacity_counts_display_rows() {
     let mut grid = create_grid_with_size_and_raw(5, 10, b"");
     let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
