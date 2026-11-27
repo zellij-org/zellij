@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 fix: render after toggling pane pin mode (https://github.com/zellij-org/zellij/pull/5978)
+fix: break tabs by position rather than index (https://github.com/zellij-org/zellij/pull/5990)
 
 ## [0.46.1] - 2026-11-24
 * fix: "Show inbox" opens the inbox even when it's empty (https://github.com/zellij-org/zellij/pull/5869)
