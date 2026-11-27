@@ -1,6 +1,7 @@
 use super::super::layout::*;
 use insta::assert_snapshot;
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 
 #[cfg(not(windows))]
 fn normalize_layout_debug(s: String) -> String {
@@ -2761,4 +2762,28 @@ fn plugin_aliases_with_different_names_are_not_equivalent() {
         &[("ignore_case", "true"), ("caller_cwd", "/some/folder")],
     );
     assert!(!requested.is_equivalent_to_run(&running));
+}
+
+#[test]
+fn run_plugin_hash_ignores_fields_that_equality_ignores() {
+    let plain = RunPlugin::from_url("file:/tmp/plugin.wasm").unwrap();
+    let mut with_cwd = plain.clone();
+    with_cwd.initial_cwd = Some(std::path::PathBuf::from("/tmp"));
+    let mut allowed = plain.clone();
+    allowed._allow_exec_host_cmd = true;
+
+    assert_eq!(plain, with_cwd);
+    assert_eq!(plain, allowed);
+
+    let mut plugins = HashSet::new();
+    plugins.insert(plain.clone());
+
+    assert!(plugins.contains(&with_cwd));
+    assert!(plugins.contains(&allowed));
+
+    // A HashMap lookup with an equal-but-differently-hashed key missed as well.
+    let mut ids = std::collections::HashMap::new();
+    ids.insert(plain, 1);
+    assert_eq!(ids.get(&with_cwd), Some(&1));
+    assert_eq!(ids.get(&allowed), Some(&1));
 }

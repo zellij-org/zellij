@@ -453,8 +453,7 @@ impl Run {
     }
 }
 
-#[allow(clippy::derive_hash_xor_eq)]
-#[derive(Debug, Serialize, Deserialize, Clone, Hash, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct RunPlugin {
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
@@ -559,15 +558,25 @@ impl PluginAlias {
     }
 }
 
-#[allow(clippy::derive_hash_xor_eq)]
 impl PartialEq for RunPlugin {
     fn eq(&self, other: &Self) -> bool {
         // TODO: normalize paths here if the location is a file so that relative/absolute paths
         // will work properly
+        // NOTE: Keep this in sync with what the `Hash` trait impl does.
         (&self.location, &self.configuration) == (&other.location, &other.configuration)
     }
 }
 impl Eq for RunPlugin {}
+impl std::hash::Hash for RunPlugin {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // NOTE: Keep this in sync with what the `PartialEq` trait impl does.
+        // `_allow_exec_host_cmd` and `initial_cwd` are deliberately excluded: two
+        // RunPlugins that only differ in them compare equal, so they must hash
+        // equal as well or HashMaps/HashSets will not find them.
+        self.location.hash(state);
+        self.configuration.hash(state);
+    }
+}
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct PluginUserConfiguration(BTreeMap<String, String>);
