@@ -7790,6 +7790,72 @@ pub fn send_cli_toggle_pane_pinned_with_pane_id() {
     );
 }
 
+fn render_requests(
+    background_jobs_receiver: &Receiver<(crate::background_jobs::BackgroundJob, ErrorContext)>,
+) -> usize {
+    background_jobs_receiver
+        .try_iter()
+        .filter(|(job, _)| {
+            matches!(
+                job,
+                crate::background_jobs::BackgroundJob::RenderToClients
+                    | crate::background_jobs::BackgroundJob::RenderToClientsNow
+            )
+        })
+        .count()
+}
+
+fn screen_with_one_pane_and_captured_background_jobs() -> (
+    Screen,
+    Receiver<(crate::background_jobs::BackgroundJob, ErrorContext)>,
+) {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    let background_jobs_receiver = capture_background_jobs(&mut screen);
+    (screen, background_jobs_receiver)
+}
+
+#[test]
+pub fn toggle_pane_pinned_requests_render() {
+    let (mut screen, background_jobs_receiver) =
+        screen_with_one_pane_and_captured_background_jobs();
+    screen.toggle_pane_pinned(1).unwrap();
+    assert_eq!(render_requests(&background_jobs_receiver), 1);
+}
+
+#[test]
+pub fn set_floating_pane_pinned_requests_render() {
+    let (mut screen, background_jobs_receiver) =
+        screen_with_one_pane_and_captured_background_jobs();
+    screen
+        .set_floating_pane_pinned(PaneId::Terminal(1), true)
+        .unwrap();
+    assert_eq!(render_requests(&background_jobs_receiver), 1);
+}
+
+#[test]
+pub fn toggle_pane_pinned_by_pane_id_requests_render() {
+    let (mut screen, background_jobs_receiver) =
+        screen_with_one_pane_and_captured_background_jobs();
+    assert!(screen
+        .toggle_pane_pinned_by_pane_id(PaneId::Terminal(1))
+        .unwrap());
+    assert_eq!(render_requests(&background_jobs_receiver), 1);
+}
+
+#[test]
+pub fn toggle_pane_pinned_by_pane_id_reports_missing_pane() {
+    let (mut screen, _background_jobs_receiver) =
+        screen_with_one_pane_and_captured_background_jobs();
+    assert!(!screen
+        .toggle_pane_pinned_by_pane_id(PaneId::Terminal(99))
+        .unwrap());
+}
+
 // TAB-TARGETING MockScreen tests
 
 #[test]
