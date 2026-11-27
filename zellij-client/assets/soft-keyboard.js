@@ -1,3 +1,5 @@
+import { pasteIntoTerminal } from "./terminal.js";
+
 export function isCoarsePointerDevice() {
     if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
         return true;
@@ -196,7 +198,7 @@ export function installSoftKeyboardCapture(term, sendFunction) {
             return;
         }
         ev.preventDefault();
-        term.paste(text);
+        pasteIntoTerminal(term, text);
     });
 
     // The input event only sees keys that edit the text, so named keys such as F2, Home or

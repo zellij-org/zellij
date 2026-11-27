@@ -113,8 +113,40 @@ export function initTerminal(config) {
     });
     term.loadAddon(webglAddon);
     term.open(document.getElementById("terminal"));
+    // Take pastes before xterm.js's own handler (capture phase) so they go
+    // through pasteIntoTerminal.
+    term.element.addEventListener(
+        "paste",
+        (ev) => {
+            const text =
+                ev.clipboardData && ev.clipboardData.getData("text/plain");
+            if (!text) {
+                return;
+            }
+            ev.preventDefault();
+            ev.stopPropagation();
+            pasteIntoTerminal(term, text);
+        },
+        true
+    );
     term.focus();
     return { term, fitAddon };
+}
+
+/**
+ * Paste text into the terminal through xterm.js.
+ *
+ * The bundled xterm.js wraps a bracketed paste as ESC[200~ + text + ESC[201~
+ * without touching the text, so pasted text that contains ESC[201~ would end the
+ * paste early and the rest would reach the program as typed keys. Like newer
+ * xterm.js releases, replace ESC with U+241B (␛) in a bracketed paste.
+ * @param {Terminal} term
+ * @param {string} text
+ */
+export function pasteIntoTerminal(term, text) {
+    const bracketed =
+        term.modes.bracketedPasteMode && !term.options.ignoreBracketedPasteMode;
+    term.paste(bracketed ? text.replace(/\x1b/g, "\u241b") : text);
 }
 
 export const MIN_FONT_SIZE_PX = 6;
