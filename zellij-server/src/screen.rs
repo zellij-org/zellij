@@ -6291,14 +6291,6 @@ impl Screen {
         self.get_tabs_mut().get_mut(&tab_index)
     }
 
-    /// Looks a tab up by its position in the tab line rather than by its id. Tab ids and
-    /// positions differ after a tab is moved or closed.
-    pub fn get_tab_mut_by_position(&mut self, tab_position: usize) -> Option<&mut Tab> {
-        self.get_tabs_mut()
-            .values_mut()
-            .find(|tab| tab.position == tab_position)
-    }
-
     pub fn host_terminal_focus_changed(&mut self, client_id: ClientId, focused: bool) {
         let was_focused = self.client_host_is_focused(&client_id);
         self.client_host_focused.insert(client_id, focused);
@@ -9073,18 +9065,14 @@ impl Screen {
         self.render(None)?;
         Ok(())
     }
-    /// Breaks panes out of their tabs into the tab with the given tab id.
-    ///
-    /// The shared implementation resolves its target by tab position, and ids and
-    /// positions diverge once a tab is moved or closed, so translate here.
     pub fn break_multiple_panes_to_tab_with_id(
         &mut self,
         pane_ids: Vec<PaneId>,
         tab_id: usize,
         should_change_focus_to_target_tab: bool,
         client_id: ClientId,
-    ) -> Result<()> {
-        match self.get_tab_by_id(tab_id).map(|tab| tab.position) {
+    ) -> Result<Option<usize>> {
+        match self.get_tab_position_by_id(tab_id) {
             Some(tab_position) => self.break_multiple_panes_to_tab_with_index(
                 pane_ids,
                 tab_position,
@@ -9093,7 +9081,7 @@ impl Screen {
             ),
             None => {
                 log::error!("Tab with ID {} not found", tab_id);
-                Ok(())
+                Ok(None)
             },
         }
     }
@@ -9104,20 +9092,15 @@ impl Screen {
         tab_index: usize,
         should_change_focus_to_new_tab: bool,
         client_id: ClientId,
-    ) -> Result<()> {
-        let all_tabs = self.get_tabs_mut();
-        let has_tab_with_index = all_tabs
-            .values()
-            .find(|t| t.position == tab_index)
-            .is_some();
-        if !has_tab_with_index {
+    ) -> Result<Option<usize>> {
+        let Some(target_tab_id) = self.get_tab_id_at_position(tab_index) else {
             log::error!("Cannot find tab with index: {tab_index}");
-            return Ok(());
-        }
+            return Ok(None);
+        };
         let mut extracted_panes = vec![];
         for pane_id in pane_ids {
-            for tab in all_tabs.values_mut() {
-                if tab.position == tab_index {
+            for tab in self.tabs.values_mut() {
+                if tab.id == target_tab_id {
                     continue;
                 }
                 // here we pass None instead of the client_id we have because we do not need to
@@ -9135,9 +9118,9 @@ impl Screen {
         }
         if extracted_panes.is_empty() {
             // nothing to do here...
-            return Ok(());
+            return Ok(Some(target_tab_id));
         }
-        if let Some(new_active_tab) = self.get_tab_mut_by_position(tab_index) {
+        if let Some(new_active_tab) = self.get_tab_by_id_mut(target_tab_id) {
             let tab_size = new_active_tab.size;
             for (_source_tab_id, pane_location, mut pane) in extracted_panes {
                 let pane_id = pane.pid();
@@ -9175,9 +9158,11 @@ impl Screen {
         } else {
             log::error!("Could not find tab with index: {:?}", tab_index);
             self.return_panes_to_their_tabs(extracted_panes);
+            self.log_and_report_session_state()?;
+            return Ok(None);
         }
         self.log_and_report_session_state()?;
-        Ok(())
+        Ok(Some(target_tab_id))
     }
     fn handle_break_pane_result(
         &mut self,
@@ -14670,21 +14655,15 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 mut completion_tx,
             } => {
-                // Verify tab exists
-                if screen.get_tab_by_id(tab_id).is_none() {
-                    log::error!("Tab with ID {} not found", tab_id);
-                    // Don't set affected_tab_id, it will remain None to signal failure
-                } else {
-                    screen.break_multiple_panes_to_tab_with_id(
-                        pane_ids,
-                        tab_id,
-                        should_change_focus_to_target_tab,
-                        client_id,
-                    )?;
-                    // Set affected tab ID (tab_id is the ID here)
+                if let Some(target_tab_id) = screen.break_multiple_panes_to_tab_with_id(
+                    pane_ids,
+                    tab_id,
+                    should_change_focus_to_target_tab,
+                    client_id,
+                )? {
                     completion_tx
                         .as_mut()
-                        .map(|c| c.set_affected_tab_id(tab_id));
+                        .map(|c| c.set_affected_tab_id(target_tab_id));
                     let pane_group = screen.get_client_pane_group(&client_id);
                     if !pane_group.is_empty() {
                         let _ = screen.bus.senders.send_to_background_jobs(
@@ -15344,20 +15323,12 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 mut completion_tx,
             } => {
-                // `tab_index` is a tab position; completion reports the id of the tab
-                // that actually received the panes.
-                let target_tab_id = screen
-                    .get_tabs_mut()
-                    .values()
-                    .find(|tab| tab.position == tab_index)
-                    .map(|tab| tab.id);
-                screen.break_multiple_panes_to_tab_with_index(
+                if let Some(target_tab_id) = screen.break_multiple_panes_to_tab_with_index(
                     pane_ids,
                     tab_index,
                     should_change_focus_to_new_tab,
                     client_id,
-                )?;
-                if let Some(target_tab_id) = target_tab_id {
+                )? {
                     completion_tx
                         .as_mut()
                         .map(|c| c.set_affected_tab_id(target_tab_id));

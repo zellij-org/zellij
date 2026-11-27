@@ -16195,7 +16195,7 @@ pub fn breaking_panes_to_a_tab_id_still_uses_the_tab_id() {
 }
 
 #[test]
-pub fn breaking_panes_to_a_tab_that_cannot_be_found_returns_them() {
+pub fn breaking_panes_to_a_tab_position_that_does_not_exist_leaves_them_in_place() {
     let size = Size {
         cols: 121,
         rows: 20,
@@ -16220,13 +16220,58 @@ pub fn breaking_panes_to_a_tab_that_cannot_be_found_returns_them() {
         )
         .unwrap();
     screen.close_tab_by_id(0).unwrap();
-    assert!(screen.get_indexed_tab_mut(0).is_none());
-    screen
-        .break_multiple_panes_to_tab_with_index(vec![PaneId::Terminal(4)], 0, false, 1)
+    let target_tab_id = screen
+        .break_multiple_panes_to_tab_with_index(vec![PaneId::Terminal(4)], 2, false, 1)
         .unwrap();
+    assert_eq!(target_tab_id, None, "no tab is at position 2");
     assert!(
-        screen.has_pane_with_pid(&PaneId::Terminal(4)),
-        "the pane is returned instead of being lost"
+        screen
+            .tabs
+            .get(&2)
+            .unwrap()
+            .get_all_pane_ids()
+            .contains(&PaneId::Terminal(4)),
+        "the pane stays in its original tab"
+    );
+}
+
+#[test]
+pub fn breaking_panes_to_a_tab_id_that_does_not_exist_leaves_them_in_place() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen
+        .tabs
+        .get_mut(&1)
+        .unwrap()
+        .new_pane(
+            PaneId::Terminal(4),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    screen.close_tab_by_id(0).unwrap();
+    let target_tab_id = screen
+        .break_multiple_panes_to_tab_with_id(vec![PaneId::Terminal(4)], 0, false, 1)
+        .unwrap();
+    assert_eq!(target_tab_id, None, "tab id 0 was closed");
+    assert!(
+        screen
+            .tabs
+            .get(&1)
+            .unwrap()
+            .get_all_pane_ids()
+            .contains(&PaneId::Terminal(4)),
+        "the pane stays in its original tab"
     );
 }
 
