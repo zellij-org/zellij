@@ -2,43 +2,49 @@ use crate::data::{ClientId, Direction, InputMode, Resize, UnblockCondition};
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
-    input::{layout::PluginUserConfiguration, options::Options},
+    input::{
+        layout::PluginUserConfiguration,
+        options::{Options, PaneFrameStyle},
+    },
 };
-use clap::{ArgEnum, Args, Parser, Subcommand};
+use clap::builder::styling::{AnsiColor, Color, Style, Styles};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use std::path::PathBuf;
 use url::Url;
 
+const fn ansi(color: AnsiColor) -> Style {
+    Style::new().fg_color(Some(Color::Ansi(color)))
+}
+
+const CLI_STYLES: Styles = Styles::styled()
+    .header(ansi(AnsiColor::Yellow))
+    .usage(ansi(AnsiColor::Yellow))
+    .literal(ansi(AnsiColor::Green))
+    .placeholder(Style::new())
+    .error(ansi(AnsiColor::Red))
+    .valid(ansi(AnsiColor::Green))
+    .invalid(ansi(AnsiColor::Yellow));
+
 fn validate_session(name: &str) -> Result<String, String> {
-    #[cfg(unix)]
-    {
-        use crate::consts::ZELLIJ_SOCK_MAX_LENGTH;
-
-        let mut socket_path = crate::consts::ZELLIJ_SOCK_DIR.clone();
-        socket_path.push(name);
-
-        if socket_path.as_os_str().len() >= ZELLIJ_SOCK_MAX_LENGTH {
-            // socket path must be less than 108 bytes
-            let available_length = ZELLIJ_SOCK_MAX_LENGTH
-                .saturating_sub(socket_path.as_os_str().len())
-                .saturating_sub(1);
-
-            return Err(format!(
-                "session name must be less than {} characters",
-                available_length
-            ));
-        };
-    };
-
+    // Socket paths are named by a fixed-length session id, not the session name,
+    // so the name no longer contributes to the socket-path length limit. The
+    // client validates the socket directory's length at startup.
     Ok(name.to_owned())
 }
 
 #[derive(Parser, Default, Debug, Clone, Serialize, Deserialize)]
-#[clap(version, name = "zellij")]
+#[clap(
+    version,
+    name = "zellij",
+    about = "A terminal workspace with batteries included",
+    styles = CLI_STYLES,
+    args_override_self = true
+)]
 pub struct CliArgs {
     /// Maximum panes on screen, caution: opening more panes will close old ones
-    #[clap(long, value_parser)]
+    #[clap(long, value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(1..))]
     pub max_panes: Option<usize>,
 
     /// Change where zellij looks for plugins
@@ -62,7 +68,7 @@ pub struct CliArgs {
     /// Raw KDL layout string to use directly (instead of a file path)
     /// if inside a session (or using the --session flag) will be added to the session as a new tab
     /// or tabs, otherwise will start a new session
-    #[clap(long, value_parser, conflicts_with_all = &["layout", "new-session-with-layout"])]
+    #[clap(long, value_parser, conflicts_with_all = &["layout", "new_session_with_layout"])]
     pub layout_string: Option<String>,
 
     /// Name of a predefined layout inside the layout directory or the path to a layout file
@@ -101,6 +107,35 @@ impl CliArgs {
         }
         None
     }
+    /// The clap command, named after the running distribution rather than after Zellij
+    pub fn command_for_distribution() -> clap::Command {
+        use clap::CommandFactory;
+        let distribution = crate::distribution::distribution();
+        let command = CliArgs::command()
+            .name(distribution.name)
+            .bin_name(distribution.name);
+        if distribution.is_stock_zellij() {
+            command
+        } else {
+            static VERSION_STRING: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+            let version = VERSION_STRING.get_or_init(|| {
+                format!(
+                    "{} (zellij {})",
+                    distribution.version,
+                    crate::consts::VERSION
+                )
+            });
+            command.version(version.as_str())
+        }
+    }
+    pub fn parse_for_distribution() -> Self {
+        use clap::FromArgMatches;
+        let matches = CliArgs::command_for_distribution().get_matches();
+        match CliArgs::from_arg_matches(&matches) {
+            Ok(cli_args) => cli_args,
+            Err(e) => e.exit(),
+        }
+    }
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
@@ -131,6 +166,552 @@ pub enum Command {
         "zellij [--session <OTHER SESSION NAME>] subscribe [OPTIONS] --pane-id..."
     ))]
     Subscribe(SubscribeCli),
+
+    #[clap(
+        about = "Show a UI element to the person at the terminal and print their answer (e.g. zellij prompt confirm \"Deploy?\")",
+        long_about = "Show a UI element to the person at the terminal and print their answer.\n\nExit codes: 0 answered, 1 cancelled or closed, 2 error, 124 timed out without a default."
+    )]
+    #[clap(arg_required_else_help = true)]
+    Prompt(PromptCli),
+    /// Open a session in the Zellij terminal, without another terminal emulator
+    #[clap(name = "terminal")]
+    Terminal(TerminalArgs),
+}
+
+#[derive(Debug, Parser, Clone, Serialize, Deserialize)]
+pub struct PromptCli {
+    #[clap(subcommand)]
+    pub element: PromptElementCli,
+
+    #[clap(
+        long,
+        global = true,
+        help = "Title shown at the top of the popup (e.g. --title \"Git\")"
+    )]
+    pub title: Option<String>,
+
+    #[clap(
+        long,
+        global = true,
+        help = "How long the popup stays open; an unanswered prompt then exits 124 and a notice just closes (e.g. --timeout 30s)"
+    )]
+    pub timeout: Option<String>,
+}
+
+#[derive(Debug, Args, Clone, Default, Serialize, Deserialize)]
+pub struct PromptAnswerArgs {
+    #[clap(
+        long,
+        allow_hyphen_values = true,
+        help = "Initial value, and the answer used when --timeout runs out (e.g. --default 8080)"
+    )]
+    pub default: Option<String>,
+
+    #[clap(
+        long,
+        help = "Print JSON with the result and why the prompt ended (e.g. {\"result\":\"cancelled\"})"
+    )]
+    pub json: bool,
+
+    #[clap(
+        long,
+        conflicts_with_all(&["at_cursor", "at_center"]),
+        help = "Open the popup where the mouse pointer last was, or at your cursor if the mouse has not moved yet (e.g. --at-mouse)"
+    )]
+    pub at_mouse: bool,
+
+    #[clap(
+        long,
+        conflicts_with_all(&["at_mouse", "at_center"]),
+        help = "Open the popup just below your cursor, in the pane you are focused on (e.g. --at-cursor)"
+    )]
+    pub at_cursor: bool,
+
+    #[clap(
+        long,
+        conflicts_with_all(&["at_mouse", "at_cursor"]),
+        help = "Open the popup in the middle of the screen instead of over the calling pane (e.g. --at-center)"
+    )]
+    pub at_center: bool,
+
+    #[clap(
+        long,
+        help = "Send every key to the prompt, including the ones bound to Zellij actions (e.g. --capture-all-keys)"
+    )]
+    pub capture_all_keys: bool,
+
+    #[clap(
+        long,
+        value_parser,
+        help = "What a click outside the popup does: block (ignore it) or close (cancel the prompt) (e.g. --outside-click close)"
+    )]
+    pub outside_click: Option<crate::data::OutsideClick>,
+}
+
+impl PromptCli {
+    pub fn answer_args(&self) -> PromptAnswerArgs {
+        self.element.answer_args().cloned().unwrap_or_default()
+    }
+    pub fn takes_focus(&self) -> bool {
+        !matches!(self.element, PromptElementCli::Notify { .. })
+    }
+    pub fn placement(&self) -> crate::data::PipePopupPlacement {
+        if let PromptElementCli::Notify { at, .. } = &self.element {
+            return at.unwrap_or(crate::data::PipePopupPlacement::TopRight);
+        }
+        let answer_args = self.answer_args();
+        if answer_args.at_mouse {
+            crate::data::PipePopupPlacement::Mouse
+        } else if answer_args.at_cursor {
+            crate::data::PipePopupPlacement::Cursor
+        } else if answer_args.at_center {
+            crate::data::PipePopupPlacement::Center
+        } else {
+            crate::data::PipePopupPlacement::Pane
+        }
+    }
+}
+
+#[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
+pub enum PromptElementCli {
+    #[clap(
+        about = "Ask a yes/no question; the exit code is the answer (e.g. zellij prompt confirm \"Force push?\" --yes Push --no Cancel)",
+        after_help = "Examples:\n  zellij prompt confirm \"Force push?\"
+  zellij prompt confirm \"Force push?\" --yes Push --no Cancel && git push --force
+  zellij prompt confirm \"Deploy?\" --title Production --timeout 10s --default no"
+    )]
+    Confirm {
+        #[clap(help = "The question (e.g. \"Force push?\")")]
+        message: Option<String>,
+        #[clap(long, help = "Label of the confirming button (e.g. --yes Push)")]
+        yes: Option<String>,
+        #[clap(long, help = "Label of the refusing button (e.g. --no Cancel)")]
+        no: Option<String>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
+    },
+    #[clap(
+        about = "Choose one or more items from the arguments or from stdin, one per line (e.g. git branch | zellij prompt choose)",
+        after_help = "Examples:\n  git branch --format='%(refname:short)' | zellij prompt choose
+  zellij prompt choose main develop feature/login --title Branch
+  zellij prompt choose --multi --selected b a b c d
+  printf 'main\\tMain branch\\ndev\\tDevelopment\\n' | zellij prompt choose --labels
+  zellij prompt choose --item \"rm=Delete file\" --item \"mv=Rename file\"
+  ls | zellij prompt choose --json"
+    )]
+    Choose {
+        #[clap(help = "The items; read from stdin when none are given (e.g. main dev)")]
+        items: Vec<String>,
+        #[clap(
+            long = "item",
+            allow_hyphen_values = true,
+            help = "An item written as value=Label (e.g. --item \"rm=Delete file\")"
+        )]
+        item: Vec<String>,
+        #[clap(
+            long,
+            help = "Allow ticking several items (e.g. zellij prompt choose --multi a b c)"
+        )]
+        multi: bool,
+        #[clap(
+            long,
+            help = "Each stdin line is value<TAB>label (e.g. printf 'main\\tMain branch\\n' | zellij prompt choose --labels)"
+        )]
+        labels: bool,
+        #[clap(
+            short = '0',
+            long = "null",
+            help = "Input and output are NUL-separated (e.g. find . -print0 | zellij prompt choose -0)"
+        )]
+        null: bool,
+        #[clap(
+            long,
+            allow_hyphen_values = true,
+            help = "An item ticked in advance (e.g. --selected b)"
+        )]
+        selected: Vec<String>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
+    },
+    #[clap(
+        about = "Ask for a line of text (e.g. zellij prompt input \"Commit message\" --required)",
+        after_help = "Examples:\n  zellij prompt input \"Commit message\" --placeholder \"what changed\" --required
+  zellij prompt input Branch --validate '^[a-z-]+$' --default my-branch
+  zellij prompt input Name --timeout 10s --default anonymous"
+    )]
+    Input {
+        #[clap(help = "The label (e.g. \"Commit message\")")]
+        message: Option<String>,
+        #[clap(
+            long,
+            help = "Text shown while the field is empty (e.g. --placeholder \"what changed\")"
+        )]
+        placeholder: Option<String>,
+        #[clap(
+            long,
+            allow_hyphen_values = true,
+            help = "A regular expression the answer must match (e.g. --validate '^[a-z-]+$')"
+        )]
+        validate: Option<String>,
+        #[clap(long, help = "Refuse an empty answer (e.g. --required)")]
+        required: bool,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
+    },
+    #[clap(
+        about = "Ask for a whole number (e.g. zellij prompt number Port --min 1 --max 65535 --default 8080)",
+        after_help = "Examples:\n  zellij prompt number Port --min 1 --max 65535 --default 8080
+  zellij prompt number Workers --min 1 --max 64 --step 4 --default 8"
+    )]
+    Number {
+        #[clap(help = "The label (e.g. Port)")]
+        message: Option<String>,
+        #[clap(
+            long,
+            allow_hyphen_values = true,
+            help = "Smallest allowed value (e.g. --min 1)"
+        )]
+        min: Option<i64>,
+        #[clap(
+            long,
+            allow_hyphen_values = true,
+            help = "Largest allowed value (e.g. --max 65535)"
+        )]
+        max: Option<i64>,
+        #[clap(long, help = "Step used by the arrow keys (e.g. --step 10)")]
+        step: Option<i64>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
+    },
+    #[clap(
+        about = "Ask for on or off; prints true or false (e.g. zellij prompt toggle \"Enable CI\" --default on)",
+        after_help = "Examples:\n  zellij prompt toggle \"Enable CI\" --default on
+  zellij prompt toggle Verbose --json"
+    )]
+    Toggle {
+        #[clap(help = "The label (e.g. \"Enable CI\")")]
+        message: Option<String>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
+    },
+    #[clap(
+        about = "Choose one value from a dropdown (e.g. zellij prompt select License MIT Apache-2.0)",
+        after_help = "Examples:\n  zellij prompt select License MIT Apache-2.0 GPL-3.0
+  zellij prompt select License MIT Apache-2.0 --default Apache-2.0"
+    )]
+    Select {
+        #[clap(help = "The label (e.g. License)")]
+        message: Option<String>,
+        #[clap(help = "The options (e.g. MIT Apache-2.0)")]
+        options: Vec<String>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
+    },
+    #[clap(
+        about = "Show a menu and print the chosen item (e.g. zellij prompt menu Open Rename Delete)",
+        after_help = "Examples:\n  zellij prompt menu Open Rename Delete
+  zellij prompt menu --item \"o=Open\" --item \"r=Rename\" --item \"d=Delete\" --at-mouse\n  zellij prompt menu Copy Paste --at-cursor\n  zellij prompt menu Open Close --at-center"
+    )]
+    Menu {
+        #[clap(help = "The menu items (e.g. Open Rename Delete)")]
+        items: Vec<String>,
+        #[clap(
+            long = "item",
+            allow_hyphen_values = true,
+            help = "An item written as value=Label (e.g. --item \"rm=Delete\")"
+        )]
+        item: Vec<String>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
+    },
+    #[clap(
+        about = "Show several fields described in JSON and print one JSON object (e.g. zellij prompt form --spec form.json)",
+        after_help = "Examples:\n  echo '{\"title\":\"New project\",\"fields\":[{\"id\":\"name\",\"type\":\"input\",\"label\":\"Name\",\"required\":true},{\"id\":\"ci\",\"type\":\"toggle\",\"label\":\"Use CI\",\"default\":true}]}' | zellij prompt form
+  zellij prompt form --spec form.json"
+    )]
+    Form {
+        #[clap(
+            long,
+            help = "File with the form description; read from stdin when not given (e.g. --spec form.json)"
+        )]
+        spec: Option<PathBuf>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
+    },
+    #[clap(
+        about = "Show a notice that does not take the keyboard and return at once with exit 0 (e.g. zellij prompt notify \"Build finished\" --timeout 5s)",
+        after_help = "Examples:\n  zellij prompt notify \"Build finished\"
+  make && zellij prompt notify \"Build finished\" --title make --timeout 5s
+  zellij prompt notify \"Tests failed\" --at bottom-left
+  zellij prompt notify \"Saved\" --no-tab-name --timeout 3s
+  zellij prompt notify \"Saved\" --no-pane-name --no-tab-name"
+    )]
+    Notify {
+        #[clap(help = "The text to show; long text is wrapped (e.g. \"Build finished\")")]
+        message: Option<String>,
+        #[clap(
+            long,
+            value_parser,
+            help = "Where to show it: top-right, top-left, bottom-right, bottom-left, pane, center, mouse or cursor (e.g. --at bottom-right)"
+        )]
+        at: Option<crate::data::PipePopupPlacement>,
+        #[clap(
+            long,
+            help = "Leave out the line with the name of the pane that sent the notice (e.g. --no-pane-name)"
+        )]
+        no_pane_name: bool,
+        #[clap(
+            long,
+            help = "Leave out the line with the tab name, shown when the pane that sent the notice is in another tab (e.g. --no-tab-name)"
+        )]
+        no_tab_name: bool,
+    },
+}
+
+impl PromptElementCli {
+    pub fn answer_args(&self) -> Option<&PromptAnswerArgs> {
+        match self {
+            PromptElementCli::Confirm { answer, .. }
+            | PromptElementCli::Choose { answer, .. }
+            | PromptElementCli::Input { answer, .. }
+            | PromptElementCli::Number { answer, .. }
+            | PromptElementCli::Toggle { answer, .. }
+            | PromptElementCli::Select { answer, .. }
+            | PromptElementCli::Menu { answer, .. }
+            | PromptElementCli::Form { answer, .. } => Some(answer),
+            PromptElementCli::Notify { .. } => None,
+        }
+    }
+    pub fn name(&self) -> &'static str {
+        match self {
+            PromptElementCli::Confirm { .. } => "confirm",
+            PromptElementCli::Choose { .. } => "choose",
+            PromptElementCli::Input { .. } => "input",
+            PromptElementCli::Number { .. } => "number",
+            PromptElementCli::Toggle { .. } => "toggle",
+            PromptElementCli::Select { .. } => "select",
+            PromptElementCli::Menu { .. } => "menu",
+            PromptElementCli::Form { .. } => "form",
+            PromptElementCli::Notify { .. } => "notify",
+        }
+    }
+}
+
+pub fn prompt_element_help(element: &str, color: bool) -> String {
+    use clap::CommandFactory;
+    let mut command = PromptCli::command()
+        .name("prompt")
+        .bin_name("zellij prompt")
+        .styles(CLI_STYLES);
+    command.build();
+    let help = match command.find_subcommand_mut(element) {
+        Some(subcommand) => subcommand.render_help(),
+        None => command.render_help(),
+    };
+    if color {
+        help.ansi().to_string()
+    } else {
+        help.to_string()
+    }
+}
+
+#[derive(Debug, Args, Default, Clone, Serialize, Deserialize)]
+pub struct AttachArgs {
+    /// Name of the session to attach to.
+    #[clap(value_parser)]
+    pub session_name: Option<String>,
+
+    /// Create a session if one does not exist.
+    #[clap(short, long, value_parser)]
+    pub create: bool,
+
+    /// Number of the session index in the active sessions ordered creation date.
+    #[clap(long, value_parser)]
+    pub index: Option<usize>,
+
+    /// Change the behaviour of zellij
+    #[clap(subcommand, name = "options")]
+    pub options: Option<Box<SessionCommand>>,
+
+    /// If resurrecting a dead session, immediately run all its commands on startup
+    #[clap(short, long)]
+    pub force_run_commands: bool,
+
+    /// Authentication token for remote sessions
+    #[clap(short('t'), long, value_parser)]
+    pub token: Option<String>,
+
+    /// Save session for automatic re-authentication (4 weeks)
+    #[clap(short('r'), long, value_parser)]
+    pub remember: bool,
+
+    /// Delete saved session before connecting
+    #[clap(long, value_parser)]
+    pub forget: bool,
+
+    /// Path to a custom CA certificate (PEM format) for verifying the remote server
+    #[clap(long, value_name = "FILE", value_parser)]
+    pub ca_cert: Option<PathBuf>,
+
+    /// Skip TLS certificate validation (DANGEROUS — development only)
+    #[clap(long, value_parser)]
+    pub insecure: bool,
+
+    /// Command to run in the first pane of the session, if it is created
+    #[clap(value_parser, last(true))]
+    pub initial_command: Vec<String>,
+
+    /// Close the initial command's pane immediately when it exits
+    #[clap(long, requires("initial_command"))]
+    pub close_on_exit: bool,
+
+    /// Start the initial command suspended, only running it after you first press ENTER
+    #[clap(long, requires("initial_command"))]
+    pub start_suspended: bool,
+}
+
+impl AttachArgs {
+    pub fn remote_url(&self) -> Option<&str> {
+        self.session_name
+            .as_deref()
+            .filter(|name| name.starts_with("http://") || name.starts_with("https://"))
+    }
+}
+
+#[derive(Debug, Args, Default, Clone, Serialize, Deserialize)]
+pub struct TerminalArgs {
+    #[clap(flatten)]
+    pub attach: AttachArgs,
+
+    /// Follow the screen of the session's first client, read-only
+    #[clap(long, conflicts_with_all = &["create", "force_run_commands", "index", "initial_command"])]
+    pub watch: bool,
+
+    /// Render nothing and open no window; for fixture capture and debugging
+    #[clap(long, hide = true)]
+    pub headless: bool,
+
+    /// Record the received message stream to a fixture file
+    #[clap(long, value_name = "PATH", hide = true)]
+    pub record: Option<PathBuf>,
+
+    /// Rows to advertise while headless
+    #[clap(long, hide = true)]
+    pub rows: Option<usize>,
+
+    /// Columns to advertise while headless
+    #[clap(long, hide = true)]
+    pub cols: Option<usize>,
+
+    /// Character cell width in pixels to advertise while headless
+    #[clap(long, default_value_t = 10, hide = true)]
+    pub cell_width: usize,
+
+    /// Character cell height in pixels to advertise while headless
+    #[clap(long, default_value_t = 20, hide = true)]
+    pub cell_height: usize,
+
+    /// Detach after this many seconds
+    #[clap(long, value_name = "SECONDS", hide = true)]
+    pub duration_secs: Option<u64>,
+
+    #[clap(
+        long,
+        value_enum,
+        value_name = "MODE",
+        help = "Open the window windowed, maximized, fullscreen, or the way the last one was closed (remember), overriding startup_mode in the terminal section of the configuration"
+    )]
+    pub startup_mode: Option<crate::input::terminal::StartupMode>,
+
+    #[clap(
+        long,
+        help = "Open this window on its own instead of handing it to the running desktop app (no tray, no notifications from this process)"
+    )]
+    pub standalone: bool,
+
+    #[clap(
+        long,
+        value_name = "PATH",
+        help = "Use this folder for session sockets instead of the default, so this window, its desktop app and its sessions are separate from every other Zellij (same as setting ZELLIJ_SOCKET_DIR)"
+    )]
+    pub socket_dir: Option<PathBuf>,
+
+    #[clap(
+        long,
+        conflicts_with_all = &["sessions", "standalone", "watch", "headless"],
+        help = "Show or hide the inbox panel of the running desktop app (starting it if needed), for a desktop keyboard shortcut"
+    )]
+    pub inbox: bool,
+
+    #[clap(
+        long,
+        conflicts_with_all = &["standalone", "watch", "headless"],
+        help = "Show or hide the sessions panel of the running desktop app (starting it if needed), for a desktop keyboard shortcut"
+    )]
+    pub sessions: bool,
+
+    #[clap(
+        short = 'e',
+        value_name = "COMMAND",
+        num_args = 1..,
+        allow_hyphen_values = true,
+        conflicts_with_all = &["watch", "inbox", "sessions", "headless", "initial_command", "background"],
+        help = "Run this command (and every argument after it) as the first pane, close the pane when it exits, and wait for it, exiting with its exit code (as terminal emulators do)"
+    )]
+    pub execute: Vec<String>,
+
+    #[clap(
+        long,
+        value_name = "DIR",
+        help = "Start in this folder instead of the current one"
+    )]
+    pub working_directory: Option<PathBuf>,
+
+    #[clap(
+        long,
+        help = "Keep the command's pane open after the command exits, showing its output (requires a command)"
+    )]
+    pub hold: bool,
+
+    #[clap(
+        long,
+        hide = true,
+        conflicts_with_all = &["inbox", "sessions", "standalone", "watch", "headless"],
+        help = "Start the desktop app without opening a window"
+    )]
+    pub background: bool,
+}
+
+impl TerminalArgs {
+    pub const DEFAULT_ROWS: usize = 40;
+    pub const DEFAULT_COLS: usize = 120;
+
+    pub fn command(&self) -> &[String] {
+        if self.execute.is_empty() {
+            &self.attach.initial_command
+        } else {
+            &self.execute
+        }
+    }
+
+    pub fn waits_for_command(&self) -> bool {
+        !self.execute.is_empty()
+    }
+
+    pub fn closes_command_on_exit(&self) -> bool {
+        if self.hold {
+            false
+        } else {
+            self.waits_for_command() || self.attach.close_on_exit
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.hold && self.command().is_empty() {
+            return Err("--hold needs a command to keep open: give one with -e".to_owned());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Parser, Clone, Serialize, Deserialize)]
@@ -140,8 +721,7 @@ pub struct SubscribeCli {
         short,
         long,
         required = true,
-        multiple_values = true,
-        multiple_occurrences = true
+        num_args(1..)
     )]
     pub pane_id: Vec<String>,
 
@@ -150,22 +730,21 @@ pub struct SubscribeCli {
     #[clap(
         short,
         long,
-        min_values = 0,
-        max_values = 1,
-        default_missing_value = "0"
+        default_missing_value = "0",
+        num_args(0..=1)
     )]
     pub scrollback: Option<usize>,
 
     /// Output format
-    #[clap(short, long, default_value = "raw", arg_enum)]
+    #[clap(short, long, default_value = "raw", value_enum)]
     pub format: SubscribeFormat,
 
     /// Preserve ANSI styling in the output
-    #[clap(long, value_parser, default_value("false"), takes_value(false))]
+    #[clap(long)]
     pub ansi: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ArgEnum)]
+#[derive(Debug, Clone, Serialize, Deserialize, ValueEnum)]
 pub enum SubscribeFormat {
     Raw,
     Json,
@@ -194,7 +773,7 @@ pub struct WebCli {
         short,
         long,
         value_parser,
-        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "status", "create_token", "revoke_token", "revoke_all_tokens"]),
         display_order = 5
     )]
     pub daemonize: bool,
@@ -232,7 +811,7 @@ pub struct WebCli {
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "create_token", "revoke_token", "revoke_all_tokens"]),
         display_order = 13
     )]
     pub ip: Option<IpAddr>,
@@ -240,7 +819,7 @@ pub struct WebCli {
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "create_token", "revoke_token", "revoke_all_tokens"]),
         display_order = 14
     )]
     pub port: Option<u16>,
@@ -248,7 +827,7 @@ pub struct WebCli {
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "status", "create_token", "revoke_token", "revoke_all_tokens"]),
         display_order = 15
     )]
     pub cert: Option<PathBuf>,
@@ -256,7 +835,7 @@ pub struct WebCli {
     #[clap(
         long,
         value_parser,
-        conflicts_with_all(&["stop", "status", "create-token", "revoke-token", "revoke-all-tokens"]),
+        conflicts_with_all(&["stop", "status", "create_token", "revoke_token", "revoke_all_tokens"]),
         display_order = 16
     )]
     pub key: Option<PathBuf>,
@@ -288,15 +867,15 @@ pub enum Sessions {
     #[clap(visible_alias = "ls")]
     ListSessions {
         /// Do not add colors and formatting to the list (useful for parsing)
-        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(short, long)]
         no_formatting: bool,
 
         /// Print just the session name
-        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(short, long)]
         short: bool,
 
         /// List the sessions in reverse order (default is ascending order)
-        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(short, long)]
         reverse: bool,
     },
     /// List existing plugin aliases
@@ -305,49 +884,12 @@ pub enum Sessions {
     /// Attach to a session
     #[clap(visible_alias = "a")]
     Attach {
-        /// Name of the session to attach to.
-        #[clap(value_parser)]
-        session_name: Option<String>,
-
-        /// Create a session if one does not exist.
-        #[clap(short, long, value_parser)]
-        create: bool,
+        #[clap(flatten)]
+        args: AttachArgs,
 
         /// Create a detached session in the background if one does not exist
         #[clap(short('b'), long, value_parser)]
         create_background: bool,
-
-        /// Number of the session index in the active sessions ordered creation date.
-        #[clap(long, value_parser)]
-        index: Option<usize>,
-
-        /// Change the behaviour of zellij
-        #[clap(subcommand, name = "options")]
-        options: Option<Box<SessionCommand>>,
-
-        /// If resurrecting a dead session, immediately run all its commands on startup
-        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
-        force_run_commands: bool,
-
-        /// Authentication token for remote sessions
-        #[clap(short('t'), long, value_parser)]
-        token: Option<String>,
-
-        /// Save session for automatic re-authentication (4 weeks)
-        #[clap(short('r'), long, value_parser)]
-        remember: bool,
-
-        /// Delete saved session before connecting
-        #[clap(long, value_parser)]
-        forget: bool,
-
-        /// Path to a custom CA certificate (PEM format) for verifying the remote server
-        #[clap(long, value_name = "FILE", value_parser)]
-        ca_cert: Option<PathBuf>,
-
-        /// Skip TLS certificate validation (DANGEROUS — development only)
-        #[clap(long, value_parser)]
-        insecure: bool,
     },
 
     /// Watch a session (read-only)
@@ -373,7 +915,7 @@ pub enum Sessions {
         #[clap(value_parser)]
         target_session: Option<String>,
         /// Kill the session if it's running before deleting it
-        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(short, long)]
         force: bool,
     },
 
@@ -392,7 +934,7 @@ pub enum Sessions {
         #[clap(short, long, value_parser)]
         yes: bool,
         /// Kill the sessions if they're running before deleting them
-        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(short, long)]
         force: bool,
     },
 
@@ -413,29 +955,15 @@ pub enum Sessions {
         cwd: Option<PathBuf>,
 
         /// Open the new pane in floating mode
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         floating: bool,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            conflicts_with("floating"),
-            conflicts_with("direction")
-        )]
+        #[clap(short, long, conflicts_with("floating"), conflicts_with("direction"))]
         in_place: bool,
 
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
-        )]
+        #[clap(long, requires("in_place"))]
         close_replaced_pane: bool,
 
         /// Name of the new pane
@@ -443,12 +971,18 @@ pub enum Sessions {
         name: Option<String>,
 
         /// Close the pane immediately when its command exits
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         close_on_exit: bool,
 
         /// Start the command suspended, only running after you first presses ENTER
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         start_suspended: bool,
+
+        #[clap(
+            long,
+            help = "Watch the pane: notify each time its command finishes or its output goes quiet, until the watch is turned off"
+        )]
+        notify: bool,
 
         /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(short, long, requires("floating"))]
@@ -465,28 +999,18 @@ pub enum Sessions {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
-        #[clap(
-            long,
-            conflicts_with("floating"),
-            conflicts_with("direction"),
-            value_parser,
-            default_value("false"),
-            takes_value(false)
-        )]
+        #[clap(long, conflicts_with("floating"), conflicts_with("direction"))]
         stacked: bool,
         /// Block until the command has finished and its pane has been closed
-        #[clap(long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(long)]
         blocking: bool,
 
         /// Block until the command exits successfully (exit status 0) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
             conflicts_with("blocking"),
-            conflicts_with("block-until-exit-failure"),
-            conflicts_with("block-until-exit")
+            conflicts_with("block_until_exit_failure"),
+            conflicts_with("block_until_exit")
         )]
         block_until_exit_success: bool,
 
@@ -494,29 +1018,28 @@ pub enum Sessions {
         /// closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
             conflicts_with("blocking"),
-            conflicts_with("block-until-exit-success"),
-            conflicts_with("block-until-exit")
+            conflicts_with("block_until_exit_success"),
+            conflicts_with("block_until_exit")
         )]
         block_until_exit_failure: bool,
 
         /// Block until the command exits (regardless of exit status) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
             conflicts_with("blocking"),
-            conflicts_with("block-until-exit-success"),
-            conflicts_with("block-until-exit-failure")
+            conflicts_with("block_until_exit_success"),
+            conflicts_with("block_until_exit_failure")
         )]
         block_until_exit: bool,
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
         near_current_pane: bool,
+        #[clap(
+            long,
+            help = "if set, will open the pane without changing the focus of any client, placing it relative to the pane the command was issued from"
+        )]
+        no_focus: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
         #[clap(short, long, value_parser)]
@@ -525,10 +1048,13 @@ pub enum Sessions {
         #[clap(
             long,
             value_parser,
-            conflicts_with("near-current-pane"),
-            conflicts_with("in-place")
+            conflicts_with("near_current_pane"),
+            conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Load a plugin
     /// Returns: Created pane ID (format: plugin_<id>)
@@ -543,32 +1069,19 @@ pub enum Sessions {
         configuration: Option<PluginUserConfiguration>,
 
         /// Open the new pane in floating mode
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         floating: bool,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            conflicts_with("floating")
-        )]
+        #[clap(short, long, conflicts_with("floating"))]
         in_place: bool,
 
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
-        )]
+        #[clap(long, requires("in_place"))]
         close_replaced_pane: bool,
 
         /// Skip the memory and HD cache and force recompile of the plugin (good for development)
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         skip_plugin_cache: bool,
         /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(short, long, requires("floating"))]
@@ -585,13 +1098,21 @@ pub enum Sessions {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
+        #[clap(
+            long,
+            help = "if set, will open the plugin pane without changing the focus of any client, placing it relative to the pane the command was issued from"
+        )]
+        no_focus: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
         #[clap(short, long, value_parser)]
         borderless: Option<bool>,
         /// Target a specific tab by ID
-        #[clap(long, value_parser, conflicts_with("in-place"))]
+        #[clap(long, value_parser, conflicts_with("in_place"))]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Edit file with default $EDITOR / $VISUAL
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -608,29 +1129,15 @@ pub enum Sessions {
         direction: Option<Direction>,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            conflicts_with("floating"),
-            conflicts_with("direction")
-        )]
+        #[clap(short, long, conflicts_with("floating"), conflicts_with("direction"))]
         in_place: bool,
 
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
-        )]
+        #[clap(long, requires("in_place"))]
         close_replaced_pane: bool,
 
         /// Open the new pane in floating mode
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         floating: bool,
 
         /// Change the working directory of the editor
@@ -654,6 +1161,11 @@ pub enum Sessions {
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
         near_current_pane: bool,
+        #[clap(
+            long,
+            help = "if set, will open the pane without changing the focus of any client, placing it relative to the pane the command was issued from"
+        )]
+        no_focus: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
         #[clap(short, long, value_parser)]
@@ -662,19 +1174,13 @@ pub enum Sessions {
         #[clap(
             long,
             value_parser,
-            conflicts_with("near-current-pane"),
-            conflicts_with("in-place")
+            conflicts_with("near_current_pane"),
+            conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
-    },
-    ConvertConfig {
-        old_config_file: PathBuf,
-    },
-    ConvertLayout {
-        old_layout_file: PathBuf,
-    },
-    ConvertTheme {
-        old_theme_file: PathBuf,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Send data to one or more plugins, launch them if they are not running.
     #[clap(override_usage(
@@ -765,6 +1271,8 @@ pub enum CliAction {
         /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3
         pane_id: String,
     },
+    /// Change focus to the last focused frame
+    FocusLastPane,
     /// Move the focused pane in the specified direction. [right|left|up|down]
     MoveFocus {
         direction: Direction,
@@ -801,7 +1309,7 @@ pub enum CliAction {
         path: Option<PathBuf>,
 
         /// Dump the pane with full scrollback
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         full: bool,
 
         /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3). If not specified, dumps the focused pane.
@@ -809,7 +1317,7 @@ pub enum CliAction {
         pane_id: Option<String>,
 
         /// Preserve ANSI styling in the dump output
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         ansi: bool,
     },
     /// Dump current layout to stdout
@@ -823,7 +1331,7 @@ pub enum CliAction {
         pane_id: Option<String>,
 
         /// Preserve ANSI styling in the scrollback dump
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         ansi: bool,
     },
     /// Scroll up in the focused pane
@@ -880,8 +1388,55 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
     },
+    #[clap(
+        about = "Toggle between fullscreen over the entire display (including the UI bars) and normal layout"
+    )]
+    ToggleNoUiFullscreen {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)"
+        )]
+        pane_id: Option<String>,
+    },
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
+    /// Switch the focused stack between showing its titles in a column (vertical) and in a row
+    /// (horizontal)
+    ToggleStackListOrientation {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target the stack holding a specific pane by ID (eg. terminal_1, plugin_2, or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    SetPaneFrameStyle {
+        #[clap(value_enum, value_parser)]
+        style: PaneFrameStyle,
+    },
+    #[clap(
+        about = "Show all bars if any are hidden, otherwise hide the named bars (all bars if none are named)"
+    )]
+    ToggleBars {
+        #[clap(
+            value_parser,
+            help = "Bars to hide, eg. tab-bar, status-bar, compact-bar, a plugin alias or location, or all"
+        )]
+        bars: Vec<String>,
+    },
+    #[clap(about = "Hide the named bars (all bars if none are named) in every tab")]
+    HideBars {
+        #[clap(
+            value_parser,
+            help = "Bars to hide, eg. tab-bar, status-bar, compact-bar, a plugin alias or location, or all"
+        )]
+        bars: Vec<String>,
+    },
+    #[clap(about = "Show all hidden bars")]
+    ShowBars,
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
     ToggleActiveSyncTab {
         /// Target a specific tab by ID
@@ -907,55 +1462,43 @@ pub enum CliAction {
         cwd: Option<PathBuf>,
 
         /// Open the new pane in floating mode
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         floating: bool,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            conflicts_with("floating"),
-            conflicts_with("direction")
-        )]
+        #[clap(short, long, conflicts_with("floating"), conflicts_with("direction"))]
         in_place: bool,
 
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
+        #[clap(long, requires("in_place"))]
+        close_replaced_pane: bool,
+
+        /// The pane to replace when opening in place, eg. terminal_1, plugin_2 or 3 (only
+        /// effective with --in-place; defaults to the focused pane)
         #[clap(
             long,
             value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
+            requires("in_place"),
+            conflicts_with("near_current_pane")
         )]
-        close_replaced_pane: bool,
+        pane_id: Option<String>,
 
         /// Name of the new pane
         #[clap(short, long, value_parser)]
         name: Option<String>,
 
         /// Close the pane immediately when its command exits
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("command")
-        )]
+        #[clap(short, long, requires("command"))]
         close_on_exit: bool,
         /// Start the command suspended, only running it after the you first press ENTER
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("command")
-        )]
+        #[clap(short, long, requires("command"))]
         start_suspended: bool,
+        #[clap(
+            long,
+            requires("command"),
+            help = "Watch the pane: notify each time its command finishes or its output goes quiet, until the watch is turned off"
+        )]
+        notify: bool,
         #[clap(long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
         #[clap(long, value_parser)]
@@ -975,14 +1518,7 @@ pub enum CliAction {
         /// Whether to pin a floating pane so that it is always on top
         #[clap(long, requires("floating"))]
         pinned: Option<bool>,
-        #[clap(
-            long,
-            conflicts_with("floating"),
-            conflicts_with("direction"),
-            value_parser,
-            default_value("false"),
-            takes_value(false)
-        )]
+        #[clap(long, conflicts_with("floating"), conflicts_with("direction"))]
         stacked: bool,
         /// Block until the command has finished and its pane has been closed
         #[clap(short, long)]
@@ -991,12 +1527,9 @@ pub enum CliAction {
         /// Block until the command exits successfully (exit status 0) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
             conflicts_with("blocking"),
-            conflicts_with("block-until-exit-failure"),
-            conflicts_with("block-until-exit")
+            conflicts_with("block_until_exit_failure"),
+            conflicts_with("block_until_exit")
         )]
         block_until_exit_success: bool,
 
@@ -1004,24 +1537,18 @@ pub enum CliAction {
         /// closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
             conflicts_with("blocking"),
-            conflicts_with("block-until-exit-success"),
-            conflicts_with("block-until-exit")
+            conflicts_with("block_until_exit_success"),
+            conflicts_with("block_until_exit")
         )]
         block_until_exit_failure: bool,
 
         /// Block until the command exits (regardless of exit status) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
             conflicts_with("blocking"),
-            conflicts_with("block-until-exit-success"),
-            conflicts_with("block-until-exit-failure")
+            conflicts_with("block_until_exit_success"),
+            conflicts_with("block_until_exit_failure")
         )]
         block_until_exit: bool,
 
@@ -1031,6 +1558,11 @@ pub enum CliAction {
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
         near_current_pane: bool,
+        #[clap(
+            long,
+            help = "if set, will open the pane without changing the focus of any client, placing it relative to the pane the command was issued from"
+        )]
+        no_focus: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
         #[clap(long, value_parser)]
@@ -1039,10 +1571,13 @@ pub enum CliAction {
         #[clap(
             long,
             value_parser,
-            conflicts_with("near-current-pane"),
-            conflicts_with("in-place")
+            conflicts_with("near_current_pane"),
+            conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     /// Returns: Created pane ID (format: terminal_<id>)
@@ -1058,29 +1593,15 @@ pub enum CliAction {
         line_number: Option<usize>,
 
         /// Open the new pane in floating mode
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        #[clap(short, long)]
         floating: bool,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(
-            short,
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            conflicts_with("floating"),
-            conflicts_with("direction")
-        )]
+        #[clap(short, long, conflicts_with("floating"), conflicts_with("direction"))]
         in_place: bool,
 
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
-        )]
+        #[clap(long, requires("in_place"))]
         close_replaced_pane: bool,
 
         /// Change the working directory of the editor
@@ -1104,6 +1625,11 @@ pub enum CliAction {
         /// if set, will open the pane near the current one rather than following the user's focus
         #[clap(long)]
         near_current_pane: bool,
+        #[clap(
+            long,
+            help = "if set, will open the pane without changing the focus of any client, placing it relative to the pane the command was issued from"
+        )]
+        no_focus: bool,
         /// start this pane without a border (warning: will make it impossible to move with the
         /// mouse)
         #[clap(short, long, value_parser)]
@@ -1112,10 +1638,13 @@ pub enum CliAction {
         #[clap(
             long,
             value_parser,
-            conflicts_with("near-current-pane"),
-            conflicts_with("in-place")
+            conflicts_with("near_current_pane"),
+            conflicts_with("in_place")
         )]
         tab_id: Option<usize>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {
@@ -1228,7 +1757,7 @@ pub enum CliAction {
     /// Returns: The created tab's ID as a single number on stdout
     NewTab {
         /// Layout to use for the new tab
-        #[clap(short, long, value_parser, conflicts_with = "layout-string")]
+        #[clap(short, long, value_parser, conflicts_with = "layout_string")]
         layout: Option<PathBuf>,
 
         /// Raw KDL layout string to use directly (instead of a layout file path)
@@ -1248,74 +1777,53 @@ pub enum CliAction {
         cwd: Option<PathBuf>,
 
         /// Optional initial command to run in the new tab
-        #[clap(
-            value_parser,
-            conflicts_with("initial-plugin"),
-            multiple_values(true),
-            takes_value(true),
-            last(true)
-        )]
+        #[clap(value_parser, conflicts_with("initial_plugin"), last(true))]
         initial_command: Vec<String>,
 
         /// Initial plugin to load in the new tab
-        #[clap(long, value_parser, conflicts_with("initial-command"))]
+        #[clap(long, value_parser, conflicts_with("initial_command"))]
         initial_plugin: Option<String>,
 
         /// Close the pane immediately when its command exits
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("initial-command")
-        )]
+        #[clap(long, requires("initial_command"))]
         close_on_exit: bool,
 
         /// Start the command suspended, only running it after you first press ENTER
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("initial-command")
-        )]
+        #[clap(long, requires("initial_command"))]
         start_suspended: bool,
 
         /// Block until the command exits successfully (exit status 0) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("initial-command"),
-            conflicts_with("block-until-exit-failure"),
-            conflicts_with("block-until-exit")
+            requires("initial_command"),
+            conflicts_with("block_until_exit_failure"),
+            conflicts_with("block_until_exit")
         )]
         block_until_exit_success: bool,
 
         /// Block until the command exits with failure (non-zero exit status) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("initial-command"),
-            conflicts_with("block-until-exit-success"),
-            conflicts_with("block-until-exit")
+            requires("initial_command"),
+            conflicts_with("block_until_exit_success"),
+            conflicts_with("block_until_exit")
         )]
         block_until_exit_failure: bool,
 
         /// Block until the command exits (regardless of exit status) OR its pane has been closed
         #[clap(
             long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("initial-command"),
-            conflicts_with("block-until-exit-success"),
-            conflicts_with("block-until-exit-failure")
+            requires("initial_command"),
+            conflicts_with("block_until_exit_success"),
+            conflicts_with("block_until_exit_failure")
         )]
         block_until_exit: bool,
+
+        #[clap(
+            long,
+            help = "if set, will create the tab without changing the focus of any client"
+        )]
+        no_focus: bool,
     },
     /// Move the focused tab in the specified direction. [right|left]
     MoveTab {
@@ -1334,13 +1842,37 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         tab_id: Option<usize>,
     },
+    /// Apply the tiled swap layout with the given name, leaving floating pane visibility and focus
+    /// untouched
+    ///
+    /// Exits with status 1 if no tiled swap layout with that name fits the current pane count
+    ApplyTiledSwapLayout {
+        /// The name of the tiled swap layout, as declared in the layout file
+        #[clap(value_parser)]
+        name: String,
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
+    /// Apply the floating swap layout with the given name, leaving floating pane visibility and
+    /// focus untouched
+    ///
+    /// Exits with status 1 if no floating swap layout with that name fits the current pane count
+    ApplyFloatingSwapLayout {
+        /// The name of the floating swap layout, as declared in the layout file
+        #[clap(value_parser)]
+        name: String,
+        /// Target a specific tab by ID
+        #[clap(short, long, value_parser)]
+        tab_id: Option<usize>,
+    },
     /// Override the layout of the active tab
     OverrideLayout {
         /// Path to the layout file
         #[clap(
             value_parser,
-            required_unless_present = "layout-string",
-            conflicts_with = "layout-string"
+            required_unless_present = "layout_string",
+            conflicts_with = "layout_string"
         )]
         layout: Option<PathBuf>,
 
@@ -1353,16 +1885,16 @@ pub enum CliAction {
         layout_dir: Option<PathBuf>,
 
         /// Retain existing terminal panes that do not fit in the layout (default: false)
-        #[clap(long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(long)]
         retain_existing_terminal_panes: bool,
 
-        /// Retain existing plugin panes that do not fit with the layout default: false)
-        #[clap(long, value_parser, takes_value(false), default_value("false"))]
+        /// Retain existing plugin panes that do not fit with the layout (default: false)
+        #[clap(long)]
         retain_existing_plugin_panes: bool,
 
         /// Only apply the layout to the active tab (uses just the first layout tab if it has
         /// multiple)
-        #[clap(long, value_parser, takes_value(false), default_value("false"))]
+        #[clap(long)]
         apply_only_to_active_tab: bool,
     },
     /// Query all tab names
@@ -1379,13 +1911,7 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         in_place: bool,
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
-        )]
+        #[clap(long, requires("in_place"))]
         close_replaced_pane: bool,
         #[clap(short, long, value_parser)]
         move_to_focused_tab: bool,
@@ -1395,7 +1921,7 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         skip_plugin_cache: bool,
         /// Target a specific tab by ID
-        #[clap(long, value_parser, conflicts_with("in-place"))]
+        #[clap(long, value_parser, conflicts_with("in_place"))]
         tab_id: Option<usize>,
     },
     /// Returns: Plugin pane ID (format: plugin_<id>)
@@ -1405,21 +1931,20 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         in_place: bool,
         /// Close the replaced pane instead of suspending it (only effective with --in-place)
-        #[clap(
-            long,
-            value_parser,
-            default_value("false"),
-            takes_value(false),
-            requires("in-place")
-        )]
+        #[clap(long, requires("in_place"))]
         close_replaced_pane: bool,
         url: Url,
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
         #[clap(short, long, value_parser)]
         skip_plugin_cache: bool,
+        #[clap(
+            long,
+            help = "if set, will open the plugin pane without changing the focus of any client"
+        )]
+        no_focus: bool,
         /// Target a specific tab by ID
-        #[clap(long, value_parser, conflicts_with("in-place"))]
+        #[clap(long, value_parser, conflicts_with("in_place"))]
         tab_id: Option<usize>,
     },
     RenameSession {
@@ -1462,24 +1987,10 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short('c'), long, value_parser, display_order(4))]
         plugin_configuration: Option<PluginUserConfiguration>,
         /// Launch a new plugin even if one is already running
-        #[clap(
-            short('l'),
-            long,
-            value_parser,
-            takes_value(false),
-            default_value("false"),
-            display_order(5)
-        )]
+        #[clap(short('l'), long, display_order(5))]
         force_launch_plugin: bool,
         /// If launching a new plugin, skip cache and force-compile the plugin
-        #[clap(
-            short('s'),
-            long,
-            value_parser,
-            takes_value(false),
-            default_value("false"),
-            display_order(6)
-        )]
+        #[clap(short('s'), long, display_order(6))]
         skip_plugin_cache: bool,
         /// If launching a plugin, should it be floating or not, defaults to floating
         #[clap(short('f'), long, value_parser, display_order(7))]
@@ -1489,7 +2000,7 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
             short('i'),
             long,
             value_parser,
-            conflicts_with("floating-plugin"),
+            conflicts_with("floating_plugin"),
             display_order(8)
         )]
         in_place_plugin: Option<bool>,
@@ -1499,6 +2010,40 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// If launching a plugin, specify its pane title
         #[clap(short('t'), long, value_parser, display_order(10))]
         plugin_title: Option<String>,
+        #[clap(
+            long,
+            value_parser,
+            display_order(11),
+            conflicts_with_all(&["floating_plugin", "in_place_plugin"]),
+            help = "If launching a plugin, open it as a popup for the user looking at the calling pane (pane, center, mouse, cursor, top-left, top-right, bottom-left or bottom-right)"
+        )]
+        popup: Option<crate::data::PipePopupPlacement>,
+        #[clap(
+            long,
+            value_parser,
+            display_order(12),
+            requires("popup"),
+            help = "Open the --popup as an information popup that does not take key focus (e.g. --popup top-right --popup-no-focus)"
+        )]
+        popup_no_focus: bool,
+        #[clap(
+            long,
+            value_parser,
+            display_order(13),
+            requires("popup"),
+            conflicts_with("popup_no_focus"),
+            help = "Send every key to the --popup, including the ones bound to Zellij actions (e.g. --popup center --popup-capture-all-keys)"
+        )]
+        popup_capture_all_keys: bool,
+        #[clap(
+            long,
+            value_parser,
+            display_order(14),
+            requires("popup"),
+            conflicts_with("popup_no_focus"),
+            help = "What a click outside the --popup does: block (ignore it) or close (close the popup) (e.g. --popup mouse --popup-outside-click close)"
+        )]
+        popup_outside_click: Option<crate::data::OutsideClick>,
     },
     ListClients,
     /// List all panes in the current session
@@ -1570,6 +2115,82 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
     },
+    #[clap(
+        about = "Toggle whether the live view in the focused plugin pane resizes the program of the pane it shows"
+    )]
+    ToggleMirrorResize,
+    #[clap(about = "Mute or unmute the attention status of a pane (the focused pane by default)")]
+    MutePane {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(about = "Stop or start reporting new output of a pane (the focused pane by default)")]
+    IgnorePaneOutput {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(
+        about = "Watch a pane: notify each time its command finishes or its output goes quiet, until turned off again (toggles; the focused pane by default)"
+    )]
+    WatchPane {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(
+        about = "Mute or unmute the attention status of all panes in a tab (the active tab by default)"
+    )]
+    MuteTab {
+        #[clap(short, long, value_parser, help = "Target a specific tab by its ID")]
+        tab_id: Option<u64>,
+    },
+    #[clap(about = "Mute or unmute the attention status of the whole session")]
+    MuteSession,
+    #[clap(
+        about = "Switch to the session this client was in before (run again to return), or to the next running session if there is none"
+    )]
+    ToggleSession,
+    #[clap(about = "Go back to the previous session in this client's history")]
+    GoToPreviousSession,
+    #[clap(about = "Go forward in this client's session history")]
+    GoToNextSession,
+    #[clap(
+        about = "Jump to the next pane that needs attention in any session, switching session if needed"
+    )]
+    GoToNextAttention,
+    #[clap(
+        about = "Show or hide the desktop app's tray / menu-bar icon until the app restarts (sessions and notifications continue)"
+    )]
+    ToggleTrayIcon,
+    #[clap(about = "Mark a pane as seen, clearing past events (the focused pane by default)")]
+    MarkPaneSeen {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(about = "Mark every pane of every running session as seen")]
+    MarkAllSeen {
+        #[clap(long, help = "Only mark the panes of the current session")]
+        this_session: bool,
+    },
     /// Stack pane ids
     /// Ids are a space separated list of pane ids.
     /// They should either be in the form of `terminal_<int>` (eg. terminal_1), `plugin_<int>` (eg.
@@ -1605,6 +2226,9 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// mouse if without a border)
         #[clap(short, long, value_parser)]
         borderless: Option<bool>,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
     },
     TogglePaneBorderless {
         /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
@@ -1619,13 +2243,22 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short, long, value_parser)]
         borderless: bool,
     },
+    /// Change the border line style of an existing pane
+    SetPaneBorderStyle {
+        /// The pane_id of the pane, eg. terminal_1, plugin_2 or 3 (equivalent to terminal_3)
+        #[clap(short, long, value_parser)]
+        pane_id: String,
+        /// Border line style, eg. "double" or "top:double,left:single,rounded"
+        #[clap(long, value_parser)]
+        border_style: Option<String>,
+    },
     /// Detach from the current session or disconnect a specific client
     Detach {
         /// Target a specific client ID to disconnect from the server
         #[clap(long, value_parser, conflicts_with = "all")]
         client_id: Option<ClientId>,
         /// Disconnect all connected clients from the session
-        #[clap(long, value_parser, takes_value(false), conflicts_with = "client-id")]
+        #[clap(long, conflicts_with = "client_id")]
         all: bool,
     },
     /// Switch the theme to dark (uses configured `theme_dark`).
@@ -1634,6 +2267,10 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
     SetLightTheme,
     /// Toggle between dark and light themes (used configured `theme_dark` and `theme_light`)
     ToggleTheme,
+    #[clap(about = "Close the information popups (such as `zellij prompt notify`) shown to you")]
+    DismissInfoPopups,
+    #[clap(about = "Open the right-click menu for the focused pane, at that pane's position")]
+    OpenContextMenu,
     /// Switch to a different session
     SwitchSession {
         /// Name of the session to switch to
@@ -1645,7 +2282,7 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(long)]
         pane_id: Option<String>,
         /// Layout to apply when switching to the session (relative paths start at layout-dir)
-        #[clap(short, long, value_parser, conflicts_with = "layout-string")]
+        #[clap(short, long, value_parser, conflicts_with = "layout_string")]
         layout: Option<PathBuf>,
         /// Raw KDL layout string to use directly
         #[clap(long, value_parser, conflicts_with = "layout")]
@@ -1656,6 +2293,11 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Change the working directory when switching
         #[clap(short, long, value_parser)]
         cwd: Option<PathBuf>,
+        #[clap(
+            long,
+            help = "Close the current session after switching, if no command has been run in it and no other client is attached"
+        )]
+        close_current: bool,
     },
     /// Set the default foreground/background color of a pane
     SetPaneColor {
@@ -1673,6 +2315,23 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(long, value_parser, conflicts_with_all(&["fg", "bg"]))]
         reset: bool,
     },
+    /// Set the command a terminal pane will be resurrected with, instead of the detected one.
+    /// The command stays in effect until cleared with --clear or until the pane is closed.
+    SetResurrectCommand {
+        /// The pane_id of the terminal pane, eg. terminal_1 or 3 (equivalent to terminal_3).
+        /// Defaults to $ZELLIJ_PANE_ID if not provided.
+        #[clap(short, long, value_parser)]
+        pane_id: Option<String>,
+        /// Working directory to resurrect the pane in
+        #[clap(long, value_parser, conflicts_with("clear"))]
+        cwd: Option<PathBuf>,
+        /// Remove a previously set resurrect command
+        #[clap(long, value_parser, conflicts_with("command"))]
+        clear: bool,
+        /// The command and its arguments
+        #[clap(last(true), required_unless_present("clear"))]
+        command: Vec<String>,
+    },
 }
 
 #[cfg(test)]
@@ -1680,14 +2339,35 @@ mod tests {
     use super::*;
     use clap::Parser;
 
+    const CLI_PARSE_TEST_STACK_SIZE: usize = 16 * 1024 * 1024;
+
+    fn on_large_stack<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+        std::thread::Builder::new()
+            .stack_size(CLI_PARSE_TEST_STACK_SIZE)
+            .spawn(f)
+            .expect("failed to spawn cli parse test thread")
+            .join()
+            .expect("cli parse test thread panicked")
+    }
+
+    fn try_parse(args: &[&str]) -> Result<CliArgs, clap::Error> {
+        let mut full_args = vec!["zellij".to_owned()];
+        full_args.extend(args.iter().map(|arg| arg.to_string()));
+        on_large_stack(move || CliArgs::try_parse_from(full_args))
+    }
+
     fn parse_subscribe(args: &[&str]) -> SubscribeCli {
-        let mut full_args = vec!["zellij"];
-        full_args.extend_from_slice(args);
-        let cli = CliArgs::try_parse_from(full_args).unwrap();
+        let cli = try_parse(args).unwrap();
         match cli.command {
             Some(Command::Subscribe(s)) => s,
             other => panic!("Expected Subscribe, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn max_panes_must_be_at_least_one() {
+        assert!(try_parse(&["--max-panes", "0"]).is_err());
+        assert_eq!(try_parse(&["--max-panes", "1"]).unwrap().max_panes, Some(1));
     }
 
     #[test]
@@ -1743,28 +2423,85 @@ mod tests {
 
     #[test]
     fn subscribe_requires_pane_id() {
-        let result = CliArgs::try_parse_from(["zellij", "subscribe"]);
+        let result = try_parse(&["subscribe"]);
         assert!(result.is_err());
+    }
+
+    fn parse_set_resurrect_command(args: &[&str]) -> Result<CliAction, clap::Error> {
+        let mut full_args = vec!["action", "set-resurrect-command"];
+        full_args.extend_from_slice(args);
+        let cli = try_parse(&full_args)?;
+        match cli.command {
+            Some(Command::Action(action)) => Ok(*action),
+            other => panic!("Expected Action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn set_resurrect_command_parses_command() {
+        let action = parse_set_resurrect_command(&[
+            "--pane-id",
+            "terminal_1",
+            "--cwd",
+            "/tmp",
+            "--",
+            "opencode",
+            "-s",
+            "ses_abc",
+        ])
+        .unwrap();
+        match action {
+            CliAction::SetResurrectCommand {
+                pane_id,
+                cwd,
+                clear,
+                command,
+            } => {
+                assert_eq!(pane_id, Some("terminal_1".to_string()));
+                assert_eq!(cwd, Some(PathBuf::from("/tmp")));
+                assert!(!clear);
+                assert_eq!(command, vec!["opencode", "-s", "ses_abc"]);
+            },
+            other => panic!("Expected SetResurrectCommand, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn set_resurrect_command_parses_clear() {
+        let action = parse_set_resurrect_command(&["--clear"]).unwrap();
+        assert!(matches!(
+            action,
+            CliAction::SetResurrectCommand { clear: true, ref command, .. } if command.is_empty()
+        ));
+    }
+
+    #[test]
+    fn set_resurrect_command_rejects_clear_with_command() {
+        assert!(parse_set_resurrect_command(&["--clear", "--", "opencode"]).is_err());
+    }
+
+    #[test]
+    fn set_resurrect_command_rejects_clear_with_cwd() {
+        assert!(parse_set_resurrect_command(&["--clear", "--cwd", "/tmp"]).is_err());
+    }
+
+    #[test]
+    fn set_resurrect_command_requires_command_or_clear() {
+        assert!(parse_set_resurrect_command(&[]).is_err());
     }
 
     #[test]
     fn action_detach_accepts_optional_client_id() {
-        let cli = CliArgs::try_parse_from([
-            "zellij",
-            "action",
-            "detach",
-            "--client-id",
-            "7",
-        ])
-        .unwrap();
-
+        let cli = try_parse(&["action", "detach", "--client-id", "7"]).unwrap();
         match cli.command {
-            Some(Command::Action(action)) => match *action {
-                CliAction::Detach { client_id, all } => {
-                    assert_eq!(client_id, Some(7));
-                    assert!(!all);
-                },
-                other => panic!("Expected Detach action, got {:?}", other),
+            Some(Command::Action(action)) => {
+                assert!(matches!(
+                    *action,
+                    CliAction::Detach {
+                        client_id: Some(7),
+                        all: false
+                    }
+                ));
             },
             other => panic!("Expected Action command, got {:?}", other),
         }
@@ -1772,15 +2509,16 @@ mod tests {
 
     #[test]
     fn action_detach_accepts_all_flag() {
-        let cli = CliArgs::try_parse_from(["zellij", "action", "detach", "--all"]).unwrap();
-
+        let cli = try_parse(&["action", "detach", "--all"]).unwrap();
         match cli.command {
-            Some(Command::Action(action)) => match *action {
-                CliAction::Detach { client_id, all } => {
-                    assert_eq!(client_id, None);
-                    assert!(all);
-                },
-                other => panic!("Expected Detach action, got {:?}", other),
+            Some(Command::Action(action)) => {
+                assert!(matches!(
+                    *action,
+                    CliAction::Detach {
+                        client_id: None,
+                        all: true
+                    }
+                ));
             },
             other => panic!("Expected Action command, got {:?}", other),
         }
@@ -1788,14 +2526,23 @@ mod tests {
 
     #[test]
     fn action_detach_rejects_all_with_client_id() {
-        let result = CliArgs::try_parse_from([
-            "zellij",
-            "action",
-            "detach",
-            "--all",
-            "--client-id",
-            "7",
-        ]);
-        assert!(result.is_err());
+        assert!(try_parse(&["action", "detach", "--all", "--client-id", "7"]).is_err());
+    }
+
+    #[test]
+    fn action_detach_without_flags_preserves_default() {
+        let cli = try_parse(&["action", "detach"]).unwrap();
+        match cli.command {
+            Some(Command::Action(action)) => {
+                assert!(matches!(
+                    *action,
+                    CliAction::Detach {
+                        client_id: None,
+                        all: false
+                    }
+                ));
+            },
+            other => panic!("Expected Action command, got {:?}", other),
+        }
     }
 }

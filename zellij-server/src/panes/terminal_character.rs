@@ -1,22 +1,29 @@
+use arrayvec::ArrayString;
+use std::borrow::Cow;
 use std::convert::From;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
 
+use crate::vt_parser::ParameterGroups;
 use unicode_width::UnicodeWidthStr;
-use vte::ParamsIter;
 use zellij_utils::data::StyleDeclaration;
 use zellij_utils::data::{PaletteColor, Style};
 use zellij_utils::input::command::RunCommand;
 
 use crate::panes::alacritty_functions::parse_sgr_color;
+use crate::panes::cluster_table;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
-    width: 1,
+    packed: 1,
     styles: RcCharacterStyles::Reset,
 };
+
+pub const MAX_CODE_POINTS_PER_CELL: usize = 32;
+const EXTRA_TAG: u32 = 1 << 23;
+const EXTRA_VALUE_MASK: u32 = EXTRA_TAG - 1;
 
 pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     foreground: Some(AnsiCode::Reset),
@@ -208,6 +215,219 @@ impl RcCharacterStyles {
         f(&mut styles);
         *self = styles.into();
     }
+
+    pub fn update_shared(
+        &mut self,
+        style_cache: &mut StyleCache,
+        f: impl FnOnce(&mut CharacterStyles),
+    ) {
+        let mut styles: CharacterStyles = **self;
+        f(&mut styles);
+        if styles.is_identical_to(self) {
+            return;
+        }
+        *self = style_cache.share(styles);
+    }
+
+    pub fn ptr_eq(&self, other: &RcCharacterStyles) -> bool {
+        match (self, other) {
+            (RcCharacterStyles::Reset, RcCharacterStyles::Reset) => true,
+            (RcCharacterStyles::Rc(own), RcCharacterStyles::Rc(other)) => Rc::ptr_eq(own, other),
+            _ => false,
+        }
+    }
+}
+
+const SHARED_STYLE_SLOTS: usize = 512;
+
+#[derive(Debug, Default, Clone)]
+pub struct StyleCache {
+    shared: Vec<Option<(u64, Rc<CharacterStyles>)>>,
+    sgr_memo: Vec<Option<SgrMemo>>,
+}
+
+const SGR_MEMO_SLOTS: usize = 64;
+const SGR_KEY_LEN: usize = 24;
+const SGR_BYTES_KEY_LEN: usize = 16;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum SgrKey {
+    Groups { len: u8, values: [u16; SGR_KEY_LEN] },
+    Bytes { len: u8, words: [u64; 2] },
+}
+
+impl SgrKey {
+    fn of(params: &crate::vt_parser::Parameters) -> Option<Self> {
+        let mut values = [0; SGR_KEY_LEN];
+        let mut at = 0;
+        for param in params.iter() {
+            if at + 1 + param.len() > SGR_KEY_LEN {
+                return None;
+            }
+            values[at] = param.len() as u16;
+            values[at + 1..at + 1 + param.len()].copy_from_slice(param);
+            at += 1 + param.len();
+        }
+        Some(SgrKey::Groups {
+            len: at as u8,
+            values,
+        })
+    }
+
+    #[inline]
+    fn of_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() > SGR_BYTES_KEY_LEN {
+            return None;
+        }
+        let mut padded = [0u8; SGR_BYTES_KEY_LEN];
+        padded[..bytes.len()].copy_from_slice(bytes);
+        let (low, high) = padded.split_at(8);
+        Some(SgrKey::Bytes {
+            len: bytes.len() as u8,
+            words: [
+                u64::from_le_bytes(low.try_into().unwrap_or([0; 8])),
+                u64::from_le_bytes(high.try_into().unwrap_or([0; 8])),
+            ],
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SgrMemo {
+    input: RcCharacterStyles,
+    key: SgrKey,
+    output: RcCharacterStyles,
+}
+
+fn styles_address(styles: &RcCharacterStyles) -> usize {
+    match styles {
+        RcCharacterStyles::Reset => 0,
+        RcCharacterStyles::Rc(rc) => Rc::as_ptr(rc) as usize,
+    }
+}
+
+fn sgr_slot(styles: &RcCharacterStyles, key: &SgrKey) -> usize {
+    let mut hash = (styles_address(styles) as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    match key {
+        SgrKey::Groups { len, values } => {
+            for value in &values[..*len as usize] {
+                hash = (hash ^ *value as u64).wrapping_mul(0x100_0000_01B3);
+            }
+        },
+        SgrKey::Bytes { len, words } => {
+            hash ^= words[0].wrapping_mul(0xC2B2_AE3D_27D4_EB4F)
+                ^ words[1].rotate_left(29)
+                ^ *len as u64;
+        },
+    }
+    (hash.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 40) as usize % SGR_MEMO_SLOTS
+}
+
+fn code_key(code: Option<AnsiCode>) -> u64 {
+    match code {
+        None => 0,
+        Some(AnsiCode::On) => 1,
+        Some(AnsiCode::Reset) => 2,
+        Some(AnsiCode::NamedColor(color)) => 3 | (color as u64) << 8,
+        Some(AnsiCode::RgbCode((r, g, b))) => {
+            4 | (r as u64) << 8 | (g as u64) << 16 | (b as u64) << 24
+        },
+        Some(AnsiCode::ColorIndex(index)) => 5 | (index as u64) << 8,
+        Some(AnsiCode::Underline(None)) => 6,
+        Some(AnsiCode::Underline(Some(style))) => 7 | (style as u64) << 8,
+    }
+}
+
+fn style_fingerprint(styles: &CharacterStyles) -> u64 {
+    code_key(styles.foreground)
+        ^ code_key(styles.background).rotate_left(32)
+        ^ code_key(styles.bold).rotate_left(5)
+        ^ code_key(styles.underline).rotate_left(13)
+}
+
+impl StyleCache {
+    pub fn apply_sgr(
+        &mut self,
+        styles: &mut RcCharacterStyles,
+        params: &crate::vt_parser::Parameters,
+    ) {
+        let Some(key) = SgrKey::of(params) else {
+            styles.update_shared(self, |s| s.add_style_from_ansi_params(&mut params.iter()));
+            return;
+        };
+        self.apply_sgr_memoized(styles, key, || *params);
+    }
+
+    pub fn apply_sgr_bytes(&mut self, styles: &mut RcCharacterStyles, parameter_bytes: &[u8]) {
+        let Some(key) = SgrKey::of_bytes(parameter_bytes) else {
+            let params = crate::vt_parser::Parameters::from_parameter_bytes(parameter_bytes);
+            return self.apply_sgr(styles, &params);
+        };
+        self.apply_sgr_memoized(styles, key, || {
+            crate::vt_parser::Parameters::from_parameter_bytes(parameter_bytes)
+        });
+    }
+
+    #[inline]
+    fn apply_sgr_memoized(
+        &mut self,
+        styles: &mut RcCharacterStyles,
+        key: SgrKey,
+        params: impl FnOnce() -> crate::vt_parser::Parameters,
+    ) {
+        let slot = sgr_slot(styles, &key);
+        if let Some(Some(memo)) = self.sgr_memo.get(slot) {
+            if memo.key == key && memo.input.ptr_eq(styles) {
+                *styles = memo.output.clone();
+                return;
+            }
+        }
+        let input = styles.clone();
+        let params = params();
+        styles.update_shared(self, |s| s.add_style_from_ansi_params(&mut params.iter()));
+        if self.sgr_memo.is_empty() {
+            self.sgr_memo = vec![None; SGR_MEMO_SLOTS];
+        }
+        self.sgr_memo[slot] = Some(SgrMemo {
+            input,
+            key,
+            output: styles.clone(),
+        });
+    }
+
+    pub fn share(&mut self, styles: CharacterStyles) -> RcCharacterStyles {
+        if styles == RESET_STYLES {
+            return RcCharacterStyles::Reset;
+        }
+        let fingerprint = style_fingerprint(&styles);
+        let first = (fingerprint.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 40) as usize
+            % SHARED_STYLE_SLOTS
+            & !1;
+        for slot in [first, first + 1] {
+            if let Some(Some((key, existing))) = self.shared.get(slot) {
+                if *key == fingerprint && styles.is_identical_to(existing) {
+                    return RcCharacterStyles::Rc(existing.clone());
+                }
+            }
+        }
+        if self.shared.is_empty() {
+            self.shared = vec![None; SHARED_STYLE_SLOTS];
+        }
+        let in_use = |entry: &Option<(u64, Rc<CharacterStyles>)>| match entry {
+            Some((_, existing)) => Rc::strong_count(existing) > 1,
+            None => false,
+        };
+        let slot = if !in_use(&self.shared[first]) {
+            first
+        } else if !in_use(&self.shared[first + 1]) {
+            first + 1
+        } else {
+            first + (fingerprint >> 63) as usize
+        };
+        let shared = Rc::new(styles);
+        self.shared[slot] = Some((fingerprint, shared.clone()));
+        RcCharacterStyles::Rc(shared)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -247,6 +467,9 @@ impl PartialEq for CharacterStyles {
 }
 
 impl CharacterStyles {
+    fn is_identical_to(&self, other: &CharacterStyles) -> bool {
+        self == other && self.styled_underlines_enabled == other.styled_underlines_enabled
+    }
     pub fn foreground(mut self, foreground_code: Option<AnsiCode>) -> Self {
         self.foreground = foreground_code;
         self
@@ -407,7 +630,7 @@ impl CharacterStyles {
         self.strike = Some(AnsiCode::Reset);
         // Deliberately don't end link anchor
     }
-    pub fn add_style_from_ansi_params(&mut self, params: &mut ParamsIter) {
+    pub fn add_style_from_ansi_params(&mut self, params: &mut ParameterGroups) {
         while let Some(param) = params.next() {
             match param {
                 [] | [0] => self.reset_ansi(),
@@ -665,27 +888,14 @@ impl Display for CharacterStyles {
                 _ => {},
             }
         }
-        if let Some(ansi_code) = self.fast_blink {
-            match ansi_code {
-                AnsiCode::On => {
-                    write!(f, "\u{1b}[6m")?;
-                },
-                AnsiCode::Reset => {
-                    write!(f, "\u{1b}[25m")?;
-                },
-                _ => {},
-            }
+        if self.fast_blink == Some(AnsiCode::Reset) || self.slow_blink == Some(AnsiCode::Reset) {
+            write!(f, "\u{1b}[25m")?;
         }
-        if let Some(ansi_code) = self.slow_blink {
-            match ansi_code {
-                AnsiCode::On => {
-                    write!(f, "\u{1b}[5m")?;
-                },
-                AnsiCode::Reset => {
-                    write!(f, "\u{1b}[25m")?;
-                },
-                _ => {},
-            }
+        if self.fast_blink == Some(AnsiCode::On) {
+            write!(f, "\u{1b}[6m")?;
+        }
+        if self.slow_blink == Some(AnsiCode::On) {
+            write!(f, "\u{1b}[5m")?;
         }
         if let Some(ansi_code) = self.bold {
             match ansi_code {
@@ -917,19 +1127,90 @@ impl Cursor {
     }
 }
 
-#[derive(Clone, PartialEq)]
 pub struct TerminalCharacter {
     pub character: char,
     pub styles: RcCharacterStyles,
-    width: u8,
+    // Width and any code points attached after `character`, packed into one u32 so the cell
+    // stays 16 bytes:
+    //
+    //   bits 0..8   width in columns (0-255), see `width()`
+    //   bits 8..32  the "extra" value, see `extra_value()` and `attached()`:
+    //     0                        nothing attached; the cell is just `character`
+    //     bit 31 (EXTRA_TAG) clear one attached code point, stored as its scalar value
+    //                              (fits, since code points need at most 21 bits)
+    //     bit 31 (EXTRA_TAG) set   two or more attached code points; bits 8..31 are an id
+    //                              into `cluster_table`, which holds their text and a
+    //                              reference count (bumped on clone, released on drop)
+    //
+    // So `packed > 0xff` means "has attached code points", and the cell's full text is
+    // `character` followed by the inline code point or the table entry.
+    packed: u32,
 }
 
-// This size has significant memory and CPU implications for long lines,
-// be careful about allowing it to grow
 #[cfg(target_arch = "x86_64")]
 const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
 
+enum Attached {
+    None,
+    Inline(char),
+    Table(u32),
+}
+
+impl Clone for TerminalCharacter {
+    #[inline]
+    fn clone(&self) -> Self {
+        if self.is_tagged() {
+            cluster_table::retain(self.extra_value() & EXTRA_VALUE_MASK);
+        }
+        TerminalCharacter {
+            character: self.character,
+            styles: self.styles.clone(),
+            packed: self.packed,
+        }
+    }
+}
+
+impl Drop for TerminalCharacter {
+    #[inline]
+    fn drop(&mut self) {
+        if self.is_tagged() {
+            cluster_table::release(self.extra_value() & EXTRA_VALUE_MASK);
+        }
+    }
+}
+
+impl PartialEq for TerminalCharacter {
+    fn eq(&self, other: &Self) -> bool {
+        self.character == other.character
+            && self.packed == other.packed
+            && self.styles == other.styles
+    }
+}
+
 impl TerminalCharacter {
+    pub fn shares_styles_with(&self, other: &TerminalCharacter) -> bool {
+        self.styles.ptr_eq(&other.styles)
+    }
+    pub fn copy_glyph_from(&mut self, other: &TerminalCharacter) {
+        if other.is_tagged() {
+            cluster_table::retain(other.extra_value() & EXTRA_VALUE_MASK);
+        }
+        if self.is_tagged() {
+            cluster_table::release(self.extra_value() & EXTRA_VALUE_MASK);
+        }
+        self.character = other.character;
+        self.packed = other.packed;
+    }
+
+    #[inline]
+    pub fn copy_plain_glyph(&mut self, character: char, width: u8) {
+        if self.is_tagged() {
+            cluster_table::release(self.extra_value() & EXTRA_VALUE_MASK);
+        }
+        self.character = character;
+        self.packed = width as u32;
+    }
+
     #[inline]
     pub fn new(character: char) -> Self {
         Self::new_styled(character, Default::default())
@@ -940,8 +1221,65 @@ impl TerminalCharacter {
         TerminalCharacter {
             character,
             styles,
-            width: character.width().unwrap_or(0) as u8,
+            packed: character.width().unwrap_or(0) as u32 & 0xff,
         }
+    }
+
+    #[inline]
+    pub fn append_plain_ascii(
+        columns: &mut Vec<TerminalCharacter>,
+        run: &[u8],
+        styles: &RcCharacterStyles,
+    ) {
+        let count = run.len();
+        if columns.capacity() - columns.len() < count {
+            columns.reserve(count);
+        }
+        let start = columns.len();
+        unsafe {
+            let destination = columns.as_mut_ptr().add(start);
+            let mut index = 0;
+            while index < count {
+                destination.add(index).write(TerminalCharacter {
+                    character: *run.get_unchecked(index) as char,
+                    styles: std::ptr::read(styles),
+                    packed: 1,
+                });
+                index += 1;
+            }
+            if let RcCharacterStyles::Rc(shared) = styles {
+                let pointer = Rc::as_ptr(shared);
+                for _ in 0..count {
+                    Rc::increment_strong_count(pointer);
+                }
+            }
+            columns.set_len(start + count);
+        }
+    }
+
+    #[inline]
+    pub fn new_with_width(character: char, width: u8, styles: RcCharacterStyles) -> Self {
+        TerminalCharacter {
+            character,
+            styles,
+            packed: width as u32,
+        }
+    }
+
+    pub fn from_cluster(cluster: &str, width: usize, styles: RcCharacterStyles) -> Option<Self> {
+        let mut chars = cluster.chars();
+        let first = chars.next()?;
+        let mut cell = TerminalCharacter {
+            character: first,
+            styles,
+            packed: width.min(u8::MAX as usize) as u32,
+        };
+        for c in chars {
+            if !cell.attach(c) {
+                break;
+            }
+        }
+        Some(cell)
     }
 
     #[inline]
@@ -954,18 +1292,199 @@ impl TerminalCharacter {
         TerminalCharacter {
             character,
             styles,
-            width: 1,
+            packed: 1,
         }
     }
 
+    #[inline]
     pub fn width(&self) -> usize {
-        self.width as usize
+        (self.packed & 0xff) as usize
+    }
+
+    pub(crate) fn set_width(&mut self, width: u8) {
+        self.packed = (self.packed & !0xff) | width as u32;
+    }
+
+    #[inline]
+    fn is_tagged(&self) -> bool {
+        self.packed & 0x8000_0000 != 0
+    }
+
+    #[inline]
+    fn extra_value(&self) -> u32 {
+        self.packed >> 8
+    }
+
+    #[inline]
+    fn set_extra_value(&mut self, value: u32) {
+        self.packed = (self.packed & 0xff) | (value << 8);
+    }
+
+    #[inline]
+    fn attached(&self) -> Attached {
+        let value = self.extra_value();
+        if value == 0 {
+            Attached::None
+        } else if value & EXTRA_TAG != 0 {
+            Attached::Table(value & EXTRA_VALUE_MASK)
+        } else {
+            match char::from_u32(value) {
+                Some(c) => Attached::Inline(c),
+                None => Attached::None,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn has_attached(&self) -> bool {
+        self.packed > 0xff
+    }
+
+    pub fn is_plain_blank(&self) -> bool {
+        self.character == ' ' && !self.has_attached()
+    }
+
+    pub fn attach(&mut self, c: char) -> bool {
+        if c == '\0' {
+            return false;
+        }
+        match self.attached() {
+            Attached::None => {
+                self.set_extra_value(c as u32);
+                true
+            },
+            Attached::Inline(previous) => {
+                let mut text = ArrayString::<8>::new();
+                text.push(previous);
+                text.push(c);
+                match cluster_table::intern(&text) {
+                    Some(id) => {
+                        self.set_extra_value(EXTRA_TAG | id);
+                        true
+                    },
+                    None => false,
+                }
+            },
+            Attached::Table(id) => {
+                let Some(existing) = cluster_table::text(id) else {
+                    return false;
+                };
+                if existing.chars().count() + 1 >= MAX_CODE_POINTS_PER_CELL {
+                    return false;
+                }
+                let mut text = ArrayString::<{ MAX_CODE_POINTS_PER_CELL * 4 }>::new();
+                if text.try_push_str(&existing).is_err() || text.try_push(c).is_err() {
+                    return false;
+                }
+                match cluster_table::intern(&text) {
+                    Some(new_id) => {
+                        cluster_table::release(id);
+                        self.set_extra_value(EXTRA_TAG | new_id);
+                        true
+                    },
+                    None => false,
+                }
+            },
+        }
+    }
+
+    pub fn clear_attached(&mut self) {
+        if let Attached::Table(id) = self.attached() {
+            cluster_table::release(id);
+        }
+        self.packed &= 0xff;
+    }
+
+    pub fn last_char(&self) -> char {
+        match self.attached() {
+            Attached::None => self.character,
+            Attached::Inline(c) => c,
+            Attached::Table(id) => cluster_table::text(id)
+                .and_then(|text| text.chars().last())
+                .unwrap_or(self.character),
+        }
+    }
+
+    pub fn code_point_count(&self) -> usize {
+        match self.attached() {
+            Attached::None => 1,
+            Attached::Inline(_) => 2,
+            Attached::Table(id) => {
+                1 + cluster_table::text(id)
+                    .map(|text| text.chars().count())
+                    .unwrap_or(0)
+            },
+        }
+    }
+
+    #[inline]
+    pub fn push_text_to(&self, out: &mut String) {
+        out.push(self.character);
+        match self.attached() {
+            Attached::None => {},
+            Attached::Inline(c) => out.push(c),
+            Attached::Table(id) => {
+                if let Some(text) = cluster_table::text(id) {
+                    out.push_str(&text);
+                }
+            },
+        }
+    }
+
+    pub fn for_each_char(&self, mut f: impl FnMut(char)) {
+        f(self.character);
+        match self.attached() {
+            Attached::None => {},
+            Attached::Inline(c) => f(c),
+            Attached::Table(id) => {
+                if let Some(text) = cluster_table::text(id) {
+                    text.chars().for_each(f);
+                }
+            },
+        }
+    }
+
+    pub fn text(&self) -> Cow<'_, str> {
+        if !self.has_attached() {
+            let mut buf = String::with_capacity(4);
+            buf.push(self.character);
+            return Cow::Owned(buf);
+        }
+        let mut out = String::new();
+        self.push_text_to(&mut out);
+        Cow::Owned(out)
+    }
+
+    pub fn utf8_len(&self) -> usize {
+        if !self.has_attached() {
+            return self.character.len_utf8();
+        }
+        let mut len = 0;
+        self.for_each_char(|c| len += c.len_utf8());
+        len
+    }
+
+    pub fn natural_width(&self) -> usize {
+        if !self.has_attached() {
+            return self.character.width().unwrap_or(0);
+        }
+        UnicodeWidthStr::width(self.text().as_ref())
+    }
+
+    pub fn summed_code_point_width(&self) -> usize {
+        let mut sum = 0;
+        self.for_each_char(|c| sum += c.width().unwrap_or(0));
+        sum
     }
 }
 
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.character)
+        if self.has_attached() {
+            write!(f, "{}", self.text())
+        } else {
+            write!(f, "{}", self.character)
+        }
     }
 }
 
@@ -987,7 +1506,9 @@ pub fn render_first_run_banner(
                 .bold(Some(AnsiCode::On));
             let waiting_to_run_text = "Waiting to run: ";
             let command_text = run_command.to_string();
-            let waiting_to_run_text_width = waiting_to_run_text.width() + command_text.width();
+            let waiting_to_run_text_width =
+                zellij_utils::graphemes::display_width(waiting_to_run_text)
+                    + zellij_utils::graphemes::display_width(&command_text);
             let column_start_postion = middle_column.saturating_sub(waiting_to_run_text_width / 2);
             let waiting_to_run_line = format!(
                 "\u{1b}[{};{}H{}{}{}{}{}",
@@ -1046,7 +1567,7 @@ pub fn render_first_run_banner(
         },
         None => {
             let bare_text = format!("Waiting to start...");
-            let bare_text_width = bare_text.width();
+            let bare_text_width = zellij_utils::graphemes::display_width(&bare_text);
             let column_start_postion = middle_column.saturating_sub(bare_text_width / 2);
             let bold_text = RESET_STYLES.bold(Some(AnsiCode::On));
             let waiting_to_run_line = format!(
@@ -1100,3 +1621,7 @@ pub fn render_first_run_banner(
         },
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/cluster_table_tests.rs"]
+mod cluster_table_tests;

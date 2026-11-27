@@ -1,5 +1,6 @@
 use super::super::layout::*;
 use insta::assert_snapshot;
+use std::collections::BTreeMap;
 
 #[cfg(not(windows))]
 fn normalize_layout_debug(s: String) -> String {
@@ -44,6 +45,99 @@ fn layout_with_one_pane() {
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
+}
+
+#[test]
+fn singleton_stacks_keep_command_slots_when_repositioned() {
+    use crate::pane_size::{Dimension, PaneGeom};
+
+    let kdl = r#"
+        layout {
+            pane split_direction="vertical" {
+                pane {
+                    pane command="editor"
+                    pane stacked=true stack_orientation="horizontal" size="30%" {
+                        pane
+                    }
+                }
+                pane stacked=true stack_orientation="vertical" size="40%" {
+                    pane command="agent"
+                }
+            }
+        }
+    "#;
+    let (layout, _) = Layout::from_kdl(kdl, Some("layout_file_name".into()), None, None)
+        .unwrap()
+        .template
+        .unwrap();
+    let mut space = PaneGeom {
+        cols: Dimension::percent(100.0),
+        rows: Dimension::percent(100.0),
+        ..Default::default()
+    };
+    space.cols.set_inner(120);
+    space.rows.set_inner(38);
+    for max_panes in [None, Some(3)] {
+        let mut directions = HashMap::new();
+        let positioned = layout
+            .position_panes_in_space(&space, max_panes, false, false, &mut directions)
+            .unwrap();
+        assert_eq!(positioned.len(), 3);
+        assert_eq!(
+            positioned.iter().map(|(p, _)| &p.run).collect::<Vec<_>>(),
+            layout.extract_run_instructions().iter().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            positioned
+                .iter()
+                .map(|(_, g)| (g.x, g.y))
+                .collect::<Vec<_>>(),
+            vec![(0, 0), (72, 0), (0, 26)]
+        );
+        assert_eq!(directions.get(&0), Some(&StackListOrientation::Horizontal));
+        assert_eq!(directions.get(&1), Some(&StackListOrientation::Vertical));
+    }
+}
+
+#[test]
+fn layout_with_border_styles() {
+    use crate::data::{BorderStyleOverride, LineStyle};
+    let kdl_layout = r#"
+        layout {
+            pane border_style="double" border_top="heavy" rounded_corners=true
+            floating_panes {
+                pane border_style="dashed"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+    let (tiled, floating) = layout.template.clone().unwrap();
+    assert_eq!(
+        tiled.children[0].border_style,
+        Some(BorderStyleOverride {
+            all: Some(LineStyle::Double),
+            top: Some(LineStyle::Heavy),
+            rounded_corners: Some(true),
+            ..Default::default()
+        })
+    );
+    assert_eq!(
+        floating[0].border_style,
+        Some(BorderStyleOverride {
+            all: Some(LineStyle::Dashed),
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
+fn layout_with_invalid_border_style() {
+    let kdl_layout = r#"
+        layout {
+            pane border_style="squiggly"
+        }
+    "#;
+    assert!(Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).is_err());
 }
 
 #[test]
@@ -1998,6 +2092,74 @@ fn can_define_a_stack_with_an_expanded_pane() {
 }
 
 #[test]
+fn cannot_define_a_stack_orientation_for_a_non_stacked_pane() {
+    let kdl_layout = r#"
+        layout {
+           pane stack_orientation="horizontal" {
+               pane
+               pane
+           }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None);
+    assert!(layout.is_err());
+}
+
+#[test]
+fn cannot_define_a_stack_orientation_for_a_non_stacked_template() {
+    for kdl_layout in [
+        r#"layout {
+            pane_template name="plain" stack_orientation="horizontal" {
+                children
+            }
+            plain {
+                pane
+                pane
+            }
+        }"#,
+        r#"layout {
+            pane_template name="plain" {
+                children
+            }
+            plain stack_orientation="horizontal" {
+                pane
+                pane
+            }
+        }"#,
+        r#"layout {
+            pane_template name="stack" stacked=true stack_orientation="horizontal" {
+                children
+            }
+            stack stacked=false {
+                pane
+                pane
+            }
+        }"#,
+    ] {
+        let error =
+            Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap_err();
+        assert!(
+            format!("{error:?}").contains("stack_orientation can only be set on a stacked pane"),
+            "{kdl_layout}: {error:?}"
+        );
+    }
+}
+
+#[test]
+fn cannot_define_an_invalid_stack_orientation() {
+    let kdl_layout = r#"
+        layout {
+           pane stacked=true stack_orientation="diagonal" {
+               pane
+               pane
+           }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None);
+    assert!(layout.is_err());
+}
+
+#[test]
 fn cannot_define_stacked_panes_for_bare_node() {
     let kdl_layout = r#"
         layout {
@@ -2534,4 +2696,69 @@ fn tiled_pane_still_rejects_zero_percent() {
     // But 1% should work
     let result = SplitSize::from_str("1%");
     assert!(result.is_ok());
+}
+
+fn plugin_alias_with_configuration(name: &str, configuration: &[(&str, &str)]) -> RunPluginOrAlias {
+    let configuration: BTreeMap<String, String> = configuration
+        .iter()
+        .map(|(key, value)| (key.to_string(), value.to_string()))
+        .collect();
+    RunPluginOrAlias::Alias(PluginAlias::new(name, &Some(configuration), None))
+}
+
+fn running_plugin_alias(name: &str, configuration: &[(&str, &str)]) -> Option<Run> {
+    Some(Run::Plugin(plugin_alias_with_configuration(
+        name,
+        configuration,
+    )))
+}
+
+#[test]
+fn plugin_alias_with_configuration_is_equivalent_to_running_alias_with_caller_cwd() {
+    let requested = plugin_alias_with_configuration("session-manager", &[("ignore_case", "true")]);
+    let running = running_plugin_alias(
+        "session-manager",
+        &[("ignore_case", "true"), ("caller_cwd", "/some/folder")],
+    );
+    assert!(requested.is_equivalent_to_run(&running));
+}
+
+#[test]
+fn plugin_alias_with_different_configuration_is_not_equivalent_to_running_alias() {
+    let requested = plugin_alias_with_configuration("session-manager", &[("ignore_case", "true")]);
+    let running = running_plugin_alias(
+        "session-manager",
+        &[("ignore_case", "false"), ("caller_cwd", "/some/folder")],
+    );
+    assert!(!requested.is_equivalent_to_run(&running));
+}
+
+#[test]
+fn plugin_alias_without_configuration_is_equivalent_to_running_alias_with_only_caller_cwd() {
+    let requested = RunPluginOrAlias::Alias(PluginAlias::new("session-manager", &None, None));
+    let running = running_plugin_alias("session-manager", &[("caller_cwd", "/some/folder")]);
+    assert!(requested.is_equivalent_to_run(&running));
+}
+
+#[test]
+fn plugin_alias_with_its_own_caller_cwd_is_equivalent_to_running_alias_with_another_caller_cwd() {
+    let requested = plugin_alias_with_configuration(
+        "filepicker",
+        &[("ignore_case", "true"), ("caller_cwd", "/first/folder")],
+    );
+    let running = running_plugin_alias(
+        "filepicker",
+        &[("ignore_case", "true"), ("caller_cwd", "/second/folder")],
+    );
+    assert!(requested.is_equivalent_to_run(&running));
+}
+
+#[test]
+fn plugin_aliases_with_different_names_are_not_equivalent() {
+    let requested = plugin_alias_with_configuration("session-manager", &[("ignore_case", "true")]);
+    let running = running_plugin_alias(
+        "filepicker",
+        &[("ignore_case", "true"), ("caller_cwd", "/some/folder")],
+    );
+    assert!(!requested.is_equivalent_to_run(&running));
 }

@@ -1,0 +1,10 @@
+---
+source: zellij-integration-tests/tests/grapheme_clusters.rs
+assertion_line: 1273
+expression: normalized(&grid_snapshot)
+---
+ Zellij (test)  ab👨‍👩‍👧cé  + 
+                                                       │ Pane #1 │
+                                                     > │ ab👨‍👩‍👧cé  │
+$ █
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...

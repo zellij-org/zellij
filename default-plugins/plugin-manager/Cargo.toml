@@ -5,6 +5,6 @@ authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition.workspace = true
 
 [dependencies]
-uuid = { version = "1.7.0", features = ["v4"] }
-fuzzy-matcher = "0.3.7"
+uuid = { workspace = true }
+fuzzy-matcher = { workspace = true }
 zellij-tile = { path = "../../zellij-tile" }

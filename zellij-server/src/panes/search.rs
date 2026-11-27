@@ -1,4 +1,5 @@
 use super::Selection;
+use crate::panes::grapheme_join;
 use crate::panes::terminal_character::TerminalCharacter;
 use crate::panes::{Grid, Row};
 use std::borrow::Cow;
@@ -7,82 +8,81 @@ use std::fmt::Debug;
 use zellij_utils::input::actions::SearchDirection;
 use zellij_utils::position::Position;
 
-// If char is neither alphanumeric nor an underscore do we consider it a word-boundary
 fn is_word_boundary(x: &Option<char>) -> bool {
-    x.map_or(true, |c| !c.is_ascii_alphanumeric() && c != '_')
+    x.map_or(true, |c| !c.is_alphanumeric() && c != '_')
 }
 
-#[derive(Debug)]
-enum SearchSource<'a> {
-    Main(&'a Row),
-    Tail(&'a Row),
+struct HaystackCell {
+    byte_start: usize,
+    row: usize,
+    column: usize,
+    width: usize,
 }
 
-impl<'a> SearchSource<'a> {
-    /// Returns true, if a new source was found, false otherwise (reached the end of the tail).
-    /// If we are in the middle of a line, nothing will be changed.
-    /// Only, when we have to switch to a new line, will the source update itself,
-    /// as well as the corresponding indices.
-    fn get_next_source(
-        &mut self,
-        ridx: &mut usize,
-        hidx: &mut usize,
-        tailit: &mut std::slice::Iter<&'a Row>,
-        start: &Option<Position>,
-    ) -> bool {
-        match self {
-            SearchSource::Main(row) => {
-                // If we are at the end of the main row, we need to start looking into the tail
-                if hidx >= &mut row.columns.len() {
-                    let curr_tail = tailit.next();
-                    // If we are at the end and found a partial hit, we have to extend the search into the next line
-                    if let Some(curr_tail) = start.and(curr_tail) {
-                        *ridx += 1; // Go one line down
-                        *hidx = 0; // and start from the beginning of the new line
-                        *self = SearchSource::Tail(curr_tail);
-                    } else {
-                        return false; // We reached the end of the tail
-                    }
-                }
-            },
-            SearchSource::Tail(tail) => {
-                if hidx >= &mut tail.columns.len() {
-                    // If we are still searching (didn't hit a mismatch yet) and there is still more tail to go
-                    // just continue with the next line
-                    if let Some(curr_tail) = tailit.next() {
-                        *ridx += 1; // Go one line down
-                        *hidx = 0; // and start from the beginning of the new line
-                        *self = SearchSource::Tail(curr_tail);
-                    } else {
-                        return false; // We reached the end of the tail
-                    }
-                }
-            },
-        }
-        // We have found a new source, or we are in the middle of a line, so no need to change anything
-        true
-    }
+struct Haystack {
+    text: String,
+    cells: Vec<HaystackCell>,
+}
 
-    // Get the char at hidx and, if existing, the following char as well
-    fn get_next_two_chars(&self, hidx: usize, whole_word_search: bool) -> (char, Option<char>) {
-        // Get the current haystack character
-        let haystack_char = match self {
-            SearchSource::Main(row) => row.columns[hidx].character,
-            SearchSource::Tail(tail) => tail.columns[hidx].character,
-        };
-
-        // Get the next haystack character (relevant for whole-word search only)
-        let next_haystack_char = if whole_word_search {
-            // Everything (incl. end of line) that is not [a-zA-Z0-9_] is considered a word boundary
-            match self {
-                SearchSource::Main(row) => row.columns.get(hidx + 1).map(|c| c.character),
-                SearchSource::Tail(tail) => tail.columns.get(hidx + 1).map(|c| c.character),
+impl Haystack {
+    fn new(ridx: usize, row: &Row, tail: &[&Row]) -> Self {
+        let mut text = String::new();
+        let mut cells = Vec::new();
+        for (offset, current) in std::iter::once(row).chain(tail.iter().copied()).enumerate() {
+            let mut column = 0;
+            for cell in &current.columns {
+                cells.push(HaystackCell {
+                    byte_start: text.len(),
+                    row: ridx + offset,
+                    column,
+                    width: cell.width(),
+                });
+                cell.push_text_to(&mut text);
+                column += cell.width();
             }
-        } else {
-            None // Doesn't get used, when not doing whole-word search
-        };
-        (haystack_char, next_haystack_char)
+        }
+        Haystack { text, cells }
     }
+
+    fn cell_containing(&self, byte_offset: usize) -> Option<&HaystackCell> {
+        let index = self
+            .cells
+            .partition_point(|cell| cell.byte_start <= byte_offset)
+            .checked_sub(1)?;
+        self.cells.get(index)
+    }
+}
+
+struct FoldedText {
+    text: String,
+    original_starts: Vec<(usize, usize)>,
+}
+
+impl FoldedText {
+    fn new(original: &str) -> Self {
+        let mut text = String::with_capacity(original.len());
+        let mut original_starts = Vec::with_capacity(original.len() + 1);
+        for (offset, c) in original.char_indices() {
+            original_starts.push((text.len(), offset));
+            text.extend(c.to_lowercase());
+        }
+        original_starts.push((text.len(), original.len()));
+        FoldedText {
+            text,
+            original_starts,
+        }
+    }
+
+    fn original_offset(&self, folded_offset: usize) -> Option<usize> {
+        self.original_starts
+            .binary_search_by_key(&folded_offset, |(folded, _)| *folded)
+            .ok()
+            .map(|index| self.original_starts[index].1)
+    }
+}
+
+fn fold_case(text: &str) -> String {
+    text.chars().flat_map(|c| c.to_lowercase()).collect()
 }
 
 #[derive(Debug, Clone, Default)]
@@ -119,8 +119,7 @@ impl SearchResult {
                     let take = if s.end.line() == s.start.line() {
                         s.end.column() - s.start.column()
                     } else {
-                        // Just mark the rest of the line. This number is certainly too big but the iterator takes care of this
-                        row.columns.len()
+                        usize::MAX
                     };
                     (skip, take)
                 } else if ridx as isize == s.end.line() {
@@ -128,15 +127,18 @@ impl SearchResult {
                     (0, s.end.column())
                 } else {
                     // We are in the middle (start is above and end is below), so mark all
-                    (0, row.columns.len())
+                    (0, usize::MAX)
                 };
 
-                row.to_mut()
-                    .columns
-                    .iter_mut()
-                    .skip(skip)
-                    .take(take)
-                    .for_each(|x| *x = TerminalCharacter::new(replacement_char));
+                let take_end = skip.saturating_add(take);
+                let mut column = 0;
+                for cell in row.to_mut().columns.iter_mut() {
+                    let width = cell.width();
+                    if column >= skip && column < take_end {
+                        *cell = TerminalCharacter::new(replacement_char);
+                    }
+                    column += width;
+                }
             }
         }
     }
@@ -145,137 +147,103 @@ impl SearchResult {
         self.wrap_search || self.whole_word_only || self.case_insensitive
     }
 
-    fn check_if_haystack_char_matches_needle(
-        &self,
-        nidx: usize,
-        needle_char: char,
-        haystack_char: char,
-        prev_haystack_char: Option<char>,
-    ) -> bool {
-        let mut chars_match = if self.case_insensitive {
-            // Case insensitive search
-            // Currently only ascii, as this whole search-function is very sub-optimal anyways
-            haystack_char.to_ascii_lowercase() == needle_char.to_ascii_lowercase()
+    fn find_matches_in(&self, haystack: &Haystack) -> Vec<(usize, usize)> {
+        let original = haystack.text.as_str();
+        let mut found = Vec::new();
+        let folded;
+        let folded_needle;
+        let (search_text, needle) = if self.case_insensitive {
+            folded = FoldedText::new(original);
+            folded_needle = fold_case(&self.needle);
+            (folded.text.as_str(), folded_needle.as_str())
         } else {
-            // Case sensitive search
-            haystack_char == needle_char
+            folded = FoldedText {
+                text: String::new(),
+                original_starts: Vec::new(),
+            };
+            (original, self.needle.as_str())
         };
-
-        // Whole-word search
-        // It's a match only, if the first haystack char that is _not_ a hit, is a word-boundary
-        if chars_match
-            && self.whole_word_only
-            && nidx == 0
-            && !is_word_boundary(&prev_haystack_char)
-        {
-            // Start of the match is not a word boundary, so this is not a hit
-            chars_match = false;
+        if needle.is_empty() {
+            return found;
         }
+        let mut position = 0;
+        while position <= search_text.len() {
+            let Some(relative) = search_text[position..].find(needle) else {
+                break;
+            };
+            let start = position + relative;
+            let end = start + needle.len();
+            let original_range = if self.case_insensitive {
+                folded
+                    .original_offset(start)
+                    .zip(folded.original_offset(end))
+            } else {
+                Some((start, end))
+            };
+            let accepted = original_range.filter(|(original_start, original_end)| {
+                self.accepts_match(original, *original_start, *original_end)
+            });
+            match accepted {
+                Some(range) => {
+                    found.push(range);
+                    position = end;
+                },
+                None => {
+                    position = start
+                        + search_text[start..]
+                            .chars()
+                            .next()
+                            .map(|c| c.len_utf8())
+                            .unwrap_or(1);
+                },
+            }
+        }
+        found
+    }
 
-        chars_match
+    fn accepts_match(&self, text: &str, start: usize, end: usize) -> bool {
+        if start >= end {
+            return false;
+        }
+        if !grapheme_join::is_boundary_at(text, start) || !grapheme_join::is_boundary_at(text, end)
+        {
+            return false;
+        }
+        if self.whole_word_only {
+            let before = text[..start].chars().next_back();
+            let after = text[end..].chars().next();
+            if !is_word_boundary(&before) || !is_word_boundary(&after) {
+                return false;
+            }
+        }
+        true
     }
 
     /// Search a row and its tail.
     /// The tail are all the non-canonical lines below `row`, with `row` not necessarily being canonical itself.
-    pub(crate) fn search_row(&self, mut ridx: usize, row: &Row, tail: &[&Row]) -> Vec<Selection> {
+    pub(crate) fn search_row(&self, ridx: usize, row: &Row, tail: &[&Row]) -> Vec<Selection> {
         let mut res = Vec::new();
         if self.needle.is_empty() || row.columns.is_empty() {
             return res;
         }
-
-        let mut tailit = tail.iter();
-        let mut source = SearchSource::Main(row); // Where we currently get the haystack-characters from
-        let orig_ridx = ridx;
-        let mut start = None; // If we find a hit, this is where it starts
-        let mut nidx = 0; // Needle index
-        let mut hidx = 0; // Haystack index
-        let mut prev_haystack_char: Option<char> = None;
-        loop {
-            // Get the current and next haystack character
-            let (mut haystack_char, next_haystack_char) =
-                source.get_next_two_chars(hidx, self.whole_word_only);
-
-            // Get current needle character
-            let needle_char = self.needle.chars().nth(nidx).unwrap(); // Unwrapping is safe here
-
-            // Check if needle and haystack match (with search-options)
-            let chars_match = self.check_if_haystack_char_matches_needle(
-                nidx,
-                needle_char,
-                haystack_char,
-                prev_haystack_char,
-            );
-
-            if chars_match {
-                // If the needle is only 1 long, the next `if` could also happen, so we are not merging it into one big if-else
-                if nidx == 0 {
-                    start = Some(Position::new(ridx as i32, hidx as u16));
-                }
-                if nidx == self.needle.len() - 1 {
-                    let mut end_found = true;
-                    // If we search whole-word-only, the next non-needle char needs to be a word-boundary,
-                    // otherwise its not a hit (e.g. some occurrence inside a longer word).
-                    if self.whole_word_only && !is_word_boundary(&next_haystack_char) {
-                        // The end of the match is not a word boundary, so this is not a hit!
-                        // We have to jump back from where we started (plus one char)
-                        nidx = 0;
-                        ridx = start.unwrap().line() as usize;
-                        hidx = start.unwrap().column(); // Will be incremented below
-                        if start.unwrap().line() as usize == orig_ridx {
-                            source = SearchSource::Main(row);
-                            haystack_char = row.columns[hidx].character; // so that prev_char gets set correctly
-                        } else {
-                            // The -1 comes from the main row
-                            let tail_idx = start.unwrap().line() as usize - orig_ridx - 1;
-                            // We have to reset the tail-iterator as well.
-                            tailit = tail[tail_idx..].iter();
-                            let trow = tailit.next().unwrap();
-                            haystack_char = trow.columns[hidx].character; // so that prev_char gets set correctly
-                            source = SearchSource::Tail(trow);
-                        }
-                        start = None;
-                        end_found = false;
-                    }
-                    if end_found {
-                        let mut selection = Selection::default();
-                        selection.start(start.unwrap());
-                        selection.end(Position::new(ridx as i32, (hidx + 1) as u16));
-                        res.push(selection);
-                        nidx = 0;
-                        if matches!(source, SearchSource::Tail(..)) {
-                            // When searching the tail, we can only find one additional selection, so stopping here
-                            break;
-                        }
-                    }
-                } else {
-                    nidx += 1;
-                }
-            } else {
-                // Chars don't match. Start searching the needle from the beginning
-                start = None;
-                nidx = 0;
-                if matches!(source, SearchSource::Tail(..)) {
-                    // When searching the tail and we find a mismatch, just quit right now
-                    break;
-                }
+        let haystack = Haystack::new(ridx, row, tail);
+        for (start, end) in self.find_matches_in(&haystack) {
+            let (Some(first), Some(last)) = (
+                haystack.cell_containing(start),
+                haystack.cell_containing(end - 1),
+            ) else {
+                continue;
+            };
+            if first.row != ridx {
+                continue;
             }
-
-            hidx += 1;
-            prev_haystack_char = Some(haystack_char);
-            // We might need to switch to a new line in the tail
-            if !source.get_next_source(&mut ridx, &mut hidx, &mut tailit, &start) {
-                break;
-            }
-        }
-
-        // The tail may have not been wrapped yet (when coming from lines_below),
-        // so it could be that the end extends across more characters than the row is wide.
-        // Therefore we need to reflow the end:
-        for s in res.iter_mut() {
-            while s.end.column() > row.width() {
-                s.end.column.0 -= row.width();
-                s.end.line.0 += 1;
-            }
+            let mut selection = Selection::default();
+            selection.start(Position::new(first.row as i32, first.column as u16));
+            selection.end(Position::new(
+                last.row as i32,
+                (last.column + last.width) as u16,
+            ));
+            res.push(selection);
         }
         res
     }

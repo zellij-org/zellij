@@ -1,49 +1,19 @@
 use crate::DisplayLayout;
-use unicode_width::UnicodeWidthStr;
+use zellij_tile::graphemes;
 use zellij_tile::prelude::*;
 
 pub fn truncate_with_ellipsis(text: &str, max_width: usize) -> String {
-    if max_width == 0 {
-        return String::new();
-    }
-    if text.chars().count() <= max_width {
-        return text.to_string();
-    }
     if max_width <= 3 {
-        return text.chars().take(max_width).collect();
+        return graphemes::truncate_end(text, max_width, "").into_owned();
     }
-    // Reserve 3 characters for "..."
-    let truncate_at = max_width.saturating_sub(3);
-    format!("{}...", text.chars().take(truncate_at).collect::<String>())
+    graphemes::truncate_end(text, max_width, "...").into_owned()
 }
 
 pub fn truncate_with_ellipsis_start(text: &str, max_width: usize) -> String {
-    if max_width == 0 {
-        return String::new();
-    }
-    if text.chars().count() <= max_width {
-        return text.to_string();
-    }
     if max_width <= 3 {
-        return text
-            .chars()
-            .rev()
-            .take(max_width)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
+        return graphemes::truncate_start(text, max_width, "").into_owned();
     }
-    let truncate_at = max_width.saturating_sub(3);
-    let suffix: String = text
-        .chars()
-        .rev()
-        .take(truncate_at)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
-    format!("...{}", suffix)
+    graphemes::truncate_start(text, max_width, "...").into_owned()
 }
 
 struct AnsiString<'a> {
@@ -61,7 +31,7 @@ impl<'a> AnsiString<'a> {
 
     fn display_width(&self) -> usize {
         let stripped = self.stripped_content();
-        UnicodeWidthStr::width(stripped.as_str())
+        graphemes::display_width(&stripped)
     }
 
     fn fits_within(&self, max_width: usize) -> bool {
@@ -78,15 +48,15 @@ impl<'a> AnsiString<'a> {
         }
 
         let mut truncated = String::new();
-        for ch in self.content.chars() {
-            let test_string = format!("{}{}", truncated, ch);
+        for (cluster, _) in graphemes::clusters(self.content) {
+            let test_string = format!("{}{}", truncated, cluster);
             let test_ansi = AnsiString::new(&test_string);
 
             if test_ansi.display_width() > max_width {
                 break;
             }
 
-            truncated.push(ch);
+            truncated.push_str(cluster);
         }
 
         truncated
@@ -108,7 +78,9 @@ pub fn wrap_text_to_width(text: &str, max_width: usize) -> Vec<String> {
         return Vec::new();
     }
     if max_width < 3 {
-        return text.chars().map(|c| c.to_string()).collect();
+        return graphemes::clusters(text)
+            .map(|(cluster, _)| cluster.to_string())
+            .collect();
     }
 
     let words: Vec<&str> = text.split_whitespace().collect();
@@ -116,7 +88,7 @@ pub fn wrap_text_to_width(text: &str, max_width: usize) -> Vec<String> {
     let mut current_line = String::new();
 
     for word in words.iter() {
-        let word_to_add = if word.len() > max_width {
+        let word_to_add = if graphemes::display_width(word) > max_width {
             truncate_with_ellipsis(word, max_width)
         } else {
             word.to_string()
@@ -126,7 +98,7 @@ pub fn wrap_text_to_width(text: &str, max_width: usize) -> Vec<String> {
             current_line = word_to_add;
         } else {
             let test_line = format!("{} {}", current_line, word_to_add);
-            if test_line.len() <= max_width {
+            if graphemes::display_width(&test_line) <= max_width {
                 current_line = test_line;
             } else {
                 lines.push(current_line);

@@ -1,0 +1,45 @@
+size: 40x120
+cursor: row=4 col=35 visible shape=Default
+grid:
+|      *     *     *     *     *     *     *     *     *     *     *     *     *                                         |
+|      *     *     *     *     *     *     *     *     *     *     *     *     *                                         |
+|                                                                                                                        |
+|Test of TAB setting/resetting. These two lines                                                                          |
+|should look the same. Push <RETURN>                                                                                     |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+images:

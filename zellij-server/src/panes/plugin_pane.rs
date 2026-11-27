@@ -1,9 +1,10 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::Instant;
 
-use crate::output::{CharacterChunk, SixelImageChunk};
+use crate::output::{CharacterChunk, KittyImageChunk, SixelImageChunk};
 use crate::panes::{
     grid::Grid,
+    kitty_graphics::KittyImageStore,
     sixel::SixelImageStore,
     terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END},
     LinkHandler, PaneId,
@@ -15,13 +16,14 @@ use crate::ui::{
     loading_indication::LoadingIndication,
     pane_boundaries_frame::{FrameParams, PaneFrame},
 };
+use crate::vt_parser;
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
-use vte;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    BareKey, KeyWithModifier, PermissionStatus, PermissionType, PluginPermission,
+    BareKey, BorderStyleOverride, KeyModifier, KeyWithModifier, PermissionStatus, PermissionType,
+    PluginPermission,
 };
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
@@ -60,6 +62,7 @@ macro_rules! get_or_create_grid {
                 $self.link_handler.clone(),
                 $self.character_cell_size.clone(),
                 $self.sixel_image_store.clone(),
+                $self.kitty_image_store.clone(),
                 $self.style.clone(),
                 $self.debug,
                 $self.arrow_fonts,
@@ -68,6 +71,8 @@ macro_rules! get_or_create_grid {
                 explicitly_disable_kitty_keyboard_protocol,
             );
             grid.hide_cursor();
+            grid.grapheme_mode = true;
+            grid.ui_components_enabled = true;
             grid
         })
     }};
@@ -86,20 +91,23 @@ pub(crate) struct PluginPane {
     pub pane_name: String,
     pub style: Style,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
+    kitty_image_store: Rc<RefCell<KittyImageStore>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     link_handler: Rc<RefCell<LinkHandler>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
-    vte_parsers: HashMap<ClientId, vte::Parser>,
+    vte_parsers: HashMap<ClientId, vt_parser::Parser>,
     grids: HashMap<ClientId, Grid>,
     cursor_visibility: HashMap<ClientId, Option<(usize, usize)>>,
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    border_style_override: BorderStyleOverride,
     exclude_from_sync: bool,
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
     loading_indication: LoadingIndication,
+    loading_only_for: Option<HashSet<ClientId>>,
     requesting_permissions: Option<PluginPermission>,
     debug: bool,
     arrow_fonts: bool,
@@ -107,6 +115,7 @@ pub(crate) struct PluginPane {
     should_be_suppressed: bool,
     text_being_pasted: Option<Vec<u8>>,
     supports_mouse_selection: bool,
+    mouse_modifiers: BTreeSet<KeyModifier>,
 }
 
 impl PluginPane {
@@ -117,6 +126,7 @@ impl PluginPane {
         title: String,
         pane_name: String,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
+        kitty_image_store: Rc<RefCell<KittyImageStore>>,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         link_handler: Rc<RefCell<LinkHandler>>,
@@ -142,6 +152,7 @@ impl PluginPane {
             content_offset: Offset::default(),
             pane_title: title,
             borderless: false,
+            border_style_override: BorderStyleOverride::default(),
             pane_name: pane_name.clone(),
             prev_pane_name: pane_name,
             terminal_emulator_colors,
@@ -150,6 +161,7 @@ impl PluginPane {
             link_handler,
             character_cell_size,
             sixel_image_store,
+            kitty_image_store,
             vte_parsers: HashMap::new(),
             grids: HashMap::new(),
             cursor_visibility: HashMap::new(),
@@ -164,9 +176,11 @@ impl PluginPane {
             should_be_suppressed: false,
             text_being_pasted: None,
             supports_mouse_selection: false,
+            mouse_modifiers: BTreeSet::new(),
+            loading_only_for: None,
         };
         for client_id in currently_connected_clients {
-            plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
+            plugin.write_bytes(client_id, initial_loading_message.as_bytes().to_vec());
         }
         plugin
     }
@@ -224,33 +238,10 @@ impl Pane for PluginPane {
         self.set_should_render(true);
     }
     fn handle_plugin_bytes(&mut self, client_id: ClientId, bytes: VteBytes) {
-        self.set_client_should_render(client_id, true);
-
-        let mut vte_bytes = bytes;
-        if let Some(plugin_permission) = &self.requesting_permissions {
-            vte_bytes = self
-                .display_request_permission_message(plugin_permission)
-                .into();
+        if let Some(loading_clients) = self.loading_only_for.as_mut() {
+            loading_clients.remove(&client_id);
         }
-
-        let grid = get_or_create_grid!(self, client_id);
-
-        // this is part of the plugin contract, whenever we update the plugin and call its render function, we delete the existing viewport
-        // and scroll, reset the cursor position and make sure all the viewport is rendered
-        grid.delete_viewport_and_scroll();
-        grid.reset_cursor_position();
-        grid.render_full_viewport();
-
-        let vte_parser = self
-            .vte_parsers
-            .entry(client_id)
-            .or_insert_with(|| vte::Parser::new());
-
-        for &byte in &vte_bytes {
-            vte_parser.advance(grid, byte);
-        }
-
-        self.should_render.insert(client_id, true);
+        self.write_bytes(client_id, bytes);
     }
     fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
         let own_content_columns = self.get_content_columns();
@@ -385,6 +376,9 @@ impl Pane for PluginPane {
         self.cursor_visibility.insert(client_id, cursor_position);
         self.should_render.insert(client_id, true);
     }
+    fn is_requesting_permissions(&self) -> bool {
+        self.requesting_permissions.is_some()
+    }
     fn request_permissions_from_user(&mut self, permissions: Option<PluginPermission>) {
         self.requesting_permissions = permissions;
         self.handle_plugin_bytes_for_all_clients(Default::default()); // to trigger the render of
@@ -393,7 +387,14 @@ impl Pane for PluginPane {
     fn render(
         &mut self,
         client_id: Option<ClientId>,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
+    ) -> Result<
+        Option<(
+            Vec<CharacterChunk>,
+            Option<String>,
+            Vec<SixelImageChunk>,
+            Vec<KittyImageChunk>,
+        )>,
+    > {
         if client_id.is_none() {
             return Ok(None);
         }
@@ -428,10 +429,14 @@ impl Pane for PluginPane {
         if self.borderless {
             return Ok(None);
         }
-        let frame_geom = self.current_geom();
+        let frame_geom = frame_params
+            .frame_geom_override
+            .unwrap_or_else(|| self.current_geom());
         let grid = get_or_create_grid!(self, client_id);
         let err_context = || format!("failed to render frame for client {client_id}");
-        let pane_title = if let Some(text_color_override) = self
+        let pane_title = if frame_params.blank_title {
+            String::new()
+        } else if let Some(text_color_override) = self
             .pane_frame_color_override
             .as_ref()
             .and_then(|(_color, text)| text.as_ref())
@@ -493,7 +498,7 @@ impl Pane for PluginPane {
         &mut self,
         _cursor_color: PaletteColor,
         _text_color: PaletteColor,
-    ) -> Option<String> {
+    ) -> Option<crate::output::CharacterChunk> {
         None
     }
     fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
@@ -513,7 +518,7 @@ impl Pane for PluginPane {
             },
             "\u{007F}" | "\u{0008}" => {
                 //delete and backspace keys
-                self.pane_name.pop();
+                zellij_utils::graphemes::pop_cluster(&mut self.pane_name);
             },
             c => {
                 self.pane_name.push_str(c);
@@ -577,6 +582,13 @@ impl Pane for PluginPane {
             .map(|g| g.dump_screen(full))
             .unwrap_or_else(|| "".to_owned())
     }
+    fn dump_screen_with_ansi(&self, full: bool, client_id: Option<ClientId>) -> String {
+        client_id
+            .and_then(|c| self.grids.get(&c))
+            .or_else(|| self.grids.keys().min().and_then(|c| self.grids.get(c)))
+            .map(|g| g.dump_screen_with_ansi(full))
+            .unwrap_or_default()
+    }
     fn scroll_up(&mut self, count: usize, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
@@ -595,27 +607,72 @@ impl Pane for PluginPane {
             )]))
             .unwrap();
     }
+    fn scroll_left(&mut self, count: usize, client_id: ClientId) {
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(vec![(
+                Some(self.pid),
+                Some(client_id),
+                Event::Mouse(Mouse::ScrollLeft(count)),
+            )]))
+            .unwrap();
+    }
+    fn scroll_right(&mut self, count: usize, client_id: ClientId) {
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(vec![(
+                Some(self.pid),
+                Some(client_id),
+                Event::Mouse(Mouse::ScrollRight(count)),
+            )]))
+            .unwrap();
+    }
     fn clear_screen(&mut self) {
         // do nothing
     }
     fn clear_scroll(&mut self) {
         // noop
     }
+    fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
+        for grid in self.grids.values_mut() {
+            grid.set_selection_options(osc133_command_selection, word_separators);
+        }
+    }
+    fn set_mouse_modifiers(&mut self, modifiers: BTreeSet<KeyModifier>) {
+        self.mouse_modifiers = modifiers;
+    }
     fn start_selection(&mut self, start: &Position, client_id: ClientId) {
+        let modifiers = std::mem::take(&mut self.mouse_modifiers);
         if self.supports_mouse_selection {
             if let Some(grid) = self.grids.get_mut(&client_id) {
                 grid.start_selection(start);
                 self.set_should_render(true);
             }
         } else {
+            let click = Mouse::LeftClick(start.line.0, start.column.0);
+            let event = if modifiers.is_empty() {
+                Event::Mouse(click)
+            } else {
+                Event::MouseWithModifiers(click, modifiers)
+            };
             self.send_plugin_instructions
                 .send(PluginInstruction::Update(vec![(
                     Some(self.pid),
                     Some(client_id),
-                    Event::Mouse(Mouse::LeftClick(start.line.0, start.column.0)),
+                    event,
                 )]))
                 .unwrap();
         }
+    }
+    fn mouse_double_click(&mut self, position: &Position, client_id: ClientId) {
+        if self.supports_mouse_selection {
+            return;
+        }
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(vec![(
+                Some(self.pid),
+                Some(client_id),
+                Event::Mouse(Mouse::DoubleClick(position.line.0, position.column.0)),
+            )]))
+            .unwrap();
     }
     fn update_selection(&mut self, position: &Position, client_id: ClientId) {
         if self.supports_mouse_selection {
@@ -710,6 +767,14 @@ impl Pane for PluginPane {
     fn borderless(&self) -> bool {
         self.borderless
     }
+    fn set_border_style_override(&mut self, border_style_override: BorderStyleOverride) {
+        self.border_style_override = border_style_override;
+        self.frame.clear();
+        self.set_should_render(true);
+    }
+    fn border_style_override(&self) -> BorderStyleOverride {
+        self.border_style_override
+    }
     fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
         self.exclude_from_sync = exclude_from_sync;
     }
@@ -756,24 +821,30 @@ impl Pane for PluginPane {
             return;
         }
         self.loading_indication.merge(loading_indication);
-        self.handle_plugin_bytes_for_all_clients(
-            self.loading_indication.to_string().as_bytes().to_vec(),
-        );
+        self.write_loading_indication();
     }
     fn start_loading_indication(&mut self, loading_indication: LoadingIndication) {
+        self.loading_only_for = None;
         self.loading_indication.merge(loading_indication);
-        self.handle_plugin_bytes_for_all_clients(
-            self.loading_indication.to_string().as_bytes().to_vec(),
-        );
+        self.write_loading_indication();
+    }
+    fn start_loading_indication_for_client(
+        &mut self,
+        client_id: ClientId,
+        loading_indication: LoadingIndication,
+    ) {
+        self.loading_only_for
+            .get_or_insert_with(HashSet::new)
+            .insert(client_id);
+        self.loading_indication.merge(loading_indication);
+        self.write_loading_indication();
     }
     fn progress_animation_offset(&mut self) {
         if self.loading_indication.ended {
             return;
         }
         self.loading_indication.progress_animation_offset();
-        self.handle_plugin_bytes_for_all_clients(
-            self.loading_indication.to_string().as_bytes().to_vec(),
-        );
+        self.write_loading_indication();
     }
     fn current_title(&self) -> String {
         if self.pane_name.is_empty() {
@@ -790,7 +861,9 @@ impl Pane for PluginPane {
         }
     }
     fn rename(&mut self, buf: Vec<u8>) {
-        self.pane_name = String::from_utf8_lossy(&buf).to_string();
+        self.pane_name = zellij_utils::shared::clean_string_from_control_and_linebreak(
+            &String::from_utf8_lossy(&buf),
+        );
         self.set_should_render(true);
     }
     fn update_theme(&mut self, theme: Styling) {
@@ -809,6 +882,10 @@ impl Pane for PluginPane {
     fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
         self.frame.clear();
+    }
+    fn invalidate_frame_cache(&mut self) {
+        self.frame.clear();
+        self.set_should_render(true);
     }
     fn set_should_be_suppressed(&mut self, should_be_suppressed: bool) {
         self.should_be_suppressed = should_be_suppressed;
@@ -830,6 +907,15 @@ impl Pane for PluginPane {
                     self.toggle_pinned();
                     return true;
                 }
+            }
+        }
+        false
+    }
+    fn position_is_on_pin_button(&self, position: &Position, client_id: ClientId) -> bool {
+        if self.position_is_on_frame(position) {
+            let relative_position = self.relative_position(position);
+            if let Some(client_frame) = self.frame.get(&client_id) {
+                return client_frame.clicked_on_pinned(relative_position);
             }
         }
         false
@@ -858,7 +944,9 @@ impl Pane for PluginPane {
                     && !event.right
                     && !event.middle
                     && !event.wheel_up
-                    && !event.wheel_down =>
+                    && !event.wheel_down
+                    && !event.wheel_left
+                    && !event.wheel_right =>
             {
                 let _ = self
                     .send_plugin_instructions
@@ -920,9 +1008,45 @@ impl PluginPane {
     fn handle_plugin_bytes_for_all_clients(&mut self, bytes: VteBytes) {
         let client_ids: Vec<ClientId> = self.grids.keys().copied().collect();
         for client_id in client_ids {
-            self.handle_plugin_bytes(client_id, bytes.clone());
+            self.write_bytes(client_id, bytes.clone());
         }
     }
+    fn write_loading_indication(&mut self) {
+        let bytes = self.loading_indication.to_string().as_bytes().to_vec();
+        let client_ids: Vec<ClientId> = match &self.loading_only_for {
+            Some(loading_clients) => loading_clients.iter().copied().collect(),
+            None => self.grids.keys().copied().collect(),
+        };
+        for client_id in client_ids {
+            self.write_bytes(client_id, bytes.clone());
+        }
+    }
+    fn write_bytes(&mut self, client_id: ClientId, bytes: VteBytes) {
+        self.set_client_should_render(client_id, true);
+
+        let mut vte_bytes = bytes;
+        if let Some(plugin_permission) = &self.requesting_permissions {
+            vte_bytes = self
+                .display_request_permission_message(plugin_permission)
+                .into();
+        }
+
+        let grid = get_or_create_grid!(self, client_id);
+
+        grid.delete_viewport_and_scroll();
+        grid.reset_cursor_position();
+        grid.render_full_viewport();
+
+        let vte_parser = self
+            .vte_parsers
+            .entry(client_id)
+            .or_insert_with(|| vt_parser::Parser::new());
+
+        vte_parser.feed(grid, &vte_bytes);
+
+        self.should_render.insert(client_id, true);
+    }
+
     fn display_request_permission_message(&self, plugin_permission: &PluginPermission) -> String {
         let bold_white = style!(self.style.colors.text_unselected.base).bold();
         let cyan = style!(self.style.colors.text_unselected.emphasis_1).bold();
@@ -972,5 +1096,73 @@ impl PluginPane {
         }
 
         messages
+    }
+}
+
+#[cfg(test)]
+mod loading_indication_tests {
+    use super::*;
+    use zellij_utils::channels;
+
+    fn plugin_pane(clients: Vec<ClientId>) -> PluginPane {
+        let (sender, _receiver) = channels::unbounded();
+        let mut geom = PaneGeom::default();
+        geom.cols.set_inner(40);
+        geom.rows.set_inner(5);
+        let mut pane = PluginPane::new(
+            1,
+            geom,
+            SenderWithContext::new(sender),
+            "plugin".to_owned(),
+            String::new(),
+            Rc::new(RefCell::new(SixelImageStore::default())),
+            Rc::new(RefCell::new(KittyImageStore::default())),
+            Rc::new(RefCell::new(Palette::default())),
+            Rc::new(RefCell::new(HashMap::new())),
+            Rc::new(RefCell::new(LinkHandler::new())),
+            Rc::new(RefCell::new(None)),
+            clients,
+            Style::default(),
+            None,
+            false,
+            false,
+            false,
+        );
+        pane.set_content_offset(Offset::default());
+        pane
+    }
+
+    fn shown_to(pane: &PluginPane, client_id: ClientId) -> String {
+        format!("{:?}", pane.grids.get(&client_id).unwrap())
+    }
+
+    #[test]
+    fn loading_for_a_new_client_leaves_the_other_clients_content_alone() {
+        let mut pane = plugin_pane(vec![1]);
+        pane.handle_plugin_bytes(1, b"about screen".to_vec());
+        pane.start_loading_indication_for_client(2, LoadingIndication::new("plugin".to_owned()));
+        pane.progress_animation_offset();
+        assert!(shown_to(&pane, 1).contains("about screen"));
+    }
+
+    #[test]
+    fn late_loading_ticks_do_not_wipe_a_client_that_already_rendered() {
+        let mut pane = plugin_pane(vec![1]);
+        pane.handle_plugin_bytes(1, b"about screen".to_vec());
+        pane.start_loading_indication_for_client(2, LoadingIndication::new("plugin".to_owned()));
+        pane.handle_plugin_bytes(2, b"second window".to_vec());
+        pane.progress_animation_offset();
+        assert!(shown_to(&pane, 1).contains("about screen"));
+        assert!(shown_to(&pane, 2).contains("second window"));
+    }
+
+    #[test]
+    fn loading_for_all_clients_still_reaches_every_client() {
+        let mut pane = plugin_pane(vec![1, 2]);
+        pane.handle_plugin_bytes(1, b"first".to_vec());
+        pane.handle_plugin_bytes(2, b"second".to_vec());
+        pane.start_loading_indication(LoadingIndication::new("plugin".to_owned()));
+        assert!(!shown_to(&pane, 1).contains("first"));
+        assert!(!shown_to(&pane, 2).contains("second"));
     }
 }

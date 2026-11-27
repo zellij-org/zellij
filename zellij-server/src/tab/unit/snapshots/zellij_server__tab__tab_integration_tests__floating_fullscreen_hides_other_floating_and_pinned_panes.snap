@@ -1,0 +1,25 @@
+---
+source: zellij-server/src/tab/./unit/tab_integration_tests.rs
+expression: snapshot
+---
+00 (C): ┌ Pane #2 ───────────────────────────────────────────────────────────────────────────────────────────────────── PIN [ ] ┐
+01 (C): │                                                                                                                       │
+02 (C): │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE                                                             │
+03 (C): │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE                                                             │
+04 (C): │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE                                                             │
+05 (C): │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE                                                             │
+06 (C): │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE                                                             │
+07 (C): │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE                                                             │
+08 (C): │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE                                                             │
+09 (C): │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE                                                             │
+10 (C): │                                                                                                                       │
+11 (C): │                                                                                                                       │
+12 (C): │                                                                                                                       │
+13 (C): │                                                                                                                       │
+14 (C): │                                                                                                                       │
+15 (C): │                                                                                                                       │
+16 (C): │                                                                                                                       │
+17 (C): │                                                                                                                       │
+18 (C): │                                                                                                                       │
+19 (C): └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+

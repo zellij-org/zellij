@@ -31,7 +31,7 @@ impl ResurrectableSessions {
             return;
         }
         let search_indication =
-            Text::new(format!("Search: {}_", self.search_term)).color_range(2, ..7);
+            Text::from(format!("Search: {}_", self.search_term)).color_range(2, ..7);
         let table_rows = rows.saturating_sub(5); // search row, toggle row and some padding
         let table_columns = columns;
         let table = if self.is_searching {
@@ -119,14 +119,14 @@ impl ResurrectableSessions {
         let confirmation_x_location =
             x + columns.saturating_sub(confirmation_text.chars().count()) / 2;
         print_text_with_coordinates(
-            Text::new(warning_description_text).color_range(0, 17..18 + session_count_len),
+            Text::from(warning_description_text).color_range(0, 17..18 + session_count_len),
             warning_x_location,
             warning_y_location,
             None,
             None,
         );
         print_text_with_coordinates(
-            Text::new(confirmation_text).color_indices(2, vec![15, 17]),
+            Text::from(confirmation_text).color_indices(2, vec![15, 17]),
             confirmation_x_location,
             confirmation_y_location,
             None,
@@ -153,7 +153,7 @@ impl ResurrectableSessions {
         }
     }
     fn render_session_name(&self, session_name: &str, indices: Option<Vec<usize>>) -> Text {
-        let text = Text::new(&session_name).color_range(0, ..);
+        let text = Text::from(session_name).color_range(0, ..);
         match indices {
             Some(indices) => text.color_indices(1, indices),
             None => text,
@@ -175,7 +175,8 @@ impl ResurrectableSessions {
             formatted_duration.push_str("<1m");
         }
         let duration_len = formatted_duration.chars().count();
-        Text::new(format!("Created {} ago", formatted_duration)).color_range(2, 8..9 + duration_len)
+        Text::from(format!("Created {} ago", formatted_duration))
+            .color_range(2, 8..9 + duration_len)
     }
     fn render_more_indication_or_enter_as_needed(
         &self,
@@ -186,19 +187,19 @@ impl ResurrectableSessions {
         is_selected: bool,
     ) -> Text {
         if is_selected {
-            Text::new(format!("<ENTER> - Resurrect Session")).color_range(3, 0..7)
+            Text::from(format!("<ENTER> - Resurrect Session")).color_range(3, 0..7)
         } else if i == first_row_index_to_render && i > 0 {
-            Text::new(format!("+ {} more", first_row_index_to_render)).color_range(1, ..)
+            Text::from(format!("+ {} more", first_row_index_to_render)).color_range(1, ..)
         } else if i == last_row_index_to_render.saturating_sub(1)
             && last_row_index_to_render < results_len
         {
-            Text::new(format!(
+            Text::from(format!(
                 "+ {} more",
                 results_len.saturating_sub(last_row_index_to_render)
             ))
             .color_range(1, ..)
         } else {
-            Text::new(" ")
+            Text::from(" ")
         }
     }
     pub fn move_selection_down(&mut self) {
@@ -260,34 +261,33 @@ impl ResurrectableSessions {
     }
     pub fn delete_selected_session(&mut self) {
         if self.is_searching {
-            self.selected_search_index
+            if let Some(search_result) = self
+                .selected_search_index
                 .and_then(|i| self.search_results.get(i))
-                .map(|search_result| delete_dead_session(&search_result.session_name));
-        } else {
-            self.selected_index
-                .and_then(|i| {
-                    if self.all_resurrectable_sessions.len() > i {
-                        // optimistic update
-                        if i == 0 {
-                            self.selected_index = None;
-                        } else if i == self.all_resurrectable_sessions.len().saturating_sub(1) {
-                            self.selected_index = Some(i.saturating_sub(1));
-                        }
-                        Some(self.all_resurrectable_sessions.remove(i))
-                    } else {
-                        None
-                    }
-                })
-                .map(|session_name_and_creation_time| {
-                    delete_dead_session(&session_name_and_creation_time.0)
-                });
+            {
+                let _ = delete_dead_session(&search_result.session_name);
+            }
+        } else if let Some(session_name_and_creation_time) = self.selected_index.and_then(|i| {
+            if self.all_resurrectable_sessions.len() > i {
+                // optimistic update
+                if i == 0 {
+                    self.selected_index = None;
+                } else if i == self.all_resurrectable_sessions.len().saturating_sub(1) {
+                    self.selected_index = Some(i.saturating_sub(1));
+                }
+                Some(self.all_resurrectable_sessions.remove(i))
+            } else {
+                None
+            }
+        }) {
+            let _ = delete_dead_session(&session_name_and_creation_time.0);
         }
     }
     fn delete_all_sessions(&mut self) {
         // optimistic update
         self.all_resurrectable_sessions = vec![];
         self.delete_all_dead_sessions_warning = false;
-        delete_all_dead_sessions();
+        let _ = delete_all_dead_sessions();
     }
     pub fn show_delete_all_sessions_warning(&mut self) {
         self.delete_all_dead_sessions_warning = true;
@@ -303,7 +303,7 @@ impl ResurrectableSessions {
         }
     }
     pub fn handle_backspace(&mut self) {
-        self.search_term.pop();
+        zellij_tile::graphemes::pop_cluster(&mut self.search_term);
         self.update_search_term();
     }
     pub fn has_session(&self, session_name: &str) -> bool {

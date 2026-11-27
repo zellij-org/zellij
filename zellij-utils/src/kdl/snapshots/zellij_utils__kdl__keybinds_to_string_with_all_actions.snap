@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 2731
 expression: serialized.to_string()
 ---
 keybinds clear-defaults=true {
@@ -47,6 +46,7 @@ keybinds clear-defaults=true {
         }
         bind "Alt j" { GoToPreviousTab; }
         bind "Ctrl k" { MovePane "right"; }
+        bind "Ctrl Alt k" { FocusLastPane; }
         bind "Alt k" { CloseTab; }
         bind "Ctrl l" { MovePaneBackwards; }
         bind "Alt l" { GoToTab 1; }
@@ -127,4 +127,3 @@ keybinds clear-defaults=true {
         bind "Alt z" { SearchInput 0; }
     }
 }
-

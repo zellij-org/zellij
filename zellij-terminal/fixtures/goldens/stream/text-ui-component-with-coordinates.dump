@@ -1,0 +1,50 @@
+size: 40x120
+cursor: row=5 col=0 visible shape=Default
+grid:
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                          foo bar baz                                                   |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 4: cols 58-60 fg=#ff9146 bg=#383838 flags=BOLD
+row 4: cols 61-63 fg=#46afff bg=#383838 flags=BOLD
+row 4: cols 64-64 fg=#d7d7d7 bg=#383838 flags=BOLD
+row 4: cols 65-67 fg=#96dc5a bg=#383838 flags=BOLD
+row 4: cols 68-68 fg=#d7d7d7 bg=#383838 flags=BOLD
+images:

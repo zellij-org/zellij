@@ -1,0 +1,62 @@
+size: 40x120
+cursor: row=2 col=33 visible shape=Default
+grid:
+|Welcome to fish, the friendly interactive shell                                                                         |
+|⋊> ~/c/zellij on wide-char ⨯ bash                                                               15:35:20                |
+|[aram@green zellij]$ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 1: cols 0-1 fg=BrightWhite bg=Cyan
+row 1: cols 3-12 fg=Yellow bg=Background
+row 1: cols 17-25 fg=Green bg=Background
+row 1: cols 29-32 fg=Foreground bg=Background flags=BOLD
+row 1: cols 96-103 fg=#555555 bg=Background
+row 2: cols 21-21 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 22-22 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 23-23 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 24-24 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 25-25 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 26-26 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 27-27 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 28-28 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 29-29 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 30-30 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 31-31 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 32-32 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+images:

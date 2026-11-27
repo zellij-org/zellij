@@ -1,0 +1,197 @@
+size: 40x120
+cursor: row=38 col=60 visible shape=Default
+grid:
+| Zellij (window-capture-grapheme-clusters)  Tab #1  +                                       [ No Other Sessions ▾ ] |
+|                           Pane #1                         │ [ MY FOCUS ]         grapheme-clusters     [ SCROLL: 0/2 ] |
+|$                                                          │ACCENT:   é ä̊ ô|                                            |
+|                                                           │STACKED:  á̂̃̄̅̆̇̈|                                                |
+|                                                           │VS16:     ⚠|                                                |
+|                                                           │VS15:     ⌚︎ | 😀︎ |                                           |
+|                                                           │KEYCAP:   1⃣|                                                |
+|                                                           │SKIN:     👍 🏽 | 🏽 |                                         |
+|                                                           │FLAG:     🇩🇪| 🇩🇪🇫|                                          |
+|                                                           │FAMILY:   👨‍ 👩‍ 👧 |                                           |
+|                                                           │RAINBOW:  🏳️‍🌈 |                                              |
+|                                                           │ENGLAND:  🏴󠁧󠁢󠁥󠁮󠁧󠁿 |                                               |
+|                                                           │INDIC:    क्ष| का|                                           |
+|                                                           │THAI:     ก้ำ|                                               |
+|                                                           │HANGUL:   각 |                                               |
+|                                                           │KANA:     ｶﾞ|                                                |
+|                                                           │SHY:      x­y|                                               |
+|                                                           │ZWJ:      a‍b|                                               |
+|                                                           │WIDE3:    ៘  |                                              |
+|                                                           │mode 2027                                                   |
+|                                                           │ACCENT:   é ä̊ ô|                                            |
+|                                                           │STACKED:  á̂̃̄̅̆̇̈|                                                |
+|                                                           │VS16:     ⚠️ |                                               |
+|                                                           │VS15:     ⌚︎| 😀︎ |                                            |
+|                                                           │KEYCAP:   1️⃣ |                                               |
+|                                                           │SKIN:     👍🏽 | 🏽  |                                           |
+|                                                           │FLAG:     🇩🇪 | 🇩🇪 🇫|                                          |
+|                                                           │FAMILY:   👨‍👩‍👧 |                                               |
+|                                                           │RAINBOW:  🏳️‍🌈 |                                               |
+|                                                           │ENGLAND:  🏴󠁧󠁢󠁥󠁮󠁧󠁿 |                                               |
+|                                                           │INDIC:    क्ष | का |                                           |
+|                                                           │THAI:     ก้ำ |                                               |
+|                                                           │HANGUL:   각 |                                               |
+|                                                           │KANA:     ｶﾞ|                                                |
+|                                                           │SHY:      x­y|                                               |
+|                                                           │ZWJ:      a‍b|                                               |
+|                                                           │WIDE3:    ៘  |                                              |
+|                                                           │OVERWRITE: 👨‍ X 👧 |                                          |
+|                                                           │                                                            |
+| Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...|
+styles:
+row 0: cols 0-42 fg=#d7d7d7 bg=#0b0b0b flags=BOLD
+row 0: cols 43-43 fg=#0b0b0b bg=#96dc5a
+row 0: cols 44-51 fg=#0b0b0b bg=#96dc5a flags=BOLD
+row 0: cols 52-52 fg=#96dc5a bg=#0b0b0b
+row 0: cols 53-53 fg=#0b0b0b bg=#989898
+row 0: cols 54-56 fg=#0b0b0b bg=#989898 flags=BOLD
+row 0: cols 57-57 fg=#989898 bg=#0b0b0b
+row 0: cols 58-95 fg=#0b0b0b bg=#0b0b0b
+row 0: cols 96-96 fg=#96dc5a bg=Background flags=BOLD
+row 0: cols 97-117 fg=#d7d7d7 bg=Background flags=BOLD
+row 0: cols 118-118 fg=#96dc5a bg=Background flags=BOLD
+row 0: cols 119-119 fg=Foreground bg=#0b0b0b
+row 1: cols 26-34 fg=#696969 bg=Background flags=BOLD
+row 1: cols 59-59 fg=#ff82c8 bg=Background
+row 1: cols 60-73 fg=#ff82c8 bg=Background flags=BOLD
+row 1: cols 81-99 fg=#ff82c8 bg=Background flags=BOLD
+row 1: cols 103-119 fg=#ff82c8 bg=Background flags=BOLD
+row 2: cols 59-59 fg=#ff82c8 bg=Background
+row 3: cols 59-59 fg=#ff82c8 bg=Background
+row 4: cols 59-59 fg=#ff82c8 bg=Background
+row 5: cols 59-59 fg=#ff82c8 bg=Background
+row 5: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 5: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 5: cols 74-74 fg=Foreground bg=Background flags=WIDE_CHAR
+row 5: cols 75-75 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 6: cols 59-59 fg=#ff82c8 bg=Background
+row 7: cols 59-59 fg=#ff82c8 bg=Background
+row 7: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 7: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 7: cols 72-72 fg=Foreground bg=Background flags=WIDE_CHAR|GROUP_CONTINUE
+row 7: cols 73-73 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 7: cols 76-76 fg=Foreground bg=Background flags=WIDE_CHAR|GROUP_CONTINUE
+row 7: cols 77-77 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 8: cols 59-59 fg=#ff82c8 bg=Background
+row 8: cols 71-71 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 8: cols 75-75 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 9: cols 59-59 fg=#ff82c8 bg=Background
+row 9: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 9: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 9: cols 72-72 fg=Foreground bg=Background flags=WIDE_CHAR|GROUP_CONTINUE
+row 9: cols 73-73 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 9: cols 74-74 fg=Foreground bg=Background flags=WIDE_CHAR|GROUP_CONTINUE
+row 9: cols 75-75 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 10: cols 59-59 fg=#ff82c8 bg=Background
+row 10: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR|GROUP_CONTINUE
+row 10: cols 72-72 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 11: cols 59-59 fg=#ff82c8 bg=Background
+row 11: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 11: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 12: cols 59-59 fg=#ff82c8 bg=Background
+row 12: cols 71-71 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 12: cols 75-75 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 13: cols 59-59 fg=#ff82c8 bg=Background
+row 13: cols 71-71 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 14: cols 59-59 fg=#ff82c8 bg=Background
+row 14: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 14: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 15: cols 59-59 fg=#ff82c8 bg=Background
+row 16: cols 59-59 fg=#ff82c8 bg=Background
+row 17: cols 59-59 fg=#ff82c8 bg=Background
+row 18: cols 59-59 fg=#ff82c8 bg=Background
+row 18: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 18: cols 71-72 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 19: cols 59-59 fg=#ff82c8 bg=Background
+row 20: cols 59-59 fg=#ff82c8 bg=Background
+row 21: cols 59-59 fg=#ff82c8 bg=Background
+row 22: cols 59-59 fg=#ff82c8 bg=Background
+row 22: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 22: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 23: cols 59-59 fg=#ff82c8 bg=Background
+row 23: cols 73-73 fg=Foreground bg=Background flags=WIDE_CHAR
+row 23: cols 74-74 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 24: cols 59-59 fg=#ff82c8 bg=Background
+row 24: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 24: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 25: cols 59-59 fg=#ff82c8 bg=Background
+row 25: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 25: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 25: cols 73-73 fg=Foreground bg=Background flags=WIDE_CHAR
+row 25: cols 74-75 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 26: cols 59-59 fg=#ff82c8 bg=Background
+row 26: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 26: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 26: cols 74-74 fg=Foreground bg=Background flags=WIDE_CHAR
+row 26: cols 75-75 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 27: cols 59-59 fg=#ff82c8 bg=Background
+row 27: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 27: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 28: cols 59-59 fg=#ff82c8 bg=Background
+row 28: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 28: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 29: cols 59-59 fg=#ff82c8 bg=Background
+row 29: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 29: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 30: cols 59-59 fg=#ff82c8 bg=Background
+row 30: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 30: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 30: cols 74-74 fg=Foreground bg=Background flags=WIDE_CHAR
+row 30: cols 75-75 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 31: cols 59-59 fg=#ff82c8 bg=Background
+row 31: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 31: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 32: cols 59-59 fg=#ff82c8 bg=Background
+row 32: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 32: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 33: cols 59-59 fg=#ff82c8 bg=Background
+row 34: cols 59-59 fg=#ff82c8 bg=Background
+row 35: cols 59-59 fg=#ff82c8 bg=Background
+row 36: cols 59-59 fg=#ff82c8 bg=Background
+row 36: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR
+row 36: cols 71-72 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 37: cols 59-59 fg=#ff82c8 bg=Background
+row 37: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR
+row 37: cols 72-72 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 37: cols 75-75 fg=Foreground bg=Background flags=WIDE_CHAR
+row 37: cols 76-76 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 38: cols 59-59 fg=#ff82c8 bg=Background
+row 39: cols 0-6 fg=#d7d7d7 bg=#0b0b0b flags=BOLD
+row 39: cols 7-7 fg=#0b0b0b bg=#0b0b0b flags=BOLD
+row 39: cols 8-10 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 11-11 fg=#4f1a22 bg=#989898 flags=BOLD
+row 39: cols 12-18 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 19-19 fg=#989898 bg=#0b0b0b flags=BOLD
+row 39: cols 20-22 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 23-23 fg=#4f1a22 bg=#989898 flags=BOLD
+row 39: cols 24-30 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 31-31 fg=#989898 bg=#0b0b0b flags=BOLD
+row 39: cols 32-34 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 35-35 fg=#4f1a22 bg=#989898 flags=BOLD
+row 39: cols 36-41 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 42-42 fg=#989898 bg=#0b0b0b flags=BOLD
+row 39: cols 43-45 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 46-46 fg=#4f1a22 bg=#989898 flags=BOLD
+row 39: cols 47-55 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 56-56 fg=#989898 bg=#0b0b0b flags=BOLD
+row 39: cols 57-59 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 60-60 fg=#4f1a22 bg=#989898 flags=BOLD
+row 39: cols 61-67 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 68-68 fg=#989898 bg=#0b0b0b flags=BOLD
+row 39: cols 69-71 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 72-72 fg=#4f1a22 bg=#989898 flags=BOLD
+row 39: cols 73-81 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 82-82 fg=#989898 bg=#0b0b0b flags=BOLD
+row 39: cols 83-85 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 86-86 fg=#4f1a22 bg=#989898 flags=BOLD
+row 39: cols 87-96 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 97-97 fg=#989898 bg=#0b0b0b flags=BOLD
+row 39: cols 98-100 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 101-101 fg=#4f1a22 bg=#989898 flags=BOLD
+row 39: cols 102-108 fg=#0b0b0b bg=#989898 flags=BOLD
+row 39: cols 109-109 fg=#989898 bg=#0b0b0b flags=BOLD
+row 39: cols 110-119 fg=#ff9146 bg=#0b0b0b flags=BOLD
+images:

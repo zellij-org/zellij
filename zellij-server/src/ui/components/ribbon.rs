@@ -12,6 +12,46 @@ pub fn ribbon(
 ) -> Vec<u8> {
     let colors = style.colors;
     let background = colors.text_unselected.background;
+    if content.disabled {
+        let declaration = colors.ribbon_unselected;
+        let disabled_content = content.into_disabled();
+        let (first_arrow_styles, text_style, last_arrow_styles) = (
+            character_style(background, declaration.background),
+            RESET_STYLES
+                .foreground(Some(declaration.base.into()))
+                .background(Some(declaration.background.into()))
+                .italic(Some(AnsiCode::On)),
+            character_style(declaration.background, background),
+        );
+        let (arrow, padding) = if arrow_fonts {
+            (ARROW_SEPARATOR, Some(4))
+        } else {
+            ("", None)
+        };
+        let (text, _text_width) = stringify_text(
+            &disabled_content,
+            padding,
+            &component_coordinates,
+            &declaration,
+            &colors,
+            text_style,
+        );
+        let mut stringified = component_coordinates
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| String::new());
+        stringified.push_str(&format!(
+            "{}{}{}{} {} {}{}{}",
+            RESET_STYLES,
+            first_arrow_styles,
+            arrow,
+            text_style,
+            text,
+            last_arrow_styles,
+            arrow,
+            RESET_STYLES
+        ));
+        return stringified.as_bytes().to_vec();
+    }
     let declaration = if content.selected {
         colors.ribbon_selected
     } else {

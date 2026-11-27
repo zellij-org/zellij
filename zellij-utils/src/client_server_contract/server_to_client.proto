@@ -21,11 +21,45 @@ message ServerToClientMsg {
     PaneRenderUpdateMsg pane_render_update = 14;
     SubscribedPaneClosedMsg subscribed_pane_closed = 15;
     ForwardQueryToHostMsg forward_query_to_host = 16;
+    SetSoftKeyboardMsg set_soft_keyboard = 17;
+    EmitNestedSessionFrameMsg emit_nested_session_frame = 18;
+    MobileStateMsg mobile_state = 19;
+    RenderFrameMsg render_frame = 20;
+    HostThemeModeMsg host_theme_mode = 21;
+    TerminalSettingsMsg terminal_settings = 22;
+    HostProgramStatusMsg host_program_status = 23;
+    SessionAttentionMsg session_attention = 24;
+    SessionPreviewMsg session_preview = 25;
+    ServerPaneMirrorMsg pane_mirror = 26;
+    PasteFromClipboardMsg paste_from_clipboard = 27;
   }
+}
+
+message SessionPreviewMsg {
+  optional SessionPreview preview = 1;
+}
+
+message SessionAttentionMsg {
+  SessionAttention attention = 1;
+}
+
+message HostProgramStatusMsg {
+  optional HostProgramStatus status = 1;
+}
+
+message HostProgramStatus {
+  string state = 1;
+  optional string kind = 2;
+  optional uint32 progress = 3;
+  string msg = 4;
 }
 
 message RenderMsg {
   string content = 1;
+}
+
+message RenderFrameMsg {
+  bytes frame = 1;
 }
 
 message UnblockInputThreadMsg {
@@ -55,6 +89,7 @@ message SwitchSessionMsg {
 
 message UnblockCliPipeInputMsg {
   string pipe_name = 1;
+  optional int32 exit_code = 2;
 }
 
 message CliPipeOutputMsg {
@@ -78,6 +113,14 @@ message ConfigFileUpdatedMsg {
   // Empty message
 }
 
+message TerminalSettingsMsg {
+  string settings_json = 1;
+}
+
+message HostThemeModeMsg {
+  HostTerminalThemeIndication mode = 1;
+}
+
 message PaneRenderUpdateMsg {
   PaneId pane_id = 1;
   repeated string viewport = 2;
@@ -93,4 +136,75 @@ message SubscribedPaneClosedMsg {
 message ForwardQueryToHostMsg {
   uint32 token = 1;
   bytes query_bytes = 2;
+  bool resolve_async = 3;
+}
+
+message PasteFromClipboardMsg {
+  optional PaneId pane_id = 1;
+}
+
+message SetSoftKeyboardMsg {
+  bool on = 1;
+}
+
+message EmitNestedSessionFrameMsg {
+  bytes payload_bytes = 1;
+}
+
+message MobileSizeMsg {
+  uint32 cols = 1;
+  uint32 rows = 2;
+}
+
+message MobileActivePaneMsg {
+  uint32 pane_id = 1;
+  bool is_plugin = 2;
+  uint32 tab_position = 3;
+}
+
+message MobileTabMsg {
+  uint32 position = 1;
+  string name = 2;
+  bool active = 3;
+}
+
+message MobilePaneMsg {
+  uint32 tab_position = 1;
+  uint32 pane_id = 2;
+  bool is_plugin = 3;
+  string title = 4;
+  bool is_floating = 5;
+  uint64 last_activity_secs_ago = 6;
+}
+
+message MobileSessionMsg {
+  string name = 1;
+  bool web_clients_allowed = 2;
+  uint32 tab_count = 3;
+  uint32 pane_count = 4;
+  uint32 connected_clients = 5;
+  uint64 creation_secs_ago = 6;
+}
+
+message MobileRenderPrefsMsg {
+  bool single_pane = 1;
+  bool fit = 2;
+  bool active_pane_is_fullscreen = 3;
+}
+
+message MobileStateMsg {
+  string session_name = 1;
+  uint64 now_secs = 2;
+  bool is_welcome_screen = 3;
+  bool desktop_client_connected = 4;
+  optional MobileSizeMsg desktop_size = 5;
+  optional MobileActivePaneMsg active_pane = 6;
+  repeated MobileTabMsg tabs = 7;
+  repeated MobilePaneMsg panes = 8;
+  repeated MobileSessionMsg sessions = 9;
+  MobileRenderPrefsMsg render_prefs = 10;
+}
+
+message ServerPaneMirrorMsg {
+  bytes payload = 1;
 }

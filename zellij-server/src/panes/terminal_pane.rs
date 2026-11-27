@@ -1,31 +1,36 @@
-use crate::output::{CharacterChunk, SixelImageChunk};
+use crate::output::{CharacterChunk, KittyImageChunk, SixelImageChunk};
+use crate::panes::kitty_graphics::{
+    InterceptorResult, KittyApcInterceptor, KittyHostSupport, KittyImageStore,
+};
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::panes::{
-    grid::Grid,
+    grid::{Grid, PendingNotification},
+    nested_session_modal::GuestModalShortcuts,
     terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::pty::VteBytes;
 use crate::route::NotificationEnd;
-use crate::tab::{AdjustedInput, Pane};
+use crate::tab::{AdjustedInput, GuestChoiceIndicator, Pane};
+use crate::vt_parser;
 use crate::ClientId;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
-use vte;
 use zellij_utils::data::PaneContents;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{
-        BareKey, InputMode, KeyWithModifier, Palette, PaletteColor, PaneId as ZellijUtilsPaneId,
-        RegexHighlight, Style, Styling,
+        BareKey, BorderStyleOverride, InputMode, KeyWithModifier, Palette, PaletteColor,
+        PaneId as ZellijUtilsPaneId, RegexHighlight, Style, Styling,
     },
     errors::prelude::*,
     input::layout::Run,
+    nested_session::NestedSessionMessage,
     pane_size::PaneGeom,
     pane_size::SizeInPixels,
     position::Position,
@@ -126,13 +131,14 @@ type IsFirstRun = bool;
 #[allow(clippy::too_many_arguments)]
 pub struct TerminalPane {
     pub grid: Grid,
+    program_resized_at: Option<Instant>,
     pub pid: u32,
     pub selectable: bool,
     pub geom: PaneGeom,
     pub geom_override: Option<PaneGeom>,
     pub active_at: Instant,
     pub style: Style,
-    vte_parser: vte::Parser,
+    vte_parser: vt_parser::Parser,
     selection_scrolled_at: time::Instant,
     content_offset: Offset,
     pane_title: String,
@@ -140,6 +146,7 @@ pub struct TerminalPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    border_style_override: BorderStyleOverride,
     exclude_from_sync: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
     search_term: String,
@@ -149,8 +156,10 @@ pub struct TerminalPane {
     // held on startup and can possibly be used to display some errors
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     has_bell_notification: bool,
+    attention_marker: Option<crate::attention::FrameMarker>,
+    attention_markers_enabled: bool,
+    initial_attention_flags: Option<(bool, bool)>,
     invoked_with: Option<Run>,
-    #[allow(dead_code)]
     arrow_fonts: bool,
     notification_end: Option<NotificationEnd>,
     /// `true` while a host-terminal forward initiated by this pane is
@@ -159,6 +168,12 @@ pub struct TerminalPane {
     /// stdin in the same stream position the original query occupied.
     /// Cleared by Tab when the reply (or 500 ms cache-fallback) lands.
     forward_paused: bool,
+    nested_guest: bool,
+    guest_modal: HashMap<ClientId, usize>,
+    guest_modal_hover: HashMap<ClientId, usize>,
+    guest_choice_indicators: HashMap<ClientId, GuestChoiceIndicator>,
+    guest_session_name: Option<String>,
+    guest_modal_shortcuts: GuestModalShortcuts,
     /// PTY bytes that have not yet been fed to vte. Single source of
     /// truth: `handle_pty_bytes` always appends here, and processing
     /// pops one byte at a time and advances the vte parser. Processing
@@ -166,6 +181,9 @@ pub struct TerminalPane {
     /// remaining bytes in the queue to be drained after the host reply
     /// has been written.
     pending_pty_input: VecDeque<u8>,
+    held_escape: bool,
+    kitty_interceptor: KittyApcInterceptor,
+    mirror_pinned_size: Option<zellij_utils::pane_size::Size>,
 }
 
 impl Pane for TerminalPane {
@@ -216,26 +234,120 @@ impl Pane for TerminalPane {
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
         self.set_should_render(true);
+        let bytes = if std::mem::take(&mut self.held_escape) {
+            let mut joined = Vec::with_capacity(bytes.len() + 1);
+            joined.push(0x1b);
+            joined.extend_from_slice(&bytes);
+            joined
+        } else {
+            bytes
+        };
         if self.forward_paused {
             // A host-forward initiated by this pane is outstanding.
             // Buffer the bytes; Tab drains them on resume.
             self.pending_pty_input.extend(bytes);
             return;
         }
-        let mut iter = bytes.into_iter();
-        while let Some(byte) = iter.next() {
-            self.vte_parser.advance(&mut self.grid, byte);
-            if !self.grid.pending_forwarded_queries.is_empty() {
-                // Grid produced a forward. Stop feeding; queue the
-                // un-fed remainder so Tab can replay it after the
-                // reply.
-                self.pending_pty_input.extend(iter);
-                break;
+        if self.kitty_interceptor.is_ground() && memchr::memmem::find(&bytes, b"\x1b_").is_none() {
+            let ends_in_escape = bytes.last() == Some(&0x1b);
+            let head = if ends_in_escape {
+                &bytes[..bytes.len() - 1]
+            } else {
+                &bytes[..]
+            };
+            let consumed = self.vte_parser.feed_until_paused(&mut self.grid, head);
+            if consumed < head.len() {
+                self.pending_pty_input.extend(&bytes[consumed..]);
+            } else if ends_in_escape {
+                self.held_escape = true;
+            }
+            return;
+        }
+        let mut forwarded: Vec<u8> = Vec::with_capacity(bytes.len());
+        let mut index = 0;
+        let mut capture_started = false;
+        while index < bytes.len() {
+            if self.kitty_interceptor.is_ground() {
+                let rest = &bytes[index..];
+                let run = rest
+                    .iter()
+                    .position(|byte| *byte == 0x1b)
+                    .unwrap_or(rest.len());
+                if run > 0 {
+                    capture_started = false;
+                    forwarded.extend_from_slice(&rest[..run]);
+                    index += run;
+                    continue;
+                }
+            }
+            let byte = bytes[index];
+            index += 1;
+            match self.kitty_interceptor.advance(byte) {
+                InterceptorResult::Forward(fwd) => {
+                    capture_started = false;
+                    forwarded.extend_from_slice(fwd.as_slice());
+                },
+                InterceptorResult::Swallow => {
+                    if !capture_started {
+                        capture_started = true;
+                        // Drain everything before the sequence now, so a pause
+                        // in the middle of this flush can never strand a
+                        // capture that has already left the input buffer.
+                        if !forwarded.is_empty() {
+                            let consumed = self
+                                .vte_parser
+                                .feed_until_paused(&mut self.grid, &forwarded);
+                            if consumed < forwarded.len() {
+                                self.pending_pty_input.extend(&forwarded[consumed..]);
+                                self.pending_pty_input.extend(&bytes[index - 1..]);
+                                self.kitty_interceptor.reset();
+                                return;
+                            }
+                            forwarded.clear();
+                        }
+                    }
+                },
+                InterceptorResult::Captured(cmd) => {
+                    capture_started = false;
+                    if !forwarded.is_empty() {
+                        let consumed = self
+                            .vte_parser
+                            .feed_until_paused(&mut self.grid, &forwarded);
+                        if consumed < forwarded.len() {
+                            self.pending_pty_input.extend(&forwarded[consumed..]);
+                            self.pending_pty_input.extend(b"\x1b_G");
+                            self.pending_pty_input.extend(&cmd);
+                            self.pending_pty_input.extend(b"\x1b\\");
+                            self.pending_pty_input.extend(&bytes[index..]);
+                            return;
+                        }
+                        forwarded.clear();
+                    }
+                    self.grid.handle_kitty_apc(&cmd);
+                    if !self.grid.pending_forwarded_queries.is_empty() {
+                        // Grid produced a forward. Stop feeding; queue the
+                        // un-fed remainder so Tab can replay it after the
+                        // reply.
+                        self.pending_pty_input.extend(&bytes[index..]);
+                        return;
+                    }
+                },
             }
         }
+        let consumed = self
+            .vte_parser
+            .feed_until_paused(&mut self.grid, &forwarded);
+        if consumed < forwarded.len() {
+            self.pending_pty_input.extend(&forwarded[consumed..]);
+        }
     }
-    fn cursor_coordinates(&self, _client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
+    fn cursor_coordinates(&self, client_id: Option<ClientId>) -> Option<(usize, usize, bool)> {
         // (x, y, is_visible)
+        if let Some(client_id) = client_id {
+            if self.guest_modal.contains_key(&client_id) {
+                return None;
+            }
+        }
         if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
             // do not render cursor if there's no room for it
             return None;
@@ -243,6 +355,7 @@ impl Pane for TerminalPane {
         let Offset { top, left, .. } = self.content_offset;
         self.grid
             .cursor_coordinates()
+            .filter(|(x, y, _)| self.cursor_is_in_the_visible_area(*x, *y))
             .map(|(x, y, is_visible)| (x + left, y + top, is_visible))
     }
     fn is_mid_frame(&self) -> bool {
@@ -274,7 +387,72 @@ impl Pane for TerminalPane {
             }
         }
 
-        if self.is_held.is_some() {
+        if let Some(selection) = client_id.and_then(|c| self.guest_modal.get(&c).copied()) {
+            let client_id = client_id.expect("guest modal selection requires a client id");
+            let is_up = key_with_modifier
+                .as_ref()
+                .map(|k| {
+                    k.is_key_without_modifier(BareKey::Up)
+                        || k.is_key_without_modifier(BareKey::Char('k'))
+                })
+                .unwrap_or(false)
+                || raw_input_bytes.as_slice() == UP_ARROW;
+            let is_down = key_with_modifier
+                .as_ref()
+                .map(|k| {
+                    k.is_key_without_modifier(BareKey::Down)
+                        || k.is_key_without_modifier(BareKey::Char('j'))
+                })
+                .unwrap_or(false)
+                || raw_input_bytes.as_slice() == DOWN_ARROW;
+            let is_enter = key_with_modifier
+                .as_ref()
+                .map(|k| k.is_key_without_modifier(BareKey::Enter))
+                .unwrap_or(false)
+                || matches!(
+                    raw_input_bytes.as_slice(),
+                    ENTER_CARRIAGE_RETURN | ENTER_NEWLINE
+                );
+            let is_esc = key_with_modifier
+                .as_ref()
+                .map(|k| k.is_key_without_modifier(BareKey::Esc))
+                .unwrap_or(false)
+                || raw_input_bytes.as_slice() == ESC;
+            let digit = key_with_modifier
+                .as_ref()
+                .and_then(|k| match k.bare_key {
+                    BareKey::Char(c @ '1'..='2') if k.key_modifiers.is_empty() => Some(c),
+                    _ => None,
+                })
+                .or_else(|| match raw_input_bytes.as_slice() {
+                    b"1" => Some('1'),
+                    b"2" => Some('2'),
+                    _ => None,
+                });
+            if is_up {
+                self.guest_modal.insert(client_id, (selection + 1) % 2);
+                self.set_should_render(true);
+                Some(AdjustedInput::GuestModalSelectionChanged)
+            } else if is_down {
+                self.guest_modal.insert(client_id, (selection + 1) % 2);
+                self.set_should_render(true);
+                Some(AdjustedInput::GuestModalSelectionChanged)
+            } else if let Some(digit) = digit {
+                match digit {
+                    '1' => Some(AdjustedInput::GuestModalZoom),
+                    _ => Some(AdjustedInput::GuestModalDescend),
+                }
+            } else if is_enter {
+                match selection {
+                    0 => Some(AdjustedInput::GuestModalZoom),
+                    _ => Some(AdjustedInput::GuestModalDescend),
+                }
+            } else if is_esc {
+                Some(AdjustedInput::GuestModalDescend)
+            } else {
+                None
+            }
+        } else if self.is_held.is_some() {
             if key_with_modifier
                 .as_ref()
                 .map(|k| k.is_key_without_modifier(BareKey::Enter))
@@ -331,6 +509,9 @@ impl Pane for TerminalPane {
     }
     fn set_should_render(&mut self, should_render: bool) {
         self.grid.should_render = should_render;
+        if should_render {
+            self.grid.note_change();
+        }
     }
     fn render_full_viewport(&mut self) {
         // this marks the pane for a full re-render, rather than just rendering the
@@ -354,7 +535,14 @@ impl Pane for TerminalPane {
     fn render(
         &mut self,
         _client_id: Option<ClientId>,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
+    ) -> Result<
+        Option<(
+            Vec<CharacterChunk>,
+            Option<String>,
+            Vec<SixelImageChunk>,
+            Vec<KittyImageChunk>,
+        )>,
+    > {
         if self.should_render() {
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
@@ -363,9 +551,24 @@ impl Pane for TerminalPane {
             if rows < 1 || columns < 1 {
                 return Ok(None);
             }
+            let full_redraw = self.grid.will_render_all_lines();
             match self.grid.render(content_x, content_y, &self.style) {
                 Ok(rendered_assets) => {
-                    self.set_should_render(false);
+                    if rendered_assets.is_some() {
+                        self.set_should_render(false);
+                    }
+                    if self.mirror_pinned_size.is_some() {
+                        return Ok(rendered_assets.map(
+                            |(chunks, raw_vte_output, sixel_chunks, kitty_chunks)| {
+                                (
+                                    self.crop_pinned_chunks(chunks, full_redraw),
+                                    raw_vte_output,
+                                    sixel_chunks,
+                                    kitty_chunks,
+                                )
+                            },
+                        ));
+                    }
                     return Ok(rendered_assets);
                 },
                 e => return e,
@@ -377,10 +580,12 @@ impl Pane for TerminalPane {
     fn render_frame(
         &mut self,
         client_id: ClientId,
-        frame_params: FrameParams,
+        mut frame_params: FrameParams,
         input_mode: InputMode,
     ) -> Result<Option<(Vec<CharacterChunk>, Option<String>)>> {
         let err_context = || format!("failed to render frame for client {client_id}");
+        frame_params.omit_title = frame_params.omit_title
+            && !(input_mode == InputMode::RenamePane && frame_params.is_main_client);
         // TODO: remove the cursor stuff from here
         let normal_title = if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
@@ -412,27 +617,35 @@ impl Pane for TerminalPane {
                 modifier_text.push(']');
             }
             format!("SEARCHING: {}{}", self.search_term, modifier_text)
-        } else if self.pane_name.is_empty() {
-            self.grid
-                .title
-                .clone()
-                .unwrap_or_else(|| self.pane_title.clone())
         } else {
-            self.pane_name.clone()
+            self.current_title()
         };
-        let pane_title = if let Some(text_color_override) = self
+        let frame_params_blank_title = frame_params.blank_title;
+        let pane_title = if frame_params.blank_title {
+            String::new()
+        } else if let Some(pinned_size) = self
+            .mirror_pinned_size
+            .filter(|_| self.pane_frame_color_override.is_none())
+        {
+            format!(
+                "{} (mirrored {}x{})",
+                self.title_with_bell_indicator(normal_title),
+                pinned_size.cols,
+                pinned_size.rows
+            )
+        } else if let Some(text_color_override) = self
             .pane_frame_color_override
             .as_ref()
             .and_then(|(_color, text)| text.as_ref())
         {
             text_color_override.into()
-        } else if self.has_bell_notification {
-            format!("{} [!]", normal_title)
         } else {
-            normal_title
+            self.title_with_bell_indicator(normal_title)
         };
 
-        let frame_geom = self.current_geom();
+        let frame_geom = frame_params
+            .frame_geom_override
+            .unwrap_or_else(|| self.current_geom());
         let is_pinned = frame_geom.is_pinned;
         let mut frame = PaneFrame::new(
             frame_geom.into(),
@@ -441,6 +654,9 @@ impl Pane for TerminalPane {
             frame_params,
         )
         .is_pinned(is_pinned);
+        if !frame_params_blank_title {
+            frame.set_attention_marker(self.frame_attention_marker());
+        }
         if let Some((exit_status, is_first_run, _run_command)) = &self.is_held {
             if *is_first_run {
                 frame.indicate_first_run();
@@ -456,6 +672,10 @@ impl Pane for TerminalPane {
             // TODO: use and_then or something?
             Some(last_frame) => {
                 if &frame != last_frame {
+                    if frame.omits_title() && !last_frame.omits_title() {
+                        self.grid.update_line_for_rendering(0);
+                        self.set_should_render(true);
+                    }
                     if !self.borderless {
                         let frame_output = frame.render().with_context(err_context)?;
                         self.frame.insert(client_id, frame);
@@ -483,29 +703,24 @@ impl Pane for TerminalPane {
         &mut self,
         cursor_color: PaletteColor,
         text_color: PaletteColor,
-    ) -> Option<String> {
-        let mut vte_output = None;
-        if let Some((cursor_x, cursor_y, true)) = self.cursor_coordinates() {
-            let mut character_under_cursor = self
-                .grid
-                .get_character_under_cursor()
-                .unwrap_or(EMPTY_TERMINAL_CHARACTER);
-            character_under_cursor.styles.update(|styles| {
-                styles.background = Some(cursor_color.into());
-                styles.foreground = Some(text_color.into());
-            });
-            // we keep track of these so that we can clear them up later (see render function)
-            self.fake_cursor_locations.insert((cursor_y, cursor_x));
-            let mut fake_cursor = format!(
-                "\u{1b}[{};{}H\u{1b}[m{}",           // goto row column and clear styles
-                self.get_content_y() + cursor_y + 1, // + 1 because goto is 1 indexed
-                self.get_content_x() + cursor_x + 1,
-                &character_under_cursor.styles,
-            );
-            fake_cursor.push(character_under_cursor.character);
-            vte_output = Some(fake_cursor);
-        }
-        vte_output
+    ) -> Option<crate::output::CharacterChunk> {
+        let Some((cursor_x, cursor_y, true)) = self.cursor_coordinates() else {
+            return None;
+        };
+        let mut character_under_cursor = self
+            .grid
+            .get_character_under_cursor()
+            .unwrap_or(EMPTY_TERMINAL_CHARACTER);
+        character_under_cursor.styles.update(|styles| {
+            styles.background = Some(cursor_color.into());
+            styles.foreground = Some(text_color.into());
+        });
+        self.fake_cursor_locations.insert((cursor_y, cursor_x));
+        Some(CharacterChunk::new(
+            vec![character_under_cursor],
+            self.get_content_x() + cursor_x,
+            self.get_content_y() + cursor_y,
+        ))
     }
     fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
         let pane_title = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
@@ -523,7 +738,7 @@ impl Pane for TerminalPane {
                 self.pane_name = String::new();
             },
             DELETE_KEY | BACKSPACE_KEY => {
-                self.pane_name.pop();
+                zellij_utils::graphemes::pop_cluster(&mut self.pane_name);
             },
             c => {
                 self.pane_name.push_str(c);
@@ -580,6 +795,19 @@ impl Pane for TerminalPane {
     fn dump_screen_with_ansi(&self, full: bool, _client_id: Option<ClientId>) -> String {
         self.grid.dump_screen_with_ansi(full)
     }
+    fn preview_with_anchor(
+        &self,
+        anchor: zellij_utils::data::PreviewAnchor,
+        max_scrollback: usize,
+    ) -> (String, Option<usize>) {
+        self.grid.preview_with_anchor(anchor, max_scrollback)
+    }
+    fn program_resized_at(&self) -> Option<Instant> {
+        self.program_resized_at
+    }
+    fn mark_unseen_output_start(&mut self) {
+        self.grid.mark_unseen_output_start();
+    }
     fn clear_screen(&mut self) {
         self.grid.clear_screen()
     }
@@ -590,6 +818,34 @@ impl Pane for TerminalPane {
     fn scroll_down(&mut self, count: usize, _client_id: ClientId) {
         self.grid.move_viewport_down(count);
         self.set_should_render(true);
+    }
+    fn scroll_left(&mut self, _count: usize, _client_id: ClientId) {}
+    fn scroll_right(&mut self, _count: usize, _client_id: ClientId) {}
+    fn scroll_to_previous_prompt(&mut self, _client_id: ClientId) {
+        if self.grid.scroll_to_previous_prompt() {
+            self.set_should_render(true);
+        }
+    }
+    fn scroll_to_next_prompt(&mut self, _client_id: ClientId) {
+        if self.grid.scroll_to_next_prompt() {
+            self.set_should_render(true);
+        }
+    }
+    fn select_command_at_scroll_position(&mut self, _client_id: ClientId) {
+        if self.grid.select_command_at_scroll_position() {
+            self.set_should_render(true);
+        }
+    }
+    fn copy_last_command_output(&mut self) -> Option<String> {
+        let (output, start, end) = self.grid.last_completed_command_output()?;
+        self.grid.set_command_output_flash(start, end);
+        self.set_should_render(true);
+        Some(output)
+    }
+    fn clear_command_output_flash(&mut self) {
+        if self.grid.clear_command_output_flash() {
+            self.set_should_render(true);
+        }
     }
     fn clear_scroll(&mut self) {
         self.grid.reset_viewport();
@@ -615,6 +871,121 @@ impl Pane for TerminalPane {
 
     fn drain_forwarded_queries(&mut self) -> Vec<crate::host_query::HostQuery> {
         self.grid.pending_forwarded_queries.drain(..).collect()
+    }
+
+    fn drain_nested_session_messages(&mut self) -> Vec<NestedSessionMessage> {
+        self.grid
+            .pending_nested_session_messages
+            .drain(..)
+            .collect()
+    }
+
+    fn is_nested_guest(&self) -> bool {
+        self.nested_guest
+    }
+
+    fn set_is_nested_guest(&mut self, is_nested_guest: bool) {
+        self.nested_guest = is_nested_guest;
+    }
+
+    fn set_guest_modal(&mut self, client_ids: &[ClientId]) {
+        for client_id in client_ids {
+            self.guest_modal.insert(*client_id, 0);
+        }
+        self.set_should_render(true);
+    }
+
+    fn clear_guest_modal(&mut self, client_id: ClientId) {
+        self.guest_modal_hover.remove(&client_id);
+        if self.guest_modal.remove(&client_id).is_some() {
+            self.render_full_viewport();
+            self.set_should_render(true);
+        }
+    }
+
+    fn clear_all_guest_modals(&mut self) {
+        self.guest_modal_hover.clear();
+        if !self.guest_modal.is_empty() {
+            self.guest_modal.clear();
+            self.render_full_viewport();
+            self.set_should_render(true);
+        }
+    }
+
+    fn guest_modal_selection(&self, client_id: ClientId) -> Option<usize> {
+        self.guest_modal.get(&client_id).copied()
+    }
+
+    fn guest_modal_hover(&self, client_id: ClientId) -> Option<usize> {
+        self.guest_modal_hover.get(&client_id).copied()
+    }
+
+    fn set_guest_modal_hover(&mut self, client_id: ClientId, option: Option<usize>) -> bool {
+        let option = option.filter(|_| self.guest_modal.contains_key(&client_id));
+        if self.guest_modal_hover.get(&client_id).copied() == option {
+            return false;
+        }
+        match option {
+            Some(option) => {
+                self.guest_modal_hover.insert(client_id, option);
+            },
+            None => {
+                self.guest_modal_hover.remove(&client_id);
+            },
+        }
+        self.set_should_render(true);
+        true
+    }
+
+    fn has_guest_modal_for_any_client(&self) -> bool {
+        !self.guest_modal.is_empty()
+    }
+
+    fn set_guest_choice_indicator(
+        &mut self,
+        client_id: ClientId,
+        indicator: Option<GuestChoiceIndicator>,
+    ) {
+        let previous = self.guest_choice_indicators.get(&client_id).copied();
+        if previous == indicator {
+            return;
+        }
+        match indicator {
+            Some(indicator) => {
+                self.guest_choice_indicators.insert(client_id, indicator);
+            },
+            None => {
+                self.guest_choice_indicators.remove(&client_id);
+            },
+        }
+        self.set_should_render(true);
+    }
+
+    fn guest_choice_indicator(&self, client_id: ClientId) -> Option<GuestChoiceIndicator> {
+        self.guest_choice_indicators.get(&client_id).copied()
+    }
+
+    fn clear_all_guest_choice_indicators(&mut self) {
+        if !self.guest_choice_indicators.is_empty() {
+            self.guest_choice_indicators.clear();
+            self.set_should_render(true);
+        }
+    }
+
+    fn set_guest_session_name(&mut self, session_name: Option<String>) {
+        self.guest_session_name = session_name;
+    }
+
+    fn guest_session_name(&self) -> Option<String> {
+        self.guest_session_name.clone()
+    }
+
+    fn set_guest_modal_shortcuts(&mut self, shortcuts: GuestModalShortcuts) {
+        self.guest_modal_shortcuts = shortcuts;
+    }
+
+    fn guest_modal_shortcuts(&self) -> GuestModalShortcuts {
+        self.guest_modal_shortcuts.clone()
     }
 
     fn arm_forward_pause(&mut self) {
@@ -643,12 +1014,24 @@ impl Pane for TerminalPane {
         self.grid.pending_clipboard_update.take()
     }
 
-    fn drain_desktop_notifications(&mut self) -> Vec<(String, String)> {
+    fn drain_desktop_notifications(&mut self) -> Vec<PendingNotification> {
         self.grid.pending_desktop_notifications.drain(..).collect()
     }
 
     fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
         self.grid.pending_osc7_cwd.take()
+    }
+
+    fn drain_prompt_return(&mut self) -> bool {
+        std::mem::take(&mut self.grid.pending_prompt_return)
+    }
+    fn reset_input_modes_left_by_lost_guest(&mut self) {
+        self.grid.reset_input_modes_left_by_lost_guest();
+    }
+
+    fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
+        self.grid
+            .set_selection_options(osc133_command_selection, word_separators);
     }
 
     fn start_selection(&mut self, start: &Position, _client_id: ClientId) {
@@ -727,6 +1110,14 @@ impl Pane for TerminalPane {
             self.set_content_offset(Offset::frame(1));
         }
     }
+    fn set_border_style_override(&mut self, border_style_override: BorderStyleOverride) {
+        self.border_style_override = border_style_override;
+        self.frame.clear();
+        self.set_should_render(true);
+    }
+    fn border_style_override(&self) -> BorderStyleOverride {
+        self.border_style_override
+    }
 
     fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
         self.exclude_from_sync = exclude_from_sync;
@@ -764,6 +1155,12 @@ impl Pane for TerminalPane {
     fn mouse_scroll_down(&self, position: &Position) -> Option<String> {
         self.grid.mouse_scroll_down_signal(position)
     }
+    fn mouse_scroll_left(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_scroll_left_signal(position)
+    }
+    fn mouse_scroll_right(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_scroll_right_signal(position)
+    }
     fn focus_event(&self) -> Option<String> {
         self.grid.focus_event()
     }
@@ -781,7 +1178,7 @@ impl Pane for TerminalPane {
                 self.search_term = String::new();
             },
             DELETE_KEY | BACKSPACE_KEY => {
-                self.search_term.pop();
+                zellij_utils::graphemes::pop_cluster(&mut self.search_term);
             },
             c => {
                 self.search_term.push_str(c);
@@ -852,6 +1249,9 @@ impl Pane for TerminalPane {
     fn consume_bell(&mut self) {
         self.grid.ring_bell = false;
     }
+    fn osc7_payload(&self) -> Option<&str> {
+        self.grid.osc7_payload()
+    }
     fn set_bell_notification(&mut self, val: bool) {
         self.has_bell_notification = val;
     }
@@ -881,6 +1281,23 @@ impl Pane for TerminalPane {
     fn invoked_with(&self) -> &Option<Run> {
         &self.invoked_with
     }
+    fn take_notification_end(&mut self) -> Option<NotificationEnd> {
+        self.notification_end.take()
+    }
+    fn attach_exit_waiter(&mut self, mut waiter: NotificationEnd) -> Option<NotificationEnd> {
+        if self.exited() {
+            if let Some(exit_status) = self.exit_status() {
+                waiter.set_exit_status(exit_status);
+            }
+            drop(waiter);
+            return None;
+        }
+        if self.notification_end.is_some() {
+            return Some(waiter);
+        }
+        self.notification_end = Some(waiter);
+        None
+    }
     fn set_title(&mut self, title: String) {
         self.pane_title = title;
     }
@@ -895,12 +1312,47 @@ impl Pane for TerminalPane {
             self.pane_name.to_owned()
         }
     }
+    fn stack_list_entry_label(&self) -> String {
+        match self.attention_marker_text() {
+            Some(marker) => format!("{} {}", self.current_title(), marker),
+            None => self.title_with_bell_indicator(self.current_title()),
+        }
+    }
+    fn set_attention_marker(
+        &mut self,
+        marker: Option<crate::attention::FrameMarker>,
+        enabled: bool,
+    ) {
+        if self.attention_marker != marker || self.attention_markers_enabled != enabled {
+            self.attention_marker = marker;
+            self.attention_markers_enabled = enabled;
+            self.set_should_render(true);
+        }
+    }
+    fn drain_pane_signals(&mut self) -> Vec<crate::attention::PaneSignal> {
+        self.grid.shell_reports.drain()
+    }
+    fn set_initial_attention_flags(&mut self, muted: bool, ignore_output: bool) {
+        self.initial_attention_flags = Some((muted, ignore_output));
+    }
+    fn take_initial_attention_flags(&mut self) -> Option<(bool, bool)> {
+        self.initial_attention_flags.take()
+    }
     fn custom_title(&self) -> Option<String> {
         if self.pane_name.is_empty() {
             None
         } else {
             Some(self.pane_name.clone())
         }
+    }
+    fn has_explicit_title(&self) -> bool {
+        !self.pane_name.is_empty() || self.grid.title.is_some()
+    }
+    fn scroll_position(&self) -> (usize, usize) {
+        self.grid.scrollback_position_and_length()
+    }
+    fn viewport_scroll_state(&self) -> Option<(usize, u64)> {
+        self.grid.viewport_scroll_state()
     }
     fn exit_status(&self) -> Option<i32> {
         self.is_held
@@ -917,7 +1369,9 @@ impl Pane for TerminalPane {
         }
     }
     fn rename(&mut self, buf: Vec<u8>) {
-        self.pane_name = String::from_utf8_lossy(&buf).to_string();
+        self.pane_name = zellij_utils::shared::clean_string_from_control_and_linebreak(
+            &String::from_utf8_lossy(&buf),
+        );
         self.set_should_render(true);
     }
     fn serialize(&self, scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
@@ -947,9 +1401,19 @@ impl Pane for TerminalPane {
         self.arrow_fonts = should_support_arrow_fonts;
         self.grid.update_arrow_fonts(should_support_arrow_fonts);
     }
+    fn update_kitty_host_support(&mut self, supported: KittyHostSupport) {
+        self.grid.update_kitty_host_support(supported);
+    }
+    fn update_sixel_host_support(&mut self, supported: bool) {
+        self.grid.update_sixel_host_support(supported);
+    }
     fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
         self.frame.clear();
+    }
+    fn invalidate_frame_cache(&mut self) {
+        self.frame.clear();
+        self.set_should_render(true);
     }
     fn drain_fake_cursors(&mut self) -> Option<HashSet<(usize, usize)>> {
         if !self.fake_cursor_locations.is_empty() {
@@ -979,6 +1443,15 @@ impl Pane for TerminalPane {
                     self.toggle_pinned();
                     return true;
                 }
+            }
+        }
+        false
+    }
+    fn position_is_on_pin_button(&self, position: &Position, client_id: ClientId) -> bool {
+        if self.position_is_on_frame(position) {
+            let relative_position = self.relative_position(position);
+            if let Some(client_frame) = self.frame.get(&client_id) {
+                return client_frame.clicked_on_pinned(relative_position);
             }
         }
         false
@@ -1068,9 +1541,89 @@ impl Pane for TerminalPane {
     fn terminal_emulator_wants_mouse(&self) -> bool {
         self.grid.mouse_tracking != crate::panes::grid::MouseTracking::Off
     }
+    fn mirror_screen(&mut self) -> Option<zellij_utils::pane_mirror::MirrorScreen> {
+        self.grid.link_urls_in_changed_lines();
+        Some(self.grid.mirror_screen())
+    }
+    fn mouse_event_for_program(&self, event: &MouseEvent) -> Option<String> {
+        self.grid.mouse_event_signal(event)
+    }
+    fn program_columns(&self) -> usize {
+        self.mirror_pinned_size
+            .map(|size| size.cols)
+            .unwrap_or_else(|| self.get_content_columns())
+    }
+    fn program_rows(&self) -> usize {
+        self.mirror_pinned_size
+            .map(|size| size.rows)
+            .unwrap_or_else(|| self.get_content_rows())
+    }
+    fn mirror_pinned_size(&self) -> Option<zellij_utils::pane_size::Size> {
+        self.mirror_pinned_size
+    }
+    fn set_mirror_pinned_size(&mut self, size: Option<zellij_utils::pane_size::Size>) -> bool {
+        if self.mirror_pinned_size == size {
+            return false;
+        }
+        self.mirror_pinned_size = size;
+        self.reflow_lines();
+        self.render_full_viewport();
+        true
+    }
+    fn mirror_change_counter(&self) -> u64 {
+        self.grid.change_counter
+    }
 }
 
 impl TerminalPane {
+    fn title_with_bell_indicator(&self, title: String) -> String {
+        if self.has_bell_notification && !self.attention_markers_enabled {
+            format!("{} [!]", title)
+        } else {
+            title
+        }
+    }
+    fn attention_marker_text(&self) -> Option<String> {
+        let marker = self.attention_marker.as_ref()?;
+        let symbol = if marker.muted {
+            if self.arrow_fonts {
+                "⊘"
+            } else {
+                "-"
+            }
+        } else {
+            marker.status.marker(!self.arrow_fonts)
+        };
+        if symbol.is_empty() {
+            None
+        } else {
+            Some(symbol.to_owned())
+        }
+    }
+    fn frame_attention_marker(
+        &self,
+    ) -> Option<crate::ui::pane_boundaries_frame::FrameAttentionMarker> {
+        use zellij_utils::attention::AttentionStatus;
+        let text = self.attention_marker_text()?;
+        let marker = self.attention_marker.as_ref()?;
+        let colors = &self.style.colors;
+        let (color, dim) = if marker.muted {
+            (colors.text_unselected.base, true)
+        } else {
+            match marker.status {
+                AttentionStatus::NeedsYou => (colors.text_unselected.emphasis_0, false),
+                AttentionStatus::Failed => (colors.exit_code_error.base, false),
+                AttentionStatus::Done => (colors.exit_code_success.base, false),
+                AttentionStatus::Working => (colors.text_unselected.emphasis_1, false),
+                _ => (colors.text_unselected.base, true),
+            }
+        };
+        Some(crate::ui::pane_boundaries_frame::FrameAttentionMarker {
+            text,
+            color: Some(color),
+            dim,
+        })
+    }
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         pid: u32,
@@ -1081,6 +1634,7 @@ impl TerminalPane {
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
+        kitty_image_store: Rc<RefCell<KittyImageStore>>,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         initial_pane_title: Option<String>,
@@ -1102,6 +1656,7 @@ impl TerminalPane {
             link_handler,
             character_cell_size,
             sixel_image_store,
+            kitty_image_store,
             style.clone(),
             debug,
             arrow_fonts,
@@ -1120,7 +1675,7 @@ impl TerminalPane {
             selectable: true,
             geom: position_and_size,
             geom_override: None,
-            vte_parser: vte::Parser::new(),
+            vte_parser: vt_parser::Parser::new(),
             active_at: Instant::now(),
             style,
             selection_scrolled_at: time::Instant::now(),
@@ -1128,6 +1683,7 @@ impl TerminalPane {
             pane_name: pane_name.clone(),
             prev_pane_name: pane_name,
             borderless: false,
+            border_style_override: BorderStyleOverride::default(),
             exclude_from_sync: false,
             fake_cursor_locations: HashSet::new(),
             search_term: String::new(),
@@ -1135,11 +1691,24 @@ impl TerminalPane {
             banner: None,
             pane_frame_color_override: None,
             has_bell_notification: false,
+            attention_marker: None,
+            attention_markers_enabled: true,
+            initial_attention_flags: None,
             invoked_with,
             arrow_fonts,
             notification_end,
             forward_paused: false,
+            nested_guest: false,
+            guest_modal: HashMap::new(),
+            guest_modal_hover: HashMap::new(),
+            guest_choice_indicators: HashMap::new(),
+            guest_session_name: None,
+            guest_modal_shortcuts: GuestModalShortcuts::default(),
             pending_pty_input: VecDeque::new(),
+            held_escape: false,
+            kitty_interceptor: KittyApcInterceptor::new(),
+            mirror_pinned_size: None,
+            program_resized_at: None,
         }
     }
     pub fn get_x(&self) -> usize {
@@ -1167,14 +1736,21 @@ impl TerminalPane {
         }
     }
     fn reflow_lines(&mut self) {
-        let rows = self.get_content_rows();
-        let cols = self.get_content_columns();
-        self.grid.force_change_size(rows, cols);
+        let rows = self.program_rows();
+        let cols = self.program_columns();
+        if (self.grid.height, self.grid.width) != (rows, cols) {
+            self.program_resized_at = Some(Instant::now());
+        }
+        self.grid.change_size(rows, cols);
         if self.banner.is_some() {
             self.grid.reset_terminal_state();
             self.render_first_run_banner();
         }
         self.set_should_render(true);
+    }
+    pub fn with_grapheme_clusters(mut self, grapheme_clusters: bool) -> Self {
+        self.grid.set_grapheme_mode_by_default(grapheme_clusters);
+        self
     }
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         self.grid.as_character_lines()
@@ -1185,7 +1761,29 @@ impl TerminalPane {
             // do not render cursor if there's no room for it
             return None;
         }
-        self.grid.cursor_coordinates()
+        self.grid
+            .cursor_coordinates()
+            .filter(|(x, y, _)| self.cursor_is_in_the_visible_area(*x, *y))
+    }
+    fn cursor_is_in_the_visible_area(&self, x: usize, y: usize) -> bool {
+        self.mirror_pinned_size.is_none()
+            || (x < self.get_content_columns() && y < self.get_content_rows())
+    }
+    fn crop_pinned_chunks(
+        &self,
+        chunks: Vec<CharacterChunk>,
+        full_redraw: bool,
+    ) -> Vec<CharacterChunk> {
+        crop_and_pad_chunks(
+            chunks,
+            self.get_content_x(),
+            self.get_content_y(),
+            self.get_content_columns(),
+            self.get_content_rows(),
+            self.grid.width,
+            self.grid.height,
+            full_redraw,
+        )
     }
     fn render_first_run_banner(&mut self) {
         let columns = self.get_content_columns();
@@ -1331,6 +1929,60 @@ impl TerminalPane {
             AdjustedInput::DropToShellInThisPane { working_dir }
         })
     }
+}
+
+pub(crate) fn crop_and_pad_chunks(
+    chunks: Vec<CharacterChunk>,
+    x: usize,
+    y: usize,
+    cols: usize,
+    rows: usize,
+    grid_cols: usize,
+    grid_rows: usize,
+    full_redraw: bool,
+) -> Vec<CharacterChunk> {
+    let mut cropped = Vec::with_capacity(chunks.len());
+    for mut chunk in chunks {
+        if chunk.y < y || chunk.y >= y + rows || chunk.x >= x + cols {
+            continue;
+        }
+        let available = x + cols - chunk.x;
+        let mut kept_width = 0;
+        let mut kept = 0;
+        for character in &chunk.terminal_characters {
+            if kept_width + character.width() > available {
+                break;
+            }
+            kept_width += character.width();
+            kept += 1;
+        }
+        if kept < chunk.terminal_characters.len() {
+            chunk.terminal_characters.truncate(kept);
+            for _ in kept_width..available {
+                chunk.terminal_characters.push(EMPTY_TERMINAL_CHARACTER);
+            }
+        }
+        cropped.push(chunk);
+    }
+    if full_redraw {
+        if grid_cols < cols {
+            for row in 0..grid_rows.min(rows) {
+                cropped.push(CharacterChunk::new(
+                    vec![EMPTY_TERMINAL_CHARACTER; cols - grid_cols],
+                    x + grid_cols,
+                    y + row,
+                ));
+            }
+        }
+        for row in grid_rows.min(rows)..rows {
+            cropped.push(CharacterChunk::new(
+                vec![EMPTY_TERMINAL_CHARACTER; cols],
+                x,
+                y + row,
+            ));
+        }
+    }
+    cropped
 }
 
 #[cfg(test)]

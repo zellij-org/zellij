@@ -5,10 +5,6 @@ expression: "format!(\"{:#?}\", new_tab_event)"
 Some(
     GoToTabName(
         "my tab name",
-        (
-            [],
-            [],
-        ),
         None,
         false,
         Some(

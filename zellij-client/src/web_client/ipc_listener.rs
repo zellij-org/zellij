@@ -1,6 +1,6 @@
 use axum_server::Handle;
 use interprocess::local_socket::traits::tokio::Listener;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use zellij_utils::consts::{ipc_bind_async, WEBSERVER_SOCKET_PATH};
 use zellij_utils::prost::Message;
@@ -61,7 +61,7 @@ pub async fn send_webserver_response(
 }
 
 pub async fn listen_to_web_server_instructions(
-    server_handle: Handle,
+    server_handle: Handle<SocketAddr>,
     id: &str,
     web_server_ip: IpAddr,
     web_server_port: u16,

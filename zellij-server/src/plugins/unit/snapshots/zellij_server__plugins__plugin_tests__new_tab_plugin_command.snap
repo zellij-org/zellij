@@ -14,8 +14,8 @@ Some(
             "new_tab_name",
         ),
         (
-            [],
-            [],
+            None,
+            None,
         ),
         None,
         false,

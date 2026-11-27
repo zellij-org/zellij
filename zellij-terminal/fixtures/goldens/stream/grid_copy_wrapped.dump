@@ -1,0 +1,67 @@
+size: 40x120
+cursor: row=11 col=0 visible shape=Default
+grid:
+|Welcome to fish, the friendly interactive shell                                                                         |
+|Type `help` for instructions on how to use fish                                                                         |
+|                                                                                                                        |
+|zellij on  main [$!?] is 📦  v0.25.0 via 🦀  v1.58.1                                                                     |
+|❯ cat lorem.txt                                                                                                         |
+|Lorem ipsum dolor sit amet,                                                                                             |
+|                             consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna ali|
+|qua.                                                                                                                    |
+|                                                                                                                        |
+|zellij on  main [$!?] is 📦  v0.25.0 via 🦀  v1.58.1                                                                     |
+|❯                                                                                                                       |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 3: cols 0-5 fg=Cyan bg=Background flags=BOLD
+row 3: cols 10-15 fg=Magenta bg=Background flags=BOLD
+row 3: cols 17-21 fg=Red bg=Background flags=BOLD
+row 3: cols 26-26 fg=idx208 bg=Background flags=BOLD|WIDE_CHAR
+row 3: cols 27-27 fg=idx208 bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 3: cols 28-35 fg=idx208 bg=Background flags=BOLD
+row 3: cols 41-41 fg=Red bg=Background flags=BOLD|WIDE_CHAR
+row 3: cols 42-42 fg=Red bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 3: cols 43-51 fg=Red bg=Background flags=BOLD
+row 4: cols 0-0 fg=Green bg=Background flags=BOLD
+row 4: cols 2-4 fg=#005fd7 bg=Background
+row 4: cols 6-14 fg=#00afff bg=Background flags=UNDERLINE
+row 9: cols 0-5 fg=Cyan bg=Background flags=BOLD
+row 9: cols 10-15 fg=Magenta bg=Background flags=BOLD
+row 9: cols 17-21 fg=Red bg=Background flags=BOLD
+row 9: cols 26-26 fg=idx208 bg=Background flags=BOLD|WIDE_CHAR
+row 9: cols 27-27 fg=idx208 bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 9: cols 28-35 fg=idx208 bg=Background flags=BOLD
+row 9: cols 41-41 fg=Red bg=Background flags=BOLD|WIDE_CHAR
+row 9: cols 42-42 fg=Red bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 9: cols 43-51 fg=Red bg=Background flags=BOLD
+row 10: cols 0-0 fg=Green bg=Background flags=BOLD
+images:

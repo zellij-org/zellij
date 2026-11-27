@@ -1,0 +1,61 @@
+size: 40x120
+cursor: row=23 col=13 visible shape=Default
+grid:
+|AAAAA                                                                                                                   |
+|AAAAA                                                                                                                   |
+|AAAAA                                                                                                                   |
+|AAAAA                                                                                                                   |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|           normal      bold        underscored blinking    reversed                                                     |
+|                                                                                                                        |
+|stars:     **********  **********  **********  **********  **********                                                   |
+|                                                                                                                        |
+|line:      ──────────  ──────────  ──────────  ──────────  ──────────                                                   |
+|                                                                                                                        |
+|x'es:      xxxxxxxxxx  xxxxxxxxxx  xxxxxxxxxx  xxxxxxxxxx  xxxxxxxxxx                                                   |
+|                                                                                                                        |
+|diamonds:  ◆◆◆◆◆◆◆◆◆◆  ◆◆◆◆◆◆◆◆◆◆  ◆◆◆◆◆◆◆◆◆◆  ◆◆◆◆◆◆◆◆◆◆  ◆◆◆◆◆◆◆◆◆◆                                                   |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|Test of the SAVE/RESTORE CURSOR feature. There should                                                                   |
+|be ten characters of each flavour, and a rectangle                                                                      |
+|of 5 x 4 A's filling the top left of the screen.                                                                        |
+|Push <RETURN>                                                                                                           |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 9: cols 23-32 fg=Foreground bg=Background flags=BOLD
+row 9: cols 35-44 fg=Foreground bg=Background flags=UNDERLINE
+row 9: cols 47-56 fg=Foreground bg=Background flags=BLINK_SLOW
+row 9: cols 59-68 fg=Foreground bg=Background flags=INVERSE
+row 11: cols 23-32 fg=Foreground bg=Background flags=BOLD
+row 11: cols 35-44 fg=Foreground bg=Background flags=UNDERLINE
+row 11: cols 47-56 fg=Foreground bg=Background flags=BLINK_SLOW
+row 11: cols 59-68 fg=Foreground bg=Background flags=INVERSE
+row 13: cols 23-32 fg=Foreground bg=Background flags=BOLD
+row 13: cols 35-44 fg=Foreground bg=Background flags=UNDERLINE
+row 13: cols 47-56 fg=Foreground bg=Background flags=BLINK_SLOW
+row 13: cols 59-68 fg=Foreground bg=Background flags=INVERSE
+row 15: cols 23-32 fg=Foreground bg=Background flags=BOLD
+row 15: cols 35-44 fg=Foreground bg=Background flags=UNDERLINE
+row 15: cols 47-56 fg=Foreground bg=Background flags=BLINK_SLOW
+row 15: cols 59-68 fg=Foreground bg=Background flags=INVERSE
+images:

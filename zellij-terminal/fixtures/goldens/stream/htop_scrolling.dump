@@ -1,0 +1,170 @@
+size: 40x120
+cursor: row=0 col=0 hidden shape=Default
+grid:
+|                                                                                                                        |
+|  1  [||||||||||||||||||||||||||||||||||||||||||100.0%]   Tasks: 79, 382 thr; 1 running                                 |
+|  2  [                                            0.0%]   Load average: 1.40 1.43 1.38                                  |
+|  3  [                                            0.0%]   Uptime: 2 days, 07:33:50                                      |
+|  4  [                                            0.0%]                                                                 |
+|  Mem[|||||||||||||||||||||||||||||||||||||3.64G/15.3G]                                                                 |
+|  Swp[                                        0K/16.0G]                                                                 |
+|                                                                                                                        |
+|    PID USER      PRI  NI  VIRT   RES   SHR S CPU% MEM%   TIME+  Command                                                |
+| 123934 aram       20   0  8444  4384  3364 R 66.7  0.0  0:00.05 htop --delay=100000000000                              |
+|      1 root       20   0  171M 11616  8608 S  0.0  0.1  0:56.91 /sbin/init                                             |
+|    268 root       20   0 93324 34340 33072 S  0.0  0.2  0:01.05 /usr/lib/systemd/systemd-journald                      |
+|    276 root       20   0 32648 10192  7240 S  0.0  0.1  0:01.13 /usr/lib/systemd/systemd-udevd                         |
+|    286 root       20   0 78060  1132   996 S  0.0  0.0  0:00.00 /usr/bin/lvmetad -f                                    |
+|    343 dbus       20   0  6952  4384  3520 S  0.0  0.0  0:13.85 /usr/bin/dbus-daemon --system --address=systemd: --    |
+|    344 root       20   0 14588  7512  6176 S  0.0  0.0  0:03.21 /usr/bin/connmand -n --nodnsproxy                      |
+|    345 root       20   0 17696  8372  7128 S  0.0  0.1  0:00.67 /usr/lib/systemd/systemd-logind                        |
+|    395 root       20   0 1635M 83324 44976 S  0.0  0.5  0:32.43 /usr/bin/dockerd -H fd://                              |
+|    396 root       20   0 1635M 83324 44976 S  0.0  0.5  0:00.01 /usr/bin/dockerd -H fd://                              |
+|    397 root       20   0 1635M 83324 44976 S  0.0  0.5  0:00.01 /usr/bin/dockerd -H fd://                              |
+|    398 root       20   0 1635M 83324 44976 S  0.0  0.5  0:00.00 /usr/bin/dockerd -H fd://                              |
+|    399 root       20   0 1635M 83324 44976 S  0.0  0.5  0:00.00 /usr/bin/dockerd -H fd://                              |
+|    412 root       20   0 1635M 83324 44976 S  0.0  0.5  0:00.00 /usr/bin/dockerd -H fd://                              |
+|    441 root       20   0 1635M 83324 44976 S  0.0  0.5  0:41.35 /usr/bin/dockerd -H fd://                              |
+|    442 root       20   0 1635M 83324 44976 S  0.0  0.5  0:33.61 /usr/bin/dockerd -H fd://                              |
+|    444 root       20   0 1635M 83324 44976 S  0.0  0.5  0:33.13 /usr/bin/dockerd -H fd://                              |
+|    449 root       20   0 1635M 83324 44976 S  0.0  0.5  0:41.39 /usr/bin/dockerd -H fd://                              |
+|F1Help  F2Setup F3SearchF4FilterF5Tree  F6SortByF7Nice -F8Nice +F9Kill  F10Quit                                         |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 1: cols 2-4 fg=idx6 bg=Background
+row 1: cols 5-5 fg=Foreground bg=Background flags=BOLD
+row 1: cols 6-29 fg=idx2 bg=Background
+row 1: cols 30-53 fg=idx1 bg=Background
+row 1: cols 54-54 fg=Foreground bg=Background flags=BOLD
+row 1: cols 58-64 fg=idx6 bg=Background
+row 1: cols 65-66 fg=idx6 bg=Background flags=BOLD
+row 1: cols 67-68 fg=idx6 bg=Background
+row 1: cols 69-71 fg=idx2 bg=Background flags=BOLD
+row 1: cols 72-75 fg=idx2 bg=Background
+row 1: cols 76-77 fg=idx6 bg=Background
+row 1: cols 78-78 fg=idx2 bg=Background flags=BOLD
+row 1: cols 79-86 fg=idx6 bg=Background
+row 2: cols 2-4 fg=idx6 bg=Background
+row 2: cols 5-5 fg=Foreground bg=Background flags=BOLD
+row 2: cols 6-53 fg=idx8 bg=Background flags=BOLD
+row 2: cols 54-54 fg=Foreground bg=Background flags=BOLD
+row 2: cols 58-71 fg=idx6 bg=Background
+row 2: cols 72-76 fg=Foreground bg=Background flags=BOLD
+row 2: cols 77-81 fg=idx6 bg=Background flags=BOLD
+row 2: cols 82-86 fg=idx6 bg=Background
+row 3: cols 2-4 fg=idx6 bg=Background
+row 3: cols 5-5 fg=Foreground bg=Background flags=BOLD
+row 3: cols 6-53 fg=idx8 bg=Background flags=BOLD
+row 3: cols 54-54 fg=Foreground bg=Background flags=BOLD
+row 3: cols 58-65 fg=idx6 bg=Background
+row 3: cols 66-81 fg=idx6 bg=Background flags=BOLD
+row 4: cols 2-4 fg=idx6 bg=Background
+row 4: cols 5-5 fg=Foreground bg=Background flags=BOLD
+row 4: cols 6-53 fg=idx8 bg=Background flags=BOLD
+row 4: cols 54-54 fg=Foreground bg=Background flags=BOLD
+row 5: cols 2-4 fg=idx6 bg=Background
+row 5: cols 5-5 fg=Foreground bg=Background flags=BOLD
+row 5: cols 6-17 fg=idx2 bg=Background
+row 5: cols 18-27 fg=idx4 bg=Background
+row 5: cols 28-50 fg=idx3 bg=Background
+row 5: cols 51-53 fg=idx8 bg=Background flags=BOLD
+row 5: cols 54-54 fg=Foreground bg=Background flags=BOLD
+row 6: cols 2-4 fg=idx6 bg=Background
+row 6: cols 5-5 fg=Foreground bg=Background flags=BOLD
+row 6: cols 6-53 fg=idx8 bg=Background flags=BOLD
+row 6: cols 54-54 fg=Foreground bg=Background flags=BOLD
+row 8: cols 0-45 fg=idx0 bg=idx2
+row 8: cols 46-50 fg=idx0 bg=idx6
+row 8: cols 51-71 fg=idx0 bg=idx2
+row 8: cols 72-119 fg=Foreground bg=idx2
+row 9: cols 0-89 fg=idx0 bg=idx6
+row 9: cols 90-119 fg=Foreground bg=idx6
+row 10: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 10: cols 26-33 fg=idx6 bg=Background
+row 10: cols 38-39 fg=idx6 bg=Background
+row 11: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 11: cols 26-27 fg=idx6 bg=Background
+row 11: cols 32-33 fg=idx6 bg=Background
+row 11: cols 38-39 fg=idx6 bg=Background
+row 12: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 12: cols 26-27 fg=idx6 bg=Background
+row 12: cols 32-33 fg=idx6 bg=Background
+row 12: cols 38-39 fg=idx6 bg=Background
+row 13: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 13: cols 26-27 fg=idx6 bg=Background
+row 13: cols 32-33 fg=idx6 bg=Background
+row 14: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 14: cols 26-27 fg=idx6 bg=Background
+row 14: cols 32-33 fg=idx6 bg=Background
+row 14: cols 38-39 fg=idx6 bg=Background
+row 15: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 15: cols 26-27 fg=idx6 bg=Background
+row 15: cols 32-33 fg=idx6 bg=Background
+row 15: cols 38-39 fg=idx6 bg=Background
+row 16: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 16: cols 26-27 fg=idx6 bg=Background
+row 16: cols 32-33 fg=idx6 bg=Background
+row 16: cols 38-39 fg=idx6 bg=Background
+row 17: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 17: cols 26-33 fg=idx6 bg=Background
+row 17: cols 38-39 fg=idx6 bg=Background
+row 17: cols 65-89 fg=idx2 bg=Background
+row 18: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 18: cols 26-33 fg=idx6 bg=Background
+row 18: cols 38-39 fg=idx6 bg=Background
+row 18: cols 65-89 fg=idx2 bg=Background
+row 19: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 19: cols 26-33 fg=idx6 bg=Background
+row 19: cols 38-39 fg=idx6 bg=Background
+row 19: cols 65-89 fg=idx2 bg=Background
+row 20: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 20: cols 26-33 fg=idx6 bg=Background
+row 20: cols 38-39 fg=idx6 bg=Background
+row 20: cols 65-89 fg=idx2 bg=Background
+row 21: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 21: cols 26-33 fg=idx6 bg=Background
+row 21: cols 38-39 fg=idx6 bg=Background
+row 21: cols 65-89 fg=idx2 bg=Background
+row 22: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 22: cols 26-33 fg=idx6 bg=Background
+row 22: cols 38-39 fg=idx6 bg=Background
+row 22: cols 65-89 fg=idx2 bg=Background
+row 23: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 23: cols 26-33 fg=idx6 bg=Background
+row 23: cols 38-39 fg=idx6 bg=Background
+row 23: cols 65-89 fg=idx2 bg=Background
+row 24: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 24: cols 26-33 fg=idx6 bg=Background
+row 24: cols 38-39 fg=idx6 bg=Background
+row 24: cols 65-89 fg=idx2 bg=Background
+row 25: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 25: cols 26-33 fg=idx6 bg=Background
+row 25: cols 38-39 fg=idx6 bg=Background
+row 25: cols 65-89 fg=idx2 bg=Background
+row 26: cols 8-17 fg=idx8 bg=Background flags=BOLD
+row 26: cols 26-33 fg=idx6 bg=Background
+row 26: cols 38-39 fg=idx6 bg=Background
+row 26: cols 65-89 fg=idx2 bg=Background
+row 27: cols 2-7 fg=idx0 bg=idx6
+row 27: cols 10-15 fg=idx0 bg=idx6
+row 27: cols 18-23 fg=idx0 bg=idx6
+row 27: cols 26-31 fg=idx0 bg=idx6
+row 27: cols 34-39 fg=idx0 bg=idx6
+row 27: cols 42-47 fg=idx0 bg=idx6
+row 27: cols 50-55 fg=idx0 bg=idx6
+row 27: cols 58-63 fg=idx0 bg=idx6
+row 27: cols 66-71 fg=idx0 bg=idx6
+row 27: cols 75-78 fg=idx0 bg=idx6
+row 27: cols 79-119 fg=Foreground bg=idx6
+images:

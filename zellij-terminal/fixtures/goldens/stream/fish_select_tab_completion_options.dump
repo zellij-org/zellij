@@ -1,0 +1,70 @@
+size: 40x120
+cursor: row=1 col=39 visible shape=Default
+grid:
+|Welcome to fish, the friendly interactive shell                                                                         |
+|⋊> ~/c/mosaic on main ⨯ sudo badblocks                                                                      11:32:23    |
+|badblocks   (Executable, 33kB)  base64    (Executable, 42kB)  bash     (Executable, 906kB)                              |
+|bandwhich  (Executable, 3.0MB)  basename  (Executable, 38kB)  bashbug  (Executable, 6.8kB)                              |
+|base32      (Executable, 42kB)  basenc    (Executable, 50kB)  bass                                                      |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 1: cols 0-1 fg=idx15 bg=idx6
+row 1: cols 3-12 fg=idx3 bg=Background
+row 1: cols 17-20 fg=idx2 bg=Background
+row 1: cols 24-27 fg=Foreground bg=Background flags=BOLD
+row 1: cols 29-37 fg=idx6 bg=Background
+row 1: cols 108-115 fg=idx240 bg=Background
+row 2: cols 0-1 fg=idx7 bg=idx8 flags=BOLD|UNDERLINE
+row 2: cols 2-12 fg=Foreground bg=idx8
+row 2: cols 13-28 fg=idx143 bg=idx8
+row 2: cols 29-29 fg=Foreground bg=idx8
+row 2: cols 32-33 fg=idx7 bg=Background flags=BOLD|UNDERLINE
+row 2: cols 43-58 fg=idx143 bg=Background
+row 2: cols 62-63 fg=idx7 bg=Background flags=BOLD|UNDERLINE
+row 2: cols 72-88 fg=idx143 bg=Background
+row 3: cols 0-1 fg=idx7 bg=Background flags=BOLD|UNDERLINE
+row 3: cols 12-28 fg=idx143 bg=Background
+row 3: cols 32-33 fg=idx7 bg=Background flags=BOLD|UNDERLINE
+row 3: cols 43-58 fg=idx143 bg=Background
+row 3: cols 62-63 fg=idx7 bg=Background flags=BOLD|UNDERLINE
+row 3: cols 72-88 fg=idx143 bg=Background
+row 4: cols 0-1 fg=idx7 bg=Background flags=BOLD|UNDERLINE
+row 4: cols 13-28 fg=idx143 bg=Background
+row 4: cols 32-33 fg=idx7 bg=Background flags=BOLD|UNDERLINE
+row 4: cols 43-58 fg=idx143 bg=Background
+row 4: cols 62-63 fg=idx7 bg=Background flags=BOLD|UNDERLINE
+images:

@@ -1,0 +1,114 @@
+size: 40x120
+cursor: row=0 col=4 visible shape=Default
+grid:
+|1                                                                                                                       |
+|  1 line 1                                                                                                              |
+|  2 line 2                                                                                                              |
+|1                                                                                                                       |
+|  1 line 1                                                                                                              |
+|  2 line 2                                                                                                              |
+|  3 line 3                                                                                                              |
+|  4 line 4                                                                                                              |
+|  5 line 5                                                                                                              |
+|  6 line 6                                                                                                              |
+|  7 line 7                                                                                                              |
+|  8 line 8                                                                                                              |
+|  9 line 9                                                                                                              |
+| 10 line 10                                                                                                             |
+| 11 line 11                                                                                                             |
+| 12 line 12                                                                                                             |
+| 13 line 13                                                                                                             |
+| 14 line 14                                                                                                             |
+| 15 line 15                                                                                                             |
+| 16 line 16                                                                                                             |
+| 17 line 17                                                                                                             |
+| 18 line 18                                                                                                             |
+| 19 line 19                                                                                                             |
+| 20 line 20                                                                                                             |
+| 21 line 21                                                                                                             |
+| 22 line 22                                                                                                             |
+| 23 line 23                                                                                                             |
+|                                                                                                                        |
+| 25 line 25                                                                                                             |
+| NORMAL  some-file | +                                                           unix | utf-8 | no ft    1%    1:1      |
+|"some-file"                                                                                                             |
+|Press ENTER or type command to continuee reading it!!!                                                                  |
+|"some-file" 51L, 392C writteno it (y/n)?y                                                                               |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 0: cols 0-3 fg=idx11 bg=Background
+row 0: cols 4-115 fg=idx223 bg=idx235
+row 0: cols 116-119 fg=idx223 bg=Background
+row 1: cols 0-3 fg=idx245 bg=Background
+row 1: cols 4-119 fg=idx223 bg=Background
+row 2: cols 0-3 fg=idx245 bg=Background
+row 2: cols 4-119 fg=idx223 bg=Background
+row 3: cols 0-3 fg=idx11 bg=Background
+row 3: cols 4-115 fg=idx223 bg=idx235
+row 4: cols 0-3 fg=idx245 bg=Background
+row 4: cols 4-9 fg=idx223 bg=Background
+row 5: cols 0-3 fg=idx245 bg=Background
+row 5: cols 4-9 fg=idx223 bg=Background
+row 6: cols 0-3 fg=idx245 bg=Background
+row 6: cols 4-9 fg=idx223 bg=Background
+row 7: cols 0-3 fg=idx245 bg=Background
+row 7: cols 4-9 fg=idx223 bg=Background
+row 8: cols 0-3 fg=idx245 bg=Background
+row 8: cols 4-9 fg=idx223 bg=Background
+row 9: cols 0-3 fg=idx245 bg=Background
+row 9: cols 4-9 fg=idx223 bg=Background
+row 10: cols 0-3 fg=idx245 bg=Background
+row 10: cols 4-9 fg=idx223 bg=Background
+row 11: cols 0-3 fg=idx245 bg=Background
+row 11: cols 4-9 fg=idx223 bg=Background
+row 12: cols 0-3 fg=idx245 bg=Background
+row 12: cols 4-9 fg=idx223 bg=Background
+row 13: cols 0-3 fg=idx245 bg=Background
+row 13: cols 4-10 fg=idx223 bg=Background
+row 14: cols 0-3 fg=idx245 bg=Background
+row 14: cols 4-10 fg=idx223 bg=Background
+row 15: cols 0-3 fg=idx245 bg=Background
+row 15: cols 4-10 fg=idx223 bg=Background
+row 16: cols 0-3 fg=idx245 bg=Background
+row 16: cols 4-10 fg=idx223 bg=Background
+row 17: cols 0-3 fg=idx245 bg=Background
+row 17: cols 4-10 fg=idx223 bg=Background
+row 18: cols 0-3 fg=idx245 bg=Background
+row 18: cols 4-10 fg=idx223 bg=Background
+row 19: cols 0-3 fg=idx245 bg=Background
+row 19: cols 4-10 fg=idx223 bg=Background
+row 20: cols 0-3 fg=idx245 bg=Background
+row 20: cols 4-10 fg=idx223 bg=Background
+row 21: cols 0-3 fg=idx245 bg=Background
+row 21: cols 4-10 fg=idx223 bg=Background
+row 22: cols 0-3 fg=idx245 bg=Background
+row 22: cols 4-10 fg=idx223 bg=Background
+row 23: cols 0-3 fg=idx245 bg=Background
+row 23: cols 4-10 fg=idx223 bg=Background
+row 24: cols 0-3 fg=idx245 bg=Background
+row 24: cols 4-10 fg=idx223 bg=Background
+row 25: cols 0-3 fg=idx245 bg=Background
+row 25: cols 4-10 fg=idx223 bg=Background
+row 26: cols 0-3 fg=idx245 bg=Background
+row 26: cols 4-10 fg=idx223 bg=Background
+row 26: cols 19-22 fg=idx244 bg=idx236
+row 28: cols 0-3 fg=idx245 bg=Background
+row 28: cols 4-10 fg=idx223 bg=Background
+row 29: cols 0-7 fg=idx236 bg=idx109
+row 29: cols 8-22 fg=idx253 bg=idx239
+row 29: cols 23-101 fg=idx244 bg=idx236
+row 29: cols 102-107 fg=idx248 bg=idx239
+row 29: cols 108-115 fg=idx236 bg=idx246
+row 30: cols 0-10 fg=idx223 bg=Background
+row 31: cols 0-38 fg=idx214 bg=Background
+row 31: cols 39-53 fg=idx167 bg=Background flags=BOLD|UNDERLINE
+row 32: cols 0-28 fg=idx223 bg=Background
+row 32: cols 29-39 fg=idx214 bg=Background
+row 32: cols 40-40 fg=idx223 bg=Background
+images:

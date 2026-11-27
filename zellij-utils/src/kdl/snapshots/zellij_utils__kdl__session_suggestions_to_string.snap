@@ -1,0 +1,13 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 8990
+expression: serialized.to_string()
+---
+session_suggestions {
+    fact "project" command="echo $PROJECT" column="project" at="live"
+    match "directory" "git_branch"
+    match "project"
+    then "alphabetical"
+    script "~/.config/zellij/rank.sh" timeout_ms=300 hide_unlisted=false
+    record "~/.config/zellij/record.sh"
+}

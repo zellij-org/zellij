@@ -1,4 +1,4 @@
-use crate::os_input_output::{resolve_command, AsyncReader};
+use crate::os_input_output::{resolve_command, AsyncReader, PaneEnv};
 use crate::panes::PaneId;
 
 use std::{
@@ -13,7 +13,6 @@ use std::{
     },
 };
 
-use tokio::io::AsyncReadExt;
 use tokio::net::windows::named_pipe::NamedPipeServer;
 
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, S_OK};
@@ -24,12 +23,12 @@ use windows_sys::Win32::System::Console::{
     ClosePseudoConsole, CreatePseudoConsole, GenerateConsoleCtrlEvent, ResizePseudoConsole, COORD,
     CTRL_C_EVENT, HPCON,
 };
-use windows_sys::Win32::System::Pipes::{CreateNamedPipeW, CreatePipe};
+use windows_sys::Win32::System::Pipes::{CreateNamedPipeW, CreatePipe, PIPE_REJECT_REMOTE_CLIENTS};
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
     InitializeProcThreadAttributeList, OpenProcess, TerminateProcess, UpdateProcThreadAttribute,
     WaitForSingleObject, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
-    PROCESS_INFORMATION, PROCESS_TERMINATE, STARTUPINFOEXW, STARTUPINFOW,
+    PROCESS_INFORMATION, PROCESS_TERMINATE, STARTF_USESTDHANDLES, STARTUPINFOEXW, STARTUPINFOW,
 };
 
 use zellij_utils::{errors::prelude::*, input::command::RunCommand};
@@ -55,7 +54,8 @@ struct ConPtyTerminal {
     input_write_handle: HANDLE,
 }
 
-// HANDLE/HPCON are isize (plain integers), safe to send across threads.
+// HANDLE/HPCON are raw pointers in windows-sys >= 0.59; OS handles are
+// safe to send across threads.
 unsafe impl Send for ConPtyTerminal {}
 unsafe impl Sync for ConPtyTerminal {}
 
@@ -97,16 +97,30 @@ impl ConPtyAsyncReader {
 
 #[async_trait]
 impl AsyncReader for ConPtyAsyncReader {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
+    async fn read_chunk(&mut self, max: usize) -> Result<Vec<u8>, io::Error> {
+        let pipe = self.pipe()?;
+        loop {
+            pipe.readable().await?;
+            let mut buf = vec![0u8; max];
+            match pipe.try_read(&mut buf) {
+                Ok(n) => return Ok(buf[..n].to_vec()),
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e),
+            }
+        }
+    }
+}
+
+impl ConPtyAsyncReader {
+    fn pipe(&mut self) -> Result<&mut NamedPipeServer, io::Error> {
         if let Some(handle) = self.pending.take() {
             let pipe = unsafe { NamedPipeServer::from_raw_handle(handle.into_raw_handle()) }?;
             self.pipe = Some(pipe);
         }
-        let pipe = self
+        Ok(self
             .pipe
             .as_mut()
-            .expect("ConPtyAsyncReader used after init");
-        pipe.read(buf).await
+            .expect("ConPtyAsyncReader used after init"))
     }
 }
 
@@ -122,9 +136,49 @@ fn to_wide(s: &str) -> Vec<u16> {
         .collect()
 }
 
+/// Quote a single argument per the `CommandLineToArgvW` convention.
+///
+/// Rules:
+///   * n backslashes not followed by a quote are n literal backslashes.
+///   * 2n backslashes followed by a quote produce n backslashes and a
+///     delimiting quote.
+///   * 2n+1 backslashes followed by a quote produce n backslashes and
+///     a literal quote.
+fn append_quoted_arg(cmdline: &mut String, arg: &str) {
+    if !(arg.is_empty() || arg.contains(' ') || arg.contains('\t') || arg.contains('"')) {
+        cmdline.push_str(arg);
+        return;
+    }
+    cmdline.push('"');
+    let mut backslashes: usize = 0;
+    for ch in arg.chars() {
+        if ch == '\\' {
+            backslashes += 1;
+        } else if ch == '"' {
+            for _ in 0..(backslashes * 2 + 1) {
+                cmdline.push('\\');
+            }
+            backslashes = 0;
+            cmdline.push('"');
+        } else {
+            for _ in 0..backslashes {
+                cmdline.push('\\');
+            }
+            backslashes = 0;
+            cmdline.push(ch);
+        }
+    }
+    // Double any trailing backslashes so the closing quote still terminates
+    // the argument rather than being escaped.
+    for _ in 0..(backslashes * 2) {
+        cmdline.push('\\');
+    }
+    cmdline.push('"');
+}
+
 /// Build a Windows command-line string from a `RunCommand`, following the
 /// `CommandLineToArgvW` quoting convention.
-fn build_command_line(cmd: &RunCommand) -> Vec<u16> {
+fn build_command_line_string(cmd: &RunCommand) -> String {
     let mut cmdline = String::new();
 
     // Executable — always quote to handle spaces in paths.
@@ -135,47 +189,31 @@ fn build_command_line(cmd: &RunCommand) -> Vec<u16> {
 
     for arg in &cmd.args {
         cmdline.push(' ');
-        if arg.is_empty() || arg.contains(' ') || arg.contains('\t') || arg.contains('"') {
-            cmdline.push('"');
-            let mut backslashes: usize = 0;
-            for ch in arg.chars() {
-                if ch == '\\' {
-                    backslashes += 1;
-                } else if ch == '"' {
-                    // Double backslashes preceding a quote, then escape the quote.
-                    for _ in 0..backslashes {
-                        cmdline.push('\\');
-                    }
-                    backslashes = 0;
-                    cmdline.push('\\');
-                    cmdline.push('"');
-                } else {
-                    backslashes = 0;
-                    cmdline.push(ch);
-                }
-            }
-            // Double trailing backslashes before the closing quote.
-            for _ in 0..backslashes {
-                cmdline.push('\\');
-            }
-            cmdline.push('"');
-        } else {
-            cmdline.push_str(arg);
-        }
+        append_quoted_arg(&mut cmdline, arg);
     }
 
-    to_wide(&cmdline)
+    cmdline
+}
+
+fn build_command_line(cmd: &RunCommand) -> Vec<u16> {
+    to_wide(&build_command_line_string(cmd))
 }
 
 /// Build a UTF-16 environment block (each entry `KEY=VALUE\0`, terminated by
 /// an extra `\0`) from the current process environment, adding
 /// `ZELLIJ_PANE_ID`.
-fn build_environment_block(terminal_id: u32) -> Vec<u16> {
-    let mut block: Vec<u16> = Vec::new();
-    for (key, value) in std::env::vars() {
-        if key == "ZELLIJ_PANE_ID" {
-            continue;
+fn build_environment_block(terminal_id: u32, pane_env: &PaneEnv) -> Vec<u16> {
+    let mut variables: BTreeMap<String, String> = std::env::vars()
+        .filter(|(key, _)| !key.eq_ignore_ascii_case("ZELLIJ_PANE_ID"))
+        .collect();
+    for (key, value) in pane_env {
+        variables.retain(|existing, _| !existing.eq_ignore_ascii_case(key));
+        if let Some(value) = value {
+            variables.insert(key.clone(), value.clone());
         }
+    }
+    let mut block: Vec<u16> = Vec::new();
+    for (key, value) in variables {
         let entry = format!("{}={}", key, value);
         block.extend(OsStr::new(&entry).encode_wide());
         block.push(0);
@@ -201,17 +239,19 @@ fn create_overlapped_output_pipe(terminal_id: u32) -> io::Result<(HANDLE, HANDLE
         seq
     );
     let wide_name = to_wide(&name);
+    let private = zellij_utils::pipe_access::PrivateAttributes::new()?;
+    let attributes = private.attributes();
 
     let server = unsafe {
         CreateNamedPipeW(
             wide_name.as_ptr(),
             PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
-            PIPE_TYPE_BYTE | PIPE_WAIT,
+            PIPE_TYPE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
             1,     // max instances
             0,     // out buffer (we only read)
             65536, // in buffer
             0,     // default timeout
-            std::ptr::null(),
+            &attributes,
         )
     };
     if server == INVALID_HANDLE_VALUE {
@@ -222,11 +262,11 @@ fn create_overlapped_output_pipe(terminal_id: u32) -> io::Result<(HANDLE, HANDLE
         CreateFileW(
             wide_name.as_ptr(),
             GENERIC_WRITE,
-            0,                // no sharing
-            std::ptr::null(), // default security
-            OPEN_EXISTING,    // pipe already exists
-            0,                // synchronous
-            0,                // no template
+            0,                    // no sharing
+            std::ptr::null(),     // default security
+            OPEN_EXISTING,        // pipe already exists
+            0,                    // synchronous
+            std::ptr::null_mut(), // no template
         )
     };
     if client == INVALID_HANDLE_VALUE {
@@ -265,6 +305,7 @@ fn spawn_child_process(
     hpcon: HPCON,
     cmd: &RunCommand,
     terminal_id: u32,
+    pane_env: &PaneEnv,
 ) -> io::Result<(HANDLE, HANDLE, u32)> {
     // --- proc thread attribute list ---
     let mut attr_size: usize = 0;
@@ -302,11 +343,15 @@ fn spawn_child_process(
     // --- startup info ---
     let mut si: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
     si.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
+    // Null standard handles make the child use the pseudo console. Without this flag a child
+    // takes the server's own standard handles whenever those are redirected (as they are when
+    // the server is started without a console), and a shell reading a NUL stdin exits at once.
+    si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
     si.lpAttributeList = attr_list;
 
     // --- command line & environment ---
     let mut cmd_line = build_command_line(cmd);
-    let env_block = build_environment_block(terminal_id);
+    let env_block = build_environment_block(terminal_id, pane_env);
 
     let cwd: Option<Vec<u16>> = cmd.cwd.as_ref().and_then(|p| {
         if p.exists() && p.is_dir() {
@@ -350,7 +395,7 @@ fn spawn_child_process(
 fn terminate_process(pid: u32) -> std::result::Result<(), std::io::Error> {
     unsafe {
         let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
-        if handle == 0 {
+        if handle.is_null() {
             return Err(std::io::Error::last_os_error());
         }
         let ok = TerminateProcess(handle, 1);
@@ -387,6 +432,7 @@ impl WindowsPtyBackend {
         cmd: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         terminal_id: u32,
+        pane_env: &PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, u32)> {
         let err_context = |c: &RunCommand| {
             format!(
@@ -400,8 +446,8 @@ impl WindowsPtyBackend {
             create_overlapped_output_pipe(terminal_id).with_context(|| err_context(&cmd))?;
 
         // 2. Input pipe pair (anonymous, both synchronous)
-        let mut input_read: HANDLE = 0;
-        let mut input_write: HANDLE = 0;
+        let mut input_read: HANDLE = std::ptr::null_mut();
+        let mut input_write: HANDLE = std::ptr::null_mut();
         if unsafe { CreatePipe(&mut input_read, &mut input_write, std::ptr::null(), 0) } == 0 {
             unsafe {
                 CloseHandle(output_read);
@@ -432,7 +478,7 @@ impl WindowsPtyBackend {
 
         // 5. Spawn child process
         let (process_handle, thread_handle, child_pid) =
-            match spawn_child_process(hpcon, &cmd, terminal_id) {
+            match spawn_child_process(hpcon, &cmd, terminal_id, pane_env) {
                 Ok(r) => r,
                 Err(e) => {
                     unsafe {
@@ -457,8 +503,12 @@ impl WindowsPtyBackend {
         );
 
         // 7. Exit-monitoring thread (zero CPU — spends all time in kernel wait)
+        // Pass the HANDLE through as `usize` because raw pointers are not
+        // Send. Windows OS handles are safe to use cross-thread.
         let cmd_for_monitor = cmd.clone();
+        let process_handle_addr = process_handle as usize;
         std::thread::spawn(move || {
+            let process_handle = process_handle_addr as HANDLE;
             let exit_code = unsafe {
                 WaitForSingleObject(process_handle, INFINITE);
                 let mut code: u32 = 0;
@@ -486,15 +536,16 @@ impl WindowsPtyBackend {
         failover_cmd: Option<RunCommand>,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         terminal_id: u32,
+        pane_env: &PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, u32)> {
-        if let Some(resolved) = resolve_command(&cmd) {
+        if let Some(resolved) = resolve_command(&cmd, pane_env) {
             cmd.command = resolved;
-            return self.do_spawn(cmd, quit_cb, terminal_id);
+            return self.do_spawn(cmd, quit_cb, terminal_id, pane_env);
         }
         if let Some(mut failover) = failover_cmd {
-            if let Some(resolved) = resolve_command(&failover) {
+            if let Some(resolved) = resolve_command(&failover, pane_env) {
                 failover.command = resolved;
-                return self.do_spawn(failover, quit_cb, terminal_id);
+                return self.do_spawn(failover, quit_cb, terminal_id, pane_env);
             }
         }
         Err(ZellijError::CommandNotFound {
@@ -640,5 +691,69 @@ impl WindowsPtyBackend {
             self.next_terminal_id_counter
                 .fetch_add(1, Ordering::Relaxed),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn cmd(exe: &str, args: &[&str]) -> RunCommand {
+        RunCommand {
+            command: PathBuf::from(exe),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn plain_arg_is_left_unquoted() {
+        let s = build_command_line_string(&cmd("nvim", &["hello"]));
+        assert_eq!(s, "\"nvim\" hello");
+    }
+
+    #[test]
+    fn arg_with_space_is_quoted() {
+        let s = build_command_line_string(&cmd("nvim", &["hello world"]));
+        assert_eq!(s, "\"nvim\" \"hello world\"");
+    }
+
+    // Regression: zellij edit with a Windows backslash path plus a space in
+    // the path used to eat every backslash inside the quoted arg. See
+    // https://github.com/zellij-org/zellij/issues/5293.
+    #[test]
+    fn backslash_path_with_space_preserves_backslashes() {
+        let path = r"C:\Users\me\Folder With Space\README.md";
+        let s = build_command_line_string(&cmd("nvim", &[path]));
+        assert_eq!(
+            s,
+            "\"nvim\" \"C:\\Users\\me\\Folder With Space\\README.md\""
+        );
+    }
+
+    #[test]
+    fn embedded_quote_is_escaped_with_odd_backslashes() {
+        // Input arg: a"b (contains a literal quote). It should be emitted
+        // as a\"b inside a quoted arg.
+        let s = build_command_line_string(&cmd("prog", &["a\"b"]));
+        assert_eq!(s, "\"prog\" \"a\\\"b\"");
+    }
+
+    #[test]
+    fn backslash_before_embedded_quote_gets_doubled() {
+        // Input arg: a\"b — one literal backslash, then a literal quote.
+        // Must emit 3 backslashes then a quote so CommandLineToArgvW parses
+        // back to a\"b.
+        let s = build_command_line_string(&cmd("prog", &["a\\\"b c"]));
+        assert_eq!(s, "\"prog\" \"a\\\\\\\"b c\"");
+    }
+
+    #[test]
+    fn trailing_backslash_before_closing_quote_gets_doubled() {
+        // "path with space\" would let the trailing backslash escape the
+        // closing quote. The trailing backslash must be doubled.
+        let s = build_command_line_string(&cmd("prog", &["C:\\my path\\"]));
+        assert_eq!(s, "\"prog\" \"C:\\my path\\\\\"");
     }
 }

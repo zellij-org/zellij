@@ -148,7 +148,7 @@ fn discard_result<T>(_arg: anyhow::Result<T>) {}
 impl<T> FatalError<T> for anyhow::Result<T> {
     fn non_fatal(self) {
         if self.is_err() {
-            discard_result(self.context("a non-fatal error occured").to_log());
+            discard_result(self.context("a non-fatal error occurred").to_log());
         }
     }
 
@@ -156,7 +156,7 @@ impl<T> FatalError<T> for anyhow::Result<T> {
         if let Ok(val) = self {
             val
         } else {
-            self.context("a fatal error occured")
+            self.context("a fatal error occurred")
                 .expect("Program terminates")
         }
     }
@@ -217,6 +217,7 @@ pub enum ScreenContext {
     PluginBytes,
     Render,
     RenderToClients,
+    SendVteInstructionToClients,
     NewPane,
     OpenInPlaceEditor,
     ToggleFloatingPanes,
@@ -227,6 +228,7 @@ pub enum ScreenContext {
     HorizontalSplit,
     VerticalSplit,
     WriteCharacter,
+    KeyToPopup,
     ResizeIncreaseAll,
     ResizeIncreaseLeft,
     ResizeIncreaseDown,
@@ -246,6 +248,7 @@ pub enum ScreenContext {
     SwitchFocus,
     FocusNextPane,
     FocusPreviousPane,
+    FocusLastPane,
     FocusPaneAt,
     MoveFocusLeft,
     MoveFocusLeftOrPreviousTab,
@@ -260,6 +263,7 @@ pub enum ScreenContext {
     MovePaneRight,
     MovePaneLeft,
     Exit,
+    SessionEnding,
     ClearScreen,
     DumpScreen,
     DumpLayout,
@@ -272,6 +276,11 @@ pub enum ScreenContext {
     ScrollDownAt,
     ScrollToBottom,
     ScrollToTop,
+    ScrollToPreviousPrompt,
+    ScrollToNextPrompt,
+    SelectCommandAtScrollPosition,
+    CopyLastCommandOutput,
+    ClearCommandOutputFlash,
     PageScrollUp,
     PageScrollDown,
     HalfPageScrollUp,
@@ -280,7 +289,11 @@ pub enum ScreenContext {
     CloseFocusedPane,
     ToggleActiveSyncTab,
     ToggleActiveTerminalFullscreen,
+    ToggleActiveTerminalNoUiFullscreen,
     TogglePaneFrames,
+    ToggleStackListOrientation,
+    ToggleStackListOrientationWithPaneId,
+    SetPaneFrameStyle,
     SetSelectable,
     ShowPluginCursor,
     SetInvisibleBorders,
@@ -305,12 +318,28 @@ pub enum ScreenContext {
     CloseTabWithId,
     RenameTabWithId,
     BreakPanesToTabWithId,
-    TerminalResize,
+    RecomputeTabSize,
     TerminalPixelDimensions,
     TerminalBackgroundColor,
     TerminalForegroundColor,
     TerminalColorRegisters,
+    SetKittyGraphicsSupport,
+    SetKittyZlibSupport,
+    SetSixelSupport,
+    SetStructuredRenderSupport,
+    SetClipboardPasteSupport,
+    PasteFromClipboard,
+    RenderFrameAck,
     ForwardHostQuery,
+    NestedSessionMessageFromPane,
+    PromptReturnedInPane,
+    NestedGuestPingTick,
+    NestedSessionMessageFromHost,
+    GetNestedSessionKeybinds,
+    GuestModalChoice,
+    ConfirmQuit,
+    SetOnQuit,
+    CloseDialogueAnswer,
     ForwardedReplyFromHost,
     ResumePaneAfterForward,
     HostTerminalThemeChanged,
@@ -339,8 +368,13 @@ pub enum ScreenContext {
     AddRedPaneFrameColorOverride,
     ClearPaneFrameColorOverride,
     SetTabBellFlash,
+    HostTerminalFocusChanged,
+    SetClientHostTerminalEnv,
+    ForwardDesktopNotifications,
     PreviousSwapLayout,
     NextSwapLayout,
+    ApplyTiledSwapLayout,
+    ApplyFloatingSwapLayout,
     OverrideLayout,
     OverrideLayoutComplete,
     QueryTabNames,
@@ -371,6 +405,8 @@ pub enum ScreenContext {
     NewInPlacePluginPane,
     SerializeLayoutForResurrection,
     RenameSession,
+    UpdateSessionNameDraft,
+    UndoRenameSession,
     DumpLayoutToPlugin,
     GetFocusedPaneInfo,
     GetPaneInfo,
@@ -398,6 +434,7 @@ pub enum ScreenContext {
     PageScrollUpInPaneId,
     PageScrollDownInPaneId,
     TogglePaneIdFullscreen,
+    SetMobileRenderPreferences,
     TogglePaneEmbedOrEjectForPaneId,
     CloseTabWithIndex,
     BreakPanesToNewTab,
@@ -409,15 +446,58 @@ pub enum ScreenContext {
     ChangeFloatingPanesCoordinates,
     TogglePaneBorderless,
     SetPaneBorderless,
+    SetPaneBorderStyle,
     AddHighlightPaneFrameColorOverride,
     GroupAndUngroupPanes,
     HighlightAndUnhighlightPanes,
     FloatMultiplePanes,
     EmbedMultiplePanes,
     TogglePaneInGroup,
+    TogglePaneIdInGroup,
+    StartRenamePaneWithPaneId,
+    StartRenameTabWithTabId,
+    OpenContextMenu,
+    OpenContextMenuFromPlugin,
+    OpenPluginPopup,
+    OpenSessionCard,
+    TerminalInputSubmitted,
+    TerminalEscapePressed,
+    ToggleSessionCard,
+    WaitForPaneExit,
+    SetPopupFocused,
+    PopupToFloatingPane,
+    ShowSwapLayoutNotification,
+    SetSwapLayoutNotification,
+    ToggleBars,
+    HideBars,
+    ShowBars,
+    HideBarByPaneId,
+    SetHiddenBarsNotification,
+    SetModeHintsWhenBarsHidden,
+    SetGraphemeClusters,
+    GetSessionPreview,
+    GetSessionAttention,
+    GlobalAttentionUpdate,
+    ClientSessionHistory,
+    GoToNextAttention,
+    MarkPaneSeen,
+    MarkAllSeen,
+    SessionPaneCommand,
+    OpenPipePopup,
+    OpenPromptPopup,
+    AddPopup,
+    SetPopupSize,
+    RevealPopup,
+    CloseTopPopup,
+    ScrollPopup,
+    DismissInfoPopups,
+    UpdateContextMenuConfig,
+    UpdateMousebinds,
+    GetContextMenuItemActions,
     ToggleGroupMarking,
     SessionSharingStatusChange,
     SetMouseSelectionSupport,
+    SetPaneCollapsed,
     InterceptKeyPresses,
     ClearKeyPressesIntercepts,
     ReplacePaneWithExistingPane,
@@ -431,6 +511,7 @@ pub enum ScreenContext {
     DesktopNotificationResponse,
     SubscribeToPaneRenders,
     NotifyPaneClosedToSubscribers,
+    PaneMirror,
     // Pane-targeting CLI variants
     ScrollUpWithPaneId,
     ScrollDownWithPaneId,
@@ -446,6 +527,7 @@ pub enum ScreenContext {
     ClearScreenWithPaneId,
     EditScrollbackWithPaneId,
     ToggleFullscreenWithPaneId,
+    ToggleNoUiFullscreenWithPaneId,
     TogglePaneEmbedOrFloatingWithPaneId,
     CloseFocusWithPaneId,
     RenamePaneWithPaneId,
@@ -457,10 +539,26 @@ pub enum ScreenContext {
     ToggleFloatingPanesWithTabId,
     PreviousSwapLayoutWithTabId,
     NextSwapLayoutWithTabId,
+    ApplyTiledSwapLayoutWithTabId,
+    ApplyFloatingSwapLayoutWithTabId,
     MoveTabWithTabId,
-    PluginSubscribedToAnsiPaneContents,
+    MoveTabToPosition,
     UpdateBackgroundPluginSubscriptions,
+    ClearHintTextCache,
     BroadcastModeUpdate,
+    SetSoftKeyboard,
+    FocusHostSession,
+    FocusGuestSession,
+    ToggleHostFullscreen,
+    AttentionIdleCheck,
+    AttentionForegroundChanged,
+    MutePane,
+    IgnorePaneOutput,
+    WatchPane,
+    MuteTab,
+    MuteSession,
+    AttentionCommandPaneStarted,
+    SetAttentionConfig,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -475,6 +573,7 @@ pub enum PtyContext {
     NewTab,
     OverrideLayout,
     ClosePane,
+    ClosePaneThatWasNotCreated,
     CloseTab,
     ReRunCommandInPane,
     DropToShellInPane,
@@ -495,6 +594,9 @@ pub enum PtyContext {
     GetPaneCwd,
     UpdateAndReportCwds,
     NotifyCwdFromOsc7,
+    RunInBackground,
+    SetResurrectCommand,
+    PromptReturned,
     Exit,
 }
 
@@ -506,12 +608,15 @@ pub enum PluginContext {
     Update,
     Render,
     Unload,
+    LoadPopup,
     Reload,
     ReloadPluginWithId,
     Resize,
     Exit,
     AddClient,
     RemoveClient,
+    UpdatePluginTabIndices,
+    UpdateClientVisiblePlugins,
     NewTab,
     OverrideLayout,
     ApplyCachedEvents,
@@ -523,6 +628,12 @@ pub enum PluginContext {
     DumpLayout,
     LogLayoutToHd,
     CliPipe,
+    SetCliPipeExitCode,
+    PipePopupFailed,
+    PromptRequest,
+    PromptReplied,
+    PromptPopupFailed,
+    WithdrawPrompt,
     Message,
     CachePluginEvents,
     MessageFromPlugin,
@@ -533,6 +644,9 @@ pub enum PluginContext {
     ListClientsMetadata,
     Reconfigure,
     FailedToWriteConfigToDisk,
+    ConfigWasWrittenToDisk,
+    ConfigChangesDropped,
+    ConfigFileChangedSinceRead,
     ListClientsToPlugin,
     ChangePluginHostDir,
     WebServerStarted,
@@ -540,11 +654,17 @@ pub enum PluginContext {
     PaneRenderReport,
     UserInput,
     LayoutListUpdate,
+    KeybindPresetListUpdate,
+    GlobalAttentionUpdate,
+    SessionHistoryUpdate,
     RequestStateUpdateForPlugin,
+    RegisterSettingsEntry,
+    UnregisterSettingsEntry,
     UpdateSessionSaveTime,
     GetLastSessionSaveTime,
     DetectPluginConfigChanges,
     HighlightClicked,
+    PopupBecamePane,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -562,6 +682,7 @@ pub enum ClientContext {
     OwnClientId,
     SwitchSession,
     SetSynchronisedOutput,
+    OuterGraphemeClusterMode,
     UnblockCliPipeInput,
     CliPipeOutput,
     QueryTerminalSize,
@@ -570,6 +691,9 @@ pub enum ClientContext {
     RenamedSession,
     ConfigFileUpdated,
     ForwardQueryToHost,
+    EmitNestedSessionFrame,
+    HostProgramStatus,
+    HostProgramStatusSupported,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -588,6 +712,10 @@ pub enum ServerContext {
     Log,
     LogError,
     SwitchSession,
+    SwitchSessionAndCloseCurrent,
+    HistoryMove,
+    TerminalCommandSubmitted,
+    SessionRenamed,
     UnblockCliPipeInput,
     CliPipeOutput,
     AssociatePipeWithClient,
@@ -596,8 +724,24 @@ pub enum ServerContext {
     ChangeModeForAllClients,
     Reconfigure,
     ConfigWrittenToDisk,
+    TerminalSettingsChanged,
+    FontFamilies,
+    AdoptSessionHistory,
     FailedToWriteConfigToDisk,
     RebindKeys,
+    ReplaceConfigBlocks,
+    ResetKeys,
+    ResetMousebinds,
+    ReadConfig,
+    RevertConfig,
+    UnsetConfigSetting,
+    SaveConfig,
+    OverwriteConfigFile,
+    ReloadConfigFile,
+    CopyKeybindPreset,
+    SaveKeybindsAsPreset,
+    WriteThemeFile,
+    DeleteThemeFile,
     StartWebServer,
     ShareCurrentSession,
     StopSharingCurrentSession,
@@ -605,7 +749,13 @@ pub enum ServerContext {
     FailedToStartWebServer,
     SendWebClientsForbidden,
     ClearMouseHelpText,
+    ClearCommandOutputFlash,
     ForwardQueryToHost,
+    KeyPassthroughChanged,
+    EmitNestedSessionFrameToClient,
+    HostProgramStatus,
+    PopupStateChanged,
+    HostTerminalThemeModeChanged,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -625,6 +775,7 @@ pub enum BackgroundJobContext {
     ReportSessionInfo,
     ReportLayoutInfo,
     RunCommand,
+    RunInBackground,
     WebRequest,
     ReportPluginList,
     ListWebSessions,
@@ -632,10 +783,22 @@ pub enum BackgroundJobContext {
     HighlightPanesWithMessage,
     QueryZellijWebServerStatus,
     ClearHelpText,
+    RevealPopup,
+    MirrorTick,
+    ClearCommandOutputFlash,
     FlashPaneBell,
     StopFlashPaneBell,
     FlashTabBell,
     StopFlashTabBell,
+    StartNestedGuestPing,
+    StopNestedGuestPing,
+    TrimAllocator,
+    SessionSuggestions,
+    SessionPreview,
+    SavedSessionPreview,
+    PeerAttention,
+    AttentionIdleCheck,
+    ReportHostProgramStatus,
     Exit,
 }
 
@@ -670,9 +833,10 @@ If you're a developer:
     plugin directory.
 
 Possible fix for your problem:
-    Run `zellij setup --dump-plugins`, and optionally point it to your
-    'DATA DIR', visible in e.g. the output of `zellij setup --check`. Without
-    further arguments, it will use the default 'DATA DIR'.
+    Place the builtin plugin '.wasm' files in the plugin directory shown above,
+    or in the 'plugins' folder of the system data directory. Both are visible in
+    the output of `zellij setup --check`. This build carries no bundled plugins,
+    so `zellij setup --dump-plugins` cannot provide them.
 "
     )]
     BuiltinPluginMissing {
@@ -712,7 +876,7 @@ open an issue on GitHub:
     #[error("Pane size remains unchanged")]
     PaneSizeUnchanged,
 
-    #[error("an error occured")]
+    #[error("an error occurred")]
     GenericError { source: anyhow::Error },
 
     #[error("Client {client_id} is too slow to handle incoming messages")]
@@ -741,7 +905,7 @@ mod not_wasm {
     const MAX_THREAD_CALL_STACK: usize = 6;
 
     #[derive(Debug, ThisError, Diagnostic)]
-    #[error("{0}{}", self.show_backtrace())]
+    #[error("{0}{backtrace}", backtrace = self.show_backtrace())]
     #[diagnostic(help("{}", self.show_help()))]
     struct Panic(String);
 
@@ -819,7 +983,7 @@ mod not_wasm {
         error!(
             "{}",
             format!(
-                "Panic occured:
+                "Panic occurred:
              thread: {}
              location: {}
              message: {}",

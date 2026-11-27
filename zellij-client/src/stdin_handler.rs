@@ -1,11 +1,16 @@
 use crate::keyboard_parser::{KittyKeyboardParser, KittyParseOutcome};
 use crate::os_input_output::ClientOsApi;
-use crate::stdin_ansi_parser::StdinAnsiParser;
+#[cfg(windows)]
+use crate::os_input_output_windows::use_vt_path;
+use crate::stdin_ansi_parser::{HostReply, PendingPartial, StdinAnsiParser};
 #[cfg(windows)]
 use crate::stdin_handler_windows::enable_vt_input;
 use crate::InputInstruction;
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+const LONE_ESC_FLUSH_INTERVAL: Duration = Duration::from_millis(50);
+const PARTIAL_REPLY_FLUSH_GUARD: Duration = Duration::from_millis(1000);
 use zellij_utils::{
     channels::SenderWithContext,
     vendored::termwiz::input::{InputEvent, InputParser},
@@ -16,21 +21,15 @@ pub(crate) fn stdin_loop(
     send_input_instructions: SenderWithContext<InputInstruction>,
     stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    support_kitty_graphics_protocol: bool,
+    query_host_theme: bool,
     resize_sender: Option<std::sync::mpsc::Sender<()>>,
 ) {
-    // On Windows, choose between two input strategies early — we need this
-    // decision before the startup ANSI query below.
-    //
-    // 1. Native console (no TERM env var): Use crossterm's event::read() which
-    //    reads INPUT_RECORDs via ReadConsoleInput. Works in cmd.exe, PowerShell,
-    //    and Windows Terminal where ALT is reported as a modifier flag.
-    //
-    // 2. Terminal emulator (TERM is set, e.g. Alacritty): Enable
-    //    ENABLE_VIRTUAL_TERMINAL_INPUT so ReadFile on stdin returns raw VT bytes,
-    //    bypassing conpty's lossy VT→INPUT_RECORD translation. Then use the
-    //    termwiz byte parser (same as Unix) which understands ESC-prefixed ALT.
+    // On Windows we choose between the VT byte path (termwiz/kitty parsing)
+    // and the native-console path (crossterm INPUT_RECORDs) early, before the
+    // startup ANSI query below. See `use_vt_path()` for the trigger conditions.
     #[cfg(windows)]
-    let use_vt_reader = std::env::var("TERM").is_ok() && enable_vt_input();
+    let use_vt_reader = use_vt_path() && enable_vt_input();
 
     // Send the startup host query string so the host terminal replies
     // with its live pixel dimensions, fg/bg, sync-output support, and
@@ -47,11 +46,33 @@ pub(crate) fn stdin_loop(
         let can_query_terminal = true;
 
         if can_query_terminal {
-            let query_string = build_startup_query_string();
-            let _ = os_input
-                .get_stdout_writer()
-                .write(query_string.as_bytes())
-                .unwrap();
+            let query_string =
+                build_startup_query_string(support_kitty_graphics_protocol, query_host_theme);
+            {
+                let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
+                stdin_ansi_parser.open_own_query_batch();
+                stdin_ansi_parser.expect_grapheme_cluster_mode_reply();
+                if support_kitty_graphics_protocol {
+                    stdin_ansi_parser.expect_kitty_probe_reply();
+                    stdin_ansi_parser.expect_kitty_zlib_probe_reply();
+                }
+                let mut stdout = os_input.get_stdout_writer();
+                let _ = stdout.write_all(query_string.as_bytes());
+                let _ = stdout.flush();
+            }
+            if !support_kitty_graphics_protocol {
+                let _ =
+                    send_input_instructions.send(InputInstruction::AnsiStdinInstructions(vec![
+                        HostReply::KittyGraphicsSupport(false),
+                        HostReply::KittyZlibSupport(false),
+                    ]));
+            }
+        } else {
+            let _ = send_input_instructions.send(InputInstruction::AnsiStdinInstructions(vec![
+                HostReply::KittyGraphicsSupport(false),
+                HostReply::KittyZlibSupport(false),
+                HostReply::SixelSupport(false),
+            ]));
         }
     }
 
@@ -99,9 +120,10 @@ pub(crate) fn stdin_loop(
             }
         });
     let mut needs_finalization = false;
-    loop {
+    let mut reply_in_progress_since: Option<Instant> = None;
+    'stdin: loop {
         match if needs_finalization {
-            stdin_rx.recv_timeout(Duration::from_millis(50))
+            stdin_rx.recv_timeout(LONE_ESC_FLUSH_INTERVAL)
         } else {
             stdin_rx
                 .recv()
@@ -113,10 +135,17 @@ pub(crate) fn stdin_loop(
                         // Strip + classify any host-reply sequences
                         // continuously. The residue is the byte stream
                         // the keyboard parser should see.
-                        let parse_output = {
+                        let (parse_output, exit_draining) = {
                             let mut p = stdin_ansi_parser.lock().unwrap();
-                            p.feed(&buf)
+                            let parse_output = p.feed(&buf);
+                            (parse_output, p.is_exit_draining())
                         };
+                        if exit_draining {
+                            current_buffer.clear();
+                            needs_finalization = false;
+                            reply_in_progress_since = None;
+                            continue;
+                        }
                         if !parse_output.replies.is_empty() {
                             let _ = send_input_instructions.send(
                                 InputInstruction::AnsiStdinInstructions(parse_output.replies),
@@ -130,24 +159,35 @@ pub(crate) fn stdin_loop(
                                 },
                             );
                         }
+                        if let Some((token, reply_bytes)) = parse_output.completed_clipboard_forward
+                        {
+                            let _ = send_input_instructions.send(
+                                InputInstruction::ForwardedReplyFromHostComplete {
+                                    token,
+                                    reply_bytes,
+                                },
+                            );
+                        }
                         for payload in parse_output.desktop_notifications {
                             let _ = send_input_instructions
                                 .send(InputInstruction::DesktopNotificationResponse(payload));
                         }
-                        let has_partial = parse_output.has_partial_state;
-                        let residue = parse_output.residue;
+                        for payload_bytes in parse_output.nested_frames {
+                            let _ = send_input_instructions
+                                .send(InputInstruction::NestedSessionFrameFromHost(payload_bytes));
+                        }
+                        let (residue, focus_changes) = extract_focus_reports(parse_output.residue);
+                        for focused in focus_changes {
+                            let _ = send_input_instructions
+                                .send(InputInstruction::HostTerminalFocusChanged(focused));
+                        }
                         if residue.is_empty() {
-                            // If all bytes were consumed by the host-reply
-                            // parser, nothing to feed to the keyboard
-                            // parser. But if the host-reply parser is
-                            // sitting on a buffered partial sequence
-                            // (e.g. a lone trailing ESC waiting to be
-                            // disambiguated), schedule a finalize tick
-                            // so the idle drain releases it as keyboard
-                            // residue when no follow-up arrives.
-                            if has_partial {
-                                needs_finalization = true;
-                            }
+                            schedule_finalization(
+                                &stdin_ansi_parser,
+                                false,
+                                &mut needs_finalization,
+                                &mut reply_in_progress_since,
+                            );
                             continue;
                         }
                         current_buffer.append(&mut residue.clone());
@@ -161,13 +201,22 @@ pub(crate) fn stdin_loop(
                             // continuation completes the sequence.
                             match kitty_parser.feed(&residue) {
                                 KittyParseOutcome::Complete(key_with_modifier) => {
-                                    send_input_instructions
+                                    if send_input_instructions
                                         .send(InputInstruction::KeyWithModifierEvent(
                                             key_with_modifier,
                                             current_buffer.drain(..).collect(),
                                             true,
                                         ))
-                                        .unwrap();
+                                        .is_err()
+                                    {
+                                        break 'stdin;
+                                    }
+                                    schedule_finalization(
+                                        &stdin_ansi_parser,
+                                        false,
+                                        &mut needs_finalization,
+                                        &mut reply_in_progress_since,
+                                    );
                                     continue;
                                 },
                                 KittyParseOutcome::Incomplete | KittyParseOutcome::NoMatch => {},
@@ -179,11 +228,11 @@ pub(crate) fn stdin_loop(
                         // Ambiguous events (if any) will be finalized later only if 50ms
                         // passes with no new input
                         let maybe_more = true;
-                        let mut events = vec![];
-                        input_parser.parse(
+                        let mut events: Vec<(InputEvent, usize)> = vec![];
+                        input_parser.parse_with_consumed(
                             &residue,
-                            |input_event: InputEvent| {
-                                events.push(input_event);
+                            |input_event: InputEvent, consumed: usize| {
+                                events.push((input_event, consumed));
                             },
                             maybe_more,
                         );
@@ -192,16 +241,27 @@ pub(crate) fn stdin_loop(
                         // reports — `StdinAnsiParser::feed` strips both
                         // before the keyboard parser sees the bytes.
                         // Every termwiz event is a key/mouse/paste/etc.
-                        for input_event in events.into_iter() {
-                            send_input_instructions
-                                .send(InputInstruction::KeyEvent(
-                                    input_event,
-                                    current_buffer.drain(..).collect(),
-                                ))
-                                .unwrap();
+                        // Each event is forwarded with exactly the bytes
+                        // that produced it, never bytes belonging to other
+                        // events decoded from the same read.
+                        for (input_event, consumed) in events.into_iter() {
+                            let take = consumed.min(current_buffer.len());
+                            let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
+                            if send_input_instructions
+                                .send(InputInstruction::KeyEvent(input_event, raw_bytes))
+                                .is_err()
+                            {
+                                break 'stdin;
+                            }
                         }
+                        realign_current_buffer(&mut current_buffer, &input_parser);
 
-                        needs_finalization = true;
+                        schedule_finalization(
+                            &stdin_ansi_parser,
+                            true,
+                            &mut needs_finalization,
+                            &mut reply_in_progress_since,
+                        );
                     },
                     Err(e) => {
                         if e == "Session ended" {
@@ -215,13 +275,40 @@ pub(crate) fn stdin_loop(
                 }
             },
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                finalize_events(
-                    &mut input_parser,
-                    &mut current_buffer,
-                    send_input_instructions.clone(),
-                    &stdin_ansi_parser,
-                );
-                needs_finalization = false;
+                if stdin_ansi_parser.lock().unwrap().is_exit_draining() {
+                    needs_finalization = false;
+                    reply_in_progress_since = None;
+                    continue;
+                }
+                let pending = stdin_ansi_parser.lock().unwrap().pending_partial();
+                if pending.uses_reply_flush_guard() {
+                    let elapsed = reply_in_progress_since
+                        .map(|since| since.elapsed())
+                        .unwrap_or_default();
+                    if elapsed >= PARTIAL_REPLY_FLUSH_GUARD {
+                        let drained = stdin_ansi_parser.lock().unwrap().finalize_force();
+                        drain_partial_to_keyboard(
+                            &mut input_parser,
+                            &mut current_buffer,
+                            send_input_instructions.clone(),
+                            drained,
+                        );
+                        needs_finalization = false;
+                        reply_in_progress_since = None;
+                    } else {
+                        needs_finalization = true;
+                    }
+                } else {
+                    let drained = stdin_ansi_parser.lock().unwrap().finalize_fast_partial();
+                    drain_partial_to_keyboard(
+                        &mut input_parser,
+                        &mut current_buffer,
+                        send_input_instructions.clone(),
+                        drained,
+                    );
+                    needs_finalization = false;
+                    reply_in_progress_since = None;
+                }
             },
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 log::debug!("STDIN pump disconnected");
@@ -232,58 +319,250 @@ pub(crate) fn stdin_loop(
     }
 }
 
-fn finalize_events(
+fn schedule_finalization(
+    stdin_ansi_parser: &Arc<Mutex<StdinAnsiParser>>,
+    fed_termwiz: bool,
+    needs_finalization: &mut bool,
+    reply_in_progress_since: &mut Option<Instant>,
+) {
+    let pending = stdin_ansi_parser.lock().unwrap().pending_partial();
+    if fed_termwiz || pending != PendingPartial::None {
+        *needs_finalization = true;
+    }
+    if pending.uses_reply_flush_guard() {
+        if reply_in_progress_since.is_none() {
+            *reply_in_progress_since = Some(Instant::now());
+        }
+    } else {
+        *reply_in_progress_since = None;
+    }
+}
+
+fn drain_partial_to_keyboard(
     input_parser: &mut InputParser,
     current_buffer: &mut Vec<u8>,
     send_input_instructions: SenderWithContext<InputInstruction>,
-    stdin_ansi_parser: &Arc<Mutex<StdinAnsiParser>>,
+    drained: Vec<u8>,
 ) {
-    // Drain any speculatively-buffered partial host-reply bytes (a
-    // lone trailing ESC, or an unterminated OSC/CSI prefix whose
-    // follow-up never arrived). They become keyboard residue — same
-    // path real keypress bytes take. Without this drain, a real Esc
-    // press whose byte was parked under partial_osc would be lost.
-    let drained = stdin_ansi_parser.lock().unwrap().finalize();
     if !drained.is_empty() {
         current_buffer.extend_from_slice(&drained);
     }
 
-    let mut events = vec![];
-    input_parser.parse(
+    let mut events: Vec<(InputEvent, usize)> = vec![];
+    input_parser.parse_with_consumed(
         &drained,
-        |input_event: InputEvent| {
-            events.push(input_event);
+        |input_event: InputEvent, consumed: usize| {
+            events.push((input_event, consumed));
         },
         false,
     );
-    // Residue contains no OSC or whitelisted CSI reports — every
-    // termwiz event drained on idle is a key/mouse/paste/etc.
-    for input_event in events {
+    for (input_event, consumed) in events {
+        let take = consumed.min(current_buffer.len());
+        let raw_bytes: Vec<u8> = current_buffer.drain(..take).collect();
         send_input_instructions
-            .send(InputInstruction::KeyEvent(
-                input_event,
-                current_buffer.drain(..).collect(),
-            ))
+            .send(InputInstruction::KeyEvent(input_event, raw_bytes))
             .unwrap();
+    }
+    realign_current_buffer(current_buffer, input_parser);
+}
+
+fn extract_focus_reports(residue: Vec<u8>) -> (Vec<u8>, Vec<bool>) {
+    const FOCUS_GAINED: &[u8] = b"\x1b[I";
+    const FOCUS_LOST: &[u8] = b"\x1b[O";
+    if residue.len() < FOCUS_GAINED.len() {
+        return (residue, vec![]);
+    }
+    let mut remaining = Vec::with_capacity(residue.len());
+    let mut focus_changes = vec![];
+    let mut index = 0;
+    while index < residue.len() {
+        let rest = &residue[index..];
+        if rest.starts_with(FOCUS_GAINED) {
+            focus_changes.push(true);
+            index += FOCUS_GAINED.len();
+        } else if rest.starts_with(FOCUS_LOST) {
+            focus_changes.push(false);
+            index += FOCUS_LOST.len();
+        } else {
+            remaining.push(residue[index]);
+            index += 1;
+        }
+    }
+    (remaining, focus_changes)
+}
+
+/// Trim `current_buffer` to the parser's own buffered length so it can
+/// never drift from the parser's internal state: a trailing incomplete
+/// sequence is held by the parser (and mirrored here) until the next
+/// read completes it, while bytes already decoded into events are dropped.
+fn realign_current_buffer(current_buffer: &mut Vec<u8>, input_parser: &InputParser) {
+    let buffered = input_parser.buffered_len();
+    let excess = current_buffer.len().saturating_sub(buffered);
+    if excess > 0 {
+        current_buffer.drain(..excess);
     }
 }
 
 /// Build the fire-and-forget host-query batch sent at client startup.
 /// The host's replies refine `Screen`'s cached state asynchronously as
 /// they arrive; the UI does not block on them.
-fn build_startup_query_string() -> String {
+fn build_startup_query_string(
+    support_kitty_graphics_protocol: bool,
+    query_host_theme: bool,
+) -> String {
     // <ESC>[14t => get text area size in pixels,
     // <ESC>[16t => get character cell size in pixels
     // <ESC>]11;?<ESC>\ => get background color
     // <ESC>]10;?<ESC>\ => get foreground color
     // <ESC>[?2026$p => get synchronised output mode
-    let mut query_string = String::from(
-        "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p",
-    );
-    // query colors
-    // eg. <ESC>]4;5;?<ESC>\ => query color register number 5
-    for i in 0..256 {
-        query_string.push_str(&format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
+    // <ESC>_Ga=q,...<ESC>\ => probe kitty graphics support (omitted when the
+    // protocol is disabled), answered by capable terminals only; the trailing
+    // Primary DA is the barrier that resolves the probe negatively when it
+    // goes unanswered
+    let kitty_graphics_probe = if support_kitty_graphics_protocol {
+        "\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}\u{1b}_Ga=q,i=32,s=4,v=4,t=d,f=24,o=z;eJxjYCANAAAAMAAB\u{1b}\u{5c}"
+    } else {
+        ""
+    };
+    let host_theme_query = if query_host_theme {
+        crate::QUERY_HOST_THEME
+    } else {
+        ""
+    };
+    format!(
+        "{}{}\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p{}{}\u{1b}[?2027$p\u{1b}[c",
+        host_theme_query, PIXEL_SIZE_QUERY, kitty_graphics_probe, PROGRAM_STATUS_QUERY
+    )
+}
+
+pub(crate) const PIXEL_SIZE_QUERY: &str = "\u{1b}[14t\u{1b}[16t";
+pub(crate) const PROGRAM_STATUS_QUERY: &str = "\u{1b}]7501;?\u{1b}\u{5c}";
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_startup_query_string, extract_focus_reports, realign_current_buffer, InputParser,
+        PIXEL_SIZE_QUERY,
+    };
+
+    #[test]
+    fn realign_after_lone_paste_start_empties_the_buffer() {
+        let mut parser = InputParser::new();
+        parser.parse_with_consumed(b"\x1b[200~", |_, _| {}, true);
+        let mut current_buffer = b"\x1b[200~".to_vec();
+        realign_current_buffer(&mut current_buffer, &parser);
+        assert!(
+            current_buffer.is_empty(),
+            "the silently consumed paste-start bytes must not linger: {:?}",
+            current_buffer
+        );
     }
-    query_string
+
+    #[test]
+    fn realign_drops_stale_bytes_from_the_front_and_keeps_the_pending_tail() {
+        let mut parser = InputParser::new();
+        parser.parse_with_consumed(b"\x1b[200~hel", |_, _| {}, true);
+        let mut current_buffer = b"\x1b[200~hel".to_vec();
+        realign_current_buffer(&mut current_buffer, &parser);
+        assert_eq!(
+            current_buffer, b"hel",
+            "the retained bytes must be the parser's pending tail, not the stale front"
+        );
+    }
+
+    #[test]
+    fn realign_is_a_no_op_when_nothing_was_consumed() {
+        let mut parser = InputParser::new();
+        parser.parse_with_consumed(b"\x1b[1;2", |_, _| {}, true);
+        let mut current_buffer = b"\x1b[1;2".to_vec();
+        realign_current_buffer(&mut current_buffer, &parser);
+        assert_eq!(current_buffer, b"\x1b[1;2");
+    }
+
+    #[test]
+    fn realign_tolerates_a_shorter_mirror_buffer() {
+        let mut parser = InputParser::new();
+        parser.parse_with_consumed(b"\x1b[1;2", |_, _| {}, true);
+        let mut current_buffer = b";2".to_vec();
+        realign_current_buffer(&mut current_buffer, &parser);
+        assert_eq!(current_buffer, b";2");
+    }
+
+    #[test]
+    fn pixel_size_query_probes_text_area_and_character_cell() {
+        assert_eq!(PIXEL_SIZE_QUERY, "\u{1b}[14t\u{1b}[16t");
+    }
+
+    #[test]
+    fn startup_query_has_no_palette_register_loop() {
+        let query = build_startup_query_string(true, false);
+        assert_eq!(
+            query,
+            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}\u{1b}_Ga=q,i=32,s=4,v=4,t=d,f=24,o=z;eJxjYCANAAAAMAAB\u{1b}\u{5c}\u{1b}]7501;?\u{1b}\u{5c}\u{1b}[?2027$p\u{1b}[c"
+        );
+        assert!(
+            !query.contains("\u{1b}]4;"),
+            "startup query must not contain OSC 4 palette-register probes: {:?}",
+            query
+        );
+    }
+
+    #[test]
+    fn focus_reports_are_extracted_from_the_byte_stream() {
+        let (residue, focus_changes) = extract_focus_reports(b"a\x1b[Ib\x1b[Oc".to_vec());
+        assert_eq!(residue, b"abc".to_vec());
+        assert_eq!(focus_changes, vec![true, false]);
+    }
+
+    #[test]
+    fn a_stream_without_focus_reports_is_left_untouched() {
+        let (residue, focus_changes) = extract_focus_reports(b"\x1b[A\x1b[B".to_vec());
+        assert_eq!(residue, b"\x1b[A\x1b[B".to_vec());
+        assert!(focus_changes.is_empty());
+    }
+
+    #[test]
+    fn startup_query_leads_with_the_host_theme_query_when_requested() {
+        let query = build_startup_query_string(false, true);
+        assert!(query.starts_with("\u{1b}[?996n\u{1b}[14t\u{1b}[16t"));
+        assert!(query.ends_with("\u{1b}[c"));
+    }
+
+    #[test]
+    fn startup_query_contains_kitty_probe_before_barrier() {
+        let query = build_startup_query_string(true, false);
+        assert!(query.contains("\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}"));
+        let probe_pos = query.find("\u{1b}_Ga=q,i=31,").unwrap();
+        let barrier_pos = query.find("\u{1b}[c").unwrap();
+        assert!(probe_pos < barrier_pos);
+    }
+
+    #[test]
+    fn startup_query_contains_zlib_probe_between_kitty_probe_and_barrier() {
+        let query = build_startup_query_string(true, false);
+        let probe_pos = query.find("\u{1b}_Ga=q,i=31,").unwrap();
+        let zlib_probe_pos = query
+            .find("\u{1b}_Ga=q,i=32,s=4,v=4,t=d,f=24,o=z;eJxjYCANAAAAMAAB\u{1b}\u{5c}")
+            .unwrap();
+        let barrier_pos = query.find("\u{1b}[c").unwrap();
+        assert!(probe_pos < zlib_probe_pos);
+        assert!(zlib_probe_pos < barrier_pos);
+    }
+
+    #[test]
+    fn startup_query_asks_for_grapheme_cluster_mode_right_before_the_barrier() {
+        for (kitty, theme) in [(true, true), (false, false)] {
+            let query = build_startup_query_string(kitty, theme);
+            assert!(query.ends_with("\u{1b}[?2027$p\u{1b}[c"), "{:?}", query);
+            assert_eq!(query.matches("\u{1b}[?2027$p").count(), 1);
+        }
+    }
+
+    #[test]
+    fn startup_query_omits_kitty_probe_when_the_protocol_is_disabled() {
+        let query = build_startup_query_string(false, false);
+        assert!(!query.contains("\u{1b}_G"));
+        assert!(query.ends_with("\u{1b}[c"));
+        assert!(query.starts_with("\u{1b}[14t\u{1b}[16t"));
+    }
 }

@@ -1,0 +1,63 @@
+size: 40x120
+cursor: row=6 col=0 visible shape=Default
+grid:
+|%                                                                                                                       |
+|➜  mosaic git:(mosaic#130) emacs                                                                                        |
+|%                                                                                                                       |
+|➜  mosaic git:(mosaic#130) emacs -nw                                                                                    |
+|%                                                                                                                       |
+|➜  mosaic git:(mosaic#130) exit                                                                                         |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 0: cols 0-0 fg=Foreground bg=Background flags=INVERSE|BOLD
+row 1: cols 0-2 fg=Green bg=Background flags=BOLD
+row 1: cols 3-8 fg=Cyan bg=Background flags=BOLD
+row 1: cols 10-14 fg=Blue bg=Background flags=BOLD
+row 1: cols 15-24 fg=Red bg=Background flags=BOLD
+row 1: cols 25-25 fg=Blue bg=Background flags=BOLD
+row 2: cols 0-0 fg=Foreground bg=Background flags=INVERSE|BOLD
+row 3: cols 0-2 fg=Green bg=Background flags=BOLD
+row 3: cols 3-8 fg=Cyan bg=Background flags=BOLD
+row 3: cols 10-14 fg=Blue bg=Background flags=BOLD
+row 3: cols 15-24 fg=Red bg=Background flags=BOLD
+row 3: cols 25-25 fg=Blue bg=Background flags=BOLD
+row 4: cols 0-0 fg=Foreground bg=Background flags=INVERSE|BOLD
+row 5: cols 0-2 fg=Green bg=Background flags=BOLD
+row 5: cols 3-8 fg=Cyan bg=Background flags=BOLD
+row 5: cols 10-14 fg=Blue bg=Background flags=BOLD
+row 5: cols 15-24 fg=Red bg=Background flags=BOLD
+row 5: cols 25-25 fg=Blue bg=Background flags=BOLD
+images:

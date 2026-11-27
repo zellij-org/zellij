@@ -1,229 +1,202 @@
-mod presets;
-mod presets_screen;
-mod rebind_leaders_screen;
+mod action_picker;
+mod bindings_list;
+mod blocks_screen;
+mod contrast;
+mod help;
+mod keybindings_screen;
+mod keys_screen;
+mod list_editor;
+mod mousebindings_screen;
+mod page;
+mod plugin_settings;
+mod settings;
+mod settings_screen;
+mod setup_screen;
+mod theme_preview;
+mod theme_sample;
+mod themes_screen;
 mod ui_components;
 
 use zellij_tile::prelude::*;
 
-use presets_screen::PresetsScreen;
-use rebind_leaders_screen::RebindLeadersScreen;
-use ui_components::top_tab_menu;
+use settings_screen::SettingsScreen;
+use setup_screen::SetupScreen;
+use ui_components::set_close_directly;
 
 use std::collections::BTreeMap;
 
-pub static UI_SIZE: usize = 15;
-pub static WIDTH_BREAKPOINTS: (usize, usize) = (62, 35);
-pub static POSSIBLE_MODIFIERS: [KeyModifier; 4] = [
-    KeyModifier::Ctrl,
-    KeyModifier::Alt,
-    KeyModifier::Super,
-    KeyModifier::Shift,
-];
-
-#[derive(Debug)]
 enum Screen {
-    RebindLeaders(RebindLeadersScreen),
-    Presets(PresetsScreen),
-}
-
-impl Screen {
-    pub fn reset_state(&mut self, is_setup_wizard: bool) {
-        if is_setup_wizard {
-            Screen::new_reset_keybindings_screen(Some(0));
-        } else {
-            match self {
-                Screen::RebindLeaders(r) => {
-                    let notification = r.drain_notification();
-                    *r = Default::default();
-                    r.set_notification(notification);
-                },
-                Screen::Presets(r) => {
-                    let notification = r.drain_notification();
-                    *r = Default::default();
-                    r.set_notification(notification);
-                },
-            }
-        }
-    }
-    pub fn update_mode_info(&mut self, latest_mode_info: ModeInfo) {
-        match self {
-            Screen::RebindLeaders(r) => r.update_mode_info(latest_mode_info),
-            Screen::Presets(r) => r.update_mode_info(latest_mode_info),
-        }
-    }
+    Loading,
+    SetupWizard(Box<SetupScreen>),
+    Settings(SettingsScreen),
 }
 
 impl Default for Screen {
     fn default() -> Self {
-        Screen::RebindLeaders(Default::default())
+        Screen::Loading
     }
 }
 
-impl Screen {
-    pub fn new_reset_keybindings_screen(selected_index: Option<usize>) -> Self {
-        Screen::Presets(PresetsScreen::new(selected_index))
-    }
-}
-
+#[derive(Default)]
 struct State {
-    notification: Option<String>,
-    is_setup_wizard: bool,
-    ui_size: usize,
-    current_screen: Screen,
-    latest_mode_info: Option<ModeInfo>,
-    colors: Styling,
+    screen: Screen,
 }
 
-impl Default for State {
-    fn default() -> Self {
-        State {
-            notification: None,
-            is_setup_wizard: false,
-            ui_size: UI_SIZE,
-            current_screen: Screen::default(),
-            latest_mode_info: None,
-            colors: Palette::default().into(),
-        }
-    }
-}
+const WIZARD_EVENTS: [EventType; 8] = [
+    EventType::Key,
+    EventType::Mouse,
+    EventType::Timer,
+    EventType::FailedToWriteConfigToDisk,
+    EventType::ConfigWasWrittenToDisk,
+    EventType::AvailableKeybindPresets,
+    EventType::DesktopIntegration,
+    EventType::PromptResult,
+];
 
 register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
-        self.is_setup_wizard = configuration
+        let is_setup_wizard = configuration
             .get("is_setup_wizard")
             .map(|v| v == "true")
             .unwrap_or(false);
-        subscribe(&[
-            EventType::Key,
-            EventType::FailedToWriteConfigToDisk,
-            EventType::ModeUpdate,
-        ]);
+        let rerun_setup = configuration
+            .get("rerun_setup")
+            .map(|v| v == "true")
+            .unwrap_or(false);
         let own_plugin_id = get_plugin_ids().plugin_id;
-        if self.is_setup_wizard {
-            self.ui_size = 18;
-            self.current_screen = Screen::new_reset_keybindings_screen(Some(0));
-            rename_plugin_pane(own_plugin_id, "First Run Setup Wizard (Step 1/1)");
+        if is_setup_wizard || rerun_setup {
+            subscribe(&WIZARD_EVENTS);
+            set_close_directly(true);
+            self.screen =
+                Screen::SetupWizard(Box::new(SetupScreen::new(is_setup_wizard, own_plugin_id)));
             resize_focused_pane(Resize::Increase);
             resize_focused_pane(Resize::Increase);
             resize_focused_pane(Resize::Increase);
         } else {
-            rename_plugin_pane(own_plugin_id, "Configuration");
+            subscribe(&[
+                EventType::Key,
+                EventType::Mouse,
+                EventType::Timer,
+                EventType::FailedToWriteConfigToDisk,
+                EventType::ConfigWasWrittenToDisk,
+                EventType::ConfigChangesDropped,
+                EventType::ModeUpdate,
+                EventType::AvailableKeybindPresets,
+                EventType::ConfigFileChangedSinceRead,
+                EventType::BeforeClose,
+                EventType::Visible,
+                EventType::PromptResult,
+                EventType::DesktopIntegration,
+                EventType::PluginSettingsEntries,
+            ]);
+            set_close_directly(false);
+            let mut settings_screen = SettingsScreen::new();
+            if let Some(page) = configuration
+                .get("page")
+                .and_then(|page| settings::Category::from_slug(page))
+            {
+                settings_screen.open_at(page);
+            }
+            self.screen = Screen::Settings(settings_screen);
+            rename_plugin_pane(own_plugin_id, "Settings");
+            if let Some(coordinates) = FloatingPaneCoordinates::new(
+                Some("10%".to_owned()),
+                Some("10%".to_owned()),
+                Some("80%".to_owned()),
+                Some("80%".to_owned()),
+                None,
+                None,
+            ) {
+                change_floating_panes_coordinates(vec![(
+                    PaneId::Plugin(own_plugin_id),
+                    coordinates,
+                )]);
+            }
         }
     }
     fn update(&mut self, event: Event) -> bool {
-        let mut should_render = false;
-        match event {
-            Event::ModeUpdate(mode_info) => {
-                self.colors = mode_info.style.colors;
-                if self.latest_mode_info.as_ref().and_then(|l| l.base_mode) != mode_info.base_mode {
-                    // reset ui state
-                    self.current_screen.reset_state(self.is_setup_wizard);
-                }
-                self.latest_mode_info = Some(mode_info.clone());
-                self.current_screen.update_mode_info(mode_info.clone());
-                should_render = true;
+        let should_render = match &mut self.screen {
+            Screen::Loading => false,
+            Screen::SetupWizard(setup) => match event {
+                Event::AvailableKeybindPresets(presets, errors) => {
+                    setup.keys_mut().set_presets(presets, errors);
+                    true
+                },
+                Event::DesktopIntegration(payload) => setup.desktop_integration(payload),
+                Event::PromptResult(request_id, result) => setup.prompt_result(request_id, result),
+                Event::Key(key) => setup.handle_key(key),
+                Event::Mouse(mouse) => setup.handle_mouse(mouse),
+                Event::Timer(_) => setup.handle_timer(),
+                Event::ConfigWasWrittenToDisk => setup.config_written(),
+                Event::FailedToWriteConfigToDisk(config_file_path) => {
+                    setup.config_write_failed(config_file_path)
+                },
+                _ => false,
             },
-            Event::Key(key) => {
-                if self.notification.is_some() {
-                    self.notification = None;
-                    should_render = true;
-                } else if key.bare_key == BareKey::Tab
-                    && key.has_no_modifiers()
-                    && !self.is_setup_wizard
-                {
-                    self.switch_screen();
-                    should_render = true;
-                } else {
-                    should_render = match &mut self.current_screen {
-                        Screen::RebindLeaders(rebind_leaders_screen) => {
-                            rebind_leaders_screen.handle_key(key)
-                        },
-                        Screen::Presets(presets_screen) => {
-                            if self.is_setup_wizard {
-                                presets_screen.handle_setup_wizard_key(key)
-                            } else {
-                                presets_screen.handle_presets_key(key)
-                            }
-                        },
-                    };
-                }
+            Screen::Settings(settings_screen) => match event {
+                Event::ModeUpdate(mode_info) => {
+                    settings_screen.update_mode_info(mode_info);
+                    true
+                },
+                Event::Key(key) => settings_screen.handle_key(key),
+                Event::Mouse(mouse) => settings_screen.handle_mouse(mouse),
+                Event::Timer(_) => settings_screen.handle_timer(),
+                Event::ConfigWasWrittenToDisk => {
+                    settings_screen.config_written();
+                    true
+                },
+                Event::FailedToWriteConfigToDisk(config_file_path) => {
+                    settings_screen.config_write_failed(config_file_path);
+                    true
+                },
+                Event::ConfigChangesDropped(dropped) => {
+                    settings_screen.changes_dropped(dropped);
+                    true
+                },
+                Event::AvailableKeybindPresets(presets, errors) => {
+                    settings_screen.update_keybind_presets(presets, errors);
+                    true
+                },
+                Event::PluginSettingsEntries(entries) => {
+                    settings_screen.update_plugin_settings_entries(entries);
+                    true
+                },
+                Event::ConfigFileChangedSinceRead => {
+                    settings_screen.config_file_changed_since_read();
+                    true
+                },
+                Event::PromptResult(request_id, result) => {
+                    settings_screen.prompt_result(request_id, result)
+                },
+                Event::BeforeClose => {
+                    settings_screen.before_close();
+                    false
+                },
+                Event::Visible(false) => {
+                    settings_screen.hidden();
+                    true
+                },
+                _ => false,
             },
-            Event::FailedToWriteConfigToDisk(config_file_path) => {
-                match config_file_path {
-                    Some(failed_path) => {
-                        self.notification = Some(format!(
-                            "Failed to write configuration file: {}",
-                            failed_path
-                        ));
-                    },
-                    None => {
-                        self.notification = Some(format!("Failed to write configuration file."));
-                    },
-                }
-                should_render = true;
-            },
-            _ => (),
         };
+        if let Screen::Settings(settings_screen) = &mut self.screen {
+            if settings_screen.take_setup_request() {
+                set_close_directly(true);
+                let own_plugin_id = get_plugin_ids().plugin_id;
+                self.screen = Screen::SetupWizard(Box::new(SetupScreen::new(false, own_plugin_id)));
+                return true;
+            }
+        }
         should_render
     }
     fn render(&mut self, rows: usize, cols: usize) {
-        let notification = self.notification.clone();
-        if self.is_in_main_screen() {
-            top_tab_menu(cols, &self.current_screen, &self.colors);
-        }
-        match &mut self.current_screen {
-            Screen::RebindLeaders(rebind_leaders_screen) => {
-                rebind_leaders_screen.render(rows, cols, self.ui_size, &notification);
-            },
-            Screen::Presets(presets_screen) => {
-                if self.is_setup_wizard {
-                    presets_screen.render_setup_wizard_screen(
-                        rows,
-                        cols,
-                        self.ui_size,
-                        &notification,
-                    )
-                } else {
-                    presets_screen.render_reset_keybindings_screen(
-                        rows,
-                        cols,
-                        self.ui_size,
-                        &notification,
-                    )
-                }
-            },
-        };
-    }
-}
-
-impl State {
-    fn is_in_main_screen(&self) -> bool {
-        match &self.current_screen {
-            Screen::RebindLeaders(_) => true,
-            Screen::Presets(presets_screen) => {
-                if self.is_setup_wizard || presets_screen.rebinding_leaders() {
-                    false
-                } else {
-                    true
-                }
-            },
-        }
-    }
-    fn switch_screen(&mut self) {
-        match &self.current_screen {
-            Screen::RebindLeaders(_) => {
-                self.current_screen = Screen::Presets(Default::default());
-            },
-            Screen::Presets(_) => {
-                self.current_screen = Screen::RebindLeaders(
-                    RebindLeadersScreen::default().with_mode_info(self.latest_mode_info.clone()),
-                );
-            },
-        }
-        if let Some(mode_info) = &self.latest_mode_info {
-            self.current_screen.update_mode_info(mode_info.clone());
+        page::clear_overlays();
+        match &mut self.screen {
+            Screen::Loading => {},
+            Screen::SetupWizard(setup) => setup.render(rows, cols),
+            Screen::Settings(settings_screen) => settings_screen.render(rows, cols),
         }
     }
 }

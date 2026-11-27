@@ -28,6 +28,7 @@ mod mock_server {
         pub valid_auth_tokens: Arc<Mutex<HashMap<String, ()>>>,
         pub session_tokens: Arc<Mutex<HashMap<String, String>>>, // token -> web_client_id
         pub endpoints_called: Arc<Mutex<Vec<String>>>,
+        pub query_strings: Arc<Mutex<HashMap<String, String>>>,
     }
 
     impl MockRemoteServerState {
@@ -36,7 +37,19 @@ mod mock_server {
                 valid_auth_tokens: Arc::new(Mutex::new(HashMap::new())),
                 session_tokens: Arc::new(Mutex::new(HashMap::new())),
                 endpoints_called: Arc::new(Mutex::new(Vec::new())),
+                query_strings: Arc::new(Mutex::new(HashMap::new())),
             }
+        }
+
+        fn record_query(&self, endpoint: &str, query: Option<&str>) {
+            self.query_strings
+                .lock()
+                .unwrap()
+                .insert(endpoint.to_string(), query.unwrap_or("").to_string());
+        }
+
+        pub fn get_query_string(&self, endpoint: &str) -> Option<String> {
+            self.query_strings.lock().unwrap().get(endpoint).cloned()
         }
 
         pub fn add_valid_token(&self, token: &str) {
@@ -103,9 +116,11 @@ mod mock_server {
 
     pub async fn handle_session(
         State(state): State<MockRemoteServerState>,
+        uri: axum::http::Uri,
         jar: CookieJar,
     ) -> Result<Json<serde_json::Value>, StatusCode> {
         state.record_endpoint("/session");
+        state.record_query("/session", uri.query());
 
         let session_token = jar
             .get("session_token")
@@ -120,16 +135,26 @@ mod mock_server {
         drop(session_tokens);
 
         Ok(Json(json!({
-            "web_client_id": web_client_id
+            "web_client_id": web_client_id,
+            "is_read_only": false,
+            "session_name": "session-name",
+            "config": {
+                "font": "Monospace",
+                "theme": {},
+                "cursor_blink": false,
+                "mac_option_is_meta": false
+            }
         })))
     }
 
     pub async fn handle_ws_terminal(
         ws: axum::extract::ws::WebSocketUpgrade,
         State(state): State<MockRemoteServerState>,
+        uri: axum::http::Uri,
         jar: CookieJar,
     ) -> Result<Response, StatusCode> {
         state.record_endpoint("/ws/terminal");
+        state.record_query("/ws/terminal", uri.query());
 
         // Validate session token
         let session_token = jar
@@ -160,9 +185,11 @@ mod mock_server {
     pub async fn handle_ws_control(
         ws: axum::extract::ws::WebSocketUpgrade,
         State(state): State<MockRemoteServerState>,
+        uri: axum::http::Uri,
         jar: CookieJar,
     ) -> Result<Response, StatusCode> {
         state.record_endpoint("/ws/control");
+        state.record_query("/ws/control", uri.query());
 
         // Validate session token
         let session_token = jar
@@ -222,6 +249,7 @@ mod tls_mock_server {
     use axum::Router;
     use axum_server::tls_rustls::RustlsConfig;
     use axum_server::Handle;
+    use std::net::SocketAddr;
     use std::path::PathBuf;
     use std::time::Duration;
 
@@ -252,7 +280,8 @@ mod tls_mock_server {
         ))];
         server_params.extended_key_usages = vec![rcgen::ExtendedKeyUsagePurpose::ServerAuth];
         let server_key = rcgen::KeyPair::generate().unwrap();
-        let server_cert = server_params.signed_by(&server_key, &ca, &ca_key).unwrap();
+        let ca_issuer = rcgen::Issuer::from_params(&ca_params, &ca_key);
+        let server_cert = server_params.signed_by(&server_key, &ca_issuer).unwrap();
 
         // Write to temp files
         let ca_cert_file = tempfile::NamedTempFile::new().unwrap();
@@ -277,7 +306,7 @@ mod tls_mock_server {
     pub async fn start_tls_mock_server(
         state: MockRemoteServerState,
         certs: &TlsTestCerts,
-    ) -> (u16, Handle, tokio::task::JoinHandle<()>) {
+    ) -> (u16, Handle<SocketAddr>, tokio::task::JoinHandle<()>) {
         let app = Router::new()
             .route("/command/login", post(super::mock_server::handle_login))
             .route("/session", post(super::mock_server::handle_session))
@@ -296,6 +325,9 @@ mod tls_mock_server {
 
         let listener =
             std::net::TcpListener::bind("127.0.0.1:0").expect("Failed to bind test TLS server");
+        listener
+            .set_nonblocking(true)
+            .expect("Failed to set test TLS server listener to non-blocking");
         let port = listener.local_addr().unwrap().port();
 
         let handle = Handle::new();
@@ -303,6 +335,7 @@ mod tls_mock_server {
 
         let server_task = tokio::spawn(async move {
             axum_server::from_tcp_rustls(listener, rustls_config)
+                .unwrap()
                 .handle(server_handle)
                 .serve(app.into_make_service())
                 .await
@@ -315,7 +348,10 @@ mod tls_mock_server {
         (port, handle, server_task)
     }
 
-    pub async fn shutdown_server(handle: Handle, server_task: tokio::task::JoinHandle<()>) {
+    pub async fn shutdown_server(
+        handle: Handle<SocketAddr>,
+        server_task: tokio::task::JoinHandle<()>,
+    ) {
         handle.graceful_shutdown(Some(Duration::from_secs(1)));
         let _ = server_task.await;
     }
@@ -328,73 +364,6 @@ fn setup_test_db(server_url: &str) {
 
 fn cleanup_test_db(server_url: &str) {
     let _ = remote_session_tokens::delete_session_token(server_url);
-}
-
-// Mock ClientOsApi for testing
-#[derive(Debug, Clone)]
-struct MockClientOsApi;
-
-impl crate::os_input_output::ClientOsApi for MockClientOsApi {
-    fn get_terminal_size(&self) -> zellij_utils::pane_size::Size {
-        zellij_utils::pane_size::Size { rows: 24, cols: 80 }
-    }
-
-    fn set_raw_mode(&mut self) {}
-
-    fn unset_raw_mode(&self) -> Result<(), std::io::Error> {
-        Ok(())
-    }
-
-    fn box_clone(&self) -> Box<dyn crate::os_input_output::ClientOsApi> {
-        Box::new(MockClientOsApi)
-    }
-
-    fn read_from_stdin(&mut self) -> Result<Vec<u8>, &'static str> {
-        Ok(Vec::new())
-    }
-
-    fn get_stdin_reader(&self) -> Box<dyn std::io::BufRead> {
-        Box::new(std::io::BufReader::new(std::io::empty()))
-    }
-
-    fn get_stdout_writer(&self) -> Box<dyn std::io::Write> {
-        Box::new(std::io::sink())
-    }
-
-    fn update_session_name(&mut self, _new_session_name: String) {}
-
-    fn send_to_server(&self, _msg: zellij_utils::ipc::ClientToServerMsg) {}
-
-    fn recv_from_server(
-        &self,
-    ) -> Option<(
-        zellij_utils::ipc::ServerToClientMsg,
-        zellij_utils::errors::ErrorContext,
-    )> {
-        None
-    }
-
-    fn handle_signals(
-        &self,
-        _sigwinch_cb: Box<dyn Fn()>,
-        _quit_cb: Box<dyn Fn()>,
-        _resize_receiver: Option<std::sync::mpsc::Receiver<()>>,
-    ) {
-    }
-
-    fn connect_to_server(&self, _path: &std::path::Path) {}
-
-    fn load_palette(&self) -> zellij_utils::data::Palette {
-        zellij_utils::shared::default_palette()
-    }
-
-    fn enable_mouse(&self) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn disable_mouse(&self) -> anyhow::Result<()> {
-        Ok(())
-    }
 }
 
 // Tests
@@ -412,16 +381,16 @@ mod tests {
     ) -> Result<WebSocketConnections, RemoteClientError> {
         tokio::task::spawn_blocking(move || {
             let runtime = crate::async_runtime(None);
-            let os_input: Box<dyn crate::os_input_output::ClientOsApi> = Box::new(MockClientOsApi);
             attach_to_remote_session(
                 runtime,
-                os_input,
                 &remote_session_url,
                 token,
                 remember,
                 forget,
                 None,
                 true, // insecure for tests
+                crate::remote_attach::ClientDeclaration::default(),
+                crate::remote_attach::Prompting::Interactive,
             )
         })
         .await
@@ -466,6 +435,34 @@ mod tests {
         assert!(
             endpoints.contains(&"/ws/control".to_string()),
             "Should establish control WebSocket"
+        );
+
+        let session_query = server_state
+            .get_query_string("/session")
+            .expect("session endpoint query recorded");
+        assert_eq!(
+            session_query, "session=session-name",
+            "session endpoint must carry the requested session name"
+        );
+
+        let terminal_query = server_state
+            .get_query_string("/ws/terminal")
+            .expect("terminal socket query recorded");
+        assert!(
+            terminal_query.contains("web_client_id=")
+                && terminal_query.contains("rows=")
+                && terminal_query.contains("cols="),
+            "terminal socket must carry the local terminal size, got: {}",
+            terminal_query
+        );
+
+        let control_query = server_state
+            .get_query_string("/ws/control")
+            .expect("control socket query recorded");
+        assert!(
+            control_query.contains("web_client_id="),
+            "control socket must carry the web_client_id, got: {}",
+            control_query
         );
 
         server_handle.abort();
@@ -830,6 +827,7 @@ mod tests {
                 "test-session",
                 None,
                 true, // insecure — exercises NoVerifier
+                websockets::ClientDeclaration::default(),
             ),
         )
         .await
@@ -874,6 +872,7 @@ mod tests {
                 "test-session",
                 Some(certs.ca_cert_path.as_path()),
                 false, // not insecure — verify against CA cert
+                websockets::ClientDeclaration::default(),
             ),
         )
         .await
@@ -918,6 +917,7 @@ mod tests {
                 "test-session",
                 None,  // no CA cert
                 false, // not insecure — should reject self-signed
+                websockets::ClientDeclaration::default(),
             ),
         )
         .await

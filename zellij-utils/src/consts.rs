@@ -15,27 +15,47 @@ pub const DEFAULT_SCROLL_BUFFER_SIZE: usize = 10_000;
 pub static SCROLL_BUFFER_SIZE: OnceLock<usize> = OnceLock::new();
 pub static DEBUG_MODE: OnceLock<bool> = OnceLock::new();
 
+/// System-wide configuration directory, named after the running distribution
+/// (`/etc/zellij`, `C:\ProgramData\Zellij`)
 #[cfg(not(windows))]
-pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "/etc/zellij";
+pub fn system_default_config_dir() -> PathBuf {
+    PathBuf::from("/etc").join(crate::distribution::name())
+}
+
 #[cfg(windows)]
-pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "C:\\ProgramData\\Zellij";
+pub fn system_default_config_dir() -> PathBuf {
+    PathBuf::from("C:\\ProgramData").join(crate::distribution::display_name())
+}
+
 pub const SYSTEM_DEFAULT_DATA_DIR_PREFIX: &str = system_default_data_dir();
 
 pub static ZELLIJ_DEFAULT_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets/themes");
 
+pub const DEFAULT_THEME_NAME: &str = "default";
+pub const DEFAULT_LIGHT_THEME_NAME: &str = "default-light";
+
 pub const CLIENT_SERVER_CONTRACT_VERSION: usize = 1;
 
-pub fn session_info_cache_file_name(session_name: &str) -> PathBuf {
-    session_info_folder_for_session(session_name).join("session-metadata.kdl")
+// The session-info cache is keyed by session id (a short random id for new sessions,
+// or the session name for sessions from before ids), NOT the user-visible
+// display name — so renaming a session never moves its cache folder.
+pub fn session_info_cache_file_name(session_id: &str) -> PathBuf {
+    session_info_folder_for_session(session_id).join("session-metadata.kdl")
 }
 
-pub fn session_layout_cache_file_name(session_name: &str) -> PathBuf {
-    session_info_folder_for_session(session_name).join("session-layout.kdl")
+pub fn session_layout_cache_file_name(session_id: &str) -> PathBuf {
+    session_info_folder_for_session(session_id).join("session-layout.kdl")
 }
 
-pub fn session_info_folder_for_session(session_name: &str) -> PathBuf {
-    ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_name)
+pub fn session_info_folder_for_session(session_id: &str) -> PathBuf {
+    ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_id)
 }
+
+/// Length of a generated session id (hex chars). Kept short so the socket/pipe
+/// path stays within the platform limit (104 bytes on macOS) even under a long
+/// temp dir — a full 36-char UUID would overflow it. The client checks the socket
+/// directory against this length at startup. See `generate_session_id`.
+pub const SESSION_ID_LENGTH: usize = 12;
 
 pub fn create_config_and_cache_folders() {
     if let Err(e) = std::fs::create_dir_all(&ZELLIJ_CACHE_DIR.as_path()) {
@@ -90,11 +110,18 @@ lazy_static! {
     pub static ref CLIENT_SERVER_CONTRACT_DIR: String =
         format!("contract_version_{}", CLIENT_SERVER_CONTRACT_VERSION);
     pub static ref ZELLIJ_PROJ_DIR: ProjectDirs = {
-        if cfg!(windows) {
-            ProjectDirs::from("", "", "Zellij").unwrap()
-        } else {
-            ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap()
-        }
+        let (qualifier, organization, application) =
+            crate::distribution::distribution().project_dirs();
+        ProjectDirs::from(qualifier, organization, application).unwrap_or_else(|| {
+            panic!(
+                "could not determine the platform directories for distribution '{}' \
+                 (qualifier: {:?}, organization: {:?}, application: {:?})",
+                crate::distribution::name(),
+                qualifier,
+                organization,
+                application
+            )
+        })
     };
     pub static ref ZELLIJ_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR.cache_dir().to_path_buf();
     pub static ref ZELLIJ_SESSION_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR
@@ -116,71 +143,6 @@ pub const FEATURES: &[&str] = &[
     "disable_automatic_asset_installation",
 ];
 
-#[cfg(not(target_family = "wasm"))]
-pub use not_wasm::*;
-
-#[cfg(not(target_family = "wasm"))]
-mod not_wasm {
-    use lazy_static::lazy_static;
-    use std::collections::HashMap;
-    use std::path::PathBuf;
-
-    // Convenience macro to add plugins to the asset map (see `ASSET_MAP`)
-    //
-    // Plugins are taken from:
-    //
-    // - `zellij-utils/assets/plugins`: When building in release mode OR when the
-    //   `plugins_from_target` feature IS NOT set
-    // - `zellij-utils/../target/wasm32-wasip1/debug`: When building in debug mode AND the
-    //   `plugins_from_target` feature IS set
-    macro_rules! add_plugin {
-        ($assets:expr, $plugin:literal) => {
-            $assets.insert(
-                PathBuf::from("plugins").join($plugin),
-                #[cfg(any(not(feature = "plugins_from_target"), not(debug_assertions)))]
-                include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/assets/plugins/",
-                    $plugin
-                ))
-                .to_vec(),
-                #[cfg(all(feature = "plugins_from_target", debug_assertions))]
-                include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/../target/wasm32-wasip1/debug/",
-                    $plugin
-                ))
-                .to_vec(),
-            );
-        };
-    }
-
-    lazy_static! {
-        // Zellij asset map
-        pub static ref ASSET_MAP: HashMap<PathBuf, Vec<u8>> = {
-            let mut assets = std::collections::HashMap::new();
-            add_plugin!(assets, "compact-bar.wasm");
-            add_plugin!(assets, "status-bar.wasm");
-            add_plugin!(assets, "tab-bar.wasm");
-            add_plugin!(assets, "strider.wasm");
-            add_plugin!(assets, "session-manager.wasm");
-            add_plugin!(assets, "configuration.wasm");
-            add_plugin!(assets, "plugin-manager.wasm");
-            add_plugin!(assets, "about.wasm");
-            add_plugin!(assets, "share.wasm");
-            add_plugin!(assets, "multiple-select.wasm");
-            add_plugin!(assets, "layout-manager.wasm");
-            add_plugin!(assets, "link.wasm");
-            assets
-        };
-    }
-}
-
-/// Check if a filesystem entry is an IPC socket.
-///
-/// On Unix, this checks `FileTypeExt::is_socket()`. On non-Unix platforms,
-/// this checks `is_file()` to detect marker files created by `ipc_bind()`
-/// and `ipc_bind_async()` alongside kernel-level named pipes.
 #[cfg(unix)]
 pub fn is_ipc_socket(file_type: &std::fs::FileType) -> bool {
     use std::os::unix::fs::FileTypeExt;
@@ -192,10 +154,6 @@ pub fn is_ipc_socket(file_type: &std::fs::FileType) -> bool {
     file_type.is_file()
 }
 
-/// Connect to an IPC socket at the given path.
-///
-/// On Unix, this uses Unix domain sockets via `GenericFilePath`.
-/// On Windows, this uses named pipes via `GenericNamespaced`.
 #[cfg(unix)]
 pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Stream> {
     use interprocess::local_socket::{prelude::*, GenericFilePath, Stream as LocalSocketStream};
@@ -208,14 +166,11 @@ pub fn ipc_connect(path: &std::path::Path) -> std::io::Result<interprocess::loca
     use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    LocalSocketStream::connect(ns_name)
+    let stream = LocalSocketStream::connect(ns_name)?;
+    crate::pipe_access::check_owner(&stream)?;
+    Ok(stream)
 }
 
-/// Create an IPC listener bound to the given path.
-///
-/// On Unix, this uses Unix domain sockets via `GenericFilePath`.
-/// On Windows, this uses named pipes via `GenericNamespaced` and creates
-/// a marker file for session discovery.
 #[cfg(unix)]
 pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Listener> {
     use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
@@ -226,18 +181,17 @@ pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_s
 #[cfg(windows)]
 pub fn ipc_bind(path: &std::path::Path) -> std::io::Result<interprocess::local_socket::Listener> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    use interprocess::os::windows::local_socket::ListenerOptionsExt;
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    let listener = ListenerOptions::new().name(ns_name).create_sync()?;
+    let listener = ListenerOptions::new()
+        .name(ns_name)
+        .security_descriptor(crate::pipe_access::private_descriptor()?)
+        .create_sync()?;
     std::fs::write(path, std::process::id().to_string())?;
     Ok(listener)
 }
 
-/// Create an async (tokio) IPC listener bound to the given path.
-///
-/// On Unix, this uses Unix domain sockets via `GenericFilePath`.
-/// On Windows, this uses named pipes via `GenericNamespaced` and creates
-/// a marker file for session discovery.
 #[cfg(unix)]
 pub fn ipc_bind_async(
     path: &std::path::Path,
@@ -252,16 +206,17 @@ pub fn ipc_bind_async(
     path: &std::path::Path,
 ) -> std::io::Result<interprocess::local_socket::tokio::Listener> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    use interprocess::os::windows::local_socket::ListenerOptionsExt;
     let name = path.to_string_lossy().to_string();
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    let listener = ListenerOptions::new().name(ns_name).create_tokio()?;
+    let listener = ListenerOptions::new()
+        .name(ns_name)
+        .security_descriptor(crate::pipe_access::private_descriptor()?)
+        .create_tokio()?;
     std::fs::write(path, std::process::id().to_string())?;
     Ok(listener)
 }
 
-/// Connect to the reply pipe for a given IPC path (Windows only).
-///
-/// Uses `path-reply` as the named pipe for the server→client direction.
 #[cfg(windows)]
 pub fn ipc_connect_reply(
     path: &std::path::Path,
@@ -269,20 +224,87 @@ pub fn ipc_connect_reply(
     use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream as LocalSocketStream};
     let name = format!("{}-reply", path.to_string_lossy());
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    LocalSocketStream::connect(ns_name)
+    let stream = LocalSocketStream::connect(ns_name)?;
+    crate::pipe_access::check_owner(&stream)?;
+    Ok(stream)
 }
 
-/// Create an IPC listener for the reply pipe (Windows only).
-///
-/// Binds to `path-reply` as the named pipe for the server→client direction.
 #[cfg(windows)]
 pub fn ipc_bind_reply(
     path: &std::path::Path,
 ) -> std::io::Result<interprocess::local_socket::Listener> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions};
+    use interprocess::os::windows::local_socket::ListenerOptionsExt;
     let name = format!("{}-reply", path.to_string_lossy());
     let ns_name = name.to_ns_name::<GenericNamespaced>()?;
-    ListenerOptions::new().name(ns_name).create_sync()
+    ListenerOptions::new()
+        .name(ns_name)
+        .security_descriptor(crate::pipe_access::private_descriptor()?)
+        .create_sync()
+}
+
+// Kept short: macOS limits socket paths to 104 bytes, and the temp dir already uses about half.
+pub const APP_DIR_NAME: &str = ".desk";
+pub const APP_CONTROL_SOCKET_NAME: &str = "control";
+pub const APP_ATTENTION_SOCKET_NAME: &str = "attention";
+pub const APP_LOCK_FILE_NAME: &str = "lock";
+pub const APP_PANEL_SESSION: &str = ".zj-panel";
+pub const APP_QUIT_REQUEST: &str = ".zellij-app-quit";
+
+pub fn is_app_socket_name(name: &str) -> bool {
+    name.starts_with('.')
+}
+
+pub fn app_dir_in(sock_dir: &std::path::Path) -> PathBuf {
+    sock_dir.join(APP_DIR_NAME)
+}
+
+pub fn app_dir() -> PathBuf {
+    app_dir_in(&ZELLIJ_SOCK_DIR)
+}
+
+pub fn app_control_socket() -> PathBuf {
+    app_dir().join(APP_CONTROL_SOCKET_NAME)
+}
+
+pub fn app_attention_socket() -> PathBuf {
+    app_dir().join(APP_ATTENTION_SOCKET_NAME)
+}
+
+pub fn app_lock_file() -> PathBuf {
+    app_dir().join(APP_LOCK_FILE_NAME)
+}
+
+pub fn session_socket_path_in(sock_dir: &std::path::Path, session_name: &str) -> PathBuf {
+    if session_name == APP_PANEL_SESSION {
+        app_dir_in(sock_dir).join(session_name)
+    } else {
+        sock_dir.join(session_name)
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub fn session_socket_path(session_name: &str) -> PathBuf {
+    crate::sessions::resolve_session_socket_path(session_name)
+        .unwrap_or_else(|| session_socket_path_in(&ZELLIJ_SOCK_DIR, session_name))
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub fn new_session_socket_path_in(sock_dir: &std::path::Path, session_name: &str) -> PathBuf {
+    if is_app_socket_name(session_name) {
+        session_socket_path_in(sock_dir, session_name)
+    } else {
+        sock_dir.join(crate::sessions::register_session(session_name))
+    }
+}
+
+pub fn session_id_socket_path(session_id: &str) -> PathBuf {
+    session_socket_path_in(&ZELLIJ_SOCK_DIR, session_id)
+}
+
+pub fn prepare_private_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    crate::shared::set_permissions(dir, 0o700)
 }
 
 #[cfg(unix)]
@@ -297,22 +319,27 @@ mod unix_only {
     use nix::unistd::Uid;
     use std::env::temp_dir;
 
-    // Maximum length of a Unix domain socket path (from sockaddr_un.sun_path).
-    // macOS (and other BSDs) use 104, Linux/Android/Solaris use 108.
-    // The not(target_os = "macos") fallback of 108 is used for all other Unix
-    // platforms — this is correct for Linux/Android/Solaris and only 4 bytes
-    // over for BSDs, which would cause a slightly late error rather than a
-    // missed one.
+    // Maximum sockaddr_un.sun_path length: 104 on macOS/BSD, 108 on Linux/Android/Solaris.
     #[cfg(target_os = "macos")]
     pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 104;
     #[cfg(not(target_os = "macos"))]
     pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 108;
 
+    pub const SOCKET_PATH_LENGTH_UNIT: &str = "bytes";
+
+    /// A socket path's length as `ZELLIJ_SOCK_MAX_LENGTH` counts it.
+    pub fn socket_path_length(path: &std::path::Path) -> usize {
+        path.as_os_str().len()
+    }
+
     lazy_static! {
         static ref UID: Uid = Uid::current();
-        pub static ref ZELLIJ_TMP_DIR: PathBuf = temp_dir().join(format!("zellij-{}", *UID));
-        pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
-        pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
+        pub static ref ZELLIJ_TMP_DIR: PathBuf =
+            temp_dir().join(format!("{}-{}", crate::distribution::name(), *UID));
+        pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf =
+            ZELLIJ_TMP_DIR.join(format!("{}-log", crate::distribution::name()));
+        pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf =
+            ZELLIJ_TMP_LOG_DIR.join(format!("{}.log", crate::distribution::name()));
         pub static ref ZELLIJ_SOCK_DIR: PathBuf = {
             let mut ipc_dir = envs::get_socket_dir().map_or_else(
                 |_| {
@@ -352,15 +379,34 @@ mod not_unix {
         path
     }
 
-    pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 256;
+    // A pipe's whole name, `\\.\pipe\` + the socket path + `-reply`, must fit in MAX_PATH (260
+    // UTF-16 units with its NUL), since Zellij isn't long-path aware.
+    pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 260 - r"\\.\pipe\".len() - "-reply".len();
+
+    pub const SOCKET_PATH_LENGTH_UNIT: &str = "characters";
+
+    /// A socket path's length as `ZELLIJ_SOCK_MAX_LENGTH` counts it: in UTF-16 units, as Windows
+    /// counts a pipe name.
+    #[cfg(windows)]
+    pub fn socket_path_length(path: &std::path::Path) -> usize {
+        use std::os::windows::ffi::OsStrExt;
+        path.as_os_str().encode_wide().count()
+    }
+
+    #[cfg(not(windows))]
+    pub fn socket_path_length(path: &std::path::Path) -> usize {
+        path.as_os_str().len()
+    }
 
     lazy_static! {
         pub static ref ZELLIJ_TMP_DIR: PathBuf = {
             let tmp_dir = canonicalize_path(temp_dir());
-            tmp_dir.join("zellij")
+            tmp_dir.join(crate::distribution::name())
         };
-        pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
-        pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
+        pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf =
+            ZELLIJ_TMP_DIR.join(format!("{}-log", crate::distribution::name()));
+        pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf =
+            ZELLIJ_TMP_LOG_DIR.join(format!("{}.log", crate::distribution::name()));
         pub static ref ZELLIJ_SOCK_DIR: PathBuf = {
             let mut ipc_dir = canonicalize_path(envs::get_socket_dir().map_or_else(
                 |_| {
@@ -374,5 +420,100 @@ mod not_unix {
             ipc_dir
         };
         pub static ref WEBSERVER_SOCKET_PATH: PathBuf = ZELLIJ_SOCK_DIR.join("web_server_bus");
+    }
+}
+
+#[cfg(test)]
+mod app_dir_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn every_desktop_app_socket_fits_the_macos_limit_with_room_to_spare() {
+        const MACOS_SOCKET_PATH_LIMIT: usize = 104;
+        // Leaves room for a longer uid and contract version than we have today.
+        let sock_dir = Path::new(
+            "/var/folders/g_/w_mkp3kj0jnbzm398bln58rm0000gn/T/zellij-50100/contract_version_100",
+        );
+        let app = app_dir_in(sock_dir);
+        for path in [
+            session_socket_path_in(sock_dir, APP_PANEL_SESSION),
+            app.join(APP_CONTROL_SOCKET_NAME),
+            app.join(APP_ATTENTION_SOCKET_NAME),
+            app.join("windows").join("99999"),
+        ] {
+            let length = path.as_os_str().len();
+            assert!(
+                length < MACOS_SOCKET_PATH_LIMIT,
+                "{:?} is {} bytes",
+                path,
+                length
+            );
+        }
+    }
+
+    #[test]
+    fn the_desktop_app_files_and_its_panel_session_live_in_their_own_folder() {
+        let sock_dir = Path::new("/run/zellij/contract_version_1");
+        let app = sock_dir.join(APP_DIR_NAME);
+        assert_eq!(app_dir_in(sock_dir), app);
+        assert_eq!(
+            session_socket_path_in(sock_dir, APP_PANEL_SESSION),
+            app.join(APP_PANEL_SESSION)
+        );
+        assert_eq!(
+            session_socket_path_in(sock_dir, "api"),
+            sock_dir.join("api")
+        );
+        for name in [
+            APP_CONTROL_SOCKET_NAME,
+            APP_ATTENTION_SOCKET_NAME,
+            APP_LOCK_FILE_NAME,
+        ] {
+            assert!(!name.contains('/'));
+        }
+    }
+
+    #[test]
+    fn a_session_listing_that_keeps_only_sockets_never_sees_the_app_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        prepare_private_dir(&app_dir_in(dir.path())).unwrap();
+        let listed: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|entry| {
+                entry
+                    .file_type()
+                    .map(|t| is_ipc_socket(&t))
+                    .unwrap_or(false)
+            })
+            .collect();
+        assert!(listed.is_empty());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(app_dir_in(dir.path()))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o700);
+        }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod socket_length_tests {
+    use super::*;
+
+    #[test]
+    fn the_longest_socket_path_allowed_still_binds_and_connects() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut path = dir.path().to_path_buf();
+        let room = ZELLIJ_SOCK_MAX_LENGTH - 1 - socket_path_length(&path) - 1;
+        path.push("a".repeat(room));
+        assert_eq!(socket_path_length(&path), ZELLIJ_SOCK_MAX_LENGTH - 1);
+        let _requests = ipc_bind(&path).unwrap();
+        let _replies = ipc_bind_reply(&path).unwrap();
+        crate::pipe_pairs::connect_pair(&path).unwrap();
     }
 }

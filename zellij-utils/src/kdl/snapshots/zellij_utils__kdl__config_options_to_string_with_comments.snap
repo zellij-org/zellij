@@ -32,6 +32,12 @@ theme "dracula"
 // 
 // theme_light "solarized-light"
  
+// Pin the session to a dark or light appearance, ignoring what the
+// host terminal reports. When unset, the host terminal decides.
+// Options: dark, light
+// 
+// explicit_theme_hue "dark"
+ 
 // Choose the base input mode of zellij.
 // Default: normal
 // 
@@ -61,6 +67,10 @@ layout_dir "/tmp/layouts"
 // 
 theme_dir "/tmp/themes"
  
+// The folder in which Zellij will look for keybinding presets
+// 
+// keybinds_dir "/tmp"
+ 
 // Toggle enabling the mouse mode.
 // On certain configurations, or terminals this could
 // potentially interfere with copying text.
@@ -76,6 +86,13 @@ mouse_mode false
 //   - false
 // 
 pane_frames false
+ 
+// Set the pane frame style when pane_frames is enabled
+// Options:
+//   - full
+//   - titles (default)
+// 
+// pane_frame_style "titles"
  
 // When attaching to an existing session with other users,
 // should the session be mirrored (true)
@@ -196,6 +213,29 @@ disable_session_metadata true
 // Default: true (if the host terminal supports it)
 // 
 support_kitty_keyboard_protocol false
+ 
+// Enable or disable support for the Kitty Graphics Protocol, used to display images (the host terminal must also support it)
+// (Requires restart)
+// Default: true (if the host terminal supports it)
+// 
+// support_kitty_graphics_protocol false
+ 
+// Count each grapheme cluster (an emoji sequence such as a flag or a skin tone, a letter with its accents) as one unit of width, as the Unicode standard does
+// When false, widths are counted per code point, the way older programs expect; programs can still ask for clusters with mode 2027
+// (Applies to new panes)
+// Default: true
+// 
+// grapheme_clusters false
+ 
+// Whether a focused mirror of a pane in this session may resize that pane's program to the mirror's size, and whether new mirrors opened in this session resize their source pane by default
+// Default: true
+// 
+// mirror_resizes_source_pane false
+ 
+// An extra key that gives typing back to a plugin while a live pane view inside it is taking the keyboard
+// Default: not set, Alt Enter, the inbox key or a click outside always do it (a key written twice means pressing it twice quickly)
+// 
+// live_view_release_key "Ctrl Alt Home"
 // Whether to make sure a local web server is running when a new Zellij session starts.
 // This web server will allow creating new sessions and attaching to existing ones that have
 // opted in to being shared in the browser.
@@ -237,16 +277,39 @@ web_sharing "disabled"
 /// Whether to enforce https connections to the web server when it is bound to localhost
 /// (127.0.0.0/8)
 ///
-/// Note: https is ALWAYS enforced when bound to non-local interfaces
+/// Note: https is enforced when bound to non-local interfaces, unless
+/// dangerously_allow_web_serving_without_a_certificate is set
 ///
 /// Default: false
 // 
 // enforce_https_for_localhost false
  
+// DANGEROUS: allow the web server to serve plain, unencrypted HTTP when bound to a
+// non-local interface without web_server_cert and web_server_key.
+// Anyone on the network can read and tamper with the traffic, including login tokens.
+// Only use behind a trusted TLS-terminating proxy or on a fully trusted network.
+// Does not override enforce_https_for_localhost.
+// Default: false
+// (Requires restart)
+//
+// dangerously_allow_web_serving_without_a_certificate false
+ 
 // Whether to stack panes when resizing beyond a certain size
 // Default: true
 // 
 // stacked_resize false
+ 
+// Whether stacked panes display as a list with the expanded pane pinned to the bottom
+// Default: true
+// 
+// stacked_pane_list false
+ 
+// Whether new stacks show their titles in a column (vertical) or in a row (horizontal)
+// Options:
+//   - vertical (Default)
+//   - horizontal
+// 
+// stacked_pane_list_orientation "vertical"
  
 // Whether to show tips on startup
 // Default: true
@@ -262,9 +325,21 @@ web_sharing "disabled"
 // default is true
 // advanced_mouse_actions false
  
+// Whether Ctrl+ScrollWheel resizes panes
+// default is true
+// mouse_scroll_resize false
+ 
+// Whether scrolling a pane implicitly enters and exits Scroll mode
+// default is true
+// scroll_mode_sync false
+ 
 // Whether to enable mouse hover visual effects (frame highlight and help text)
 // default is true
 // mouse_hover_effects false
+ 
+// Whether to show mouse hover help-text tips (resize help and group shortcuts)
+// default is true
+// mouse_hover_tips false
  
 // Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)
 // default is true
@@ -277,6 +352,21 @@ web_sharing "disabled"
 // Whether clicking a pane to focus it also sends the click into the pane
 // default is false
 // mouse_click_through false
+ 
+// Whether a right click opens the right-click menu (when off, right clicks go to the focused pane only)
+// An empty context_menu block opens no menu but keeps this on
+// default is true
+// context_menu_enabled false
+ 
+// Whether triple-clicking inside command output marked by the shell (OSC 133) selects
+// the command and its output instead of the logical line
+// default is true
+// osc133_command_selection false
+ 
+// Characters that terminate a word when double-clicking to select it
+// whitespace is always a separator and need not be listed here
+// default is "[]{}<>()"
+// word_separators "[]{}<>()"
  
 // The ip address the web server should listen on when it starts
 // Default: "127.0.0.1"
@@ -295,10 +385,72 @@ web_sharing "disabled"
 // Note: be sure to escape backslashes and similar characters properly
 // post_command_discovery_hook "echo $RESURRECT_COMMAND | sed <your_regex_here>"
 
-// Number of async worker tasks to spawn per active client.
+// Number of background threads used by `zellij attach <url>` when it connects
+// from a terminal to a session on another machine. One set of threads is made
+// for that program, not one per client. The web server, browser clients and
+// local sessions are not affected.
 //
-// Allocating few tasks may result in resource contention and lags. Small values (around 4) should
-// typically work best. Set to 0 to use the number of (physical) CPU cores.
-// Note: This only applies to web clients at the moment.
+// Most of the work runs on the program's main thread, so these threads are
+// usually idle. Lower it only to save resources on a very small machine.
+// Set to 0 to use the number of (physical) CPU cores.
 // client_async_worker_tasks 4
-
+ 
+// Whether to let programs running inside panes read the paste buffer
+// (clipboard) with the OSC 52 escape sequence. When enabled, any program
+// in any pane - including one running on a remote machine over SSH - can
+// read the clipboard without the user being asked.
+// Default: false
+// dangerously_enable_paste_buffer_read false
+ 
+// How to handle a nested Zellij session detected inside a pane.
+// Options:
+//   - "ask" (Default — prompt with a modal)
+//   - "fullscreen" (always zoom into the nested session)
+//   - "descend" (always control the nested session on focus)
+//   - "never" (never prompt or descend; do it manually)
+// 
+// nested_session_handling "ask"
+ 
+// Which escape sequence desktop notifications coming from panes are
+// forwarded to the host terminal with.
+// Options:
+//   - "auto" (Default — detect from the host terminal environment)
+//   - "osc9" (the legacy iTerm2 protocol, understood by most terminals)
+//   - "osc99" (kitty's notification protocol)
+//   - "bell" (ring the terminal bell instead)
+//   - "off" (do not forward notifications to the host terminal)
+// 
+// host_notification_protocol "auto"
+ 
+// Whether to show the other sessions indicator in the tab bar and compact bar
+// default is true
+// session_indicator false
+ 
+// Whether to briefly show the name of the new swap layout when it is changed
+// default is true
+// swap_layout_notification false
+ 
+// What the quit action does
+// Options:
+//   - "ask_quit" (Default - ask whether to detach or quit, with quit preselected)
+//   - "ask_detach" (ask whether to detach or quit, with detach preselected)
+//   - "quit" (quit without asking)
+//   - "detach" (detach without asking)
+// 
+// on_quit "ask_quit"
+ 
+// Which bars a new session starts with hidden
+// Options:
+//   - "none" (Default)
+//   - "all"
+//   - one or more bar names, eg. "tab-bar" "status-bar"
+// 
+// bars_hidden_on_start "none"
+ 
+// Whether to briefly show what was hidden and how to show it again when bars are hidden
+// default is true
+// hidden_bars_notification false
+ 
+// Whether to show the current mode's keys in a corner while the bar that would show them is hidden
+// default is true
+// mode_hints_when_bars_hidden false

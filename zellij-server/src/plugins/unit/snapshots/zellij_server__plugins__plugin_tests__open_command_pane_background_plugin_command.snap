@@ -1,5 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 7755
 expression: "format!(\"{:#?}\",\nnew_tab_event).replace(&format!(\"{:?}\", temp_folder.path()), \"\\\"CWD\\\"\")"
 ---
 Some(
@@ -25,12 +26,14 @@ Some(
                         },
                     ),
                     use_terminal_title: false,
+                    notify: false,
                 },
             ),
         ),
         None,
         NoPreference {
             borderless: None,
+            border_style: None,
         },
         true,
         ClientId(
@@ -48,5 +51,6 @@ Some(
             },
         ),
         false,
+        None,
     ),
 )

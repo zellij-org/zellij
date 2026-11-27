@@ -152,6 +152,8 @@ pub enum InputEvent {
         final_byte: u8,
         raw: Vec<u8>,
     },
+    FocusGained,
+    FocusLost,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -838,6 +840,38 @@ fn parse_sgr_mouse(buf: &[u8]) -> Option<(InputEvent, usize)> {
 /// `ESC [` for two distinct cases — not currently disambiguated here:
 /// - truly malformed / unsupported sequence, or
 /// - incomplete input; caller handles incompleteness via `maybe_more`.
+/// Return `Some(len)` if `buf` starts with a structurally complete CSI
+/// sequence (`\x1b[ <params>* <intermediates>* <final>` per ECMA-48 §5.4),
+/// regardless of whether the final byte is one we have a use for. Used by
+/// `process_bytes` to advance past CSI sequences the keymap doesn't
+/// recognise — most importantly Kitty keyboard-protocol events
+/// `\x1b[<keycode>;<mods>u`. Without this, the keymap returns
+/// `Found::NeedData` (it sees the bytes as a possible prefix of a longer
+/// registered key) and the parser wedges holding bytes that will never
+/// extend into anything.
+///
+/// Returns `None` if the buffer doesn't start with `\x1b[`, contains a
+/// non-CSI byte, or hasn't yet received its final byte.
+fn complete_csi_len(buf: &[u8]) -> Option<usize> {
+    if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b'[') {
+        return None;
+    }
+    let mut i = 2;
+    let max_scan = buf.len().min(256);
+    while i < max_scan {
+        let b = buf[i];
+        match b {
+            // Parameters (digits, ;, :, ?, <, =, >) and intermediates (space..'/').
+            0x30..=0x3F | 0x20..=0x2F => i += 1,
+            // Any byte in the final-byte range terminates a CSI sequence.
+            0x40..=0x7E => return Some(i + 1),
+            // Anything else means this isn't a well-formed CSI.
+            _ => return None,
+        }
+    }
+    None
+}
+
 fn parse_csi_report(buf: &[u8]) -> Option<(InputEvent, usize)> {
     if buf.get(0) != Some(&0x1b) || buf.get(1) != Some(&b'[') {
         return None;
@@ -984,7 +1018,7 @@ mod windows {
                     let mut buf = [0u8; 4];
                     self.buf
                         .extend_with(unicode.encode_utf8(&mut buf).as_bytes());
-                    self.process_bytes(callback, true);
+                    self.process_bytes(|e, _consumed| callback(e), true);
                     return;
                 },
                 _ => match event.wVirtualKeyCode as i32 {
@@ -1177,7 +1211,7 @@ mod windows {
                     _ => {},
                 }
             }
-            self.process_bytes(callback, false);
+            self.process_bytes(|e, _consumed| callback(e), false);
         }
     }
 }
@@ -1521,6 +1555,9 @@ impl InputParser {
                 modifiers: Modifiers::NONE,
             }),
         );
+        map.insert(b"\x1b[I", InputEvent::FocusGained);
+        map.insert(b"\x1b[O", InputEvent::FocusLost);
+
         map.insert(
             b"\x1b[",
             InputEvent::Key(KeyEvent {
@@ -1562,7 +1599,13 @@ impl InputParser {
         }
     }
 
-    fn dispatch_callback<F: FnMut(InputEvent)>(&mut self, mut callback: F, event: InputEvent) {
+    fn dispatch_callback<F: FnMut(InputEvent, usize)>(
+        &mut self,
+        mut callback: F,
+        event: InputEvent,
+    ) {
+        // `self.buf` is already advanced past this event, so `self.buf.len()` is
+        // the remainder `parse_with_consumed` diffs into a per-event byte count.
         match (self.state, &event) {
             (
                 InputState::Normal,
@@ -1582,10 +1625,13 @@ impl InputParser {
             ) => {
                 // The prior ESC was not part of an ALT sequence, so emit
                 // it before we start collecting for paste.
-                callback(InputEvent::Key(KeyEvent {
-                    key: KeyCode::Escape,
-                    modifiers: Modifiers::NONE,
-                }));
+                callback(
+                    InputEvent::Key(KeyEvent {
+                        key: KeyCode::Escape,
+                        modifiers: Modifiers::NONE,
+                    }),
+                    self.buf.len(),
+                );
                 self.state = InputState::Pasting(0);
             },
             (InputState::EscapeMaybeAlt, InputEvent::Key(KeyEvent { key, modifiers })) => {
@@ -1593,25 +1639,51 @@ impl InputParser {
                 let key = *key;
                 let modifiers = *modifiers;
                 self.state = InputState::Normal;
-                callback(InputEvent::Key(KeyEvent {
-                    key,
-                    modifiers: modifiers | Modifiers::ALT,
-                }));
+                callback(
+                    InputEvent::Key(KeyEvent {
+                        key,
+                        modifiers: modifiers | Modifiers::ALT,
+                    }),
+                    self.buf.len(),
+                );
             },
             (InputState::EscapeMaybeAlt, _) => {
                 // The prior ESC was not part of an ALT sequence, so emit
                 // both it and the current event
-                callback(InputEvent::Key(KeyEvent {
-                    key: KeyCode::Escape,
-                    modifiers: Modifiers::NONE,
-                }));
-                callback(event);
+                callback(
+                    InputEvent::Key(KeyEvent {
+                        key: KeyCode::Escape,
+                        modifiers: Modifiers::NONE,
+                    }),
+                    self.buf.len(),
+                );
+                callback(event, self.buf.len());
             },
-            (_, _) => callback(event),
+            (_, _) => callback(event, self.buf.len()),
         }
     }
 
-    fn process_bytes<F: FnMut(InputEvent)>(&mut self, mut callback: F, maybe_more: bool) {
+    /// If a parked ESC is currently held in `EscapeMaybeAlt`, emit it as a
+    /// real `Esc` keystroke and return to `Normal`. Called from
+    /// `process_bytes` before dispatching any structured sequence (SGR
+    /// mouse, OSC, whitelisted CSI host-reply) that the upcoming bytes
+    /// match — those sequences are autonomous host events and cannot be
+    /// ALT-combined with the parked ESC, so the ESC must be flushed
+    /// before the sequence is emitted.
+    fn flush_parked_esc_if_held<F: FnMut(InputEvent, usize)>(&mut self, callback: &mut F) {
+        if self.state == InputState::EscapeMaybeAlt {
+            callback(
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Escape,
+                    modifiers: Modifiers::NONE,
+                }),
+                self.buf.len(),
+            );
+            self.state = InputState::Normal;
+        }
+    }
+
+    fn process_bytes<F: FnMut(InputEvent, usize)>(&mut self, mut callback: F, maybe_more: bool) {
         while !self.buf.is_empty() {
             match self.state {
                 InputState::Pasting(offset) => {
@@ -1620,7 +1692,7 @@ impl InputParser {
                         let pasted =
                             String::from_utf8_lossy(&self.buf.as_slice()[0..idx]).to_string();
                         self.buf.advance(pasted.len() + end_paste.len());
-                        callback(InputEvent::Paste(pasted));
+                        callback(InputEvent::Paste(pasted), self.buf.len());
                         self.state = InputState::Normal;
                     } else {
                         self.state =
@@ -1629,28 +1701,41 @@ impl InputParser {
                     }
                 },
                 InputState::EscapeMaybeAlt | InputState::Normal => {
-                    if self.state == InputState::Normal
-                        && self.buf.as_slice().get(0) == Some(&b'\x1b')
-                    {
+                    // Structured terminal sequences — SGR mouse, OSC, whitelisted
+                    // CSI host-replies — are autonomous host events and cannot be
+                    // ALT-combined with a leading Esc keystroke. Run these checks
+                    // in *both* Normal and EscapeMaybeAlt: if we're sitting on a
+                    // parked ESC (EscapeMaybeAlt) and the upcoming bytes match one
+                    // of these patterns, the ESC must be a real Esc keystroke, so
+                    // flush it before dispatching the sequence. Otherwise a parked
+                    // ESC immediately followed by `\x1b[<...M` (xterm flushes Esc
+                    // alone, then a mouse motion in the next read) would dispatch
+                    // as a spurious ALT+`[` because the keymap registers `\x1b[`
+                    // as Alt+`[`.
+                    if self.buf.as_slice().get(0) == Some(&b'\x1b') {
                         if let Some((event, len)) = parse_sgr_mouse(self.buf.as_slice()) {
+                            self.flush_parked_esc_if_held(&mut callback);
                             self.buf.advance(len);
-                            callback(event);
+                            callback(event, self.buf.len());
                             continue;
                         }
 
                         // OSC sequence check — must come before the incomplete-SGR-mouse early return
                         if let Some((event, len)) = parse_osc(self.buf.as_slice()) {
+                            self.flush_parked_esc_if_held(&mut callback);
                             self.buf.advance(len);
-                            callback(event);
+                            callback(event, self.buf.len());
                             continue;
                         }
 
                         // Incomplete OSC — buffer and wait for more data
                         if maybe_more && self.buf.as_slice().starts_with(b"\x1b]") {
+                            self.flush_parked_esc_if_held(&mut callback);
                             return;
                         }
 
                         if maybe_more && self.buf.as_slice().starts_with(b"\x1b[<") {
+                            self.flush_parked_esc_if_held(&mut callback);
                             return;
                         }
 
@@ -1660,8 +1745,9 @@ impl InputParser {
                         // otherwise match "\x1b[" as an escape prefix and
                         // pass the bytes through as keyboard input.
                         if let Some((event, len)) = parse_csi_report(self.buf.as_slice()) {
+                            self.flush_parked_esc_if_held(&mut callback);
                             self.buf.advance(len);
-                            callback(event);
+                            callback(event, self.buf.len());
                             continue;
                         }
 
@@ -1670,6 +1756,7 @@ impl InputParser {
                         // can match the full sequence rather than letting the
                         // keymap dispatch the leading bytes as separate keys.
                         if maybe_more && self.buf.as_slice().starts_with(b"\x1b[?") {
+                            self.flush_parked_esc_if_held(&mut callback);
                             return;
                         }
                     }
@@ -1697,10 +1784,48 @@ impl InputParser {
                             self.buf.advance(len);
                         },
                         (Found::Exact(len, event), _) | (Found::Ambiguous(len, event), false) => {
-                            self.dispatch_callback(&mut callback, event.clone());
+                            // Advance before dispatching so `self.buf.len()` inside
+                            // `dispatch_callback` already reflects this key's consumption.
                             self.buf.advance(len);
+                            self.dispatch_callback(&mut callback, event.clone());
                         },
                         (Found::Ambiguous(_, _), true) | (Found::NeedData, true) => {
+                            // The keymap is signalling "this buffer
+                            // could still grow into a registered key,
+                            // give me more bytes." That verdict is
+                            // wrong when the buffer already holds a
+                            // structurally complete CSI sequence whose
+                            // final byte isn't in the keymap — most
+                            // importantly Kitty keyboard-protocol
+                            // events `\x1b[<keycode>;<mods>u`, which
+                            // never grow into anything the keymap
+                            // knows. Returning here would wedge
+                            // `self.buf` indefinitely, swallowing every
+                            // host reply that arrives behind it (the
+                            // OSC + DA1 bytes for a forwarded
+                            // `OSC 11;?` query among them) and stalling
+                            // host-color forwards until session exit.
+                            //
+                            // Both `Ambiguous(_, true)` and
+                            // `NeedData(true)` reach this point in
+                            // practice: for `\x1b[<digits>;<digits>u`
+                            // the trie reports `Ambiguous(1, Escape)`
+                            // (it has ESC alone as a match and ESC[…]
+                            // as longer prefixes), so the fix must
+                            // cover both verdicts.
+                            //
+                            // Skip past the unrecognised CSI without
+                            // emitting an event; callers that need
+                            // keyboard dispatch (kitty_parser, the
+                            // separate `input_parser` instance fed the
+                            // residue from `StdinAnsiParser`) see the
+                            // same bytes via `strip_replies`, which
+                            // already treats unwhitelisted-final CSIs
+                            // as `Malformed` and pushes them through.
+                            if let Some(len) = complete_csi_len(self.buf.as_slice()) {
+                                self.buf.advance(len);
+                                continue;
+                            }
                             return;
                         },
                         (Found::None, _) | (Found::NeedData, false) => {
@@ -1741,8 +1866,42 @@ impl InputParser {
     /// with an empty slice and `maybe_more=false` to allow the partial
     /// data to be recognized and processed.
     pub fn parse<F: FnMut(InputEvent)>(&mut self, bytes: &[u8], callback: F, maybe_more: bool) {
+        // rebind (not `mut callback: F`) to keep the upstream signature intact
+        let mut callback = callback;
+        self.parse_with_consumed(bytes, |event, _consumed| callback(event), maybe_more);
+    }
+
+    /// Like [`InputParser::parse`], but the callback also receives the number
+    /// of input bytes consumed to produce each event. This allows a caller
+    /// that forwards raw bytes alongside decoded events to attribute to each
+    /// event exactly the bytes that produced it when a single chunk of input
+    /// decodes into multiple events.
+    pub fn parse_with_consumed<F: FnMut(InputEvent, usize)>(
+        &mut self,
+        bytes: &[u8],
+        mut callback: F,
+        maybe_more: bool,
+    ) {
         self.buf.extend_with(bytes);
-        self.process_bytes(callback, maybe_more);
+        // `process_bytes` reports the bytes still buffered after each event; the
+        // drop between successive remainders is what that event consumed.
+        let mut prev_remaining = self.buf.len();
+        self.process_bytes(
+            |event, remaining| {
+                let consumed = prev_remaining.saturating_sub(remaining);
+                prev_remaining = remaining;
+                callback(event, consumed);
+            },
+            maybe_more,
+        );
+    }
+
+    /// Number of bytes still held unprocessed in the parser's internal
+    /// buffer. A caller that mirrors this ring separately (e.g. to forward
+    /// raw bytes alongside decoded events) can reconcile its own buffer to
+    /// exactly the same length so the two never drift apart.
+    pub fn buffered_len(&self) -> usize {
+        self.buf.len()
     }
 
     pub fn parse_as_vec(&mut self, bytes: &[u8], maybe_more: bool) -> Vec<InputEvent> {
@@ -1848,6 +2007,209 @@ mod test {
             ],
             inputs
         );
+    }
+
+    /// Parse `bytes` and pair each event with the raw bytes it consumed,
+    /// draining from a copy of the input the same way the client's stdin
+    /// loop attributes raw bytes to events.
+    fn parse_with_raw_bytes(bytes: &[u8], maybe_more: bool) -> Vec<(InputEvent, Vec<u8>)> {
+        let mut p = InputParser::new();
+        let mut collected: Vec<(InputEvent, usize)> = Vec::new();
+        p.parse_with_consumed(bytes, |ev, n| collected.push((ev, n)), maybe_more);
+        let mut buffer: Vec<u8> = bytes.to_vec();
+        collected
+            .into_iter()
+            .map(|(ev, n)| {
+                let take = n.min(buffer.len());
+                let raw: Vec<u8> = buffer.drain(..take).collect();
+                (ev, raw)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn typed_char_keeps_only_its_own_bytes_before_mouse_reports() {
+        // A keystroke and two mouse reports arrive in one read: the key must be
+        // paired with only its own byte and each report with its own bytes.
+        let events = parse_with_raw_bytes(b"a\x1b[<35;52;16M\x1b[<35;49;16M", MAYBE_MORE);
+        assert_eq!(
+            events.len(),
+            3,
+            "expected key + 2 mouse events, got {:?}",
+            events
+        );
+        assert!(
+            matches!(
+                events[0].0,
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Char('a'),
+                    ..
+                })
+            ),
+            "first event should be the typed key, got {:?}",
+            events[0].0
+        );
+        assert_eq!(
+            events[0].1, b"a",
+            "the keystroke must not carry the trailing mouse bytes"
+        );
+        assert!(matches!(events[1].0, InputEvent::Mouse(_)));
+        assert_eq!(events[1].1, b"\x1b[<35;52;16M");
+        assert!(matches!(events[2].0, InputEvent::Mouse(_)));
+        assert_eq!(events[2].1, b"\x1b[<35;49;16M");
+    }
+
+    #[test]
+    fn typed_char_keeps_only_its_own_bytes_after_mouse_reports() {
+        // A mouse report precedes the keystroke in the read; the key must still
+        // be paired with only its own byte.
+        let events = parse_with_raw_bytes(b"\x1b[<35;52;16Ma", MAYBE_MORE);
+        assert_eq!(events.len(), 2, "got {:?}", events);
+        assert!(matches!(events[0].0, InputEvent::Mouse(_)));
+        assert_eq!(events[0].1, b"\x1b[<35;52;16M");
+        assert!(matches!(
+            events[1].0,
+            InputEvent::Key(KeyEvent {
+                key: KeyCode::Char('a'),
+                ..
+            })
+        ));
+        assert_eq!(events[1].1, b"a");
+    }
+
+    #[test]
+    fn consecutive_chars_before_mouse_each_keep_one_byte() {
+        // Consecutive keystrokes in one read are each paired with their own byte.
+        let events = parse_with_raw_bytes(b"ab\x1b[<35;52;16M", MAYBE_MORE);
+        assert_eq!(events.len(), 3, "got {:?}", events);
+        assert_eq!(events[0].1, b"a");
+        assert_eq!(events[1].1, b"b");
+        assert_eq!(events[2].1, b"\x1b[<35;52;16M");
+    }
+
+    #[test]
+    fn single_event_keeps_all_its_bytes() {
+        // A read that decodes into a single event pairs it with all of the
+        // read's bytes, including a multi-byte sequence (`\x1bOA`).
+        let events = parse_with_raw_bytes(b"\x1bOA", NO_MORE);
+        assert_eq!(events.len(), 1, "got {:?}", events);
+        assert!(matches!(
+            events[0].0,
+            InputEvent::Key(KeyEvent {
+                key: KeyCode::ApplicationUpArrow,
+                ..
+            })
+        ));
+        assert_eq!(events[0].1, b"\x1bOA");
+    }
+
+    #[test]
+    fn lone_esc_batch_then_mouse_report_batch() {
+        // A lone ESC arrives in one batch and a complete mouse report in the
+        // next. The ESC is held until the following batch disambiguates it;
+        // both events are then emitted, each paired with its own bytes.
+        let mut p = InputParser::new();
+        let mut events: Vec<(InputEvent, usize)> = Vec::new();
+        let mut buffer: Vec<u8> = Vec::new();
+
+        buffer.extend_from_slice(b"\x1b");
+        p.parse_with_consumed(b"\x1b", |ev, n| events.push((ev, n)), MAYBE_MORE);
+        assert!(
+            events.is_empty(),
+            "a lone ESC with more data possibly coming must be held, got {:?}",
+            events
+        );
+
+        buffer.extend_from_slice(b"\x1b[<35;62;16M");
+        p.parse_with_consumed(b"\x1b[<35;62;16M", |ev, n| events.push((ev, n)), MAYBE_MORE);
+        assert_eq!(events.len(), 2, "got {:?}", events);
+        assert!(matches!(
+            events[0].0,
+            InputEvent::Key(KeyEvent {
+                key: KeyCode::Escape,
+                ..
+            })
+        ));
+        assert_eq!(events[0].1, 1, "the ESC consumed its single byte");
+        assert!(matches!(events[1].0, InputEvent::Mouse(_)));
+        assert_eq!(events[1].1, 12, "the mouse report consumed its 12 bytes");
+
+        // Draining the accumulated bytes per event, the way the client's
+        // stdin loop does, pairs each event with its own raw bytes.
+        let esc_bytes: Vec<u8> = buffer.drain(..events[0].1).collect();
+        let mouse_bytes: Vec<u8> = buffer.drain(..events[1].1).collect();
+        assert_eq!(esc_bytes, b"\x1b");
+        assert_eq!(mouse_bytes, b"\x1b[<35;62;16M");
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn paste_start_alone_is_consumed_silently_and_not_buffered() {
+        let mut p = InputParser::new();
+        let mut events: Vec<(InputEvent, usize)> = Vec::new();
+        p.parse_with_consumed(b"\x1b[200~", |ev, n| events.push((ev, n)), MAYBE_MORE);
+        assert!(
+            events.is_empty(),
+            "a lone paste-start marker must produce no events, got {:?}",
+            events
+        );
+        assert_eq!(
+            p.buffered_len(),
+            0,
+            "the paste-start bytes are consumed out of the parser buffer without any event reporting them"
+        );
+    }
+
+    #[test]
+    fn paste_start_with_partial_payload_buffers_only_the_payload() {
+        let mut p = InputParser::new();
+        let mut events: Vec<(InputEvent, usize)> = Vec::new();
+        p.parse_with_consumed(b"\x1b[200~hel", |ev, n| events.push((ev, n)), MAYBE_MORE);
+        assert!(events.is_empty(), "got {:?}", events);
+        assert_eq!(
+            p.buffered_len(),
+            3,
+            "only the pending paste payload remains buffered; the 6 marker bytes were consumed silently"
+        );
+    }
+
+    #[test]
+    fn parked_esc_before_partial_utf8_is_consumed_out_of_the_buffer() {
+        let mut p = InputParser::new();
+        let mut events: Vec<(InputEvent, usize)> = Vec::new();
+        p.parse_with_consumed(b"\x1b\xc3", |ev, n| events.push((ev, n)), MAYBE_MORE);
+        assert!(events.is_empty(), "got {:?}", events);
+        assert_eq!(
+            p.buffered_len(),
+            1,
+            "the parked ESC is held in parser state, not in the buffer; only the partial UTF-8 byte remains"
+        );
+    }
+
+    #[test]
+    fn newline_then_carriage_return_are_two_enter_events_with_their_own_bytes() {
+        // In the legacy encoding a terminal sends `\r` for the Enter key and
+        // `\n` for a control-j style newline; the keymap decodes both to
+        // Enter. Arriving together they are two Enter events, each paired
+        // with its own byte.
+        let events = parse_with_raw_bytes(b"\n\r", MAYBE_MORE);
+        assert_eq!(events.len(), 2, "got {:?}", events);
+        for (event, raw) in &events {
+            assert!(
+                matches!(
+                    event,
+                    InputEvent::Key(KeyEvent {
+                        key: KeyCode::Enter,
+                        ..
+                    })
+                ),
+                "expected an Enter key event, got {:?}",
+                event
+            );
+            assert_eq!(raw.len(), 1, "each Enter is paired with a single byte");
+        }
+        assert_eq!(events[0].1, b"\n");
+        assert_eq!(events[1].1, b"\r");
     }
 
     #[test]
@@ -2439,6 +2801,148 @@ mod test {
         assert_eq!(res.len(), 2);
     }
 
+    /// Regression for the xterm Esc-during-mouse-drag bug:
+    /// xterm flushes a real Esc keypress as a single `\x1b` byte. If a mouse
+    /// motion arrives in the next stdin read, upstream `StdinAnsiParser` may
+    /// concatenate them into `\x1b\x1b[<...M`. Termwiz must parse this as
+    /// two events (Esc then Mouse), not as Alt+`[` (which would happen if
+    /// the keymap's `\x1b[`=Alt+`[` registration short-circuits the SGR
+    /// mouse parser while in `EscapeMaybeAlt` state).
+    #[test]
+    fn esc_then_sgr_mouse_emits_esc_and_mouse() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b\x1b[<35;42;12M", MAYBE_MORE);
+        assert_eq!(
+            res,
+            vec![
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Escape,
+                    modifiers: Modifiers::NONE,
+                }),
+                InputEvent::Mouse(MouseEvent {
+                    x: 42,
+                    y: 12,
+                    mouse_buttons: MouseButtons::NONE,
+                    modifiers: Modifiers::NONE,
+                }),
+            ]
+        );
+    }
+
+    /// Same regression but for the cross-`parse()` case where the parked
+    /// ESC is in `EscapeMaybeAlt` state from a prior call. The SGR mouse
+    /// sequence arrives in a subsequent call.
+    #[test]
+    fn esc_then_sgr_mouse_across_parse_calls() {
+        let mut p = InputParser::new();
+
+        // First call: lone ESC byte. Termwiz parks no state because the
+        // first arm only fires when there are bytes after the ESC; with
+        // `MAYBE_MORE` it leaves the ESC pending in its internal buf and
+        // emits nothing yet.
+        let mut res = p.parse_as_vec(b"\x1b", MAYBE_MORE);
+        assert!(
+            res.is_empty(),
+            "lone ESC should not emit yet under MAYBE_MORE"
+        );
+
+        // Second call: the mouse sequence arrives. The buffered ESC plus
+        // these bytes form `\x1b\x1b[<...M` (the inner buf already has the
+        // ESC; this call's bytes start with another ESC because that's
+        // what xterm sends for the mouse sequence). Result must still be
+        // Esc + Mouse, not Alt+`[`.
+        res = p.parse_as_vec(b"\x1b[<35;42;12M", MAYBE_MORE);
+        assert_eq!(
+            res,
+            vec![
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Escape,
+                    modifiers: Modifiers::NONE,
+                }),
+                InputEvent::Mouse(MouseEvent {
+                    x: 42,
+                    y: 12,
+                    mouse_buttons: MouseButtons::NONE,
+                    modifiers: Modifiers::NONE,
+                }),
+            ]
+        );
+    }
+
+    /// Real Alt+Esc keystroke (`\x1b\x1b` with no further bytes) must
+    /// still be recognised as Alt+Esc — the fix above must not regress
+    /// this convention.
+    #[test]
+    fn alt_esc_still_recognized() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b\x1b", NO_MORE);
+        assert_eq!(
+            res,
+            vec![InputEvent::Key(KeyEvent {
+                key: KeyCode::Escape,
+                modifiers: Modifiers::ALT,
+            })]
+        );
+    }
+
+    /// Esc keystroke followed by an OSC host reply (e.g. an OSC 11 color
+    /// query response that arrives concatenated after a stray Esc byte
+    /// the user pressed) must emit Esc and the OSC, not Alt-modify the
+    /// OSC bytes.
+    #[test]
+    fn esc_then_osc_emits_esc_and_osc() {
+        let mut p = InputParser::new();
+        let res = p.parse_as_vec(b"\x1b\x1b]11;rgb:ffff/ffff/ffff\x1b\\", MAYBE_MORE);
+        assert_eq!(
+            res,
+            vec![
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Escape,
+                    modifiers: Modifiers::NONE,
+                }),
+                InputEvent::OperatingSystemCommand(b"11;rgb:ffff/ffff/ffff".to_vec()),
+            ]
+        );
+    }
+
+    /// Esc followed by a CSI host-reply (whitelisted final byte). Must
+    /// emit Esc and the report, never Alt+`[`.
+    #[test]
+    fn esc_then_csi_report_emits_esc_and_report() {
+        let mut p = InputParser::new();
+        // \x1b[?2026;0$y is a DECRPM reply for synchronised output mode.
+        // Wrapped behind a stray Esc keystroke prefix.
+        let res = p.parse_as_vec(b"\x1b\x1b[?2026;0$y", MAYBE_MORE);
+        assert!(
+            !res.is_empty(),
+            "expected at least one event from Esc + CSI report"
+        );
+        assert!(
+            matches!(
+                res[0],
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Escape,
+                    modifiers: Modifiers::NONE,
+                })
+            ),
+            "first event must be a bare Esc keystroke, got {:?}",
+            res[0]
+        );
+        // The CSI report dispatches as DeviceControlReply via the
+        // `parse_csi_report` whitelist. Anything but Alt+`[` is acceptable
+        // for the second event; what we are guarding against is the
+        // spurious Alt+`[` dispatch.
+        for ev in &res {
+            if let InputEvent::Key(KeyEvent { key, modifiers }) = ev {
+                assert!(
+                    !(matches!(key, KeyCode::Char('[')) && modifiers.contains(Modifiers::ALT)),
+                    "must not emit Alt+`[`; got {:?}",
+                    ev
+                );
+            }
+        }
+    }
+
     #[test]
     fn invalid_sgr_mouse_falls_through() {
         let mut p = InputParser::new();
@@ -2676,5 +3180,57 @@ mod test {
             panic!("wrong variant");
         };
         assert_eq!(&raw[..], bytes, "raw must be byte-identical to input");
+    }
+
+    #[test]
+    fn focus_reports_decode_as_focus_events() {
+        let mut p = InputParser::new();
+        assert_eq!(
+            p.parse_as_vec(b"\x1b[I", MAYBE_MORE),
+            vec![InputEvent::FocusGained],
+        );
+        assert_eq!(
+            p.parse_as_vec(b"\x1b[O", MAYBE_MORE),
+            vec![InputEvent::FocusLost],
+        );
+    }
+
+    #[test]
+    fn focus_report_split_across_reads_still_decodes_as_one_event() {
+        let mut p = InputParser::new();
+        assert_eq!(p.parse_as_vec(b"\x1b[", MAYBE_MORE), vec![]);
+        assert_eq!(
+            p.parse_as_vec(b"I", MAYBE_MORE),
+            vec![InputEvent::FocusGained],
+        );
+    }
+
+    #[test]
+    fn focus_reports_never_degrade_into_literal_characters() {
+        let mut p = InputParser::new();
+        let events = p.parse_as_vec(b"\x1b[O\x1b[I", MAYBE_MORE);
+        assert_eq!(
+            events,
+            vec![InputEvent::FocusLost, InputEvent::FocusGained],
+            "a focus report must not decode as Alt+[ plus a literal I/O keystroke"
+        );
+    }
+
+    #[test]
+    fn alt_bracket_is_still_recognized_for_other_following_bytes() {
+        let mut p = InputParser::new();
+        assert_eq!(
+            p.parse_as_vec(b"\x1b[x", MAYBE_MORE),
+            vec![
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Char('['),
+                    modifiers: Modifiers::ALT,
+                }),
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Char('x'),
+                    modifiers: Modifiers::NONE,
+                }),
+            ],
+        );
     }
 }

@@ -1,0 +1,45 @@
+size: 40x120
+cursor: row=9 col=13 visible shape=Default
+grid:
+|If your terminal has the ANSI 'Insert Character' function                                                               |
+|(the VT102 does not), then you should see a line like this                                                              |
+|  A B C D E F G H I J K L M N O P Q R S T U V W X Y Z                                                                   |
+|below:                                                                                                                  |
+|                                                                                                                        |
+|  A B C D E F G H I J K L M N O P Q R S T U V W X Y Z                                                                   |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|Push <RETURN>                                                                                                           |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+images:

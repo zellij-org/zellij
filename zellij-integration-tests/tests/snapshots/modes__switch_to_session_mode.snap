@@ -1,0 +1,8 @@
+---
+source: zellij-integration-tests/tests/modes.rs
+assertion_line: 88
+expression: normalized(&grid_snapshot)
+---
+ Zellij (test)  Tab #1  + 
+$ █
+ Ctrl + <o> SESSION   n  Next  i  Inbox  d  Detach  r  Rename  w  Manager  s  Share  ...

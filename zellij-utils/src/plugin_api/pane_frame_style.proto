@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package api.pane_frame_style;
+
+enum PaneFrameStyle {
+    Full = 0;
+    Titles = 1;
+    None = 2;
+}

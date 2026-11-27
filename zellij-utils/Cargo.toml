@@ -14,11 +14,11 @@ anyhow = { workspace = true }
 backtrace = { version = "0.3.55", default-features = false, features = ["std"] }
 bitflags = { version = "2.5.0", default-features = false }
 clap = { workspace = true }
-clap_complete = { version = "3.2.1", default-features = false }
-colored = { version = "2.0.0", default-features = false }
+clap_complete = { version = "4.6", default-features = false }
+colored = { version = "3.1", default-features = false }
 colorsys = { version = "0.6.5", default-features = false, features = ["std"] }
 crossbeam = { version = "0.8.1", default-features = false, features = ["alloc", "std"] }
-directories = { version = "5.0", default-features = false }
+directories = { version = "6.0", default-features = false }
 include_dir = { version = "0.7.3", default-features = false }
 kdl = { version = "4.5.0", default-features = false, features = ["span"] }
 lazy_static = { workspace = true }
@@ -26,14 +26,16 @@ log = { workspace = true }
 miette = { workspace = true }
 percent-encoding = { version = "2.1.0", default-features = false, features = ["std"] }
 prost = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 shellexpand = { version = "3.0.0", default-features = false, features = ["base-0", "tilde"] }
-strip-ansi-escapes = { version = "0.1.0", default-features = false }
+strip-ansi-escapes = { workspace = true }
 strum = { workspace = true }
 strum_macros = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
+unicode-segmentation = { workspace = true }
 unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
@@ -41,6 +43,7 @@ sha2 = { workspace = true }
 libc = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
+base64 = { version = "0.22", default-features = false, features = ["std"] }
 tokio = { workspace = true }
 tokio-stream = { version = "0.1" }
 tokio-util = { version = "0.7", default-features = false, features = ["compat", "io"] }
@@ -52,23 +55,29 @@ curl-sys = { version = "0.4", default-features = false, features = ["force-syste
 humantime = { workspace = true }
 suggest = { workspace = true }
 names = { workspace = true }
-rusqlite = { version = "0.30", default-features = false, features = ["bundled"], optional = true }
+rusqlite = { version = "0.30", default-features = false, features = ["bundled"] }
 notify = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
-nix = { workspace = true }
+nix = { workspace = true, features = ["user"] }
 
 [target.'cfg(windows)'.dependencies]
 crossterm = { workspace = true, features = ["events"] }
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Pipes",
+    "Win32_System_Registry",
     "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
 ] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Storage_EnhancedStorage", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell", "Win32_UI_Shell_PropertiesSystem"] }
 winapi = { version = "0.3.9", default-features = false }
 dunce = "1.0"
 
 [dev-dependencies]
-insta = { version = "1.6.0", features = ["backtrace"] }
+insta = "1.48"
 expect-test = "1.4.1"
 
 [features]
@@ -79,5 +88,5 @@ expect-test = "1.4.1"
 disable_automatic_asset_installation = []
 unstable = []
 plugins_from_target = []
-web_server_capability = ["dep:rusqlite"]
+web_server_capability = []
 vendored_curl = ["isahc/static-curl", "dep:openssl-sys", "dep:curl-sys"]

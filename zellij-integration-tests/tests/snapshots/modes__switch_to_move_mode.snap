@@ -1,0 +1,7 @@
+---
+source: zellij-integration-tests/tests/modes.rs
+expression: normalized(&grid_snapshot)
+---
+ Zellij (test)  Tab #1  + 
+$ █
+ Ctrl + <h> MOVE   ←↓↑→  Switch Location  ENTER  When done 

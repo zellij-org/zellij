@@ -1,5 +1,3 @@
-#[cfg(not(target_family = "wasm"))]
-use crate::consts::ASSET_MAP;
 use crate::input::theme::Themes;
 #[allow(unused_imports)]
 use crate::{
@@ -14,7 +12,7 @@ use crate::{
         options::Options,
     },
 };
-use clap::{Args, IntoApp};
+use clap::Args;
 use clap_complete::Shell;
 use log::info;
 use serde::{Deserialize, Serialize};
@@ -166,6 +164,9 @@ pub fn dump_default_config() -> std::io::Result<()> {
 }
 
 pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
+    if let Some(bundled_layout) = crate::distribution::builtin_layout(layout) {
+        return dump_asset(bundled_layout.layout.as_bytes());
+    }
     match layout {
         "strider" => dump_asset(STRIDER_LAYOUT),
         "default" => dump_asset(DEFAULT_LAYOUT),
@@ -193,7 +194,36 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
     }
 }
 
+pub fn specified_keybinds_text(name: &str) -> Option<String> {
+    crate::input::keybind_presets::builtin_keybind_preset_text(name)
+        .map(|text| text.to_owned())
+        .or_else(|| {
+            default_keybinds_dir()
+                .map(|dir| dir.join(add_layout_ext(name)))
+                .and_then(|path| fs::read_to_string(path).ok())
+        })
+}
+
+pub fn dump_specified_keybinds(name: &str) -> std::io::Result<()> {
+    match specified_keybinds_text(name) {
+        Some(text) => dump_asset(text.as_bytes()),
+        None => Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Keybinding preset not found: {}", name),
+        )),
+    }
+}
+
 pub fn dump_specified_swap_layout(swap_layout: &str) -> std::io::Result<()> {
+    if let Some(bundled_layout) = crate::distribution::builtin_layout(swap_layout) {
+        return match bundled_layout.swap_layout {
+            Some(swap_layout) => dump_asset(swap_layout.as_bytes()),
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Swap Layout not found for: {}", bundled_layout.name),
+            )),
+        };
+    }
     match swap_layout {
         "strider" => dump_asset(STRIDER_SWAP_LAYOUT),
         "default" => dump_asset(DEFAULT_SWAP_LAYOUT),
@@ -208,8 +238,9 @@ pub fn dump_specified_swap_layout(swap_layout: &str) -> std::io::Result<()> {
 
 #[cfg(not(target_family = "wasm"))]
 pub fn dump_builtin_plugins(path: &PathBuf) -> Result<()> {
-    for (asset_path, bytes) in ASSET_MAP.iter() {
-        let plugin_path = path.join(asset_path);
+    for (name, bytes) in crate::distribution::embedded_plugins() {
+        let asset_path = PathBuf::from("plugins").join(format!("{}.wasm", name));
+        let plugin_path = path.join(&asset_path);
         plugin_path
             .parent()
             .with_context(|| {
@@ -265,14 +296,22 @@ pub struct Setup {
     #[clap(long, value_parser)]
     pub dump_swap_layout: Option<String>,
 
+    #[clap(
+        long,
+        value_name = "PRESET",
+        value_parser,
+        help = "Dump the specified keybinding preset to stdout"
+    )]
+    #[serde(default)]
+    pub dump_keybinds: Option<String>,
+
     /// Dump the builtin plugins to DIR or "DATA DIR" if unspecified
     #[clap(
         long,
         value_name = "DIR",
         value_parser,
         exclusive = true,
-        min_values = 0,
-        max_values = 1
+        num_args(0..=1)
     )]
     pub dump_plugins: Option<Option<PathBuf>>,
 
@@ -283,13 +322,74 @@ pub struct Setup {
     /// Generates auto-start script for the specified shell
     #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_auto_start: Option<String>,
+
+    /// Install the desktop entry, as the setup screen does: a launcher and icons on Linux, a
+    /// Start menu shortcut and an "Open Zellij here" Explorer item on Windows
+    #[clap(long, value_parser, conflicts_with_all = SETUP_ONLY_FLAGS)]
+    #[serde(default)]
+    pub install_desktop_entry: bool,
+
+    /// Remove the desktop entry Zellij installed, as the setup screen's Uninstall button does
+    #[clap(long, value_parser, conflicts_with_all = SETUP_ONLY_FLAGS)]
+    #[serde(default)]
+    pub uninstall_desktop_entry: bool,
+
+    /// Copy this Zellij to a permanent folder, or update an older Zellij that is already
+    /// installed, as the setup screen does
+    #[clap(long, value_parser, conflicts_with_all = SETUP_ONLY_FLAGS)]
+    #[serde(default)]
+    pub copy_to_permanent_folder: bool,
+
+    /// Replace a different file that is in the way of --copy-to-permanent-folder
+    #[clap(long, value_parser, requires = "copy_to_permanent_folder")]
+    #[serde(default)]
+    pub replace_existing: bool,
+
+    /// Make Zellij the default terminal, installing the desktop entry if it is missing, as the
+    /// setup screen does
+    #[clap(long, value_parser, conflicts_with_all = SETUP_ONLY_FLAGS)]
+    #[serde(default)]
+    pub make_default_terminal: bool,
+
+    /// Choose the keybinding preset (for example "unlock-first") and save it to the config file
+    #[clap(long, value_name = "PRESET", value_parser, conflicts_with_all = SETUP_ONLY_FLAGS)]
+    #[serde(default)]
+    pub keybinding_preset: Option<String>,
+}
+
+const SETUP_ONLY_FLAGS: [&str; 9] = [
+    "dump_config",
+    "clean",
+    "check",
+    "dump_layout",
+    "dump_swap_layout",
+    "dump_keybinds",
+    "dump_plugins",
+    "generate_completion",
+    "generate_auto_start",
+];
+
+impl Setup {
+    pub fn desktop_actions(&self) -> crate::desktop_integration::SetupActions {
+        crate::desktop_integration::SetupActions {
+            copy_to_permanent_folder: self.copy_to_permanent_folder,
+            install_desktop_entry: self.install_desktop_entry,
+            uninstall_desktop_entry: self.uninstall_desktop_entry,
+            make_default_terminal: self.make_default_terminal,
+        }
+    }
+    pub fn runs_setup_actions(&self) -> bool {
+        let actions = self.desktop_actions();
+        actions != crate::desktop_integration::SetupActions::default()
+            || self.keybinding_preset.is_some()
+    }
 }
 
 impl Setup {
     /// Entrypoint from main
     /// Merges options from the config file and the command line options
-    /// into `[Options]`, the command line options superceeding the layout
-    /// file options, superceeding the config file options:
+    /// into `[Options]`, the command line options superseding the layout
+    /// file options, superseding the config file options:
     /// 1. command line options (`zellij options`)
     /// 2. layout options
     ///    (`layout.kdl` / `zellij --layout`)
@@ -309,16 +409,36 @@ impl Setup {
 
         // the attach CLI command can also have its own Options, we need to merge them if they
         // exist
-        let cli_config_options = merge_attach_command_options(cli_config_options, &cli_args);
+        let mut cli_config_options = merge_attach_command_options(cli_config_options, &cli_args);
+        if let (Some(options), Ok(cwd)) = (cli_config_options.as_mut(), std::env::current_dir()) {
+            crate::input::keybind_presets::command_line_preset_relative_to(options, &cwd);
+        }
 
         let mut config_without_layout = config.clone();
         let (layout_info, mut config) =
             Setup::parse_layout_and_override_config(cli_config_options.as_ref(), config, cli_args)?;
+        if let Some(keybinds_dir) = cli_config_options
+            .as_ref()
+            .and_then(|options| options.keybinds_dir.clone())
+        {
+            for config in [&mut config, &mut config_without_layout] {
+                config.keybinds_layers.keybinds_dir_override = Some(keybinds_dir.clone());
+                config.resolve_keybinds();
+            }
+        }
 
         let config_options =
             apply_themes_to_config(&mut config, cli_config_options.clone(), cli_args)?;
-        let config_options_without_layout =
-            apply_themes_to_config(&mut config_without_layout, cli_config_options, cli_args)?;
+        let config_options_without_layout = apply_themes_to_config(
+            &mut config_without_layout,
+            cli_config_options.clone(),
+            cli_args,
+        )?;
+        if let Some(cli_config_options) = cli_config_options.as_ref() {
+            for config in [&mut config, &mut config_without_layout] {
+                config.apply_command_line_keybinds(cli_config_options);
+            }
+        }
         fn apply_themes_to_config(
             config: &mut Config,
             cli_config_options: Option<Options>,
@@ -392,6 +512,11 @@ impl Setup {
             std::process::exit(0);
         }
 
+        if let Some(keybinds) = &self.dump_keybinds {
+            dump_specified_keybinds(keybinds)?;
+            std::process::exit(0);
+        }
+
         Ok(())
     }
 
@@ -403,6 +528,15 @@ impl Setup {
         }
 
         if let Some(maybe_path) = &self.dump_plugins {
+            if crate::distribution::embedded_plugins().is_empty() {
+                return Err(anyhow!(
+                    "This zellij was built without bundled plugins (feature \
+                     'disable_automatic_asset_installation'). Builtin plugins are provided by the \
+                     distributor of this build and must be placed in the plugin directory, \
+                     visible in the output of `zellij setup --check`."
+                ))
+                .context("failed to dump plugins");
+            }
             let data_dir = &opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
             let dir = match maybe_path {
                 Some(path) => path,
@@ -440,7 +574,47 @@ impl Setup {
         let mut message = String::new();
 
         writeln!(&mut message, "[Version]: {:?}", VERSION).unwrap();
-        if let Some(config_dir) = config_dir {
+        let distribution = crate::distribution::distribution();
+        if !distribution.is_stock_zellij() {
+            writeln!(
+                &mut message,
+                "[DISTRIBUTION]: {} {} (paths and command name: '{}')",
+                distribution.display_name, distribution.version, distribution.name
+            )
+            .unwrap();
+            let bundled_plugins = crate::distribution::own_plugin_names();
+            if !bundled_plugins.is_empty() {
+                writeln!(
+                    &mut message,
+                    "[DISTRIBUTION PLUGINS]: {}",
+                    bundled_plugins.join(", ")
+                )
+                .unwrap();
+            }
+            let removed_plugins = crate::distribution::removed_builtin_plugin_names();
+            if !removed_plugins.is_empty() {
+                writeln!(
+                    &mut message,
+                    "[REMOVED BUILTIN PLUGINS]: {}",
+                    removed_plugins.join(", ")
+                )
+                .unwrap();
+            }
+            let bundled_layouts: Vec<&str> = distribution
+                .layouts
+                .iter()
+                .map(|layout| layout.name)
+                .collect();
+            if !bundled_layouts.is_empty() {
+                writeln!(
+                    &mut message,
+                    "[DISTRIBUTION LAYOUTS]: {}",
+                    bundled_layouts.join(", ")
+                )
+                .unwrap();
+            }
+        }
+        if let Some(config_dir) = config_dir.clone() {
             writeln!(&mut message, "[CONFIG DIR]: \"{}\"", config_dir.display()).unwrap();
         } else {
             message.push_str("[CONFIG DIR]: Not Found\n");
@@ -484,7 +658,7 @@ impl Setup {
         writeln!(&mut message, "[CACHE DIR]: {}", ZELLIJ_CACHE_DIR.display()).unwrap();
         writeln!(&mut message, "[DATA DIR]: \"{}\"", data_dir.display()).unwrap();
         writeln!(&mut message, "[PLUGIN DIR]: \"{}\"", plugin_dir.display()).unwrap();
-        if !cfg!(feature = "disable_automatic_asset_installation") {
+        if !crate::distribution::embedded_plugins().is_empty() {
             writeln!(
                 &mut message,
                 " Builtin, default plugins will not be loaded from disk."
@@ -495,6 +669,32 @@ impl Setup {
                 " Create a custom layout if you require this behavior."
             )
             .unwrap();
+        } else {
+            writeln!(
+                &mut message,
+                " This zellij was built without bundled plugins."
+            )
+            .unwrap();
+            writeln!(
+                &mut message,
+                " Builtin plugins are loaded from the 'PLUGIN DIR' above, or from '{}'.",
+                system_data_dir.join("plugins").display()
+            )
+            .unwrap();
+        }
+        let keybinds_dir = config_options
+            .keybinds_dir
+            .clone()
+            .or_else(|| get_keybinds_dir(config_dir.clone()));
+        if let Some(keybinds_dir) = keybinds_dir {
+            writeln!(
+                &mut message,
+                "[KEYBINDS DIR]: \"{}\"",
+                keybinds_dir.display()
+            )
+            .unwrap();
+        } else {
+            message.push_str("[KEYBINDS DIR]: Not Found\n");
         }
         if let Some(layout_dir) = layout_dir {
             writeln!(&mut message, "[LAYOUT DIR]: \"{}\"", layout_dir.display()).unwrap();
@@ -554,7 +754,12 @@ impl Setup {
             },
         };
         let mut out = std::io::stdout();
-        clap_complete::generate(shell, &mut CliArgs::command(), "zellij", &mut out);
+        clap_complete::generate(
+            shell,
+            &mut CliArgs::command_for_distribution(),
+            crate::distribution::name(),
+            &mut out,
+        );
         // add shell dependent extra completion
         match shell {
             Shell::Bash => {
@@ -658,22 +863,20 @@ fn merge_attach_command_options(
     cli_config_options: Option<Options>,
     cli_args: &CliArgs,
 ) -> Option<Options> {
-    let cli_config_options = if let Some(Command::Sessions(Sessions::Attach { options, .. })) =
-        cli_args.command.clone()
-    {
-        match options.clone().as_deref() {
-            Some(SessionCommand::Options(options)) => match cli_config_options {
-                Some(cli_config_options) => {
-                    Some(cli_config_options.merge_from_cli(options.to_owned().into()))
-                },
-                None => Some(options.to_owned().into()),
-            },
-            _ => cli_config_options,
-        }
-    } else {
-        cli_config_options
+    let attach_options = match cli_args.command.clone() {
+        Some(Command::Sessions(Sessions::Attach { args, .. })) => args.options,
+        Some(Command::Terminal(terminal_args)) => terminal_args.attach.options,
+        _ => None,
     };
-    cli_config_options
+    match attach_options.as_deref() {
+        Some(SessionCommand::Options(options)) => match cli_config_options {
+            Some(cli_config_options) => {
+                Some(cli_config_options.merge_from_cli(options.to_owned().into()))
+            },
+            None => Some(options.to_owned().into()),
+        },
+        _ => cli_config_options,
+    }
 }
 
 #[cfg(test)]

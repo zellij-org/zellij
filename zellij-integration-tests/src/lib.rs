@@ -1,0 +1,64 @@
+#![cfg(unix)]
+
+pub mod attention;
+pub mod client_screen;
+mod deadline;
+pub mod fake_client_os_api;
+pub mod fake_pty;
+pub mod fake_server_os_api;
+pub mod harness;
+pub mod inbox;
+pub mod keys;
+pub mod nested;
+pub mod runner;
+pub mod test_env;
+
+pub use client_screen::{
+    col, AnsiCode, CellStyle, ClientScreen, Coord, CoordBuilder, CursorPosition, GridSnapshot,
+    HostTerminal,
+};
+pub use fake_pty::FakePtyHandle;
+pub use harness::{
+    claim_first_terminal_and_wait_for_prompt, split_down_and_wait_for_prompt,
+    split_right_and_wait_for_prompt, start_zellij, PROMPT, TERMINAL_SIZE,
+};
+pub use nested::{
+    composite_contains_settled_guest_grid, guest_ascended_bar_settled, host_descended_bar_settled,
+    host_descended_bar_with_ascend_keys_settled, wait_for_settled_composite,
+    NestedDepthThreeHarness, NestedHarness,
+};
+pub use runner::{
+    assert_same_rendered_grid, normalized, BackgroundTestSession, CliCaller, CliOutputHandle,
+    CliResult, TestClient, TestRunner, TestSession,
+};
+pub use zellij_utils::data::LayoutInfo;
+pub use zellij_utils::pane_size::Size;
+
+use std::time::Duration;
+
+pub fn default_timeout() -> Duration {
+    std::env::var("ZELLIJ_TEST_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(Duration::from_secs(10))
+}
+
+pub fn wait_for(what: &str, mut check: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + default_timeout();
+    while !check() {
+        if std::time::Instant::now() >= deadline {
+            panic!("timed out waiting for {}", what);
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+pub fn hard_cap_timeout() -> Duration {
+    std::env::var("ZELLIJ_TEST_HARD_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(Duration::from_secs(45))
+        .max(default_timeout())
+}

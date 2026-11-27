@@ -23,6 +23,7 @@ impl TryFrom<ProtobufInputMode> for InputMode {
             ProtobufInputMode::Move => Ok(InputMode::Move),
             ProtobufInputMode::Prompt => Ok(InputMode::Prompt),
             ProtobufInputMode::Tmux => Ok(InputMode::Tmux),
+            ProtobufInputMode::RenameSession => Ok(InputMode::RenameSession),
         }
     }
 }
@@ -45,6 +46,7 @@ impl TryFrom<InputMode> for ProtobufInputMode {
             InputMode::Move => ProtobufInputMode::Move,
             InputMode::Prompt => ProtobufInputMode::Prompt,
             InputMode::Tmux => ProtobufInputMode::Tmux,
+            InputMode::RenameSession => ProtobufInputMode::RenameSession,
         })
     }
 }
@@ -52,7 +54,8 @@ impl TryFrom<InputMode> for ProtobufInputMode {
 impl TryFrom<ProtobufInputModeMessage> for InputMode {
     type Error = &'static str;
     fn try_from(protobuf_input_mode: ProtobufInputModeMessage) -> Result<Self, &'static str> {
-        ProtobufInputMode::from_i32(protobuf_input_mode.input_mode)
+        ProtobufInputMode::try_from(protobuf_input_mode.input_mode)
+            .ok()
             .and_then(|p| p.try_into().ok())
             .ok_or("Invalid input mode")
     }
