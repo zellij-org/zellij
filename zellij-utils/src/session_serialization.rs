@@ -1543,7 +1543,10 @@ mod tests {
         let (kdl, layout) = serialize_and_parse(global_layout_manifest);
         let (template_tiled, template_floating) = layout.new_tab();
         assert!(
-            template_tiled.extract_run_instructions().iter().all(|r| r.is_none()),
+            template_tiled
+                .extract_run_instructions()
+                .iter()
+                .all(|r| r.is_none()),
             "new tab template should not carry a cwd:\n{}",
             kdl
         );
