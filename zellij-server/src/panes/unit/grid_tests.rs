@@ -11577,3 +11577,20 @@ fn oversized_xtgettcap_request_is_dropped() {
     vte_parser.feed(&mut grid, &sequence);
     assert!(grid.pending_messages_to_pty.is_empty());
 }
+
+#[test]
+fn truncate_cuts_at_a_character_boundary_not_a_display_column() {
+    // `x` is a display column, so cutting `columns` at it keeps a wide
+    // character whose leading half sits before the cut.
+    for (content, x, expected) in [
+        ("\u{65e5}\u{672c}", 2, "\u{65e5}"),
+        ("a\u{65e5}\u{672c}", 3, "a\u{65e5}"),
+        ("\u{65e5}\u{672c}", 1, ""),
+        ("\u{65e5}\u{672c}", 0, ""),
+        ("ab", 1, "a"),
+    ] {
+        let mut row = row_from_str(content);
+        row.truncate(x);
+        assert_eq!(row_to_string(&row), expected, "content={content:?}, x={x}");
+    }
+}
