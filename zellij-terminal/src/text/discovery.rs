@@ -137,7 +137,9 @@ mod fontconfig {
     const COLOR: &[u8] = b"color\0";
     const FC_TRUE: c_int = 1;
     const SPACING: &[u8] = b"spacing\0";
+    const FC_DUAL: c_int = 90;
     const FC_MONO: c_int = 100;
+    const FC_CHARCELL: c_int = 110;
 
     const MAX_FAMILY_NAMES: c_int = 8;
 
@@ -457,20 +459,30 @@ mod fontconfig {
                 if pattern.is_null() {
                     return families;
                 }
-                (api.pattern_add_integer)(pattern, SPACING.as_ptr() as *const c_char, FC_MONO);
                 let objects = (api.object_set_create)();
                 if objects.is_null() {
                     (api.pattern_destroy)(pattern);
                     return families;
                 }
                 (api.object_set_add)(objects, FAMILY.as_ptr() as *const c_char);
+                (api.object_set_add)(objects, SPACING.as_ptr() as *const c_char);
                 let listed = (api.font_list)(self.config, pattern, objects);
                 if !listed.is_null() {
                     let set = &*listed;
                     for position in 0..set.nfont.max(0) as usize {
                         let font = *set.fonts.add(position);
                         let mut name: *mut u8 = std::ptr::null_mut();
+                        let mut spacing = 0;
                         if !font.is_null()
+                            && (api.pattern_get_integer)(
+                                font,
+                                SPACING.as_ptr().cast(),
+                                0,
+                                &mut spacing,
+                            ) == FC_RESULT_MATCH
+                            && (spacing == FC_DUAL
+                                || spacing == FC_MONO
+                                || spacing == FC_CHARCELL)
                             && (api.pattern_get_string)(
                                 font,
                                 FAMILY.as_ptr() as *const c_char,
@@ -615,6 +627,55 @@ mod fontconfig {
             font_set_destroy: symbol!(b"FcFontSetDestroy\0"),
             _library: library,
         })
+    }
+    #[cfg(test)]
+    #[test]
+    fn lists_dual_width_and_fixed_width_but_not_proportional_families() {
+        type GetFonts = unsafe extern "C" fn(*mut Config, c_int) -> *mut FontSet;
+        type FontSetAdd = unsafe extern "C" fn(*mut FontSet, *mut Pattern) -> c_int;
+
+        let directory = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/fonts");
+        let Some(backend) = Fontconfig::synthetic(&directory) else {
+            return;
+        };
+        unsafe {
+            let library = &backend.api._library;
+            let get_fonts: GetFonts = *library.get(b"FcConfigGetFonts\0").unwrap();
+            let add: FontSetAdd = *library.get(b"FcFontSetAdd\0").unwrap();
+            let fonts = get_fonts(backend.config, 1);
+            assert!(!fonts.is_null());
+            for (name, spacing) in [
+                ("Test Dual", 90),
+                ("Test Mono", 100),
+                ("Test Cell", 110),
+                ("Test Proportional", 0),
+            ] {
+                let pattern = (backend.api.pattern_create)();
+                assert!(!pattern.is_null());
+                let name = CString::new(name).unwrap();
+                assert_ne!(
+                    (backend.api.pattern_add_string)(
+                        pattern,
+                        FAMILY.as_ptr().cast(),
+                        name.as_ptr().cast()
+                    ),
+                    0
+                );
+                assert_ne!(
+                    (backend.api.pattern_add_integer)(pattern, SPACING.as_ptr().cast(), spacing),
+                    0
+                );
+                assert_ne!(add(fonts, pattern), 0);
+            }
+        }
+        let families = backend.monospace_families();
+        for name in ["Test Dual", "Test Mono", "Test Cell"] {
+            assert!(
+                families.iter().any(|family| family == name),
+                "missing {name}: {families:?}"
+            );
+        }
+        assert!(!families.iter().any(|family| family == "Test Proportional"));
     }
 }
 
